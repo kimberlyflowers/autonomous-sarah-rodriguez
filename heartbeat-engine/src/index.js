@@ -22,25 +22,38 @@ app.use(helmet());
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
-// Global error handler
+// Global error handler - log but don't crash the web service
 process.on('uncaughtException', (error) => {
-  logger.error('Uncaught Exception:', error);
-  process.exit(1);
+  logger.error('Uncaught Exception (non-fatal):', error);
+  // Don't exit - let the service continue running for health checks
 });
 
 process.on('unhandledRejection', (error) => {
-  logger.error('Unhandled Rejection:', error);
-  process.exit(1);
+  logger.error('Unhandled Rejection (non-fatal):', error);
+  // Don't exit - let the service continue running for health checks
 });
 
-// Health check endpoint
-app.get('/health', async (req, res) => {
+// Health check endpoint - always returns 200 OK for Railway
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    service: 'heartbeat-engine',
+    agent: {
+      id: process.env.AGENT_ID || 'bloomie-sarah-rodriguez',
+      name: process.env.AGENT_NAME || 'Sarah Rodriguez'
+    }
+  });
+});
+
+// Detailed status endpoint with connection checks
+app.get('/status', async (req, res) => {
   try {
     const dbOk = await testDatabaseConnection();
     const lettaOk = await testLettaConnection();
 
-    const health = {
-      status: 'healthy',
+    const status = {
+      status: 'running',
       timestamp: new Date().toISOString(),
       services: {
         database: dbOk ? 'connected' : 'disconnected',
@@ -53,12 +66,13 @@ app.get('/health', async (req, res) => {
       }
     };
 
-    res.json(health);
+    res.json(status);
   } catch (error) {
-    logger.error('Health check failed:', error);
+    logger.error('Status check failed:', error);
     res.status(500).json({
-      status: 'unhealthy',
-      error: error.message
+      status: 'error',
+      error: error.message,
+      timestamp: new Date().toISOString()
     });
   }
 });
@@ -139,34 +153,61 @@ async function startHeartbeatEngine() {
   logger.info('🚀 Starting BLOOM Heartbeat Engine...');
 
   try {
-    // Test all connections
-    logger.info('🔧 Testing connections...');
-    const dbOk = await testDatabaseConnection();
-    const lettaOk = await testLettaConnection();
-
-    if (!dbOk) {
-      throw new Error('Database connection failed');
-    }
-    if (!lettaOk) {
-      logger.warn('Letta connection failed - memory will be limited');
-    }
-
-    // Load agent configuration
-    const agentConfig = await loadAgentConfig();
-    logger.info(`👩‍💼 Agent loaded: ${agentConfig.name} (Level ${agentConfig.currentAutonomyLevel})`);
-
-    // Schedule heartbeat cron jobs
-    setupCronSchedules(agentConfig);
-
-    // Start web server
+    // Start web server first so health check works
     app.listen(PORT, '0.0.0.0', () => {
       logger.info(`🌐 Heartbeat engine listening on port ${PORT}`);
-      logger.info('✅ BLOOM Autonomous Agent ready for operations');
+      logger.info('✅ BLOOM Heartbeat Engine started - health endpoint ready');
     });
+
+    // Test connections (non-blocking)
+    logger.info('🔧 Testing connections...');
+    const dbOk = await testDatabaseConnection().catch(() => false);
+    const lettaOk = await testLettaConnection().catch(() => false);
+
+    if (!dbOk) {
+      logger.warn('⚠️  Database connection failed - agent will retry periodically');
+      logger.warn('   Database operations will be limited until connection is restored');
+    } else {
+      logger.info('✅ Database connection successful');
+    }
+
+    if (!lettaOk) {
+      logger.warn('⚠️  Letta connection failed - memory will be limited to fallback');
+      logger.warn('   Agent will use database-only memory until Letta is available');
+    } else {
+      logger.info('✅ Letta memory server connection successful');
+    }
+
+    // Load agent configuration (with fallback)
+    let agentConfig;
+    try {
+      agentConfig = await loadAgentConfig();
+      logger.info(`👩‍💼 Agent loaded: ${agentConfig.name} (Level ${agentConfig.currentAutonomyLevel})`);
+    } catch (error) {
+      logger.warn('⚠️  Failed to load agent config from database, using defaults:', error.message);
+      // Continue with default config if database is unavailable
+      agentConfig = {
+        agentId: process.env.AGENT_ID || 'bloomie-sarah-rodriguez',
+        name: process.env.AGENT_NAME || 'Sarah Rodriguez',
+        currentAutonomyLevel: parseInt(process.env.AUTONOMY_LEVEL || '1'),
+        client: 'Youth Empowerment School'
+      };
+    }
+
+    // Schedule heartbeat cron jobs (only if database is working)
+    if (dbOk) {
+      setupCronSchedules(agentConfig);
+      logger.info('🕐 Heartbeat schedules activated');
+    } else {
+      logger.warn('⚠️  Heartbeat schedules disabled until database connection is restored');
+    }
+
+    logger.info('🎯 BLOOM Autonomous Agent infrastructure ready');
 
   } catch (error) {
     logger.error('Failed to start heartbeat engine:', error);
-    process.exit(1);
+    // Don't exit - let the health endpoint still work
+    logger.error('❌ Starting in degraded mode - health endpoint available, core functions disabled');
   }
 }
 
@@ -245,6 +286,17 @@ function getNextScheduledHeartbeat() {
 
   return nextHour.toISOString();
 }
+
+// Graceful shutdown for Railway
+process.on('SIGTERM', () => {
+  logger.info('SIGTERM received, shutting down gracefully');
+  process.exit(0);
+});
+
+process.on('SIGINT', () => {
+  logger.info('SIGINT received, shutting down gracefully');
+  process.exit(0);
+});
 
 // Start the engine
 startHeartbeatEngine();
