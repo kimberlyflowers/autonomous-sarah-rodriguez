@@ -51,27 +51,27 @@ function ContextAnalytics({ theme, refreshContext }) {
           }
         },
         modelUsage: {
-          currentModel: 'claude-sonnet-4-5-20250929',
+          currentModel: 'claude-haiku-4-5-20251001',
           provider: 'anthropic',
           adaptiveEnabled: true,
           recentSwitches: [
             {
               timestamp: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
               from: 'claude-haiku-4-5-20251001',
-              to: 'claude-sonnet-4-5-20250929',
+              to: 'claude-haiku-4-5-20251001',
               reason: 'Complex analysis task detected',
               useCase: 'analysis'
             },
             {
               timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-              from: 'claude-sonnet-4-5-20250929',
+              from: 'claude-haiku-4-5-20251001',
               to: 'claude-haiku-4-5-20251001',
               reason: 'Quick response needed',
               useCase: 'quick_response'
             }
           ],
           tokenUsage: {
-            'claude-sonnet-4-5-20250929': { input: 89420, output: 23650, cost: 15.23 },
+            'claude-haiku-4-5-20251001': { input: 89420, output: 23650, cost: 15.23 },
             'claude-haiku-4-5-20251001': { input: 45280, output: 12100, cost: 3.45 },
           },
           capabilities: {
