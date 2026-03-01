@@ -9,6 +9,8 @@ import { executeGHLTool, ghlToolDefinitions } from '../tools/ghl-tools.js';
 import { executeInternalTool, internalToolDefinitions } from '../tools/internal-tools.js';
 import { subAgentSystem, SUB_AGENTS } from '../agents/sub-agent-system.js';
 import { trustGate } from '../trust/trust-gate.js';
+import { contextManager } from '../context/context-manager.js';
+import { ModelFormatter, modelSelector } from '../context/model-formatter.js';
 
 const logger = createLogger('agent-executor');
 
@@ -25,11 +27,25 @@ const EXECUTION_STATUS = {
  * Takes a task and executes it autonomously using tool chaining
  */
 export class AgentExecutor {
-  constructor(agentId = 'bloomie-sarah-rodriguez') {
+  constructor(agentId = 'bloomie-sarah-rodriguez', options = {}) {
     this.agentId = agentId;
-    this.maxTurns = 10; // Maximum conversation turns to prevent infinite loops
+    this.maxTurns = options.maxTurns || 10; // Maximum conversation turns to prevent infinite loops
     this.toolExecutionHistory = [];
     this.conversationHistory = [];
+
+    // Advanced context management
+    this.contextManager = contextManager;
+    this.modelFormatter = new ModelFormatter(options.model || 'claude-sonnet-4-5-20250929');
+
+    // Adaptive model selection
+    this.useAdaptiveModels = options.useAdaptiveModels !== false;
+    this.taskComplexity = 'standard'; // 'fast', 'standard', 'premium'
+
+    logger.info('Initialized AgentExecutor with advanced context management', {
+      agentId,
+      model: this.modelFormatter.model,
+      useAdaptiveModels: this.useAdaptiveModels
+    });
   }
 
   /**
@@ -50,15 +66,28 @@ export class AgentExecutor {
       const agentConfig = await loadAgentConfig(this.agentId);
       const systemPrompt = await this.buildSystemPrompt(agentConfig, context);
 
-      // Initialize conversation with the task
-      this.conversationHistory = [{
-        role: 'user',
-        content: `Execute this task autonomously: ${task}
+      // Store task context and initialize conversation with advanced context management
+      await this.contextManager.storeWorkingContext('current_task', {
+        description: task,
+        context: context,
+        startTime: startTime,
+        agentId: this.agentId
+      }, 'current_task');
+
+      // Add initial task to conversation context
+      await this.contextManager.addConversationTurn('user',
+        `Execute this task autonomously: ${task}
 
 Available context: ${JSON.stringify(context, null, 2)}
 
-Use the available tools to complete this task. Work step by step and explain your reasoning. When you've completed the task, clearly state "TASK COMPLETED" followed by a summary of what was accomplished.`
-      }];
+Use the available tools to complete this task. Work step by step and explain your reasoning. When you've completed the task, clearly state "TASK COMPLETED" followed by a summary of what was accomplished.`,
+        { type: 'current_task', priority: 9 }
+      );
+
+      // Select optimal model for this task if adaptive models are enabled
+      if (this.useAdaptiveModels) {
+        this.adaptModelForTask(task, context);
+      }
 
       let currentTurn = 0;
       let status = EXECUTION_STATUS.RUNNING;
@@ -107,6 +136,9 @@ Use the available tools to complete this task. Work step by step and explain you
         toolsUsed: this.toolExecutionHistory.length
       });
 
+      // Get final context statistics
+      const contextStats = this.contextManager.getContextStats();
+
       return {
         status,
         result: finalResult,
@@ -114,7 +146,10 @@ Use the available tools to complete this task. Work step by step and explain you
         turns: currentTurn,
         toolsUsed: this.toolExecutionHistory.length,
         conversationHistory: this.conversationHistory,
-        toolHistory: this.toolExecutionHistory
+        toolHistory: this.toolExecutionHistory,
+        contextStats,
+        modelUsed: this.modelFormatter.model,
+        taskComplexity: this.taskComplexity
       };
 
     } catch (error) {
@@ -124,30 +159,100 @@ Use the available tools to complete this task. Work step by step and explain you
         error: error.message,
         executionTime: Date.now() - startTime,
         turns: 0,
-        toolsUsed: 0
+        toolsUsed: 0,
+        contextStats: this.contextManager.getContextStats(),
+        modelUsed: this.modelFormatter.model,
+        taskComplexity: this.taskComplexity
       };
     }
   }
 
   /**
-   * Call Claude API with tools and current conversation
+   * Call LLM API with tools and optimized conversation context
    */
   async callClaudeWithTools(systemPrompt) {
     const client = getAnthropicClient();
 
-    // Convert GHL tool definitions to Claude format
-    const claudeTools = this.formatToolsForClaude();
+    // Get optimized conversation history from context manager
+    const optimizedHistory = this.contextManager.getOptimizedHistory(
+      this.modelFormatter.capabilities.contextWindow * 0.8 // Reserve 20% for response
+    );
 
-    const response = await client.messages.create({
-      model: 'claude-sonnet-4-5-20250929',
-      max_tokens: 4000,
-      temperature: 0.1, // Low temperature for consistent execution
-      system: systemPrompt,
-      messages: this.conversationHistory,
-      tools: claudeTools
+    // Add current working context to system prompt
+    const workingContext = this.contextManager.getFormattedWorkingContext();
+    const enhancedSystemPrompt = workingContext
+      ? `${systemPrompt}\n\n## Current Working Context:\n${workingContext}`
+      : systemPrompt;
+
+    // Format tools and validate context size
+    const allTools = this.formatToolsForClaude();
+    const validation = this.modelFormatter.validateContextSize(
+      optimizedHistory,
+      allTools,
+      enhancedSystemPrompt
+    );
+
+    if (!validation.valid) {
+      logger.warn('Context size exceeds model limits, compressing further', {
+        totalTokens: validation.totalTokens,
+        limit: this.modelFormatter.capabilities.contextWindow,
+        utilization: validation.utilizationPercent
+      });
+
+      // Force context compression
+      await this.contextManager.compressContext();
+      // Retry with compressed context
+      const reoptimizedHistory = this.contextManager.getOptimizedHistory(
+        this.modelFormatter.capabilities.contextWindow * 0.7 // More aggressive limit
+      );
+
+      return this.callLLMWithParams(enhancedSystemPrompt, reoptimizedHistory, allTools);
+    }
+
+    logger.info('Making LLM API call with optimized context', {
+      model: this.modelFormatter.model,
+      historyTurns: optimizedHistory.length,
+      tools: allTools.length,
+      utilization: validation.utilizationPercent
     });
 
-    return response;
+    return this.callLLMWithParams(enhancedSystemPrompt, optimizedHistory, allTools);
+  }
+
+  /**
+   * Make actual LLM API call with formatted parameters
+   */
+  async callLLMWithParams(systemPrompt, messages, tools) {
+    const client = getAnthropicClient();
+
+    // Create API request using model formatter
+    const apiParams = this.modelFormatter.createAPIRequest(
+      messages,
+      tools,
+      systemPrompt,
+      {
+        maxTokens: 4000,
+        temperature: 0.1
+      }
+    );
+
+    // Make the API call
+    const response = await client.messages.create(apiParams);
+
+    // Parse response using model formatter
+    const parsed = this.modelFormatter.parseResponse(response);
+
+    logger.info('LLM response received', {
+      model: this.modelFormatter.model,
+      inputTokens: parsed.usage?.inputTokens,
+      outputTokens: parsed.usage?.outputTokens,
+      stopReason: parsed.stopReason
+    });
+
+    return {
+      ...response,
+      parsed
+    };
   }
 
   /**
@@ -169,10 +274,11 @@ Use the available tools to complete this task. Work step by step and explain you
           result = block.text;
         }
 
-        // Add text to conversation
-        this.conversationHistory.push({
-          role: 'assistant',
-          content: block.text
+        // Add text to conversation using context manager
+        await this.contextManager.addConversationTurn('assistant', block.text, {
+          type: 'assistant_response',
+          priority: 7,
+          turnNumber: this.conversationHistory.length
         });
 
       } else if (block.type === 'tool_use') {
@@ -189,19 +295,24 @@ Use the available tools to complete this task. Work step by step and explain you
           timestamp: new Date().toISOString()
         });
 
-        // Add tool use and result to conversation
-        this.conversationHistory.push({
-          role: 'assistant',
-          content: [block] // Tool use block
+        // Add tool use and result to conversation using context manager
+        await this.contextManager.addConversationTurn('assistant', [block], {
+          type: 'tool_execution',
+          tool: block.name,
+          priority: 8,
+          turnNumber: this.conversationHistory.length
         });
 
-        this.conversationHistory.push({
-          role: 'user',
-          content: [{
-            type: 'tool_result',
-            tool_use_id: block.id,
-            content: JSON.stringify(toolResult, null, 2)
-          }]
+        await this.contextManager.addConversationTurn('user', [{
+          type: 'tool_result',
+          tool_use_id: block.id,
+          content: JSON.stringify(toolResult, null, 2)
+        }], {
+          type: 'tool_result',
+          tool: block.name,
+          success: toolResult.success,
+          priority: 8,
+          turnNumber: this.conversationHistory.length
         });
 
         logger.info('Tool executed', {
@@ -418,6 +529,44 @@ ${JSON.stringify(context, null, 2)}
 ${agentConfig.standingInstructions}
 
 Remember: You operate at Level 1 autonomy, so focus on observation, analysis, and appropriate escalation. Use your tools wisely and work systematically toward task completion.`;
+  }
+
+  /**
+   * Adapt model selection based on task characteristics
+   */
+  adaptModelForTask(task, context) {
+    const taskLower = task.toLowerCase();
+    const hasContext = context && Object.keys(context).length > 0;
+
+    let useCase = 'standard';
+
+    // Detect task characteristics
+    if (taskLower.includes('analyz') || taskLower.includes('pattern') || taskLower.includes('report')) {
+      useCase = 'analysis';
+      this.taskComplexity = 'premium';
+    } else if (taskLower.includes('quick') || taskLower.includes('fast') || taskLower.includes('urgent')) {
+      useCase = 'quick_response';
+      this.taskComplexity = 'fast';
+    } else if (taskLower.includes('tool') || taskLower.includes('ghl') || taskLower.includes('api')) {
+      useCase = 'tool_heavy';
+      this.taskComplexity = 'standard';
+    } else if (hasContext && JSON.stringify(context).length > 5000) {
+      useCase = 'long_context';
+      this.taskComplexity = 'premium';
+    }
+
+    const recommendedModel = modelSelector.getRecommendedModel(useCase);
+
+    if (recommendedModel !== this.modelFormatter.model) {
+      logger.info('Adapting model for task', {
+        task: task.substring(0, 50),
+        useCase,
+        fromModel: this.modelFormatter.model,
+        toModel: recommendedModel
+      });
+
+      this.modelFormatter.switchModel(recommendedModel);
+    }
   }
 
   /**

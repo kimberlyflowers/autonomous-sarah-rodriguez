@@ -10,6 +10,7 @@ import TrustGateStatus from './components/TrustGateStatus.jsx';
 import InternalToolsDashboard from './components/InternalToolsDashboard.jsx';
 import ToolInventory from './components/ToolInventory.jsx';
 import SubAgentDashboard from './components/SubAgentDashboard.jsx';
+import ContextAnalytics from './components/ContextAnalytics.jsx';
 
 function Dashboard({ theme, refreshContext }) {
   const [agentStatus, setAgentStatus] = useState(null);
@@ -87,6 +88,12 @@ function Dashboard({ theme, refreshContext }) {
 
       {/* Tool Inventory */}
       <ToolInventory
+        theme={theme}
+        refreshContext={refreshContext}
+      />
+
+      {/* Advanced Context Management */}
+      <ContextAnalytics
         theme={theme}
         refreshContext={refreshContext}
       />
