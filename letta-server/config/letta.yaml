@@ -1,0 +1,80 @@
+# BLOOM Letta Server Configuration
+# Memory management for BLOOM autonomous agents
+
+# Server configuration
+server:
+  host: "0.0.0.0"
+  port: 8283
+  debug: false
+
+# Database configuration - uses Railway PostgreSQL
+database:
+  type: "postgresql"
+  url: "${LETTA_PG_URI}"
+  pool_size: 10
+  max_overflow: 20
+
+# Memory configuration
+memory:
+  # Long-term memory storage
+  storage_backend: "postgresql"
+
+  # Memory chunking settings
+  chunk_size: 1000
+  overlap_size: 200
+
+  # Retrieval settings
+  max_memories_per_query: 20
+  relevance_threshold: 0.5
+
+  # Archival settings
+  archive_old_memories: true
+  archive_after_days: 90
+
+# Agent configuration
+agents:
+  # Default settings for new agents
+  default_memory_size: 4000
+  default_context_window: 8000
+
+  # Sarah Rodriguez specific configuration
+  "bloomie-sarah-rodriguez":
+    memory_size: 6000
+    context_window: 12000
+    personality: "professional operations agent"
+    role: "Youth Empowerment School operations"
+
+# Security
+security:
+  enable_auth: false  # Internal Railway network
+  api_key_required: false
+  cors_enabled: true
+  allowed_origins:
+    - "http://heartbeat-engine.railway.internal:3000"
+    - "https://*.railway.app"
+
+# Logging
+logging:
+  level: "INFO"
+  format: "json"
+  file: "/app/logs/letta.log"
+  max_size: "100MB"
+  backup_count: 5
+
+# Performance
+performance:
+  cache_enabled: true
+  cache_size: 1000
+  background_tasks: true
+
+# Integration settings
+integrations:
+  # PostgreSQL backup
+  postgresql:
+    enabled: true
+    backup_interval: "24h"
+
+  # Supabase sync (optional)
+  supabase:
+    enabled: false
+    sync_interval: "1h"

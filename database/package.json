@@ -1,0 +1,13 @@
+{
+  "name": "bloom-agent-database",
+  "version": "1.0.0",
+  "description": "Database setup for BLOOM Autonomous Agent Infrastructure",
+  "main": "setup.js",
+  "scripts": {
+    "setup": "node setup.js",
+    "test": "node -e \"require('./setup').testConnection()\""
+  },
+  "dependencies": {
+    "pg": "^8.11.3"
+  }
+}
