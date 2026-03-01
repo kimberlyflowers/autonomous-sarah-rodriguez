@@ -347,6 +347,24 @@ async function storeChatMessage(sessionId, message, isUser, agentId = null, cont
   }
 }
 
+// Clean up old chat messages (retain last 90 days)
+async function cleanupOldChatMessages() {
+  try {
+    const pool = await getPool();
+    const result = await pool.query(`
+      DELETE FROM chat_messages
+      WHERE timestamp < NOW() - INTERVAL '90 days'
+    `);
+    await pool.end();
+
+    if (result.rowCount > 0) {
+      logger.info(`Cleaned up ${result.rowCount} old chat messages`);
+    }
+  } catch (error) {
+    logger.warn('Could not cleanup old chat messages:', error.message);
+  }
+}
+
 // POST /api/chat/message - Send message to Sarah
 router.post('/message', async (req, res) => {
   try {
@@ -500,5 +518,31 @@ router.get('/status', async (req, res) => {
     res.status(500).json({ error: 'Failed to check chat status' });
   }
 });
+
+// POST /api/chat/cleanup - Manual cleanup of old chat messages
+router.post('/cleanup', async (req, res) => {
+  try {
+    await cleanupOldChatMessages();
+    res.json({
+      success: true,
+      message: 'Chat history cleanup completed',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('Failed to cleanup chat messages:', error);
+    res.status(500).json({ error: 'Failed to cleanup chat history' });
+  }
+});
+
+// Initialize chat system and run cleanup on startup
+(async () => {
+  try {
+    await ensureChatTableExists();
+    await cleanupOldChatMessages();
+    logger.info('Chat system initialized with cleanup completed');
+  } catch (error) {
+    logger.error('Failed to initialize chat system:', error);
+  }
+})();
 
 export default router;

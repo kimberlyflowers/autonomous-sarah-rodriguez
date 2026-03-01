@@ -117,6 +117,25 @@ CREATE INDEX IF NOT EXISTS idx_heartbeat_status ON heartbeat_cycles(status, star
 CREATE INDEX IF NOT EXISTS idx_handoff_unresolved ON handoff_log(agent_id, resolved) WHERE resolved = FALSE;
 CREATE INDEX IF NOT EXISTS idx_memory_agent_type ON memory_snapshots(agent_id, memory_type, created_at DESC);
 
+-- Chat messages table for conversation history with Sarah
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id SERIAL PRIMARY KEY,
+    session_id VARCHAR(100) DEFAULT 'default',
+    message TEXT NOT NULL,
+    is_user BOOLEAN NOT NULL,
+    agent_id VARCHAR(100),
+    timestamp TIMESTAMP DEFAULT NOW(),
+    context JSONB,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Chat messages index for efficient querying
+CREATE INDEX IF NOT EXISTS idx_chat_messages_session_time
+ON chat_messages(session_id, timestamp DESC);
+
+CREATE INDEX IF NOT EXISTS idx_chat_messages_agent_time
+ON chat_messages(agent_id, timestamp DESC);
+
 -- Insert Sarah Rodriguez agent profile
 INSERT INTO agents (id, name, role, client, autonomy_level, standing_instructions, config, created_at)
 VALUES (
