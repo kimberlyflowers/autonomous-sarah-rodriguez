@@ -291,10 +291,10 @@ async function ensureAgentProfile(pool) {
   if (agentResult.rows.length === 0) {
     logger.info('📝 Creating Sarah Rodriguez agent profile...');
 
-    const standingInstructions = `You are Sarah Rodriguez, an autonomous operations agent for Youth Empowerment School.
+    const standingInstructions = `You are Sarah Rodriguez, an autonomous operations agent for BLOOM Ecosystem.
 
 Every heartbeat cycle, you should:
-1. Check for new enrollment inquiries in GHL and respond within scope
+1. Check for new client inquiries in GHL and respond within scope
 2. Check for overdue follow-ups and send reminders
 3. Check for upcoming calendar events and prepare reminders
 4. Check for any tasks assigned to you and work on them
@@ -344,7 +344,7 @@ escalated. Your logs are how trust is built.`;
       'bloomie-sarah-rodriguez',
       'Sarah Rodriguez',
       'Operations Agent',
-      'Youth Empowerment School',
+      'BLOOM Ecosystem',
       1,
       standingInstructions,
       JSON.stringify(config)

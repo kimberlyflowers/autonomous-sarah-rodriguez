@@ -1,6 +1,6 @@
 # BLOOM Autonomous Agent Infrastructure
 
-Complete autonomous agent infrastructure for BLOOM Staffing, featuring Sarah Rodriguez as the first Bloomie (autonomous operations agent) for Youth Empowerment School.
+Complete autonomous agent infrastructure for BLOOM Ecosystem, featuring Sarah Rodriguez as the first Bloomie (autonomous operations agent) for internal operations.
 
 ## 🏗️ Architecture Overview
 
@@ -17,8 +17,8 @@ Railway Project: Appealing Tranquility
 
 **Agent Profile:**
 - **Name**: Sarah Rodriguez
-- **Role**: Operations Agent for Youth Empowerment School
-- **Client**: Youth Empowerment School (Kimberly's father)
+- **Role**: Operations Agent for BLOOM Ecosystem
+- **Division**: Internal Operations
 - **Starting Autonomy Level**: 1 (Observer - read-only monitoring)
 - **Capabilities**: GHL monitoring, email checking, task management, appointment scheduling
 
@@ -303,5 +303,5 @@ bloom-agent-infrastructure/
 ---
 
 **BLOOM Autonomous Agent Infrastructure v1.0**
-*Built for Youth Empowerment School operations*
+*Built for BLOOM Ecosystem operations*
 *Deployed on Railway • Powered by Claude • Memory by Letta*

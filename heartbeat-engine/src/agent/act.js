@@ -476,7 +476,7 @@ function generateSubject(template, contact, personalization) {
   const subjects = {
     enrollment_followup: `Following up on your enrollment inquiry - ${contact.firstName || 'there'}`,
     appointment_reminder: `Reminder: Your appointment is coming up`,
-    welcome_sequence: `Welcome to Youth Empowerment School, ${contact.firstName || 'there'}!`,
+    welcome_sequence: `Welcome to BLOOM Ecosystem, ${contact.firstName || 'there'}!`,
     payment_reminder: `Payment reminder for ${contact.firstName || 'you'}`
   };
 
@@ -494,5 +494,5 @@ This is a reminder that you have an appointment scheduled:
 
 If you need to reschedule, please let us know as soon as possible.
 
-- Sarah @ Youth Empowerment School`;
+- Sarah @ BLOOM Ecosystem`;
 }
