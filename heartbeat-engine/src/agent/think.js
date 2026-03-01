@@ -25,7 +25,7 @@ export async function think(context) {
     logger.info('Calling Claude API for decision making...');
 
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-5-20250929',
       max_tokens: 4000,
       temperature: 0.1, // Low temperature for consistent decision making
       system: buildSystemPrompt(context),
