@@ -41,45 +41,63 @@ export async function loadAgentConfig(agentId = null) {
 
 // Load configuration from database
 async function loadConfigFromDatabase(agentId) {
-  const { createPool } = await import('../../database/setup.js');
-  const pool = createPool();
+  let retries = 5;
+  let delay = 1000; // Start with 1 second
 
-  try {
-    const result = await pool.query(`
-      SELECT
-        id,
-        name,
-        role,
-        client,
-        autonomy_level,
-        standing_instructions,
-        config,
-        created_at,
-        updated_at
-      FROM agents
-      WHERE id = $1
-    `, [agentId]);
+  while (retries > 0) {
+    let pool = null;
+    try {
+      const { createPool } = await import('../../database/setup.js');
+      pool = createPool();
 
-    if (result.rows.length === 0) {
-      throw new Error(`Agent configuration not found: ${agentId}`);
+      const result = await pool.query(`
+        SELECT
+          id,
+          name,
+          role,
+          client,
+          autonomy_level,
+          standing_instructions,
+          config,
+          created_at,
+          updated_at
+        FROM agents
+        WHERE id = $1
+      `, [agentId]);
+
+      if (result.rows.length === 0) {
+        throw new Error(`Agent configuration not found: ${agentId}`);
+      }
+
+      const row = result.rows[0];
+
+      return {
+        agentId: row.id,
+        name: row.name,
+        role: row.role,
+        client: row.client,
+        currentAutonomyLevel: row.autonomy_level,
+        standingInstructions: row.standing_instructions,
+        config: row.config || {},
+        createdAt: row.created_at,
+        updatedAt: row.updated_at
+      };
+
+    } catch (error) {
+      if (pool) {
+        await pool.end().catch(() => {}); // Ensure pool is closed
+      }
+
+      // Retry only for table not found errors and if we have retries left
+      if (error.code === '42P01' && retries > 1) {
+        logger.warn(`Agents table not found, retrying in ${delay}ms... (${retries - 1} retries left)`);
+        retries--;
+        await new Promise(resolve => setTimeout(resolve, delay));
+        delay *= 2; // Exponential backoff
+        continue;
+      }
+      throw error; // Re-throw for other errors or final retry
     }
-
-    const row = result.rows[0];
-
-    return {
-      agentId: row.id,
-      name: row.name,
-      role: row.role,
-      client: row.client,
-      currentAutonomyLevel: row.autonomy_level,
-      standingInstructions: row.standing_instructions,
-      config: row.config || {},
-      createdAt: row.created_at,
-      updatedAt: row.updated_at
-    };
-
-  } finally {
-    await pool.end();
   }
 }
 

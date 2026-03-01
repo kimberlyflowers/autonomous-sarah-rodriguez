@@ -6,6 +6,8 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import cron from 'node-cron';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { createLogger } from './logging/logger.js';
 import { runHeartbeat } from './heartbeat.js';
 import { loadAgentConfig } from './config/agent-profile.js';
@@ -13,6 +15,13 @@ import { cronSchedules } from './config/cron-schedules.js';
 import { testDatabaseConnection } from './database/auto-setup.js';
 import { testLettaConnection } from './memory/letta-client.js';
 import { ensureDatabaseExists } from './database/auto-setup.js';
+import dashboardRoutes from './api/dashboard.js';
+import chatRoutes from './api/chat.js';
+import eventRoutes from './api/events.js';
+
+// Get the current directory for ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const logger = createLogger('heartbeat-engine');
 const app = express();
@@ -147,6 +156,28 @@ app.post('/webhook/trigger', async (req, res) => {
       success: false,
       error: error.message
     });
+  }
+});
+
+// Dashboard API routes
+app.use('/api/dashboard', dashboardRoutes);
+
+// Chat API routes
+app.use('/api/chat', chatRoutes);
+
+// Events API routes (SSE)
+app.use('/api/events', eventRoutes);
+
+// Serve React static files
+app.use(express.static(path.join(__dirname, '../dashboard/dist')));
+
+// Catch-all handler for React Router (must be last)
+app.get('*', (req, res) => {
+  // Only serve index.html for non-API routes
+  if (!req.path.startsWith('/api/')) {
+    res.sendFile(path.join(__dirname, '../dashboard/dist/index.html'));
+  } else {
+    res.status(404).json({ error: 'API endpoint not found' });
   }
 });
 
