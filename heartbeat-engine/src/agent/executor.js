@@ -7,6 +7,7 @@ import { loadAgentConfig } from '../config/agent-profile.js';
 import { getAnthropicClient } from '../api/chat.js';
 import { executeGHLTool, ghlToolDefinitions } from '../tools/ghl-tools.js';
 import { executeInternalTool, internalToolDefinitions } from '../tools/internal-tools.js';
+import { subAgentSystem, SUB_AGENTS } from '../agents/sub-agent-system.js';
 import { trustGate } from '../trust/trust-gate.js';
 
 const logger = createLogger('agent-executor');
@@ -362,6 +363,36 @@ You are now in AGENTIC EXECUTION MODE. You have access to tools and can work aut
 - **Planning Tools**: Create tasks and track progress
 - **Logging Tools**: Record decisions and reasoning
 - **Escalation Tools**: Hand off to humans when appropriate
+- **Delegation Tools**: Delegate specialized tasks to expert sub-agents
+
+### Sub-Agent Architecture:
+You have access to specialized sub-agents for complex tasks:
+
+**GHL Operations Specialist**: Expert in GoHighLevel CRM operations
+- Expertise: contacts, opportunities, calendars, workflows, pipelines, tasks
+- Use for: Complex GHL operations, data management, workflow optimization
+
+**Communication Specialist**: Expert in client communication and relationships
+- Expertise: messaging, communication, relationships, follow-ups, campaigns
+- Use for: Complex messaging strategies, relationship management, campaign analysis
+
+**Data Analysis Specialist**: Expert in pattern recognition and insights
+- Expertise: analysis, patterns, metrics, reporting, insights
+- Use for: Complex data analysis, trend identification, performance reporting
+
+**Task Planning & Coordination Specialist**: Expert in workflow optimization
+- Expertise: planning, coordination, workflows, optimization, task_management
+- Use for: Complex project planning, workflow design, coordination challenges
+
+**Escalation & Issue Resolution Specialist**: Expert in problem escalation
+- Expertise: escalation, issue_resolution, risk_assessment, decision_support
+- Use for: Complex issues requiring human escalation, risk assessment
+
+**When to Delegate:**
+- Complex multi-step operations requiring domain expertise
+- Tasks that would benefit from specialized knowledge
+- Operations requiring multiple tool interactions
+- Analysis or planning that exceeds basic execution
 
 ### Trust Gate Enforcement:
 You are operating under Trust Gate protection. All tool use is monitored and enforced based on your autonomy level:
@@ -387,6 +418,39 @@ ${JSON.stringify(context, null, 2)}
 ${agentConfig.standingInstructions}
 
 Remember: You operate at Level 1 autonomy, so focus on observation, analysis, and appropriate escalation. Use your tools wisely and work systematically toward task completion.`;
+  }
+
+  /**
+   * Delegate task to specialized sub-agent
+   */
+  async delegateToSubAgent(task, context = {}, preferredAgent = null) {
+    try {
+      logger.info('Delegating task to sub-agent', {
+        task: task.substring(0, 100),
+        preferredAgent,
+        agentId: this.agentId
+      });
+
+      const result = await subAgentSystem.delegateTask(task, context, preferredAgent);
+
+      // Add delegation to tool execution history
+      this.toolExecutionHistory.push({
+        tool: 'bloom_delegate_task',
+        input: { task, context, preferredAgent },
+        result: result,
+        timestamp: new Date().toISOString()
+      });
+
+      return result;
+
+    } catch (error) {
+      logger.error('Sub-agent delegation failed:', error);
+      return {
+        success: false,
+        error: error.message,
+        subAgent: null
+      };
+    }
   }
 
   /**
