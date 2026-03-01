@@ -276,6 +276,21 @@ async function createBasicSchema(pool) {
     )
   `);
 
+  // Create bloom_context table
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS bloom_context (
+      id SERIAL PRIMARY KEY,
+      agent_id VARCHAR(100) REFERENCES agents(id),
+      context_type VARCHAR(50) NOT NULL,
+      title VARCHAR(255) NOT NULL,
+      content TEXT NOT NULL,
+      related_entities JSONB,
+      tags JSONB,
+      expires_at TIMESTAMP,
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+
   // Create indexes (matching schema.sql)
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_action_log_agent_time ON action_log(agent_id, timestamp DESC)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_rejection_log_agent_time ON rejection_log(agent_id, timestamp DESC)`);
@@ -285,6 +300,8 @@ async function createBasicSchema(pool) {
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_heartbeat_status ON heartbeat_cycles(status, started_at)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_handoff_unresolved ON handoff_log(agent_id, resolved) WHERE resolved = FALSE`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_memory_agent_type ON memory_snapshots(agent_id, memory_type, created_at DESC)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_bloom_context_agent_type ON bloom_context(agent_id, context_type, created_at DESC)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_bloom_context_expires ON bloom_context(expires_at) WHERE expires_at IS NOT NULL`);
 
   logger.info('✅ Basic schema created manually');
 }
