@@ -10,8 +10,9 @@ import { createLogger } from './logging/logger.js';
 import { runHeartbeat } from './heartbeat.js';
 import { loadAgentConfig } from './config/agent-profile.js';
 import { cronSchedules } from './config/cron-schedules.js';
-import { testDatabaseConnection } from '../database/setup.js';
+import { testDatabaseConnection } from './database/auto-setup.js';
 import { testLettaConnection } from './memory/letta-client.js';
+import { ensureDatabaseExists } from './database/auto-setup.js';
 
 const logger = createLogger('heartbeat-engine');
 const app = express();
@@ -159,9 +160,22 @@ async function startHeartbeatEngine() {
       logger.info('✅ BLOOM Heartbeat Engine started - health endpoint ready');
     });
 
+    // Auto-setup database if needed
+    logger.info('🔧 Auto-setup: Ensuring database and schema exist...');
+    const dbSetupOk = await ensureDatabaseExists().catch((error) => {
+      logger.error('Database auto-setup failed:', error);
+      return false;
+    });
+
+    if (dbSetupOk) {
+      logger.info('✅ Database auto-setup completed successfully');
+    } else {
+      logger.warn('⚠️  Database auto-setup had issues - will retry on next startup');
+    }
+
     // Test connections (non-blocking)
     logger.info('🔧 Testing connections...');
-    const dbOk = await testDatabaseConnection().catch(() => false);
+    const dbOk = dbSetupOk && await testDatabaseConnection().catch(() => false);
     const lettaOk = await testLettaConnection().catch(() => false);
 
     if (!dbOk) {
