@@ -65,25 +65,29 @@ export async function ensureDatabaseExists() {
     // Connect to bloom_heartbeat database
     bloomPool = createBloomPool();
 
-    // Check if tables exist
+    // Check if ALL required tables exist
     const tableResult = await bloomPool.query(`
       SELECT COUNT(*) as table_count
       FROM information_schema.tables
-      WHERE table_schema = 'public' AND table_name IN ('agents', 'heartbeat_cycles', 'action_log')
+      WHERE table_schema = 'public' AND table_name IN (
+        'agents', 'heartbeat_cycles', 'action_log', 'rejection_log',
+        'handoff_log', 'trust_metrics', 'memory_snapshots'
+      )
     `);
 
     const tableCount = parseInt(tableResult.rows[0].table_count);
+    const expectedTables = 7;
 
     if (tableCount === 0) {
-      logger.info('🏗️  Creating database schema...');
+      logger.info('🏗️  Creating database schema (no tables found)...');
       await createSchema(bloomPool);
       logger.info('✅ Database schema created successfully');
-    } else if (tableCount < 3) {
-      logger.warn(`⚠️  Found ${tableCount} tables, expected 3+ - may need schema update`);
-      logger.info('🏗️  Running schema update...');
+    } else if (tableCount < expectedTables) {
+      logger.warn(`⚠️  Found ${tableCount} tables, expected ${expectedTables} - recreating full schema`);
+      logger.info('🏗️  Running full schema creation...');
       await createSchema(bloomPool);
     } else {
-      logger.info('✅ Database schema already exists');
+      logger.info(`✅ All ${expectedTables} database tables exist`);
     }
 
     // Verify Sarah's agent profile exists
@@ -249,12 +253,15 @@ async function createBasicSchema(pool) {
     )
   `);
 
-  // Create indexes
+  // Create indexes (matching schema.sql)
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_action_log_agent_time ON action_log(agent_id, timestamp DESC)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_rejection_log_agent_time ON rejection_log(agent_id, timestamp DESC)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_handoff_log_agent_time ON handoff_log(agent_id, timestamp DESC)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_heartbeat_agent_time ON heartbeat_cycles(agent_id, started_at DESC)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_trust_metrics_agent_period ON trust_metrics(agent_id, period_start, period_end)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_heartbeat_status ON heartbeat_cycles(status, started_at)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_handoff_unresolved ON handoff_log(agent_id, resolved) WHERE resolved = FALSE`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_memory_agent_type ON memory_snapshots(agent_id, memory_type, created_at DESC)`);
 
   logger.info('✅ Basic schema created manually');
 }
