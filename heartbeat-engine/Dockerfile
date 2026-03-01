@@ -11,6 +11,9 @@ RUN npm ci --only=production
 # Copy application code
 COPY src/ ./src/
 
+# Copy database setup module
+COPY database/ ./database/
+
 # Copy dashboard code
 COPY dashboard/ ./dashboard/
 
