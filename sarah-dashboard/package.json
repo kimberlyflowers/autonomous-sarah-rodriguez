@@ -1,0 +1,25 @@
+{
+  "name": "sarah-dashboard",
+  "version": "1.0.0",
+  "description": "Web dashboard and chat interface for Sarah Rodriguez autonomous agent",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "build": "npm run build:css",
+    "build:css": "echo 'CSS bundled in HTML'"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "axios": "^1.6.2",
+    "ws": "^8.16.0",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "author": "BLOOM Staffing",
+  "license": "UNLICENSED"
+}

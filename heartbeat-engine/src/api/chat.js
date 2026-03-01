@@ -240,7 +240,7 @@ router.post('/message', async (req, res) => {
     // Call Claude API
     const client = getAnthropicClient();
     const response = await client.messages.create({
-      model: 'claude-3-sonnet-20240229',
+      model: 'claude-sonnet-4-5-20250929',
       max_tokens: 1500,
       temperature: 0.7,
       system: systemPrompt,
@@ -254,7 +254,7 @@ router.post('/message', async (req, res) => {
 
     // Store Sarah's response
     await storeChatMessage(sessionId, sarahResponse, false, agentConfig.agentId, {
-      claudeModel: 'claude-3-sonnet-20240229',
+      claudeModel: 'claude-sonnet-4-5-20250929',
       contextCycles: context.recentCycles.length,
       contextActions: context.recentActions.length
     });
