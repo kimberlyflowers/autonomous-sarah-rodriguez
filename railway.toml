@@ -1,0 +1,12 @@
+[build]
+builder = "nixpacks"
+
+[build.nixpacksConfigOverride]
+install = ["npm ci", "npm run dashboard:install"]
+build = ["npm run build"]
+start = ["npm start"]
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "always"
