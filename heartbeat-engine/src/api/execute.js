@@ -4,6 +4,7 @@
 import express from 'express';
 import { createLogger } from '../logging/logger.js';
 import { AgentExecutor, EXECUTION_STATUS } from '../agent/executor.js';
+import { trustGate, ACTION_PERMISSIONS, DAILY_ACTION_LIMITS } from '../trust/trust-gate.js';
 
 const router = express.Router();
 const logger = createLogger('execute-api');
@@ -213,6 +214,85 @@ router.get('/active', (req, res) => {
     logger.error('Failed to list active executions:', error);
     res.status(500).json({
       error: 'Failed to list executions',
+      message: error.message
+    });
+  }
+});
+
+// GET /api/execute/trust-status/:agentId - Get trust gate status and usage
+router.get('/trust-status/:agentId?', async (req, res) => {
+  try {
+    const agentId = req.params.agentId || 'bloomie-sarah-rodriguez';
+
+    const usage = await trustGate.getActionUsage(agentId);
+
+    res.json({
+      agentId,
+      trustGate: {
+        autonomyLevel: usage.autonomyLevel,
+        actionUsage: usage.usage,
+        dailyLimits: usage.limits,
+        remaining: usage.remaining,
+        date: usage.date
+      },
+      permissions: {
+        totalActions: Object.keys(ACTION_PERMISSIONS).length,
+        authorizedActions: Object.entries(ACTION_PERMISSIONS)
+          .filter(([_, perm]) => perm.level <= usage.autonomyLevel)
+          .map(([action, perm]) => ({
+            action,
+            category: perm.category,
+            risk: perm.risk
+          })),
+        blockedActions: Object.entries(ACTION_PERMISSIONS)
+          .filter(([_, perm]) => perm.level > usage.autonomyLevel)
+          .map(([action, perm]) => ({
+            action,
+            requiredLevel: perm.level,
+            category: perm.category,
+            risk: perm.risk
+          }))
+      },
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    logger.error('Failed to get trust status:', error);
+    res.status(500).json({
+      error: 'Failed to get trust status',
+      message: error.message
+    });
+  }
+});
+
+// POST /api/execute/authorize-action - Test action authorization
+router.post('/authorize-action', async (req, res) => {
+  try {
+    const { action, parameters = {}, agentId = 'bloomie-sarah-rodriguez' } = req.body;
+
+    if (!action) {
+      return res.status(400).json({ error: 'Action name is required' });
+    }
+
+    const authorization = await trustGate.authorizeAction(
+      action,
+      parameters,
+      agentId,
+      `test-${Date.now()}`
+    );
+
+    res.json({
+      action,
+      parameters,
+      agentId,
+      authorization,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    logger.error('Failed to authorize action:', error);
+    res.status(500).json({
+      error: 'Failed to authorize action',
       message: error.message
     });
   }

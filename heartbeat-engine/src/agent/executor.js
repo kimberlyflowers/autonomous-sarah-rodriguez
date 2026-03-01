@@ -6,6 +6,7 @@ import { createLogger } from '../logging/logger.js';
 import { loadAgentConfig } from '../config/agent-profile.js';
 import { getAnthropicClient } from '../api/chat.js';
 import { executeGHLTool, ghlToolDefinitions } from '../tools/ghl-tools.js';
+import { trustGate } from '../trust/trust-gate.js';
 
 const logger = createLogger('agent-executor');
 
@@ -221,28 +222,79 @@ Use the available tools to complete this task. Work step by step and explain you
    */
   async executeTool(toolName, parameters) {
     try {
-      // Check if it's a GHL tool
-      if (toolName.startsWith('ghl_')) {
-        return await executeGHLTool(toolName, parameters);
+      // TRUST GATE: Check authorization before execution
+      const authorization = await trustGate.authorizeAction(
+        toolName,
+        parameters,
+        this.agentId,
+        `exec-${Date.now()}` // Use execution-based cycle ID
+      );
+
+      if (!authorization.authorized) {
+        logger.warn('Tool execution blocked by trust gate', {
+          tool: toolName,
+          reason: authorization.reason,
+          code: authorization.code
+        });
+
+        return {
+          success: false,
+          blocked: true,
+          reason: authorization.reason,
+          code: authorization.code,
+          requiredLevel: authorization.requiredLevel,
+          currentLevel: authorization.currentLevel,
+          escalated: authorization.escalate
+        };
       }
 
-      // Handle other internal tools
-      switch (toolName) {
-        case 'create_task':
-          return await this.createTask(parameters);
-        case 'log_decision':
-          return await this.logDecision(parameters);
-        case 'escalate_to_human':
-          return await this.escalateToHuman(parameters);
-        default:
-          throw new Error(`Unknown tool: ${toolName}`);
+      logger.info('Tool authorized by trust gate', {
+        tool: toolName,
+        level: authorization.level,
+        category: authorization.category,
+        risk: authorization.risk
+      });
+
+      // Execute the tool after authorization
+      let result;
+
+      if (toolName.startsWith('ghl_')) {
+        result = await executeGHLTool(toolName, parameters);
+      } else {
+        // Handle internal tools
+        switch (toolName) {
+          case 'create_task':
+            result = await this.createTask(parameters);
+            break;
+          case 'log_decision':
+            result = await this.logDecision(parameters);
+            break;
+          case 'escalate_to_human':
+            result = await this.escalateToHuman(parameters);
+            break;
+          default:
+            throw new Error(`Unknown tool: ${toolName}`);
+        }
       }
+
+      // Add authorization info to successful results
+      if (result.success) {
+        result.authorization = {
+          level: authorization.level,
+          category: authorization.category,
+          risk: authorization.risk,
+          limits: authorization.limits
+        };
+      }
+
+      return result;
 
     } catch (error) {
       logger.error(`Tool execution failed: ${toolName}`, error);
       return {
         success: false,
-        error: error.message
+        error: error.message,
+        blocked: false
       };
     }
   }
@@ -338,10 +390,24 @@ You are now in AGENTIC EXECUTION MODE. You have access to tools and can work aut
 5. **Complete tasks thoroughly** - Don't stop until the task is fully done
 
 ### Available Tools:
-- **GHL Tools**: Full access to GoHighLevel API (contacts, opportunities, calendars, etc.)
+- **GHL Tools**: GoHighLevel API access (limited by autonomy level)
 - **Planning Tools**: Create tasks and track progress
 - **Logging Tools**: Record decisions and reasoning
 - **Escalation Tools**: Hand off to humans when appropriate
+
+### Trust Gate Enforcement:
+You are operating under Trust Gate protection. All tool use is monitored and enforced based on your autonomy level:
+
+**Level ${agentConfig.currentAutonomyLevel} Permissions:**
+- **Read Operations**: ✅ Search contacts, view data, list resources
+- **Write Operations**: ${agentConfig.currentAutonomyLevel >= 2 ? '✅ Limited' : '❌ Blocked'} Send messages, update contacts, create records
+- **Delete Operations**: ${agentConfig.currentAutonomyLevel >= 3 ? '✅ Restricted' : '❌ Blocked'} Delete data (with constraints)
+- **Admin Operations**: ${agentConfig.currentAutonomyLevel >= 4 ? '✅ Allowed' : '❌ Blocked'} System configuration
+
+**IMPORTANT**: If a tool is blocked, you'll receive a clear error message. When this happens:
+1. Acknowledge the constraint transparently
+2. Suggest alternative approaches within your level
+3. Escalate to humans if the blocked action is critical
 
 ### Completion Signal:
 When you have completed the task, respond with "TASK COMPLETED" followed by a clear summary of what was accomplished.
