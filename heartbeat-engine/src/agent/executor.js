@@ -37,7 +37,7 @@ export class AgentExecutor {
 
     // Advanced context management
     this.contextManager = contextManager;
-    this.modelFormatter = new ModelFormatter(options.model || 'claude-sonnet-4-5-20250929');
+    this.modelFormatter = new ModelFormatter(options.model || 'claude-haiku-4-5-20251001');
 
     // Adaptive model selection
     this.useAdaptiveModels = options.useAdaptiveModels !== false;

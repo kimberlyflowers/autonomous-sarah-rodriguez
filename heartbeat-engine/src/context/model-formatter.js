@@ -9,7 +9,7 @@ const logger = createLogger('model-formatter');
  * Model capabilities and limitations
  */
 export const MODEL_CAPABILITIES = {
-  'claude-sonnet-4-5-20250929': {
+  'claude-haiku-4-5-20251001': {
     provider: 'anthropic',
     maxTokens: 200000,
     supportsTools: true,
@@ -71,13 +71,13 @@ export const MODEL_CAPABILITIES = {
  * Handles conversion between different LLM formats
  */
 export class ModelFormatter {
-  constructor(model = 'claude-sonnet-4-5-20250929') {
+  constructor(model = 'claude-haiku-4-5-20251001') {
     this.model = model;
     this.capabilities = MODEL_CAPABILITIES[model];
 
     if (!this.capabilities) {
       logger.warn(`Unknown model: ${model}, using Claude Sonnet defaults`);
-      this.capabilities = MODEL_CAPABILITIES['claude-sonnet-4-5-20250929'];
+      this.capabilities = MODEL_CAPABILITIES['claude-haiku-4-5-20251001'];
     }
 
     logger.info('Initialized model formatter', { model, provider: this.capabilities.provider });
@@ -483,7 +483,7 @@ export class ModelSelector {
 
     if (candidates.length === 0) {
       logger.warn('No models match requirements, using default');
-      return 'claude-sonnet-4-5-20250929';
+      return 'claude-haiku-4-5-20251001';
     }
 
     // Select based on budget preference
@@ -524,7 +524,7 @@ export class ModelSelector {
       case 'long_context':
         return this.selectModel({ maxTokens: 200000, budget: 'premium' });
       default:
-        return 'claude-sonnet-4-5-20250929';
+        return 'claude-haiku-4-5-20251001';
     }
   }
 }
