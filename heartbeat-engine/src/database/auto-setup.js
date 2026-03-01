@@ -12,28 +12,51 @@ const __dirname = path.dirname(__filename);
 const logger = createLogger('auto-setup');
 
 // Create connection to default postgres database
-const createDefaultPool = () => new Pool({
-  host: process.env.PGHOST || 'postgres.railway.internal',
-  port: process.env.PGPORT || 5432,
-  user: process.env.PGUSER || 'postgres',
-  password: process.env.PGPASSWORD,
-  database: 'postgres', // Connect to default database
-  ssl: false,
-  connectionTimeoutMillis: 10000,
-  idleTimeoutMillis: 30000
-});
+const createDefaultPool = () => {
+  if (process.env.DATABASE_URL) {
+    // For DATABASE_URL, we need to connect to the default database first
+    const url = new URL(process.env.DATABASE_URL);
+    url.pathname = '/postgres'; // Connect to default postgres database
+    return new Pool({
+      connectionString: url.toString(),
+      ssl: false,
+      connectionTimeoutMillis: 10000,
+      idleTimeoutMillis: 30000
+    });
+  }
+  return new Pool({
+    host: process.env.PGHOST || 'postgres.railway.internal',
+    port: process.env.PGPORT || 5432,
+    user: process.env.PGUSER || 'postgres',
+    password: process.env.PGPASSWORD,
+    database: 'postgres', // Connect to default database
+    ssl: false,
+    connectionTimeoutMillis: 10000,
+    idleTimeoutMillis: 30000
+  });
+};
 
 // Create connection to bloom_heartbeat database
-const createBloomPool = () => new Pool({
-  host: process.env.PGHOST || 'postgres.railway.internal',
-  port: process.env.PGPORT || 5432,
-  user: process.env.PGUSER || 'postgres',
-  password: process.env.PGPASSWORD,
-  database: 'bloom_heartbeat',
-  ssl: false,
-  connectionTimeoutMillis: 10000,
-  idleTimeoutMillis: 30000
-});
+const createBloomPool = () => {
+  if (process.env.DATABASE_URL) {
+    return new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: false,
+      connectionTimeoutMillis: 10000,
+      idleTimeoutMillis: 30000
+    });
+  }
+  return new Pool({
+    host: process.env.PGHOST || 'postgres.railway.internal',
+    port: process.env.PGPORT || 5432,
+    user: process.env.PGUSER || 'postgres',
+    password: process.env.PGPASSWORD,
+    database: 'bloom_heartbeat',
+    ssl: false,
+    connectionTimeoutMillis: 10000,
+    idleTimeoutMillis: 30000
+  });
+};
 
 export async function ensureDatabaseExists() {
   logger.info('🔧 Ensuring bloom_heartbeat database exists...');
