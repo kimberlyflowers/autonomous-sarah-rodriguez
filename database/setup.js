@@ -35,14 +35,19 @@ async function setupDatabase() {
     await pool.end();
 
     // Connect to the bloom_heartbeat database
-    const bloomPool = new Pool({
-      host: process.env.PGHOST || 'postgres.railway.internal',
-      port: process.env.PGPORT || 5432,
-      user: process.env.PGUSER || 'postgres',
-      password: process.env.PGPASSWORD || 'your_postgres_password_here',
-      database: 'bloom_heartbeat',
-      ssl: false
-    });
+    const bloomPool = process.env.DATABASE_URL
+      ? new Pool({
+          connectionString: process.env.DATABASE_URL,
+          ssl: false
+        })
+      : new Pool({
+          host: process.env.PGHOST || 'postgres.railway.internal',
+          port: process.env.PGPORT || 5432,
+          user: process.env.PGUSER || 'postgres',
+          password: process.env.PGPASSWORD,
+          database: 'bloom_heartbeat',
+          ssl: false
+        });
 
     // Read and execute schema
     console.log('🏗️  Creating tables and indexes...');
@@ -79,14 +84,19 @@ async function setupDatabase() {
 
 // Connection test function
 async function testConnection() {
-  const testPool = new Pool({
-    host: process.env.PGHOST || 'postgres.railway.internal',
-    port: process.env.PGPORT || 5432,
-    user: process.env.PGUSER || 'postgres',
-    password: process.env.PGPASSWORD || 'your_postgres_password_here',
-    database: 'bloom_heartbeat',
-    ssl: false
-  });
+  const testPool = process.env.DATABASE_URL
+    ? new Pool({
+        connectionString: process.env.DATABASE_URL,
+        ssl: false
+      })
+    : new Pool({
+        host: process.env.PGHOST || 'postgres.railway.internal',
+        port: process.env.PGPORT || 5432,
+        user: process.env.PGUSER || 'postgres',
+        password: process.env.PGPASSWORD,
+        database: 'bloom_heartbeat',
+        ssl: false
+      });
 
   try {
     const result = await testPool.query('SELECT NOW() as current_time');
@@ -105,14 +115,24 @@ async function testConnection() {
 module.exports = {
   setupDatabase,
   testConnection,
-  createPool: () => new Pool({
-    host: process.env.PGHOST || 'postgres.railway.internal',
-    port: process.env.PGPORT || 5432,
-    user: process.env.PGUSER || 'postgres',
-    password: process.env.PGPASSWORD || 'your_postgres_password_here',
-    database: 'bloom_heartbeat',
-    ssl: false
-  })
+  createPool: () => {
+    // Use DATABASE_URL if provided (Railway standard), otherwise fall back to manual config
+    if (process.env.DATABASE_URL) {
+      return new Pool({
+        connectionString: process.env.DATABASE_URL,
+        ssl: false
+      });
+    }
+
+    return new Pool({
+      host: process.env.PGHOST || 'postgres.railway.internal',
+      port: process.env.PGPORT || 5432,
+      user: process.env.PGUSER || 'postgres',
+      password: process.env.PGPASSWORD,
+      database: 'bloom_heartbeat',
+      ssl: false
+    });
+  }
 };
 
 // Run setup if called directly
