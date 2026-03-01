@@ -95,6 +95,25 @@ export function triggerDataUpdate(updateType, data = {}) {
   broadcastToClients(`data_update_${updateType}`, data);
 }
 
+// Function to broadcast real-time execution progress (Claude Code interleaved thinking pattern)
+export function broadcastExecutionProgress(progressData) {
+  const { v4: uuidv4 } = require('uuid');
+
+  const eventData = {
+    type: "execution_progress",
+    executionId: progressData.executionId || uuidv4(),
+    turn: progressData.turn || 0,
+    toolName: progressData.toolName || null,
+    toolStatus: progressData.toolStatus || progressData.status || "in_progress", // completed | failed | in_progress
+    todoState: progressData.todoState || null, // full plan with current statuses
+    message: progressData.message || progressData.description || "Processing...",
+    timestamp: Date.now()
+  };
+
+  broadcastToClients('execution_progress', eventData);
+  logger.debug('Broadcasted execution progress', eventData);
+}
+
 // GET /api/events/status - Get current SSE status
 router.get('/status', (req, res) => {
   res.json({

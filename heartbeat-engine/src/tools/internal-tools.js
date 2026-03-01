@@ -72,6 +72,35 @@ export const internalToolDefinitions = {
     operation: "write"
   },
 
+  // SARAH'S INTERNAL PLANNING SYSTEM (Claude Code TodoWrite pattern)
+  bloom_todo_write: {
+    name: "bloom_todo_write",
+    description: "Create or update a structured task plan. You MUST call this before executing any multi-step task. The plan keeps you focused and gives users visibility into your progress. Rules: Mark a step 'in_progress' BEFORE starting it. Mark 'completed' ONLY after verifying success via actual API response. Only ONE step 'in_progress' at a time. NEVER batch-complete steps. After creating or updating a plan, you will receive the current plan state as a reminder before your next action.",
+    parameters: {
+      type: "object",
+      properties: {
+        task_id: { type: "string", description: "UUID for this task plan (auto-generated if not provided)" },
+        title: { type: "string", description: "What this task accomplishes" },
+        steps: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              id: { type: "number", description: "Sequential step number" },
+              content: { type: "string", description: "What this step does" },
+              status: { type: "string", enum: ["pending","in_progress","completed","failed"], description: "Current step status" },
+              priority: { type: "string", enum: ["high","medium","low"], description: "Step priority" }
+            },
+            required: ["id", "content", "status", "priority"]
+          }
+        }
+      },
+      required: ["title", "steps"]
+    },
+    category: "planning",
+    operation: "write"
+  },
+
   // LOGGING TOOLS
   bloom_log_decision: {
     name: "bloom_log_decision",
@@ -849,6 +878,73 @@ export const internalToolExecutors = {
         error: error.message,
         recommendations: [],
         message: 'Failed to generate sub-agent recommendations'
+      };
+    }
+  },
+
+  // SARAH'S INTERNAL PLANNING SYSTEM EXECUTORS (Claude Code TodoWrite pattern)
+  bloom_todo_write: async (params) => {
+    try {
+      const pool = await getPool();
+      const { v4: uuidv4 } = await import('uuid');
+
+      // Create task_plans table if it doesn't exist (Claude Code format)
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS task_plans (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          task_id VARCHAR(100) UNIQUE NOT NULL,
+          agent_id VARCHAR(100) DEFAULT 'bloomie-sarah-rodriguez',
+          title TEXT NOT NULL,
+          steps JSONB NOT NULL,
+          status VARCHAR(50) DEFAULT 'active',
+          created_at TIMESTAMP DEFAULT NOW(),
+          updated_at TIMESTAMP DEFAULT NOW()
+        );
+      `);
+
+      const taskId = params.task_id || uuidv4();
+
+      // Insert or update the entire plan (Claude Code updates whole list each time)
+      const upsertResult = await pool.query(`
+        INSERT INTO task_plans (task_id, title, steps)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (task_id)
+        DO UPDATE SET
+          title = EXCLUDED.title,
+          steps = EXCLUDED.steps,
+          updated_at = NOW()
+        RETURNING task_id, title, steps, updated_at
+      `, [taskId, params.title, JSON.stringify(params.steps)]);
+
+      await pool.end();
+
+      const plan = upsertResult.rows[0];
+
+      logger.info('Created/updated task plan', {
+        taskId: plan.task_id,
+        title: plan.title,
+        stepCount: params.steps.length
+      });
+
+      return {
+        success: true,
+        task_id: plan.task_id,
+        title: plan.title,
+        steps: params.steps,
+        message: `Plan "${plan.title}" created with ${params.steps.length} steps`,
+        // Return current state for system message injection
+        currentState: {
+          title: plan.title,
+          steps: params.steps
+        }
+      };
+
+    } catch (error) {
+      logger.error('Failed to create/update task plan:', error);
+      return {
+        success: false,
+        error: error.message,
+        message: 'Failed to create task plan'
       };
     }
   }
