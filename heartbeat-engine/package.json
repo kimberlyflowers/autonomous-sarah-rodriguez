@@ -1,0 +1,35 @@
+{
+  "name": "bloom-heartbeat-engine",
+  "version": "1.0.0",
+  "description": "Autonomous agent heartbeat engine for BLOOM",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "test": "node --test",
+    "setup-db": "node database/setup.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.27.0",
+    "node-cron": "^3.0.3",
+    "pg": "^8.11.3",
+    "axios": "^1.6.2",
+    "@supabase/supabase-js": "^2.39.0",
+    "uuid": "^9.0.1",
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "dotenv": "^16.3.1",
+    "winston": "^3.11.0",
+    "nodemailer": "^6.9.8"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "author": "BLOOM Staffing",
+  "license": "UNLICENSED"
+}

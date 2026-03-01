@@ -1,0 +1,21 @@
+{
+  "name": "bloom-letta-server",
+  "version": "1.0.0",
+  "description": "Letta (MemGPT) server for BLOOM agent memory management",
+  "private": true,
+  "scripts": {
+    "deploy": "echo 'Deploy to Railway using Dockerfile'",
+    "logs": "railway logs",
+    "status": "railway status"
+  },
+  "keywords": [
+    "letta",
+    "memgpt",
+    "agent",
+    "memory",
+    "bloom",
+    "railway"
+  ],
+  "author": "BLOOM Staffing",
+  "license": "UNLICENSED"
+}
