@@ -20,7 +20,7 @@ export const MODEL_CAPABILITIES = {
     contextWindow: 200000,
     outputTokenLimit: 4096
   },
-  'claude-haiku-3-5-20250201': {
+  'claude-haiku-4-5-20251001': {
     provider: 'anthropic',
     maxTokens: 200000,
     supportsTools: true,
