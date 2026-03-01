@@ -203,6 +203,59 @@ export const internalToolDefinitions = {
     },
     category: "analysis",
     operation: "read"
+  },
+
+  // SUB-AGENT DELEGATION TOOLS
+  bloom_delegate_task: {
+    name: "bloom_delegate_task",
+    description: "Delegate a specialized task to an expert sub-agent for focused execution",
+    parameters: {
+      type: "object",
+      properties: {
+        task: { type: "string", description: "Clear description of the task to delegate" },
+        preferredAgent: {
+          type: "string",
+          enum: ["ghl_specialist", "communication_specialist", "data_analyst", "task_coordinator", "escalation_specialist"],
+          description: "Preferred sub-agent (optional - auto-selected if not specified)"
+        },
+        context: { type: "object", description: "Additional context for the sub-agent" },
+        priority: { type: "string", enum: ["low", "medium", "high", "urgent"], description: "Task priority", default: "medium" },
+        requiredCapabilities: { type: "array", items: { type: "string" }, description: "Required capabilities or expertise areas" }
+      },
+      required: ["task"]
+    },
+    category: "delegation",
+    operation: "write"
+  },
+
+  bloom_list_subagents: {
+    name: "bloom_list_subagents",
+    description: "List available sub-agents with their capabilities and current status",
+    parameters: {
+      type: "object",
+      properties: {
+        includeStats: { type: "boolean", description: "Include usage statistics", default: true },
+        filterByExpertise: { type: "string", description: "Filter by expertise area" }
+      }
+    },
+    category: "delegation",
+    operation: "read"
+  },
+
+  bloom_recommend_subagent: {
+    name: "bloom_recommend_subagent",
+    description: "Get recommendations for which sub-agent to use for a specific task",
+    parameters: {
+      type: "object",
+      properties: {
+        taskDescription: { type: "string", description: "Description of the task needing delegation" },
+        requiredExpertise: { type: "array", items: { type: "string" }, description: "Required areas of expertise" },
+        includeReasons: { type: "boolean", description: "Include reasoning for recommendations", default: true }
+      },
+      required: ["taskDescription"]
+    },
+    category: "delegation",
+    operation: "read"
   }
 };
 
@@ -650,6 +703,154 @@ export const internalToolExecutors = {
       placeholder: true,
       recommendation: "Implement summary generation from actual operational data"
     };
+  },
+
+  // SUB-AGENT DELEGATION TOOLS
+  bloom_delegate_task: async (params) => {
+    try {
+      const { subAgentSystem } = await import('../agents/sub-agent-system.js');
+
+      // Delegate to sub-agent system
+      const result = await subAgentSystem.delegateTask(
+        params.task,
+        params.context || {},
+        params.preferredAgent
+      );
+
+      if (result.success) {
+        logger.info('Task delegated to sub-agent', {
+          subAgent: result.subAgent,
+          task: params.task.substring(0, 50),
+          success: result.result.success
+        });
+
+        // Log the delegation as a decision
+        const delegationDecision = {
+          decision: `Delegated task to ${result.agentName}`,
+          reasoning: `Selected ${result.subAgent} for specialized task execution`,
+          confidence: 0.9,
+          category: 'action_taken',
+          impactLevel: params.priority === 'urgent' || params.priority === 'high' ? 'high' : 'medium',
+          relatedData: {
+            subAgent: result.subAgent,
+            taskDescription: params.task,
+            executionTime: result.executionTime
+          }
+        };
+
+        // Log the decision (don't await to avoid blocking)
+        internalToolExecutors.bloom_log_decision(delegationDecision).catch(err =>
+          logger.warn('Failed to log delegation decision:', err)
+        );
+      }
+
+      return {
+        success: result.success,
+        subAgent: result.subAgent,
+        agentName: result.agentName,
+        result: result.result,
+        executionTime: result.executionTime,
+        message: result.success
+          ? `Task successfully delegated to ${result.agentName}`
+          : `Delegation failed: ${result.error}`
+      };
+
+    } catch (error) {
+      logger.error('Sub-agent delegation failed:', error);
+      return {
+        success: false,
+        error: error.message,
+        message: 'Failed to delegate task to sub-agent'
+      };
+    }
+  },
+
+  bloom_list_subagents: async (params) => {
+    try {
+      const { subAgentSystem, SUB_AGENTS } = await import('../agents/sub-agent-system.js');
+
+      const registry = subAgentSystem.getSubAgentRegistry();
+      const stats = subAgentSystem.getSubAgentStats();
+
+      let filtered = registry;
+      if (params.filterByExpertise) {
+        filtered = registry.filter(agent =>
+          agent.expertise.includes(params.filterByExpertise.toLowerCase())
+        );
+      }
+
+      return {
+        success: true,
+        subAgents: filtered,
+        stats: params.includeStats ? stats : undefined,
+        count: filtered.length,
+        message: `Found ${filtered.length} available sub-agents`
+      };
+
+    } catch (error) {
+      logger.error('Failed to list sub-agents:', error);
+      return {
+        success: false,
+        error: error.message,
+        subAgents: [],
+        message: 'Failed to retrieve sub-agent information'
+      };
+    }
+  },
+
+  bloom_recommend_subagent: async (params) => {
+    try {
+      const { subAgentSystem, SUB_AGENTS } = await import('../agents/sub-agent-system.js');
+
+      // Use the existing selection logic to get recommendations
+      const selectedAgent = subAgentSystem.selectBestAgent(params.taskDescription, {
+        requiredExpertise: params.requiredExpertise
+      });
+
+      const agent = SUB_AGENTS[selectedAgent];
+
+      // Calculate match score for transparency
+      const taskLower = params.taskDescription.toLowerCase();
+      const expertiseMatches = agent.expertise.filter(exp =>
+        taskLower.includes(exp.toLowerCase())
+      );
+
+      const recommendations = [{
+        agentKey: selectedAgent,
+        name: agent.name,
+        description: agent.description,
+        expertise: agent.expertise,
+        matchingExpertise: expertiseMatches,
+        toolsAvailable: agent.tools.length,
+        confidence: expertiseMatches.length > 0 ? 'high' : 'medium',
+        reasoning: params.includeReasons
+          ? `Selected based on ${expertiseMatches.length} matching expertise areas: ${expertiseMatches.join(', ')}`
+          : undefined
+      }];
+
+      return {
+        success: true,
+        primaryRecommendation: selectedAgent,
+        recommendations: recommendations,
+        taskAnalysis: {
+          complexity: expertiseMatches.length > 2 ? 'high' : 'medium',
+          requiredExpertise: expertiseMatches,
+          estimatedTools: agent.tools.filter(tool =>
+            taskLower.includes(tool.toLowerCase().replace(/[_]/g, ' '))
+          ).length
+        },
+        message: `Recommended: ${agent.name} (${expertiseMatches.length} expertise matches)`
+      };
+
+    } catch (error) {
+      logger.error('Failed to recommend sub-agent:', error);
+      return {
+        success: false,
+        error: error.message,
+        recommendations: [],
+        message: 'Failed to generate sub-agent recommendations'
+      };
+    }
   }
 };
 

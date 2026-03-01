@@ -9,6 +9,7 @@ import AgenticExecutions from './components/AgenticExecutions.jsx';
 import TrustGateStatus from './components/TrustGateStatus.jsx';
 import InternalToolsDashboard from './components/InternalToolsDashboard.jsx';
 import ToolInventory from './components/ToolInventory.jsx';
+import SubAgentDashboard from './components/SubAgentDashboard.jsx';
 
 function Dashboard({ theme, refreshContext }) {
   const [agentStatus, setAgentStatus] = useState(null);
@@ -71,6 +72,12 @@ function Dashboard({ theme, refreshContext }) {
           refreshContext={refreshContext}
         />
       </div>
+
+      {/* Sub-Agent Architecture */}
+      <SubAgentDashboard
+        theme={theme}
+        refreshContext={refreshContext}
+      />
 
       {/* Internal Operations */}
       <InternalToolsDashboard

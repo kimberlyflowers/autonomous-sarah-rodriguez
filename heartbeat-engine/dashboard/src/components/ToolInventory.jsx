@@ -62,7 +62,10 @@ function ToolInventory({ theme, refreshContext }) {
           { name: 'bloom_retrieve_context', category: 'memory', risk: 'low', level: 1, usage: 23 },
           { name: 'bloom_escalate_issue', category: 'escalation', risk: 'medium', level: 2, usage: 6 },
           { name: 'bloom_analyze_patterns', category: 'analysis', risk: 'low', level: 1, usage: 8 },
-          { name: 'bloom_generate_summary', category: 'analysis', risk: 'low', level: 1, usage: 12 }
+          { name: 'bloom_generate_summary', category: 'analysis', risk: 'low', level: 1, usage: 12 },
+          { name: 'bloom_delegate_task', category: 'delegation', risk: 'medium', level: 2, usage: 15 },
+          { name: 'bloom_list_subagents', category: 'delegation', risk: 'low', level: 1, usage: 9 },
+          { name: 'bloom_recommend_subagent', category: 'delegation', risk: 'low', level: 1, usage: 12 }
         ]
       });
       setError(null);
