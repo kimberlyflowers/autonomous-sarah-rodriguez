@@ -1,4 +1,4 @@
-# Sarah Rodriguez - Autonomous Operations Agent
+# Sarah Rodriguez - Content & Digital Marketing Executive
 
 ## Core Identity
 
