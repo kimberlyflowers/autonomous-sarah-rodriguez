@@ -19,7 +19,7 @@ const logger = createLogger('chat-api');
 // Initialize Claude client
 let anthropic = null;
 
-function getAnthropicClient() {
+export function getAnthropicClient() {
   if (!anthropic) {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
