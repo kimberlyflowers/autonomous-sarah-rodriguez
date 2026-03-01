@@ -310,6 +310,261 @@ export const ghlToolDefinitions = {
     },
     category: "forms",
     operation: "read"
+  },
+
+  // PIPELINES & STAGES
+  ghl_list_pipelines: {
+    name: "ghl_list_pipelines",
+    description: "Get all pipelines for the location",
+    parameters: {
+      type: "object",
+      properties: {},
+      required: []
+    },
+    category: "pipelines",
+    operation: "read"
+  },
+
+  ghl_get_pipeline_stages: {
+    name: "ghl_get_pipeline_stages",
+    description: "Get stages for a specific pipeline",
+    parameters: {
+      type: "object",
+      properties: {
+        pipelineId: { type: "string", description: "Pipeline ID" }
+      },
+      required: ["pipelineId"]
+    },
+    category: "pipelines",
+    operation: "read"
+  },
+
+  ghl_update_opportunity_stage: {
+    name: "ghl_update_opportunity_stage",
+    description: "Move opportunity to different pipeline stage",
+    parameters: {
+      type: "object",
+      properties: {
+        opportunityId: { type: "string", description: "Opportunity ID" },
+        pipelineStageId: { type: "string", description: "Target pipeline stage ID" }
+      },
+      required: ["opportunityId", "pipelineStageId"]
+    },
+    category: "opportunities",
+    operation: "write"
+  },
+
+  // TASKS
+  ghl_list_tasks: {
+    name: "ghl_list_tasks",
+    description: "Get tasks for contacts or opportunities",
+    parameters: {
+      type: "object",
+      properties: {
+        contactId: { type: "string", description: "Contact ID to filter tasks" },
+        opportunityId: { type: "string", description: "Opportunity ID to filter tasks" },
+        completed: { type: "boolean", description: "Filter by completion status" },
+        limit: { type: "number", description: "Results limit" }
+      }
+    },
+    category: "tasks",
+    operation: "read"
+  },
+
+  ghl_create_task: {
+    name: "ghl_create_task",
+    description: "Create a new task",
+    parameters: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Task title" },
+        description: { type: "string", description: "Task description" },
+        contactId: { type: "string", description: "Associated contact ID" },
+        opportunityId: { type: "string", description: "Associated opportunity ID" },
+        dueDate: { type: "string", description: "Due date (ISO format)" },
+        assignedTo: { type: "string", description: "Assigned user ID" },
+        priority: { type: "string", enum: ["low", "medium", "high"], description: "Task priority" }
+      },
+      required: ["title"]
+    },
+    category: "tasks",
+    operation: "write"
+  },
+
+  ghl_update_task: {
+    name: "ghl_update_task",
+    description: "Update or complete a task",
+    parameters: {
+      type: "object",
+      properties: {
+        taskId: { type: "string", description: "Task ID" },
+        completed: { type: "boolean", description: "Mark as completed" },
+        title: { type: "string", description: "Updated title" },
+        description: { type: "string", description: "Updated description" },
+        dueDate: { type: "string", description: "Updated due date" }
+      },
+      required: ["taskId"]
+    },
+    category: "tasks",
+    operation: "write"
+  },
+
+  // NOTES
+  ghl_get_notes: {
+    name: "ghl_get_notes",
+    description: "Get notes for a contact or opportunity",
+    parameters: {
+      type: "object",
+      properties: {
+        contactId: { type: "string", description: "Contact ID" },
+        opportunityId: { type: "string", description: "Opportunity ID" },
+        limit: { type: "number", description: "Results limit" }
+      }
+    },
+    category: "notes",
+    operation: "read"
+  },
+
+  ghl_create_note: {
+    name: "ghl_create_note",
+    description: "Add a note to a contact or opportunity",
+    parameters: {
+      type: "object",
+      properties: {
+        body: { type: "string", description: "Note content" },
+        contactId: { type: "string", description: "Contact ID" },
+        opportunityId: { type: "string", description: "Opportunity ID" },
+        userId: { type: "string", description: "User ID creating the note" }
+      },
+      required: ["body"]
+    },
+    category: "notes",
+    operation: "write"
+  },
+
+  // TAGS
+  ghl_get_contact_tags: {
+    name: "ghl_get_contact_tags",
+    description: "Get all available tags for contacts",
+    parameters: {
+      type: "object",
+      properties: {},
+      required: []
+    },
+    category: "tags",
+    operation: "read"
+  },
+
+  ghl_add_contact_tag: {
+    name: "ghl_add_contact_tag",
+    description: "Add tag to a contact",
+    parameters: {
+      type: "object",
+      properties: {
+        contactId: { type: "string", description: "Contact ID" },
+        tags: { type: "array", items: { type: "string" }, description: "Tags to add" }
+      },
+      required: ["contactId", "tags"]
+    },
+    category: "tags",
+    operation: "write"
+  },
+
+  ghl_remove_contact_tag: {
+    name: "ghl_remove_contact_tag",
+    description: "Remove tag from a contact",
+    parameters: {
+      type: "object",
+      properties: {
+        contactId: { type: "string", description: "Contact ID" },
+        tags: { type: "array", items: { type: "string" }, description: "Tags to remove" }
+      },
+      required: ["contactId", "tags"]
+    },
+    category: "tags",
+    operation: "write"
+  },
+
+  // CUSTOM FIELDS
+  ghl_get_custom_fields: {
+    name: "ghl_get_custom_fields",
+    description: "Get all custom fields for the location",
+    parameters: {
+      type: "object",
+      properties: {},
+      required: []
+    },
+    category: "custom_fields",
+    operation: "read"
+  },
+
+  ghl_update_contact_custom_field: {
+    name: "ghl_update_contact_custom_field",
+    description: "Update custom field value for a contact",
+    parameters: {
+      type: "object",
+      properties: {
+        contactId: { type: "string", description: "Contact ID" },
+        customFields: { type: "object", description: "Custom field key-value pairs" }
+      },
+      required: ["contactId", "customFields"]
+    },
+    category: "custom_fields",
+    operation: "write"
+  },
+
+  // USERS & LOCATIONS
+  ghl_list_users: {
+    name: "ghl_list_users",
+    description: "Get all users in the location",
+    parameters: {
+      type: "object",
+      properties: {},
+      required: []
+    },
+    category: "users",
+    operation: "read"
+  },
+
+  ghl_get_location_info: {
+    name: "ghl_get_location_info",
+    description: "Get location information and settings",
+    parameters: {
+      type: "object",
+      properties: {},
+      required: []
+    },
+    category: "locations",
+    operation: "read"
+  },
+
+  // CAMPAIGNS
+  ghl_list_campaigns: {
+    name: "ghl_list_campaigns",
+    description: "Get email and SMS campaigns",
+    parameters: {
+      type: "object",
+      properties: {
+        type: { type: "string", enum: ["email", "sms"], description: "Campaign type" },
+        status: { type: "string", enum: ["draft", "scheduled", "sending", "sent"], description: "Campaign status" }
+      }
+    },
+    category: "campaigns",
+    operation: "read"
+  },
+
+  ghl_get_campaign_stats: {
+    name: "ghl_get_campaign_stats",
+    description: "Get statistics for a campaign",
+    parameters: {
+      type: "object",
+      properties: {
+        campaignId: { type: "string", description: "Campaign ID" }
+      },
+      required: ["campaignId"]
+    },
+    category: "campaigns",
+    operation: "read"
   }
 };
 
@@ -378,6 +633,98 @@ export const ghlExecutors = {
 
   ghl_get_form_submissions: async (params) => {
     return await callGHL(`/forms/${params.formId}/submissions`, 'GET', null, params);
+  },
+
+  // PIPELINES & STAGES
+  ghl_list_pipelines: async (params) => {
+    return await callGHL('/opportunities/pipelines');
+  },
+
+  ghl_get_pipeline_stages: async (params) => {
+    return await callGHL(`/opportunities/pipelines/${params.pipelineId}/stages`);
+  },
+
+  ghl_update_opportunity_stage: async (params) => {
+    const { opportunityId, pipelineStageId } = params;
+    return await callGHL(`/opportunities/${opportunityId}`, 'PUT', { pipelineStageId });
+  },
+
+  // TASKS
+  ghl_list_tasks: async (params) => {
+    return await callGHL('/tasks', 'GET', null, params);
+  },
+
+  ghl_create_task: async (params) => {
+    return await callGHL('/tasks', 'POST', params);
+  },
+
+  ghl_update_task: async (params) => {
+    const { taskId, ...updateData } = params;
+    return await callGHL(`/tasks/${taskId}`, 'PUT', updateData);
+  },
+
+  // NOTES
+  ghl_get_notes: async (params) => {
+    if (params.contactId) {
+      return await callGHL(`/contacts/${params.contactId}/notes`, 'GET', null, params);
+    } else if (params.opportunityId) {
+      return await callGHL(`/opportunities/${params.opportunityId}/notes`, 'GET', null, params);
+    } else {
+      return await callGHL('/notes', 'GET', null, params);
+    }
+  },
+
+  ghl_create_note: async (params) => {
+    if (params.contactId) {
+      return await callGHL(`/contacts/${params.contactId}/notes`, 'POST', params);
+    } else if (params.opportunityId) {
+      return await callGHL(`/opportunities/${params.opportunityId}/notes`, 'POST', params);
+    } else {
+      return await callGHL('/notes', 'POST', params);
+    }
+  },
+
+  // TAGS
+  ghl_get_contact_tags: async (params) => {
+    return await callGHL('/contacts/tags');
+  },
+
+  ghl_add_contact_tag: async (params) => {
+    const { contactId, tags } = params;
+    return await callGHL(`/contacts/${contactId}/tags`, 'POST', { tags });
+  },
+
+  ghl_remove_contact_tag: async (params) => {
+    const { contactId, tags } = params;
+    return await callGHL(`/contacts/${contactId}/tags`, 'DELETE', { tags });
+  },
+
+  // CUSTOM FIELDS
+  ghl_get_custom_fields: async (params) => {
+    return await callGHL('/custom-fields');
+  },
+
+  ghl_update_contact_custom_field: async (params) => {
+    const { contactId, customFields } = params;
+    return await callGHL(`/contacts/${contactId}`, 'PUT', { customFields });
+  },
+
+  // USERS & LOCATIONS
+  ghl_list_users: async (params) => {
+    return await callGHL('/users');
+  },
+
+  ghl_get_location_info: async (params) => {
+    return await callGHL('/locations/search', 'GET', null, { limit: 1 });
+  },
+
+  // CAMPAIGNS
+  ghl_list_campaigns: async (params) => {
+    return await callGHL('/campaigns', 'GET', null, params);
+  },
+
+  ghl_get_campaign_stats: async (params) => {
+    return await callGHL(`/campaigns/${params.campaignId}/stats`);
   }
 };
 

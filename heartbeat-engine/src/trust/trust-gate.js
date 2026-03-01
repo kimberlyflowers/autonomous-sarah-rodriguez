@@ -23,6 +23,16 @@ const ACTION_PERMISSIONS = {
   'ghl_list_workflows': { level: 1, category: 'read', risk: 'low' },
   'ghl_get_forms': { level: 1, category: 'read', risk: 'low' },
   'ghl_get_form_submissions': { level: 1, category: 'read', risk: 'low' },
+  'ghl_list_pipelines': { level: 1, category: 'read', risk: 'low' },
+  'ghl_get_pipeline_stages': { level: 1, category: 'read', risk: 'low' },
+  'ghl_list_tasks': { level: 1, category: 'read', risk: 'low' },
+  'ghl_get_notes': { level: 1, category: 'read', risk: 'low' },
+  'ghl_get_contact_tags': { level: 1, category: 'read', risk: 'low' },
+  'ghl_get_custom_fields': { level: 1, category: 'read', risk: 'low' },
+  'ghl_list_users': { level: 1, category: 'read', risk: 'low' },
+  'ghl_get_location_info': { level: 1, category: 'read', risk: 'low' },
+  'ghl_list_campaigns': { level: 1, category: 'read', risk: 'low' },
+  'ghl_get_campaign_stats': { level: 1, category: 'read', risk: 'low' },
   'log_decision': { level: 1, category: 'logging', risk: 'low' },
   'create_task': { level: 1, category: 'planning', risk: 'low' },
 
@@ -32,9 +42,16 @@ const ACTION_PERMISSIONS = {
   'ghl_create_contact': { level: 2, category: 'data_creation', risk: 'medium' },
   'ghl_create_appointment': { level: 2, category: 'scheduling', risk: 'medium' },
   'ghl_add_contact_to_workflow': { level: 2, category: 'workflow', risk: 'medium' },
+  'ghl_create_task': { level: 2, category: 'data_creation', risk: 'medium' },
+  'ghl_update_task': { level: 2, category: 'data_modification', risk: 'medium' },
+  'ghl_create_note': { level: 2, category: 'data_creation', risk: 'medium' },
+  'ghl_add_contact_tag': { level: 2, category: 'data_modification', risk: 'medium' },
+  'ghl_remove_contact_tag': { level: 2, category: 'data_modification', risk: 'medium' },
+  'ghl_update_contact_custom_field': { level: 2, category: 'data_modification', risk: 'medium' },
 
   // Level 3 (Operator) - Independent operations
   'ghl_create_opportunity': { level: 3, category: 'sales', risk: 'high' },
+  'ghl_update_opportunity_stage': { level: 3, category: 'sales', risk: 'high' },
   'ghl_delete_contact': { level: 3, category: 'data_deletion', risk: 'high' },
 
   // Level 4 (Manager) - Full autonomous operations
