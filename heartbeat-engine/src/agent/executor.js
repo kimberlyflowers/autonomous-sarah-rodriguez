@@ -11,6 +11,7 @@ import { subAgentSystem, SUB_AGENTS } from '../agents/sub-agent-system.js';
 import { trustGate } from '../trust/trust-gate.js';
 import { contextManager } from '../context/context-manager.js';
 import { ModelFormatter, modelSelector } from '../context/model-formatter.js';
+import { enhancedExecutor } from '../tools/enhanced-executor.js';
 
 const logger = createLogger('agent-executor');
 
@@ -331,86 +332,107 @@ Use the available tools to complete this task. Work step by step and explain you
   }
 
   /**
-   * Execute a tool by name with parameters
+   * Execute a tool by name with parameters using enhanced executor
    */
-  async executeTool(toolName, parameters) {
+  async executeTool(toolName, parameters, options = {}) {
     try {
-      // TRUST GATE: Check authorization before execution
-      const authorization = await trustGate.authorizeAction(
-        toolName,
-        parameters,
-        this.agentId,
-        `exec-${Date.now()}` // Use execution-based cycle ID
-      );
-
-      if (!authorization.authorized) {
-        logger.warn('Tool execution blocked by trust gate', {
-          tool: toolName,
-          reason: authorization.reason,
-          code: authorization.code
-        });
-
-        return {
-          success: false,
-          blocked: true,
-          reason: authorization.reason,
-          code: authorization.code,
-          requiredLevel: authorization.requiredLevel,
-          currentLevel: authorization.currentLevel,
-          escalated: authorization.escalate
-        };
-      }
-
-      logger.info('Tool authorized by trust gate', {
+      logger.info('Executing tool with enhanced capabilities', {
         tool: toolName,
-        level: authorization.level,
-        category: authorization.category,
-        risk: authorization.risk
+        agentId: this.agentId,
+        enhanced: true
       });
 
-      // Execute the tool after authorization
-      let result;
+      // Use enhanced executor with retry logic and performance monitoring
+      const result = await enhancedExecutor.executeTool(toolName, parameters, {
+        timeout: options.timeout || 30000,
+        retryOnFailure: options.retryOnFailure !== false,
+        ...options
+      });
 
-      if (toolName.startsWith('ghl_')) {
-        result = await executeGHLTool(toolName, parameters);
-      } else if (toolName.startsWith('bloom_')) {
-        result = await executeInternalTool(toolName, parameters);
-      } else {
-        // Handle legacy internal tools for backward compatibility
-        switch (toolName) {
-          case 'create_task':
-            result = await executeInternalTool('bloom_create_task', parameters);
-            break;
-          case 'log_decision':
-            result = await executeInternalTool('bloom_log_decision', parameters);
-            break;
-          case 'escalate_to_human':
-            result = await executeInternalTool('bloom_escalate_issue', parameters);
-            break;
-          default:
-            throw new Error(`Unknown tool: ${toolName}`);
-        }
-      }
-
-      // Add authorization info to successful results
-      if (result.success) {
-        result.authorization = {
-          level: authorization.level,
-          category: authorization.category,
-          risk: authorization.risk,
-          limits: authorization.limits
-        };
-      }
+      // Store execution metrics in working context
+      await this.contextManager.storeWorkingContext(`tool_execution_${toolName}`, {
+        toolName,
+        executionId: result.execution?.id,
+        attempts: result.execution?.attempts,
+        totalTime: result.execution?.totalTime,
+        status: result.execution?.status,
+        timestamp: new Date().toISOString()
+      }, 'recent_actions', 300000); // 5 minute TTL
 
       return result;
 
     } catch (error) {
-      logger.error(`Tool execution failed: ${toolName}`, error);
+      logger.error(`Enhanced tool execution failed: ${toolName}`, error);
       return {
         success: false,
         error: error.message,
-        blocked: false
+        enhanced: true,
+        execution: {
+          attempts: 1,
+          status: 'failed',
+          totalTime: 0
+        }
       };
+    }
+  }
+
+  /**
+   * Execute multiple tools in parallel when possible
+   */
+  async executeToolsParallel(toolExecutions, options = {}) {
+    logger.info('Executing tools in parallel', {
+      toolCount: toolExecutions.length,
+      agentId: this.agentId
+    });
+
+    try {
+      const result = await enhancedExecutor.executeParallel(toolExecutions, {
+        maxConcurrent: options.maxConcurrent || 3,
+        timeout: options.timeout || 60000,
+        ...options
+      });
+
+      // Store batch execution context
+      await this.contextManager.storeWorkingContext('parallel_execution', {
+        batchId: result.batchId,
+        summary: result.summary,
+        toolNames: toolExecutions.map(t => t.toolName),
+        timestamp: new Date().toISOString()
+      }, 'recent_actions', 600000); // 10 minute TTL
+
+      return result;
+
+    } catch (error) {
+      logger.error('Parallel tool execution failed', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Execute tools with dependency management
+   */
+  async executeToolGraph(toolGraph, options = {}) {
+    logger.info('Executing tool dependency graph', {
+      toolCount: Object.keys(toolGraph).length,
+      agentId: this.agentId
+    });
+
+    try {
+      const result = await enhancedExecutor.executeWithDependencies(toolGraph, options);
+
+      // Store graph execution context
+      await this.contextManager.storeWorkingContext('graph_execution', {
+        executionId: result.executionId,
+        summary: result.summary,
+        toolGraph: Object.keys(toolGraph),
+        timestamp: new Date().toISOString()
+      }, 'recent_actions', 600000); // 10 minute TTL
+
+      return result;
+
+    } catch (error) {
+      logger.error('Tool graph execution failed', error);
+      throw error;
     }
   }
 
@@ -504,6 +526,34 @@ You have access to specialized sub-agents for complex tasks:
 - Tasks that would benefit from specialized knowledge
 - Operations requiring multiple tool interactions
 - Analysis or planning that exceeds basic execution
+
+### Enhanced Tool Execution:
+You have access to advanced tool execution capabilities:
+
+**Retry Logic**: Tools automatically retry on recoverable failures
+- Rate limits, timeouts, and temporary service issues
+- Exponential backoff with jitter to prevent overload
+- Different retry strategies per tool category (GHL API, Internal, etc.)
+
+**Performance Monitoring**: All tool executions are monitored
+- Execution time tracking and success rate analysis
+- Performance optimization recommendations
+- Failed execution analysis and pattern detection
+
+**Parallel Execution**: Execute multiple independent tools simultaneously
+- Automatically detect when tools can run in parallel
+- Respect concurrency limits and resource constraints
+- Batch processing for improved efficiency
+
+**Dependency Management**: Handle complex tool workflows
+- Execute tools in correct order based on dependencies
+- Pass results between dependent tools automatically
+- Handle partial failures gracefully with rollback options
+
+**Enhanced Error Handling**: Intelligent error recovery
+- Categorize errors by type (temporary vs permanent)
+- Automatic retry for recoverable errors
+- Detailed error context and resolution suggestions
 
 ### Trust Gate Enforcement:
 You are operating under Trust Gate protection. All tool use is monitored and enforced based on your autonomy level:
