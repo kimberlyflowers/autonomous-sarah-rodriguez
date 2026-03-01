@@ -4,13 +4,24 @@ FROM node:20-alpine
 # Set working directory
 WORKDIR /app
 
-# Install dependencies
+# Install main dependencies
 COPY package*.json ./
 RUN npm ci --only=production
 
 # Copy application code
 COPY src/ ./src/
 COPY database/ ./database/
+
+# Copy dashboard code
+COPY dashboard/ ./dashboard/
+
+# Install dashboard dependencies and build React frontend
+WORKDIR /app/dashboard
+RUN npm install
+RUN npm run build
+
+# Switch back to main app directory
+WORKDIR /app
 
 # Create non-root user
 RUN addgroup -g 1001 -S bloom && \
