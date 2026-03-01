@@ -366,7 +366,7 @@ escalated. Your logs are how trust is built.`;
     `, [
       'bloomie-sarah-rodriguez',
       'Sarah Rodriguez',
-      'Operations Agent',
+      'Content & Digital Marketing Executive',
       'BLOOM Ecosystem',
       1,
       standingInstructions,

@@ -193,7 +193,7 @@ function getDefaultConfig() {
   return {
     agentId: 'bloomie-sarah-rodriguez',
     name: 'Sarah Rodriguez',
-    role: 'Operations Agent',
+    role: 'Content & Digital Marketing Executive',
     client: 'BLOOM Ecosystem',
     currentAutonomyLevel: 1, // Start at Observer level
     standingInstructions: getDefaultInstructions(),

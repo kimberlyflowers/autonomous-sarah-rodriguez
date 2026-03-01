@@ -9,6 +9,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { createLogger } from '../logging/logger.js';
 import { loadAgentConfig } from '../config/agent-profile.js';
+import { AgentExecutor, EXECUTION_STATUS } from '../agent/executor.js';
+import { broadcastExecutionProgress } from './events.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -384,9 +386,6 @@ router.post('/message', async (req, res) => {
     // Store user message
     await storeChatMessage(sessionId, message, true, agentConfig.agentId, { userInput: true });
 
-    // Build Sarah's system prompt with current context
-    const systemPrompt = await buildSarahPrompt(agentConfig, context);
-
     // Get recent conversation history for context
     const pool = await getPool();
     const historyResult = await pool.query(`
@@ -407,26 +406,40 @@ router.post('/message', async (req, res) => {
         content: row.message
       }));
 
-    // Call Claude API
-    const client = getAnthropicClient();
-    const response = await client.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1500,
-      temperature: 0.7,
-      system: systemPrompt,
-      messages: [
-        ...conversationHistory,
-        { role: 'user', content: message }
-      ]
+    // Create execution ID for progress tracking
+    const executionId = `chat-${sessionId}-${Date.now()}`;
+
+    // Broadcast execution start
+    broadcastExecutionProgress({
+      executionId,
+      turn: 0,
+      toolStatus: 'in_progress',
+      message: 'Processing chat message...'
     });
 
-    const sarahResponse = response.content[0].text;
+    // Execute through AgentExecutor with full tool access
+    const executor = new AgentExecutor(agentConfig);
+    const result = await executor.execute({
+      request: message,
+      context: {
+        conversationHistory,
+        trigger: 'chat',
+        sessionId,
+        executionId,
+        recentWork: context
+      }
+    });
 
-    // Store Sarah's response
+    const sarahResponse = result.finalMessage || result.message || 'I apologize, but I encountered an issue processing your request.';
+
+    // Store Sarah's response with execution metadata
     await storeChatMessage(sessionId, sarahResponse, false, agentConfig.agentId, {
-      claudeModel: 'claude-haiku-4-5-20251001',
-      contextCycles: context.recentCycles.length,
-      contextActions: context.recentActions.length
+      executionId,
+      trigger: 'chat',
+      agenticExecution: true,
+      toolsUsed: result.toolsUsed || [],
+      turnsExecuted: result.turns || 1,
+      status: result.status || 'completed'
     });
 
     res.json({
@@ -522,12 +535,29 @@ router.get('/status', async (req, res) => {
 // POST /api/chat/cleanup - Manual cleanup of old chat messages
 router.post('/cleanup', async (req, res) => {
   try {
-    await cleanupOldChatMessages();
-    res.json({
-      success: true,
-      message: 'Chat history cleanup completed',
-      timestamp: new Date().toISOString()
-    });
+    const { clearAll = false } = req.body;
+
+    if (clearAll) {
+      // Clear ALL chat messages (for identity reset)
+      const pool = await getPool();
+      const result = await pool.query('DELETE FROM chat_messages');
+      await pool.end();
+
+      logger.info(`✅ Cleared ALL ${result.rowCount} chat messages`);
+      res.json({
+        success: true,
+        message: `All chat history cleared (${result.rowCount} messages deleted)`,
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      // Standard cleanup (90+ days old)
+      await cleanupOldChatMessages();
+      res.json({
+        success: true,
+        message: 'Old chat history cleanup completed',
+        timestamp: new Date().toISOString()
+      });
+    }
   } catch (error) {
     logger.error('Failed to cleanup chat messages:', error);
     res.status(500).json({ error: 'Failed to cleanup chat history' });
