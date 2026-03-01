@@ -3,6 +3,7 @@
 
 import { createLogger } from '../logging/logger.js';
 import { executeInternalTool } from '../tools/internal-tools.js';
+import { getAnthropicClient } from '../api/chat.js';
 
 const logger = createLogger('context-manager');
 
@@ -14,7 +15,7 @@ export class ContextManager {
   constructor(agentId = 'bloomie-sarah-rodriguez') {
     this.agentId = agentId;
     this.maxContextLength = 100000; // Token limit for context
-    this.compressionThreshold = 80000; // Compress when approaching limit
+    this.compressionThreshold = 80000; // Compress at ~80% (Claude Code wU2 triggers at ~92%)
     this.conversationMemory = [];
     this.workingContext = new Map();
     this.contextPriority = {
@@ -203,10 +204,11 @@ export class ContextManager {
   }
 
   /**
-   * Compress conversation context when approaching limits
+   * Compress conversation context when approaching limits (Claude Code wU2 pattern)
+   * Extracts memories to database before compression
    */
   async compressContext() {
-    logger.info('Starting context compression', {
+    logger.info('Starting context compression with memory extraction', {
       currentSize: this.conversationMemory.length,
       totalTokens: this.calculateTotalTokens()
     });
@@ -222,13 +224,16 @@ export class ContextManager {
       return;
     }
 
-    // Group turns by time periods and create summaries
+    // STEP 1: Extract memories to database (Claude Code pattern)
+    await this.extractMemoriesToDatabase(oldTurns);
+
+    // STEP 2: Create compressed summaries
     const summaries = await this.createContextSummaries(oldTurns);
 
-    // Replace old turns with summaries
+    // STEP 3: Replace old turns with summaries
     this.conversationMemory = this.conversationMemory.filter(turn => !oldTurns.includes(turn));
 
-    // Add summaries as system context
+    // STEP 4: Add summaries as system context
     for (const summary of summaries) {
       await this.addConversationTurn('system', summary, {
         type: 'background_info',
@@ -241,8 +246,149 @@ export class ContextManager {
       newSize: this.conversationMemory.length,
       totalTokens: this.calculateTotalTokens(),
       turnsCompressed: oldTurns.length,
-      summariesCreated: summaries.length
+      summariesCreated: summaries.length,
+      memoriesExtracted: true
     });
+  }
+
+  /**
+   * Extract memories to database before compression (Claude Code pattern)
+   */
+  async extractMemoriesToDatabase(turns) {
+    try {
+      // Get database pool
+      const { createPool } = await import('../../database/setup.js');
+      const pool = createPool();
+
+      // Create memories table if it doesn't exist
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS memories (
+          id SERIAL PRIMARY KEY,
+          agent_id VARCHAR(100) DEFAULT 'bloomie-sarah-rodriguez',
+          memory_type VARCHAR(50) NOT NULL, -- fact, outcome, relationship, instruction, learning
+          content TEXT NOT NULL,
+          importance INTEGER NOT NULL CHECK (importance >= 1 AND importance <= 10),
+          tags JSONB DEFAULT '[]',
+          source_conversation TEXT NOT NULL,
+          created_at TIMESTAMP DEFAULT NOW()
+        );
+      `);
+
+      // Create index for efficient querying
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_memories_type_importance
+        ON memories(memory_type, importance DESC);
+      `);
+
+      // Convert turns to conversation text for Claude analysis
+      const conversationText = turns.map(turn =>
+        `${turn.role}: ${typeof turn.content === 'string' ? turn.content : JSON.stringify(turn.content)}`
+      ).join('\n\n');
+
+      // Call Claude to extract memories
+      const client = getAnthropicClient();
+      const response = await client.messages.create({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 2000,
+        temperature: 0.1,
+        system: `You are Sarah Rodriguez's memory extraction system. Analyze the conversation and extract key information into 5 categories:
+
+1. FACTS: Names, dates, preferences, decisions made
+2. OUTCOMES: What was requested, what happened, results achieved
+3. RELATIONSHIPS: Emotional tone, concerns, rapport, personality insights
+4. INSTRUCTIONS: Rules, preferences, or guidelines for future reference
+5. LEARNINGS: Errors encountered, lessons learned, process improvements
+
+For each memory, provide:
+- type: one of [fact, outcome, relationship, instruction, learning]
+- content: the actual information (be specific and actionable)
+- importance: 1-10 scale (10 = critical to remember, 1 = minor detail)
+- tags: array of relevant keywords for searching
+
+Respond with a JSON array of memory objects. Extract only truly important information worth preserving long-term.`,
+        messages: [{
+          role: 'user',
+          content: `Analyze this conversation and extract important memories:\n\n${conversationText}`
+        }]
+      });
+
+      const memoryData = JSON.parse(response.content[0].text);
+      const sourceConversation = `${turns.length} turns from ${turns[0]?.metadata.timestamp} to ${turns[turns.length-1]?.metadata.timestamp}`;
+
+      // Save each memory to database
+      let savedCount = 0;
+      for (const memory of memoryData) {
+        try {
+          await pool.query(`
+            INSERT INTO memories (memory_type, content, importance, tags, source_conversation)
+            VALUES ($1, $2, $3, $4, $5)
+          `, [
+            memory.type,
+            memory.content,
+            memory.importance,
+            JSON.stringify(memory.tags || []),
+            sourceConversation
+          ]);
+          savedCount++;
+        } catch (error) {
+          logger.warn('Failed to save individual memory:', error.message);
+        }
+      }
+
+      await pool.end();
+
+      logger.info('Memory extraction completed', {
+        turnsAnalyzed: turns.length,
+        memoriesExtracted: memoryData.length,
+        memoriesSaved: savedCount
+      });
+
+      return savedCount;
+
+    } catch (error) {
+      logger.error('Memory extraction failed:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * Load high-importance memories for session start
+   */
+  async loadMemoriesForSession(limit = 20) {
+    try {
+      const { createPool } = await import('../../database/setup.js');
+      const pool = createPool();
+
+      const result = await pool.query(`
+        SELECT memory_type, content, importance, tags, created_at
+        FROM memories
+        WHERE agent_id = $1 AND importance >= 7
+        ORDER BY importance DESC, created_at DESC
+        LIMIT $2
+      `, [this.agentId, limit]);
+
+      await pool.end();
+
+      const memories = result.rows;
+      logger.info('Loaded memories for session', { count: memories.length });
+
+      // Add memories to context as high-priority system messages
+      for (const memory of memories) {
+        await this.addConversationTurn('system',
+          `[Memory: ${memory.memory_type}] ${memory.content}`, {
+          type: 'system_critical',
+          source: 'persistent_memory',
+          priority: 9,
+          importance: memory.importance
+        });
+      }
+
+      return memories.length;
+
+    } catch (error) {
+      logger.error('Failed to load memories for session:', error);
+      return 0;
+    }
   }
 
   /**

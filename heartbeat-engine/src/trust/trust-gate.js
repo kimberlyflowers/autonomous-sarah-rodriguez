@@ -151,20 +151,43 @@ export class TrustGate {
         return rejection;
       }
 
-      // Check autonomy level requirement
+      // Level 1 Observer behavior: Execute reads immediately, ask permission for writes
       if (currentLevel < actionPermission.level) {
-        const rejection = {
-          authorized: false,
-          reason: `Action requires Level ${actionPermission.level}, agent is Level ${currentLevel}`,
-          code: 'INSUFFICIENT_AUTONOMY_LEVEL',
-          escalate: true,
-          requiredLevel: actionPermission.level,
-          currentLevel,
-          suggestion: `This action needs to be approved by a human or wait for autonomy level upgrade`
-        };
+        // Level 1 can do everything - she just needs confirmation for write operations
+        if (actionPermission.category === 'read' ||
+            actionPermission.category === 'logging' ||
+            actionPermission.category === 'planning') {
+          // Execute read/logging operations immediately - no confirmation needed
+          await this.recordAuthorizedAction(agentId, currentLevel, actionPermission.category);
+          return {
+            authorized: true,
+            level: currentLevel,
+            category: actionPermission.category,
+            risk: actionPermission.risk,
+            silent: true // No user notification needed
+          };
+        } else {
+          // Write operations need user confirmation - pause for approval (employee behavior)
+          const confirmation = {
+            authorized: false,
+            needs_confirmation: true,
+            action: actionName,
+            parameters: parameters,
+            level: currentLevel,
+            category: actionPermission.category,
+            risk: actionPermission.risk,
+            confirmation_message: this.buildConfirmationMessage(actionName, parameters),
+            employee_tone: true // Flag to use employee language, not system errors
+          };
 
-        await this.logRejection(agentId, cycleId, actionName, parameters, rejection);
-        return rejection;
+          logger.info('Action requires user confirmation (Level 1 employee behavior)', {
+            action: actionName,
+            level: currentLevel,
+            category: actionPermission.category
+          });
+
+          return confirmation;
+        }
       }
 
       // Check daily action limits
@@ -440,6 +463,33 @@ export class TrustGate {
         this.actionCounts.delete(key);
       }
     }
+  }
+
+  /**
+   * Build employee-style confirmation message (not system error message)
+   */
+  buildConfirmationMessage(actionName, parameters) {
+    const actionDescriptions = {
+      'ghl_create_contact': `create a new contact for ${parameters.firstName || 'the person'}`,
+      'ghl_update_contact': `update the contact information`,
+      'ghl_send_message': `send a message to the contact`,
+      'ghl_create_opportunity': `create a new opportunity: ${parameters.title || 'untitled opportunity'}`,
+      'ghl_update_opportunity_stage': `move the opportunity to the next stage`,
+      'ghl_create_appointment': `schedule an appointment`,
+      'ghl_create_task': `create a new task`,
+      'ghl_update_task': `update the task status`,
+      'ghl_add_contact_tag': `add tags to the contact`,
+      'ghl_remove_contact_tag': `remove tags from the contact`,
+      'bloom_create_task': `create a planning task`,
+      'bloom_update_task': `update the task progress`,
+      'bloom_escalate_issue': `escalate this to you for review`
+    };
+
+    const actionDesc = actionDescriptions[actionName] ||
+      actionName.replace('ghl_', '').replace('bloom_', '').replace('_', ' ');
+
+    // Employee asking manager for approval - not system denial
+    return `I'd like to ${actionDesc}. Should I go ahead?`;
   }
 
   /**

@@ -13,6 +13,7 @@ import { contextManager } from '../context/context-manager.js';
 import { ModelFormatter, modelSelector } from '../context/model-formatter.js';
 import { enhancedExecutor } from '../tools/enhanced-executor.js';
 import { systemMonitor } from '../monitoring/system-monitor.js';
+import { broadcastExecutionProgress } from '../api/events.js';
 
 const logger = createLogger('agent-executor');
 
@@ -31,9 +32,14 @@ const EXECUTION_STATUS = {
 export class AgentExecutor {
   constructor(agentId = 'bloomie-sarah-rodriguez', options = {}) {
     this.agentId = agentId;
-    this.maxTurns = options.maxTurns || 10; // Maximum conversation turns to prevent infinite loops
     this.toolExecutionHistory = [];
     this.conversationHistory = [];
+    this.safetyValveThreshold = 50; // Log warning but don't kill the loop
+    this.currentPlan = null; // Track current task plan for progress
+    this.currentStep = 0; // Track current step number
+    this.recentToolCalls = []; // Track for loop detection
+    this.executionId = null; // Track execution session for progress streaming
+    this.currentTurn = 0; // Track current turn for progress streaming
 
     // Advanced context management
     this.contextManager = contextManager;
@@ -64,9 +70,14 @@ export class AgentExecutor {
    */
   async executeTask(task, context = {}) {
     const startTime = Date.now();
+    const { v4: uuidv4 } = await import('uuid');
+    this.executionId = uuidv4();
+    this.currentTurn = 0;
+
     logger.info('Starting agentic task execution', {
       task: task.substring(0, 100),
-      agentId: this.agentId
+      agentId: this.agentId,
+      executionId: this.executionId
     });
 
     try {
@@ -101,10 +112,17 @@ Use the available tools to complete this task. Work step by step and explain you
       let status = EXECUTION_STATUS.RUNNING;
       let finalResult = null;
 
-      // Multi-turn execution loop
-      while (status === EXECUTION_STATUS.RUNNING && currentTurn < this.maxTurns) {
+      // Claude Code's nO pattern: while (response has tool_use) { execute → feed back → get next response }
+      while (status === EXECUTION_STATUS.RUNNING) {
         currentTurn++;
-        logger.info(`Execution turn ${currentTurn}/${this.maxTurns}`);
+        this.currentTurn = currentTurn;
+
+        // Safety valve warning at 50 turns, but DON'T stop the loop (Claude Code behavior)
+        if (currentTurn === this.safetyValveThreshold) {
+          logger.warn(`[WARNING] Execution reached ${this.safetyValveThreshold} turns - still running. Task may be highly complex.`);
+        }
+
+        logger.info(`Execution turn ${currentTurn}`);
 
         try {
           // Call Claude with current conversation and available tools
@@ -113,10 +131,29 @@ Use the available tools to complete this task. Work step by step and explain you
           // Process the response
           const turnResult = await this.processTurnResponse(response);
 
-          // Update status based on turn result
+          // Claude Code loop logic: continue while response has tool_use
+          if (turnResult.hasToolUse) {
+            // Check for infinite loop: same tool + args called 3 times in a row
+            if (this.detectInfiniteLoop()) {
+              logger.error('Infinite loop detected: same tool called 3 times with same parameters');
+              status = EXECUTION_STATUS.FAILED;
+              finalResult = { error: 'Infinite loop detected - same operation repeated' };
+              break;
+            }
+            // Continue the loop - Claude wants to use more tools
+            continue;
+          } else {
+            // Claude responded with text only (no tool_use) - natural completion
+            status = EXECUTION_STATUS.COMPLETED;
+            finalResult = turnResult.result || turnResult.textResponse || 'Task completed successfully';
+            logger.info(`Task completed naturally (text-only response) after ${currentTurn} turns`);
+          }
+
+          // Handle other completion conditions
           if (turnResult.completed) {
             status = EXECUTION_STATUS.COMPLETED;
             finalResult = turnResult.result;
+            logger.info(`Task completed explicitly after ${currentTurn} turns`);
           } else if (turnResult.blocked) {
             status = EXECUTION_STATUS.BLOCKED;
             finalResult = turnResult.reason;
@@ -128,12 +165,6 @@ Use the available tools to complete this task. Work step by step and explain you
           finalResult = { error: error.message };
           break;
         }
-      }
-
-      // Handle max turns reached
-      if (currentTurn >= this.maxTurns && status === EXECUTION_STATUS.RUNNING) {
-        status = EXECUTION_STATUS.FAILED;
-        finalResult = { error: 'Maximum execution turns reached without completion' };
       }
 
       const duration = Date.now() - startTime;
@@ -298,6 +329,20 @@ Use the available tools to complete this task. Work step by step and explain you
 
       } else if (block.type === 'tool_use') {
         hasToolUse = true;
+        this.currentStep++;
+
+        // Broadcast tool execution start (Claude Code interleaved thinking)
+        broadcastExecutionProgress({
+          executionId: this.executionId,
+          turn: this.currentTurn,
+          toolName: block.name,
+          toolStatus: "in_progress",
+          todoState: this.currentPlan?.steps || null,
+          message: this.getToolDescription(block.name, block.input)
+        });
+
+        // Track tool calls for loop detection
+        this.trackToolCall(block.name, block.input);
 
         // Execute the tool
         const toolResult = await this.executeTool(block.name, block.input);
@@ -308,6 +353,16 @@ Use the available tools to complete this task. Work step by step and explain you
           input: block.input,
           result: toolResult,
           timestamp: new Date().toISOString()
+        });
+
+        // Broadcast tool execution completion with updated todoState
+        broadcastExecutionProgress({
+          executionId: this.executionId,
+          turn: this.currentTurn,
+          toolName: block.name,
+          toolStatus: toolResult.success ? "completed" : "failed",
+          todoState: this.currentPlan?.steps || null,
+          message: this.formatCompletionMessage(block.name, toolResult)
         });
 
         // Add tool use and result to conversation using context manager
@@ -334,6 +389,12 @@ Use the available tools to complete this task. Work step by step and explain you
           tool: block.name,
           success: toolResult.success
         });
+
+        // Claude Code behavior: After bloom_todo_write, inject current plan state
+        if (block.name === 'bloom_todo_write' && toolResult.success && toolResult.currentState) {
+          this.currentPlan = toolResult.currentState;
+          await this.injectPlanStateReminder();
+        }
       }
     }
 
@@ -341,7 +402,8 @@ Use the available tools to complete this task. Work step by step and explain you
       completed,
       blocked,
       result,
-      hasToolUse
+      hasToolUse,
+      textResponse: content.find(block => block.type === 'text')?.text
     };
   }
 
@@ -713,6 +775,84 @@ Remember: You operate at Level 1 autonomy, so focus on observation, analysis, an
       success: true,
       message: `Decision logged: ${parameters.decision}`
     };
+  }
+
+  /**
+   * Track tool calls for infinite loop detection (Claude Code pattern)
+   */
+  trackToolCall(toolName, input) {
+    const callSignature = `${toolName}:${JSON.stringify(input)}`;
+    this.recentToolCalls.push({
+      signature: callSignature,
+      timestamp: Date.now()
+    });
+
+    // Keep only last 10 calls for efficiency
+    if (this.recentToolCalls.length > 10) {
+      this.recentToolCalls.shift();
+    }
+  }
+
+  /**
+   * Detect infinite loops: same tool + args called 3 times in a row
+   */
+  detectInfiniteLoop() {
+    if (this.recentToolCalls.length < 3) return false;
+
+    const lastThree = this.recentToolCalls.slice(-3);
+    const signatures = lastThree.map(call => call.signature);
+
+    // Check if last 3 signatures are identical
+    return signatures[0] === signatures[1] && signatures[1] === signatures[2];
+  }
+
+  /**
+   * Inject current plan state as system message (Claude Code TodoWrite behavior)
+   */
+  async injectPlanStateReminder() {
+    if (!this.currentPlan) return;
+
+    const planReminder = `## Current Task Plan:
+**${this.currentPlan.title}**
+
+${this.currentPlan.steps.map(step =>
+  `${step.id}. [${step.status.toUpperCase()}] ${step.content} (${step.priority} priority)`
+).join('\n')}
+
+Remember: Mark steps 'in_progress' BEFORE starting them. Mark 'completed' ONLY after verifying success.`;
+
+    await this.contextManager.addConversationTurn('system', planReminder, {
+      type: 'system_critical',
+      source: 'todo_reminder',
+      priority: 10
+    });
+
+    logger.debug('Injected plan state reminder into conversation');
+  }
+
+  /**
+   * Format completion message for Claude Code style progress streaming
+   */
+  formatCompletionMessage(toolName, toolResult) {
+    if (!toolResult.success) {
+      return `❌ ${this.getToolDescription(toolName, {})} failed: ${toolResult.error || 'Unknown error'}`;
+    }
+
+    // Special formatting for common tools
+    if (toolName === 'ghl_create_contact' && toolResult.data?.contact) {
+      return `✅ Created contact: ${toolResult.data.contact.firstName || ''} ${toolResult.data.contact.lastName || ''} (ID: ${toolResult.data.contact.id || 'unknown'})`;
+    }
+
+    if (toolName === 'ghl_search_contacts' && toolResult.data?.contacts) {
+      return `✅ Found ${toolResult.data.contacts.length} contacts matching criteria`;
+    }
+
+    if (toolName === 'bloom_todo_write' && toolResult.currentState) {
+      return `✅ Created task plan: "${toolResult.currentState.title}" with ${toolResult.currentState.steps.length} steps`;
+    }
+
+    // Generic success message
+    return `✅ ${this.getToolDescription(toolName, {})} completed successfully`;
   }
 
   async escalateToHuman(parameters) {
