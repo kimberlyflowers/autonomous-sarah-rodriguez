@@ -12,6 +12,7 @@ import { trustGate } from '../trust/trust-gate.js';
 import { contextManager } from '../context/context-manager.js';
 import { ModelFormatter, modelSelector } from '../context/model-formatter.js';
 import { enhancedExecutor } from '../tools/enhanced-executor.js';
+import { systemMonitor } from '../monitoring/system-monitor.js';
 
 const logger = createLogger('agent-executor');
 
@@ -42,10 +43,16 @@ export class AgentExecutor {
     this.useAdaptiveModels = options.useAdaptiveModels !== false;
     this.taskComplexity = 'standard'; // 'fast', 'standard', 'premium'
 
-    logger.info('Initialized AgentExecutor with advanced context management', {
+    // System monitoring integration
+    this.systemMonitor = systemMonitor;
+    this.systemHealth = 'healthy';
+
+    logger.info('Initialized AgentExecutor with advanced capabilities', {
       agentId,
       model: this.modelFormatter.model,
-      useAdaptiveModels: this.useAdaptiveModels
+      useAdaptiveModels: this.useAdaptiveModels,
+      systemMonitoring: true,
+      autoHealing: this.systemMonitor.autoHealingEnabled
     });
   }
 
@@ -137,8 +144,9 @@ Use the available tools to complete this task. Work step by step and explain you
         toolsUsed: this.toolExecutionHistory.length
       });
 
-      // Get final context statistics
+      // Get final context and system statistics
       const contextStats = this.contextManager.getContextStats();
+      const systemHealth = this.systemMonitor.getHealthSummary();
 
       return {
         status,
@@ -149,6 +157,12 @@ Use the available tools to complete this task. Work step by step and explain you
         conversationHistory: this.conversationHistory,
         toolHistory: this.toolExecutionHistory,
         contextStats,
+        systemHealth: {
+          status: systemHealth.overallHealth,
+          uptime: systemHealth.uptime,
+          autoHealing: systemHealth.autoHealingEnabled,
+          recentAlerts: systemHealth.recentAlerts.length
+        },
         modelUsed: this.modelFormatter.model,
         taskComplexity: this.taskComplexity
       };
@@ -554,6 +568,33 @@ You have access to advanced tool execution capabilities:
 - Categorize errors by type (temporary vs permanent)
 - Automatic retry for recoverable errors
 - Detailed error context and resolution suggestions
+
+### System Monitoring & Self-Healing:
+You operate within a comprehensive monitoring and self-healing environment:
+
+**Health Monitoring**: All system components are continuously monitored
+- Context manager utilization and compression triggers
+- Tool performance and success rates
+- Trust gate violations and security metrics
+- Database connectivity and API service health
+- Memory usage and resource optimization
+
+**Auto-Healing Capabilities**: System automatically recovers from issues
+- Context compression when approaching token limits
+- Tool retry logic for transient failures
+- Resource cleanup and garbage collection
+- API rate limit handling and backoff strategies
+- Database reconnection and failover procedures
+
+**System Alerts**: Real-time notification of system issues
+- Performance degradation warnings
+- Security violation alerts
+- Resource utilization thresholds
+- Service connectivity problems
+- Auto-healing action confirmations
+
+**Current System Health**: ${this.systemHealth}
+**Auto-Healing**: ${this.systemMonitor.autoHealingEnabled ? 'Enabled' : 'Disabled'}
 
 ### Trust Gate Enforcement:
 You are operating under Trust Gate protection. All tool use is monitored and enforced based on your autonomy level:
