@@ -24,33 +24,164 @@ function ToolInventory({ theme, refreshContext }) {
       // In a real implementation, this would come from the backend
       setToolData({
         ghlTools: [
+          // CONTACTS (5 tools)
           { name: 'ghl_search_contacts', category: 'contacts', risk: 'low', level: 1, usage: 45 },
           { name: 'ghl_get_contact', category: 'contacts', risk: 'low', level: 1, usage: 32 },
           { name: 'ghl_create_contact', category: 'contacts', risk: 'medium', level: 2, usage: 18 },
           { name: 'ghl_update_contact', category: 'contacts', risk: 'medium', level: 2, usage: 23 },
           { name: 'ghl_delete_contact', category: 'contacts', risk: 'high', level: 3, usage: 2 },
+
+          // COMMUNICATION (2 tools)
           { name: 'ghl_send_message', category: 'communication', risk: 'medium', level: 2, usage: 67 },
           { name: 'ghl_get_conversations', category: 'communication', risk: 'low', level: 1, usage: 28 },
+
+          // SCHEDULING (3 tools)
           { name: 'ghl_list_calendars', category: 'scheduling', risk: 'low', level: 1, usage: 15 },
           { name: 'ghl_get_calendar_slots', category: 'scheduling', risk: 'low', level: 1, usage: 22 },
           { name: 'ghl_create_appointment', category: 'scheduling', risk: 'medium', level: 2, usage: 14 },
+
+          // SALES/OPPORTUNITIES (5 tools)
           { name: 'ghl_search_opportunities', category: 'sales', risk: 'low', level: 1, usage: 35 },
           { name: 'ghl_create_opportunity', category: 'sales', risk: 'high', level: 3, usage: 8 },
           { name: 'ghl_update_opportunity_stage', category: 'sales', risk: 'high', level: 3, usage: 12 },
+          { name: 'ghl_list_pipelines', category: 'sales', risk: 'low', level: 1, usage: 9 },
+          { name: 'ghl_get_pipeline_stages', category: 'sales', risk: 'low', level: 1, usage: 11 },
+
+          // TASKS (3 tools)
           { name: 'ghl_list_tasks', category: 'tasks', risk: 'low', level: 1, usage: 18 },
           { name: 'ghl_create_task', category: 'tasks', risk: 'medium', level: 2, usage: 25 },
           { name: 'ghl_update_task', category: 'tasks', risk: 'medium', level: 2, usage: 19 },
+
+          // NOTES (2 tools)
           { name: 'ghl_get_notes', category: 'notes', risk: 'low', level: 1, usage: 12 },
           { name: 'ghl_create_note', category: 'notes', risk: 'medium', level: 2, usage: 16 },
+
+          // TAGS (5 tools)
           { name: 'ghl_get_contact_tags', category: 'tags', risk: 'low', level: 1, usage: 8 },
           { name: 'ghl_add_contact_tag', category: 'tags', risk: 'medium', level: 2, usage: 21 },
           { name: 'ghl_remove_contact_tag', category: 'tags', risk: 'medium', level: 2, usage: 7 },
-          { name: 'ghl_list_pipelines', category: 'sales', risk: 'low', level: 1, usage: 9 },
-          { name: 'ghl_get_pipeline_stages', category: 'sales', risk: 'low', level: 1, usage: 11 },
+          { name: 'ghl_create_location_tag', category: 'tags', risk: 'medium', level: 2, usage: 4 },
+          { name: 'ghl_delete_location_tag', category: 'tags', risk: 'high', level: 3, usage: 1 },
+
+          // AUTOMATION (2 tools)
           { name: 'ghl_list_workflows', category: 'automation', risk: 'low', level: 1, usage: 6 },
           { name: 'ghl_add_contact_to_workflow', category: 'automation', risk: 'medium', level: 2, usage: 13 },
+
+          // MARKETING (2 tools)
           { name: 'ghl_list_campaigns', category: 'marketing', risk: 'low', level: 1, usage: 4 },
-          { name: 'ghl_get_campaign_stats', category: 'marketing', risk: 'low', level: 1, usage: 5 }
+          { name: 'ghl_get_campaign_stats', category: 'marketing', risk: 'low', level: 1, usage: 5 },
+
+          // INVOICES (6 tools)
+          { name: 'ghl_list_invoices', category: 'invoices', risk: 'low', level: 1, usage: 12 },
+          { name: 'ghl_get_invoice', category: 'invoices', risk: 'low', level: 1, usage: 8 },
+          { name: 'ghl_create_invoice', category: 'invoices', risk: 'medium', level: 2, usage: 5 },
+          { name: 'ghl_update_invoice', category: 'invoices', risk: 'medium', level: 2, usage: 3 },
+          { name: 'ghl_send_invoice', category: 'invoices', risk: 'medium', level: 2, usage: 7 },
+          { name: 'ghl_void_invoice', category: 'invoices', risk: 'high', level: 3, usage: 1 },
+
+          // ESTIMATES (5 tools)
+          { name: 'ghl_list_estimates', category: 'estimates', risk: 'low', level: 1, usage: 6 },
+          { name: 'ghl_get_estimate', category: 'estimates', risk: 'low', level: 1, usage: 4 },
+          { name: 'ghl_create_estimate', category: 'estimates', risk: 'medium', level: 2, usage: 3 },
+          { name: 'ghl_update_estimate', category: 'estimates', risk: 'medium', level: 2, usage: 2 },
+          { name: 'ghl_send_estimate', category: 'estimates', risk: 'medium', level: 2, usage: 4 },
+
+          // PRODUCTS (5 tools)
+          { name: 'ghl_list_products', category: 'products', risk: 'low', level: 1, usage: 8 },
+          { name: 'ghl_get_product', category: 'products', risk: 'low', level: 1, usage: 5 },
+          { name: 'ghl_create_product', category: 'products', risk: 'medium', level: 2, usage: 2 },
+          { name: 'ghl_update_product', category: 'products', risk: 'medium', level: 2, usage: 3 },
+          { name: 'ghl_delete_product', category: 'products', risk: 'high', level: 3, usage: 1 },
+
+          // PAYMENTS (3 tools)
+          { name: 'ghl_list_payments', category: 'payments', risk: 'low', level: 1, usage: 15 },
+          { name: 'ghl_get_payment', category: 'payments', risk: 'low', level: 1, usage: 9 },
+          { name: 'ghl_refund_payment', category: 'payments', risk: 'high', level: 3, usage: 2 },
+
+          // FORMS (3 tools)
+          { name: 'ghl_list_forms', category: 'forms', risk: 'low', level: 1, usage: 7 },
+          { name: 'ghl_get_form', category: 'forms', risk: 'low', level: 1, usage: 4 },
+          { name: 'ghl_get_form_submissions', category: 'forms', risk: 'low', level: 1, usage: 11 },
+
+          // SURVEYS (3 tools)
+          { name: 'ghl_list_surveys', category: 'surveys', risk: 'low', level: 1, usage: 3 },
+          { name: 'ghl_get_survey', category: 'surveys', risk: 'low', level: 1, usage: 2 },
+          { name: 'ghl_get_survey_submissions', category: 'surveys', risk: 'low', level: 1, usage: 5 },
+
+          // FUNNELS (3 tools)
+          { name: 'ghl_list_funnels', category: 'funnels', risk: 'low', level: 1, usage: 4 },
+          { name: 'ghl_get_funnel', category: 'funnels', risk: 'low', level: 1, usage: 2 },
+          { name: 'ghl_get_funnel_pages', category: 'funnels', risk: 'low', level: 1, usage: 3 },
+
+          // WEBSITES (3 tools)
+          { name: 'ghl_list_websites', category: 'websites', risk: 'low', level: 1, usage: 2 },
+          { name: 'ghl_get_website', category: 'websites', risk: 'low', level: 1, usage: 1 },
+          { name: 'ghl_list_pages', category: 'websites', risk: 'low', level: 1, usage: 3 },
+
+          // MEDIA (3 tools)
+          { name: 'ghl_list_media', category: 'media', risk: 'low', level: 1, usage: 6 },
+          { name: 'ghl_upload_media', category: 'media', risk: 'medium', level: 2, usage: 4 },
+          { name: 'ghl_delete_media', category: 'media', risk: 'high', level: 3, usage: 1 },
+
+          // COURSES (4 tools)
+          { name: 'ghl_list_courses', category: 'courses', risk: 'low', level: 1, usage: 3 },
+          { name: 'ghl_get_course', category: 'courses', risk: 'low', level: 1, usage: 2 },
+          { name: 'ghl_get_course_lessons', category: 'courses', risk: 'low', level: 1, usage: 2 },
+          { name: 'ghl_enroll_contact_in_course', category: 'courses', risk: 'medium', level: 2, usage: 1 },
+
+          // EMAIL BUILDER (3 tools)
+          { name: 'ghl_list_email_templates', category: 'email_builder', risk: 'low', level: 1, usage: 5 },
+          { name: 'ghl_get_email_template', category: 'email_builder', risk: 'low', level: 1, usage: 3 },
+          { name: 'ghl_create_email_template', category: 'email_builder', risk: 'medium', level: 2, usage: 2 },
+
+          // SOCIAL PLANNER (3 tools)
+          { name: 'ghl_list_social_posts', category: 'social_planner', risk: 'low', level: 1, usage: 4 },
+          { name: 'ghl_create_social_post', category: 'social_planner', risk: 'medium', level: 2, usage: 3 },
+          { name: 'ghl_schedule_social_post', category: 'social_planner', risk: 'medium', level: 2, usage: 2 },
+
+          // BLOG (4 tools)
+          { name: 'ghl_list_blog_posts', category: 'blog', risk: 'low', level: 1, usage: 2 },
+          { name: 'ghl_get_blog_post', category: 'blog', risk: 'low', level: 1, usage: 1 },
+          { name: 'ghl_create_blog_post', category: 'blog', risk: 'medium', level: 2, usage: 1 },
+          { name: 'ghl_update_blog_post', category: 'blog', risk: 'medium', level: 2, usage: 1 },
+
+          // DOCUMENTS (3 tools)
+          { name: 'ghl_list_documents', category: 'documents', risk: 'low', level: 1, usage: 3 },
+          { name: 'ghl_get_document', category: 'documents', risk: 'low', level: 1, usage: 2 },
+          { name: 'ghl_send_document_for_signature', category: 'documents', risk: 'medium', level: 2, usage: 1 },
+
+          // CUSTOM VALUES (3 tools)
+          { name: 'ghl_list_custom_values', category: 'custom_values', risk: 'low', level: 1, usage: 4 },
+          { name: 'ghl_create_custom_value', category: 'custom_values', risk: 'medium', level: 2, usage: 2 },
+          { name: 'ghl_delete_custom_value', category: 'custom_values', risk: 'high', level: 3, usage: 1 },
+
+          // CUSTOM FIELDS (2 tools)
+          { name: 'ghl_get_custom_fields', category: 'custom_fields', risk: 'low', level: 1, usage: 8 },
+          { name: 'ghl_update_contact_custom_field', category: 'custom_fields', risk: 'medium', level: 2, usage: 12 },
+
+          // BUSINESSES (2 tools)
+          { name: 'ghl_list_businesses', category: 'businesses', risk: 'low', level: 1, usage: 2 },
+          { name: 'ghl_get_business', category: 'businesses', risk: 'low', level: 1, usage: 1 },
+
+          // TRIGGER LINKS (2 tools)
+          { name: 'ghl_list_trigger_links', category: 'trigger_links', risk: 'low', level: 1, usage: 1 },
+          { name: 'ghl_create_trigger_link', category: 'trigger_links', risk: 'medium', level: 2, usage: 1 },
+
+          // VOICE AI (3 tools)
+          { name: 'ghl_list_voice_calls', category: 'voice_ai', risk: 'low', level: 1, usage: 3 },
+          { name: 'ghl_get_call_recording', category: 'voice_ai', risk: 'low', level: 1, usage: 2 },
+          { name: 'ghl_list_phone_numbers', category: 'voice_ai', risk: 'low', level: 1, usage: 1 },
+
+          // CUSTOM OBJECTS (3 tools)
+          { name: 'ghl_list_custom_objects', category: 'custom_objects', risk: 'low', level: 1, usage: 2 },
+          { name: 'ghl_create_custom_object_record', category: 'custom_objects', risk: 'medium', level: 2, usage: 1 },
+          { name: 'ghl_get_custom_object_records', category: 'custom_objects', risk: 'low', level: 1, usage: 3 },
+
+          // USERS (4 tools)
+          { name: 'ghl_list_users', category: 'users', risk: 'low', level: 1, usage: 3 },
+          { name: 'ghl_get_user', category: 'users', risk: 'low', level: 1, usage: 2 },
+          { name: 'ghl_update_user', category: 'users', risk: 'medium', level: 2, usage: 1 },
+          { name: 'ghl_get_location_info', category: 'users', risk: 'low', level: 1, usage: 5 }
         ],
         internalTools: [
           { name: 'bloom_create_task', category: 'planning', risk: 'low', level: 2, usage: 34 },
@@ -312,12 +443,16 @@ function ToolInventory({ theme, refreshContext }) {
             <strong>{allTools.length}</strong>
           </div>
           <div style={styles.stat}>
-            <span>GHL:</span>
+            <span>GHL API:</span>
             <strong>{toolData.ghlTools.length}</strong>
           </div>
           <div style={styles.stat}>
             <span>Internal:</span>
             <strong>{toolData.internalTools.length}</strong>
+          </div>
+          <div style={styles.stat}>
+            <span>Categories:</span>
+            <strong>{categories.length - 1}</strong>
           </div>
         </div>
       </div>
