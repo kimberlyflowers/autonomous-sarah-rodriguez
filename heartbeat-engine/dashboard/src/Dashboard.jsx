@@ -5,6 +5,10 @@ import ActionLog from './components/ActionLog.jsx';
 import RejectionLog from './components/RejectionLog.jsx';
 import HandoffLog from './components/HandoffLog.jsx';
 import TrustMetrics from './components/TrustMetrics.jsx';
+import AgenticExecutions from './components/AgenticExecutions.jsx';
+import TrustGateStatus from './components/TrustGateStatus.jsx';
+import InternalToolsDashboard from './components/InternalToolsDashboard.jsx';
+import ToolInventory from './components/ToolInventory.jsx';
 
 function Dashboard({ theme, refreshContext }) {
   const [agentStatus, setAgentStatus] = useState(null);
@@ -47,36 +51,69 @@ function Dashboard({ theme, refreshContext }) {
 
   return (
     <div style={styles.container}>
+      {/* Core Agent Status */}
       <StatusCard
         agentStatus={agentStatus}
         theme={theme}
         lastUpdate={lastUpdate}
       />
 
-      <CycleTimeline
+      {/* Agentic Capabilities Section */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+        <AgenticExecutions
+          theme={theme}
+          refreshContext={refreshContext}
+        />
+
+        <TrustGateStatus
+          theme={theme}
+          agentId="bloomie-sarah-rodriguez"
+          refreshContext={refreshContext}
+        />
+      </div>
+
+      {/* Internal Operations */}
+      <InternalToolsDashboard
         theme={theme}
         refreshContext={refreshContext}
       />
 
-      <ActionLog
+      {/* Tool Inventory */}
+      <ToolInventory
         theme={theme}
         refreshContext={refreshContext}
       />
 
-      <RejectionLog
-        theme={theme}
-        refreshContext={refreshContext}
-      />
+      {/* Traditional Monitoring (Collapsed) */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+        <CycleTimeline
+          theme={theme}
+          refreshContext={refreshContext}
+        />
 
-      <HandoffLog
-        theme={theme}
-        refreshContext={refreshContext}
-      />
+        <TrustMetrics
+          theme={theme}
+          refreshContext={refreshContext}
+        />
+      </div>
 
-      <TrustMetrics
-        theme={theme}
-        refreshContext={refreshContext}
-      />
+      {/* Legacy Monitoring Logs */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20 }}>
+        <ActionLog
+          theme={theme}
+          refreshContext={refreshContext}
+        />
+
+        <RejectionLog
+          theme={theme}
+          refreshContext={refreshContext}
+        />
+
+        <HandoffLog
+          theme={theme}
+          refreshContext={refreshContext}
+        />
+      </div>
     </div>
   );
 }
