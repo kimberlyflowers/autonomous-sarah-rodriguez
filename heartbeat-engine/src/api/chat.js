@@ -418,28 +418,26 @@ router.post('/message', async (req, res) => {
     });
 
     // Execute through AgentExecutor with full tool access
-    const executor = new AgentExecutor(agentConfig);
-    const result = await executor.execute({
-      request: message,
-      context: {
-        conversationHistory,
-        trigger: 'chat',
-        sessionId,
-        executionId,
-        recentWork: context
-      }
+    const executor = new AgentExecutor(agentConfig.agentId);
+    const result = await executor.executeTask(message, {
+      conversationHistory,
+      trigger: 'chat',
+      sessionId,
+      executionId,
+      recentWork: context
     });
 
-    const sarahResponse = result.finalMessage || result.message || 'I apologize, but I encountered an issue processing your request.';
+    const sarahResponse = result.result || result.finalMessage || 'I apologize, but I encountered an issue processing your request.';
 
     // Store Sarah's response with execution metadata
     await storeChatMessage(sessionId, sarahResponse, false, agentConfig.agentId, {
       executionId,
       trigger: 'chat',
       agenticExecution: true,
-      toolsUsed: result.toolsUsed || [],
+      toolsUsed: result.toolsUsed || 0,
       turnsExecuted: result.turns || 1,
-      status: result.status || 'completed'
+      status: result.status || 'completed',
+      executionTime: result.executionTime || 0
     });
 
     res.json({
