@@ -6,6 +6,7 @@ import { createLogger } from '../logging/logger.js';
 import { loadAgentConfig } from '../config/agent-profile.js';
 import { getAnthropicClient } from '../api/chat.js';
 import { executeGHLTool, ghlToolDefinitions } from '../tools/ghl-tools.js';
+import { executeInternalTool, internalToolDefinitions } from '../tools/internal-tools.js';
 import { trustGate } from '../trust/trust-gate.js';
 
 const logger = createLogger('agent-executor');
@@ -260,17 +261,19 @@ Use the available tools to complete this task. Work step by step and explain you
 
       if (toolName.startsWith('ghl_')) {
         result = await executeGHLTool(toolName, parameters);
+      } else if (toolName.startsWith('bloom_')) {
+        result = await executeInternalTool(toolName, parameters);
       } else {
-        // Handle internal tools
+        // Handle legacy internal tools for backward compatibility
         switch (toolName) {
           case 'create_task':
-            result = await this.createTask(parameters);
+            result = await executeInternalTool('bloom_create_task', parameters);
             break;
           case 'log_decision':
-            result = await this.logDecision(parameters);
+            result = await executeInternalTool('bloom_log_decision', parameters);
             break;
           case 'escalate_to_human':
-            result = await this.escalateToHuman(parameters);
+            result = await executeInternalTool('bloom_escalate_issue', parameters);
             break;
           default:
             throw new Error(`Unknown tool: ${toolName}`);
@@ -314,49 +317,14 @@ Use the available tools to complete this task. Work step by step and explain you
       });
     }
 
-    // Add internal tools
-    claudeTools.push({
-      name: 'create_task',
-      description: 'Create a new task in the planning system',
-      input_schema: {
-        type: 'object',
-        properties: {
-          title: { type: 'string', description: 'Task title' },
-          description: { type: 'string', description: 'Task description' },
-          priority: { type: 'string', enum: ['low', 'medium', 'high'], description: 'Task priority' }
-        },
-        required: ['title', 'description']
-      }
-    });
-
-    claudeTools.push({
-      name: 'log_decision',
-      description: 'Log a decision or reasoning step for transparency',
-      input_schema: {
-        type: 'object',
-        properties: {
-          decision: { type: 'string', description: 'The decision made' },
-          reasoning: { type: 'string', description: 'Why this decision was made' },
-          confidence: { type: 'number', description: 'Confidence level 0-1' }
-        },
-        required: ['decision', 'reasoning']
-      }
-    });
-
-    claudeTools.push({
-      name: 'escalate_to_human',
-      description: 'Escalate an issue to human oversight when needed',
-      input_schema: {
-        type: 'object',
-        properties: {
-          issue: { type: 'string', description: 'Description of the issue' },
-          analysis: { type: 'string', description: 'Analysis performed so far' },
-          recommendation: { type: 'string', description: 'Recommended action' },
-          urgency: { type: 'string', enum: ['low', 'medium', 'high'], description: 'Urgency level' }
-        },
-        required: ['issue', 'analysis']
-      }
-    });
+    // Add comprehensive internal tools
+    for (const [toolName, toolDef] of Object.entries(internalToolDefinitions)) {
+      claudeTools.push({
+        name: toolName,
+        description: toolDef.description,
+        input_schema: toolDef.parameters
+      });
+    }
 
     return claudeTools;
   }

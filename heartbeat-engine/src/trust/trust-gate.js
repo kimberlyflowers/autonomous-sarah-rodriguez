@@ -36,6 +36,14 @@ const ACTION_PERMISSIONS = {
   'log_decision': { level: 1, category: 'logging', risk: 'low' },
   'create_task': { level: 1, category: 'planning', risk: 'low' },
 
+  // Internal BLOOM tools - Level 1 (Observer) permissions
+  'bloom_list_tasks': { level: 1, category: 'read', risk: 'low' },
+  'bloom_log_decision': { level: 1, category: 'logging', risk: 'low' },
+  'bloom_log_observation': { level: 1, category: 'logging', risk: 'low' },
+  'bloom_retrieve_context': { level: 1, category: 'read', risk: 'low' },
+  'bloom_analyze_patterns': { level: 1, category: 'read', risk: 'low' },
+  'bloom_generate_summary': { level: 1, category: 'read', risk: 'low' },
+
   // Level 2 (Assistant) - Basic write operations
   'ghl_send_message': { level: 2, category: 'communication', risk: 'medium' },
   'ghl_update_contact': { level: 2, category: 'data_modification', risk: 'medium' },
@@ -48,6 +56,12 @@ const ACTION_PERMISSIONS = {
   'ghl_add_contact_tag': { level: 2, category: 'data_modification', risk: 'medium' },
   'ghl_remove_contact_tag': { level: 2, category: 'data_modification', risk: 'medium' },
   'ghl_update_contact_custom_field': { level: 2, category: 'data_modification', risk: 'medium' },
+
+  // Internal BLOOM tools - Level 2 (Assistant) permissions
+  'bloom_create_task': { level: 2, category: 'planning', risk: 'low' },
+  'bloom_update_task': { level: 2, category: 'planning', risk: 'low' },
+  'bloom_store_context': { level: 2, category: 'data_creation', risk: 'low' },
+  'bloom_escalate_issue': { level: 2, category: 'escalation', risk: 'medium' },
 
   // Level 3 (Operator) - Independent operations
   'ghl_create_opportunity': { level: 3, category: 'sales', risk: 'high' },
