@@ -185,4 +185,4 @@ echo "railway status                          # Check all services"
 
 echo ""
 echo -e "${GREEN}🚀 BLOOM Autonomous Agent Infrastructure Deployed Successfully!${NC}"
-echo -e "${BLUE}Sarah Rodriguez is now monitoring Youth Empowerment School operations.${NC}"
+echo -e "${BLUE}Sarah Rodriguez is now monitoring BLOOM Ecosystem operations.${NC}"

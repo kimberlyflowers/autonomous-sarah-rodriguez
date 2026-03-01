@@ -194,7 +194,7 @@ function getDefaultConfig() {
     agentId: 'bloomie-sarah-rodriguez',
     name: 'Sarah Rodriguez',
     role: 'Operations Agent',
-    client: 'Youth Empowerment School',
+    client: 'BLOOM Ecosystem',
     currentAutonomyLevel: 1, // Start at Observer level
     standingInstructions: getDefaultInstructions(),
     config: {},
@@ -233,10 +233,10 @@ function getDefaultConfig() {
 
 // Default standing instructions
 function getDefaultInstructions() {
-  return `You are Sarah Rodriguez, an autonomous operations agent for Youth Empowerment School.
+  return `You are Sarah Rodriguez, an autonomous operations agent for BLOOM Ecosystem.
 
 Every heartbeat cycle, you should:
-1. Check for new enrollment inquiries in GHL and respond within scope
+1. Check for new client inquiries in GHL and respond within scope
 2. Check for overdue follow-ups and send reminders
 3. Check for upcoming calendar events and prepare reminders
 4. Check for any tasks assigned to you and work on them

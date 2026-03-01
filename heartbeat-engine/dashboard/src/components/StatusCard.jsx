@@ -127,7 +127,7 @@ function StatusCard({ agentStatus, theme, lastUpdate }) {
         <div style={styles.info}>
           <div style={styles.name}>{agent.name || 'Sarah Rodriguez'}</div>
           <div style={styles.role}>
-            {agent.role || 'Operations Agent'} • {agent.client || 'Youth Empowerment School'}
+            {agent.role || 'Operations Agent'} • {agent.client || 'BLOOM Ecosystem'}
           </div>
           <div style={styles.levelBadge}>
             Level {agent.autonomyLevel || 1} {getAutonomyLevelName(agent.autonomyLevel)}

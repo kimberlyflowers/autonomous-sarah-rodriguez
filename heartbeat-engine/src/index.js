@@ -235,7 +235,7 @@ async function startHeartbeatEngine() {
         agentId: process.env.AGENT_ID || 'bloomie-sarah-rodriguez',
         name: process.env.AGENT_NAME || 'Sarah Rodriguez',
         currentAutonomyLevel: parseInt(process.env.AUTONOMY_LEVEL || '1'),
-        client: 'Youth Empowerment School'
+        client: 'BLOOM Ecosystem'
       };
     }
 

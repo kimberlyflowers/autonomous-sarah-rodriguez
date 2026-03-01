@@ -42,7 +42,7 @@ agents:
     memory_size: 6000
     context_window: 12000
     personality: "professional operations agent"
-    role: "Youth Empowerment School operations"
+    role: "BLOOM Ecosystem operations"
 
 # Security
 security:

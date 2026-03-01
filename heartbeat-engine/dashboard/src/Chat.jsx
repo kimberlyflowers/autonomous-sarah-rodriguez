@@ -211,7 +211,7 @@ function Chat({ theme }) {
       <div style={styles.messagesContainer}>
         {messages.length === 0 ? (
           <div style={styles.welcomeMessage}>
-            Hi! I'm Sarah Rodriguez, your autonomous operations agent for Youth Empowerment School.
+            Hi! I'm Sarah Rodriguez, your autonomous operations agent for BLOOM Ecosystem.
             <br />
             Ask me about my recent work or give me new tasks!
           </div>
