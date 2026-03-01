@@ -136,6 +136,72 @@ ON chat_messages(session_id, timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_agent_time
 ON chat_messages(agent_id, timestamp DESC);
 
+-- Internal tools tables for Sarah's autonomous operations
+-- Tasks table for planning and tracking
+CREATE TABLE IF NOT EXISTS bloom_tasks (
+    id SERIAL PRIMARY KEY,
+    agent_id VARCHAR(100) NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    description TEXT NOT NULL,
+    priority VARCHAR(20) DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high', 'urgent')),
+    category VARCHAR(50) NOT NULL CHECK (category IN ('ghl_ops', 'communication', 'analysis', 'follow_up', 'escalation')),
+    status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'in_progress', 'completed', 'blocked')),
+    due_date TIMESTAMP,
+    related_contact_id VARCHAR(100),
+    related_opportunity_id VARCHAR(100),
+    progress_notes TEXT,
+    completion_details TEXT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Decision logging table for transparency
+CREATE TABLE IF NOT EXISTS bloom_decisions (
+    id SERIAL PRIMARY KEY,
+    agent_id VARCHAR(100) NOT NULL,
+    decision TEXT NOT NULL,
+    reasoning TEXT NOT NULL,
+    confidence DECIMAL(3,2) CHECK (confidence >= 0 AND confidence <= 1),
+    category VARCHAR(50) NOT NULL CHECK (category IN ('action_taken', 'action_rejected', 'escalation', 'analysis')),
+    impact_level VARCHAR(20) DEFAULT 'medium' CHECK (impact_level IN ('low', 'medium', 'high')),
+    related_data JSONB,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Observations table for insights and monitoring
+CREATE TABLE IF NOT EXISTS bloom_observations (
+    id SERIAL PRIMARY KEY,
+    agent_id VARCHAR(100) NOT NULL,
+    observation TEXT NOT NULL,
+    context TEXT NOT NULL,
+    significance VARCHAR(20) NOT NULL CHECK (significance IN ('low', 'medium', 'high')),
+    action_recommended TEXT,
+    data_points JSONB,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Context storage for memory and insights
+CREATE TABLE IF NOT EXISTS bloom_context (
+    id SERIAL PRIMARY KEY,
+    agent_id VARCHAR(100) NOT NULL,
+    context_type VARCHAR(50) NOT NULL CHECK (context_type IN ('client_preference', 'workflow_pattern', 'system_insight', 'relationship_note')),
+    title VARCHAR(255) NOT NULL,
+    content TEXT NOT NULL,
+    related_entities JSONB,
+    tags JSONB,
+    expires_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Indexes for internal tools tables
+CREATE INDEX IF NOT EXISTS idx_bloom_tasks_agent_status ON bloom_tasks(agent_id, status, priority);
+CREATE INDEX IF NOT EXISTS idx_bloom_tasks_due_date ON bloom_tasks(due_date) WHERE due_date IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_bloom_decisions_agent_time ON bloom_decisions(agent_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_bloom_observations_agent_significance ON bloom_observations(agent_id, significance, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_bloom_context_agent_type ON bloom_context(agent_id, context_type, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_bloom_context_tags ON bloom_context USING GIN(tags) WHERE tags IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_bloom_context_entities ON bloom_context USING GIN(related_entities) WHERE related_entities IS NOT NULL;
+
 -- Insert Sarah Rodriguez agent profile
 INSERT INTO agents (id, name, role, client, autonomy_level, standing_instructions, config, created_at)
 VALUES (
