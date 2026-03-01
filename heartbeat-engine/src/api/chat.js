@@ -372,6 +372,10 @@ router.post('/message', async (req, res) => {
   try {
     const { message, sessionId = 'default' } = req.body;
 
+    // Debug: Check if API key exists
+    console.log(process.env.ANTHROPIC_API_KEY ? 'KEY EXISTS' : 'KEY MISSING');
+    console.log('Chat endpoint called with message:', message?.substring(0, 50) + '...');
+
     if (!message?.trim()) {
       return res.status(400).json({ error: 'Message is required' });
     }
@@ -418,13 +422,22 @@ router.post('/message', async (req, res) => {
     });
 
     // Execute through AgentExecutor with full tool access
+    console.log('Creating AgentExecutor with agentId:', agentConfig.agentId);
     const executor = new AgentExecutor(agentConfig.agentId);
+
+    console.log('Calling executeTask...');
     const result = await executor.executeTask(message, {
       conversationHistory,
       trigger: 'chat',
       sessionId,
       executionId,
       recentWork: context
+    });
+
+    console.log('ExecuteTask result:', {
+      status: result.status,
+      hasResult: !!result.result,
+      resultType: typeof result.result
     });
 
     const sarahResponse = result.result || result.finalMessage || 'I apologize, but I encountered an issue processing your request.';
