@@ -18,6 +18,7 @@ import { ensureDatabaseExists } from './database/auto-setup.js';
 import dashboardRoutes from './api/dashboard.js';
 import chatRoutes from './api/chat.js';
 import eventRoutes from './api/events.js';
+import executeRoutes from './api/execute.js';
 
 // Get the current directory for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -167,6 +168,9 @@ app.use('/api/chat', chatRoutes);
 
 // Events API routes (SSE)
 app.use('/api/events', eventRoutes);
+
+// Agentic execution API routes
+app.use('/api/execute', executeRoutes);
 
 // Serve React static files
 app.use(express.static(path.join(__dirname, '../dashboard/dist')));
