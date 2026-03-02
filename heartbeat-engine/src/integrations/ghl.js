@@ -17,7 +17,7 @@ class GHLClient {
 
     this.apiKey = process.env.GHL_API_KEY;
     this.locationId = process.env.GHL_LOCATION_ID;
-    this.baseUrl = 'https://rest.gohighlevel.com/v1';
+    this.baseUrl = 'https://services.leadconnectorhq.com';
 
     if (!this.apiKey) {
       logger.warn('GHL_API_KEY not configured - GHL integration will be limited');

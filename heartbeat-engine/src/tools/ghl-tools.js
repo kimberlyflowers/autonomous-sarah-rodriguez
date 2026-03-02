@@ -6,7 +6,7 @@ import { createLogger } from '../logging/logger.js';
 
 const logger = createLogger('ghl-tools');
 
-const GHL_BASE_URL = 'https://rest.gohighlevel.com/v1';
+const GHL_BASE_URL = 'https://services.leadconnectorhq.com';
 const GHL_API_VERSION = '2021-07-28';
 
 // Generic GHL API caller
