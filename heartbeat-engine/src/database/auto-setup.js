@@ -398,6 +398,13 @@ escalated. Your logs are how trust is built.`;
 
     logger.info('✅ Sarah Rodriguez agent profile created');
   } else {
-    logger.info('✅ Sarah Rodriguez agent profile already exists');
+    // Update existing agent profile to ensure correct identity
+    await pool.query(`
+      UPDATE agents SET
+        role = 'Content & Digital Marketing Executive',
+        client = 'BLOOM Ecosystem'
+      WHERE id = 'bloomie-sarah-rodriguez'
+    `);
+    logger.info('✅ Sarah Rodriguez agent profile updated with correct identity');
   }
 }
