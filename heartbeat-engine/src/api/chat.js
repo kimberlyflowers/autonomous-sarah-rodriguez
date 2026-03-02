@@ -414,7 +414,7 @@ router.post('/message', async (req, res) => {
     const executionId = `chat-${sessionId}-${Date.now()}`;
 
     // Broadcast execution start
-    broadcastExecutionProgress({
+    await broadcastExecutionProgress({
       executionId,
       turn: 0,
       toolStatus: 'in_progress',

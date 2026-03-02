@@ -96,8 +96,8 @@ export function triggerDataUpdate(updateType, data = {}) {
 }
 
 // Function to broadcast real-time execution progress (Claude Code interleaved thinking pattern)
-export function broadcastExecutionProgress(progressData) {
-  const { v4: uuidv4 } = require('uuid');
+export async function broadcastExecutionProgress(progressData) {
+  const { v4: uuidv4 } = await import('uuid');
 
   const eventData = {
     type: "execution_progress",
