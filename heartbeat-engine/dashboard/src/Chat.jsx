@@ -137,8 +137,10 @@ function Chat({ theme }) {
     messageBubble: {
       padding: '12px 16px',
       borderRadius: 18,
-      fontSize: 14,
-      lineHeight: 1.4,
+      fontSize: '15px',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+      lineHeight: '1.5',
+      letterSpacing: '-0.01em',
       wordBreak: 'break-word',
       position: 'relative',
       marginBottom: '2px',
