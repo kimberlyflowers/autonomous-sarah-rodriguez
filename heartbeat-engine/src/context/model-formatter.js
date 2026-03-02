@@ -20,17 +20,6 @@ export const MODEL_CAPABILITIES = {
     contextWindow: 200000,
     outputTokenLimit: 4096
   },
-  'claude-haiku-4-5-20251001': {
-    provider: 'anthropic',
-    maxTokens: 200000,
-    supportsTools: true,
-    supportsImages: true,
-    supportsSystemMessages: true,
-    messageFormat: 'anthropic',
-    toolFormat: 'anthropic',
-    contextWindow: 200000,
-    outputTokenLimit: 4096
-  },
   'gpt-4o': {
     provider: 'openai',
     maxTokens: 128000,
@@ -268,6 +257,9 @@ export class ModelFormatter {
 
         if (formattedTools.length > 0) {
           anthropicParams.tools = formattedTools;
+          // Note: Anthropic API uses 'tools' but does NOT use 'tool_choice'
+          // Remove any tool_choice that might have been inherited
+          delete anthropicParams.tool_choice;
         }
 
         return anthropicParams;
