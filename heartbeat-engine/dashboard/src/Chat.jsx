@@ -264,7 +264,20 @@ function Chat({ theme }) {
                   {message.isUser ? (
                     message.text
                   ) : (
-                    <ReactMarkdown>{message.text}</ReactMarkdown>
+                    <ReactMarkdown
+                      components={{
+                        p: ({children}) => <p style={{margin: '0 0 10px 0'}}>{children}</p>,
+                        ul: ({children}) => <ul style={{margin: '8px 0', paddingLeft: '24px'}}>{children}</ul>,
+                        ol: ({children}) => <ol style={{margin: '8px 0', paddingLeft: '24px'}}>{children}</ol>,
+                        li: ({children}) => <li style={{margin: '4px 0'}}>{children}</li>,
+                        strong: ({children}) => <strong style={{fontWeight: 600}}>{children}</strong>,
+                        h1: ({children}) => <h1 style={{margin: '12px 0 6px 0', fontWeight: 600}}>{children}</h1>,
+                        h2: ({children}) => <h2 style={{margin: '12px 0 6px 0', fontWeight: 600}}>{children}</h2>,
+                        h3: ({children}) => <h3 style={{margin: '12px 0 6px 0', fontWeight: 600}}>{children}</h3>,
+                      }}
+                    >
+                      {message.text}
+                    </ReactMarkdown>
                   )}
                 </div>
                 {/* Speech bubble tail */}
