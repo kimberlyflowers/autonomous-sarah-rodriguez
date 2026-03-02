@@ -163,41 +163,13 @@ function Chat({ theme }) {
     // Bubble wrapper for positioning tails
     bubbleWrapper: {
       position: 'relative',
-      display: 'inline-block',
       maxWidth: '70%',
     },
     bubbleWrapperUser: {
-      marginLeft: 'auto',
+      alignSelf: 'flex-end',
     },
     bubbleWrapperSarah: {
-      marginRight: 'auto',
-    },
-    // Markdown styling inside bubbles
-    markdownContent: {
-      '& p': {
-        margin: '0 0 8px 0',
-      },
-      '& p:last-child': {
-        margin: 0,
-      },
-      '& ul, & ol': {
-        margin: '8px 0',
-        paddingLeft: '20px',
-      },
-      '& li': {
-        margin: '4px 0',
-      },
-      '& strong': {
-        fontWeight: 600,
-      },
-      '& h1, & h2, & h3': {
-        margin: '8px 0 4px 0',
-        fontWeight: 600,
-        lineHeight: 1.2,
-      },
-      '& h1': { fontSize: '16px' },
-      '& h2': { fontSize: '15px' },
-      '& h3': { fontSize: '14px' },
+      alignSelf: 'flex-start',
     },
     inputContainer: {
       padding: 16,
@@ -291,9 +263,7 @@ function Chat({ theme }) {
                   {message.isUser ? (
                     message.text
                   ) : (
-                    <div style={styles.markdownContent}>
-                      <ReactMarkdown>{message.text}</ReactMarkdown>
-                    </div>
+                    <ReactMarkdown>{message.text}</ReactMarkdown>
                   )}
                 </div>
                 {/* Speech bubble tail */}
