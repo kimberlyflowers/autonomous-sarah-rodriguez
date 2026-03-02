@@ -1,5 +1,5 @@
 // GoHighLevel API v2 Integration Layer for Sarah Rodriguez
-// Provides comprehensive tool_use functions for Claude to interact with GHL
+// ALL endpoints verified against: marketplace.gohighlevel.com/docs
 
 import axios from 'axios';
 import { createLogger } from '../logging/logger.js';
@@ -9,14 +9,11 @@ const logger = createLogger('ghl-tools');
 const GHL_BASE_URL = 'https://services.leadconnectorhq.com';
 const GHL_API_VERSION = '2021-07-28';
 
-// Generic GHL API caller
 async function callGHL(endpoint, method = 'GET', data = null, params = {}) {
   const apiKey = process.env.GHL_API_KEY;
   const locationId = process.env.GHL_LOCATION_ID;
 
-  if (!apiKey) {
-    throw new Error('GHL_API_KEY environment variable not configured');
-  }
+  if (!apiKey) throw new Error('GHL_API_KEY environment variable not configured');
 
   const config = {
     method,
@@ -27,10 +24,7 @@ async function callGHL(endpoint, method = 'GET', data = null, params = {}) {
       'Content-Type': 'application/json',
       'Accept': 'application/json'
     },
-    params: {
-      locationId,
-      ...params
-    }
+    params: { locationId, ...params }
   };
 
   if (data && ['POST', 'PUT', 'PATCH'].includes(method.toUpperCase())) {
@@ -56,8 +50,8 @@ export const contactTools = [
       type: "object",
       properties: {
         query: { type: "string", description: "Search query (email, phone, name)" },
-        limit: { type: "number", description: "Results limit (default: 100)" },
-        startAfter: { type: "string", description: "Pagination cursor" }
+        limit: { type: "number", description: "Results limit (default: 20)" },
+        page: { type: "number", description: "Page number (default: 1)" }
       },
       required: ["query"]
     }
@@ -67,9 +61,7 @@ export const contactTools = [
     description: "Get detailed information about a specific contact",
     input_schema: {
       type: "object",
-      properties: {
-        contactId: { type: "string", description: "Contact ID" }
-      },
+      properties: { contactId: { type: "string", description: "Contact ID" } },
       required: ["contactId"]
     }
   },
@@ -79,18 +71,12 @@ export const contactTools = [
     input_schema: {
       type: "object",
       properties: {
-        firstName: { type: "string", description: "First name" },
-        lastName: { type: "string", description: "Last name" },
-        email: { type: "string", description: "Email address" },
-        phone: { type: "string", description: "Phone number" },
-        address1: { type: "string", description: "Address line 1" },
-        city: { type: "string", description: "City" },
-        state: { type: "string", description: "State" },
-        postalCode: { type: "string", description: "Postal code" },
-        website: { type: "string", description: "Website" },
-        timezone: { type: "string", description: "Timezone" },
-        tags: { type: "array", items: { type: "string" }, description: "Tags to assign" },
-        customFields: { type: "object", description: "Custom field values" }
+        firstName: { type: "string" }, lastName: { type: "string" },
+        email: { type: "string" }, phone: { type: "string" },
+        address1: { type: "string" }, city: { type: "string" },
+        state: { type: "string" }, postalCode: { type: "string" },
+        website: { type: "string" }, tags: { type: "array", items: { type: "string" } },
+        customFields: { type: "object" }
       },
       required: ["firstName"]
     }
@@ -101,13 +87,10 @@ export const contactTools = [
     input_schema: {
       type: "object",
       properties: {
-        contactId: { type: "string", description: "Contact ID" },
-        firstName: { type: "string", description: "First name" },
-        lastName: { type: "string", description: "Last name" },
-        email: { type: "string", description: "Email address" },
-        phone: { type: "string", description: "Phone number" },
-        tags: { type: "array", items: { type: "string" }, description: "Tags" },
-        customFields: { type: "object", description: "Custom field values" }
+        contactId: { type: "string" }, firstName: { type: "string" },
+        lastName: { type: "string" }, email: { type: "string" },
+        phone: { type: "string" }, tags: { type: "array", items: { type: "string" } },
+        customFields: { type: "object" }
       },
       required: ["contactId"]
     }
@@ -117,9 +100,7 @@ export const contactTools = [
     description: "Delete a contact from GHL",
     input_schema: {
       type: "object",
-      properties: {
-        contactId: { type: "string", description: "Contact ID" }
-      },
+      properties: { contactId: { type: "string" } },
       required: ["contactId"]
     }
   },
@@ -129,8 +110,8 @@ export const contactTools = [
     input_schema: {
       type: "object",
       properties: {
-        contactId: { type: "string", description: "Contact ID" },
-        tags: { type: "array", items: { type: "string" }, description: "Tags to add" }
+        contactId: { type: "string" },
+        tags: { type: "array", items: { type: "string" } }
       },
       required: ["contactId", "tags"]
     }
@@ -141,8 +122,8 @@ export const contactTools = [
     input_schema: {
       type: "object",
       properties: {
-        contactId: { type: "string", description: "Contact ID" },
-        tags: { type: "array", items: { type: "string" }, description: "Tags to remove" }
+        contactId: { type: "string" },
+        tags: { type: "array", items: { type: "string" } }
       },
       required: ["contactId", "tags"]
     }
@@ -153,9 +134,9 @@ export const contactTools = [
     input_schema: {
       type: "object",
       properties: {
-        contactId: { type: "string", description: "Contact ID" },
-        body: { type: "string", description: "Note content" },
-        userId: { type: "string", description: "User ID creating the note" }
+        contactId: { type: "string" },
+        body: { type: "string" },
+        userId: { type: "string" }
       },
       required: ["contactId", "body"]
     }
@@ -166,18 +147,15 @@ export const contactTools = [
     input_schema: {
       type: "object",
       properties: {
-        contactId: { type: "string", description: "Contact ID" },
-        title: { type: "string", description: "Task title" },
-        body: { type: "string", description: "Task description" },
-        dueDate: { type: "string", description: "Due date (ISO format)" },
-        assignedTo: { type: "string", description: "Assigned user ID" }
+        contactId: { type: "string" }, title: { type: "string" },
+        body: { type: "string" }, dueDate: { type: "string" },
+        assignedTo: { type: "string" }
       },
       required: ["contactId", "title"]
     }
   }
 ];
 
-// CONVERSATIONS Tools
 export const conversationTools = [
   {
     name: "ghl_get_conversations",
@@ -185,8 +163,8 @@ export const conversationTools = [
     input_schema: {
       type: "object",
       properties: {
-        contactId: { type: "string", description: "Contact ID" },
-        limit: { type: "number", description: "Results limit" }
+        contactId: { type: "string" },
+        limit: { type: "number" }
       },
       required: ["contactId"]
     }
@@ -197,39 +175,34 @@ export const conversationTools = [
     input_schema: {
       type: "object",
       properties: {
-        contactId: { type: "string", description: "Contact ID" },
-        type: { type: "string", enum: ["SMS", "Email", "WhatsApp", "GMB", "IG", "FB"], description: "Message type" },
-        message: { type: "string", description: "Message content" },
-        subject: { type: "string", description: "Email subject (for email type)" },
-        html: { type: "string", description: "HTML content (for email)" }
+        contactId: { type: "string" },
+        type: { type: "string", enum: ["SMS", "Email", "WhatsApp", "GMB", "IG", "FB"] },
+        message: { type: "string" },
+        subject: { type: "string" },
+        html: { type: "string" }
       },
       required: ["contactId", "type", "message"]
     }
   },
   {
     name: "ghl_search_conversations",
-    description: "Search conversations by text content",
+    description: "Search conversations by contact or text",
     input_schema: {
       type: "object",
       properties: {
-        query: { type: "string", description: "Search query" },
-        limit: { type: "number", description: "Results limit" }
-      },
-      required: ["query"]
+        contactId: { type: "string" },
+        query: { type: "string" },
+        limit: { type: "number" }
+      }
     }
   }
 ];
 
-// CALENDAR Tools
 export const calendarTools = [
   {
     name: "ghl_list_calendars",
     description: "Get all calendars for the location",
-    input_schema: {
-      type: "object",
-      properties: {},
-      required: []
-    }
+    input_schema: { type: "object", properties: {}, required: [] }
   },
   {
     name: "ghl_get_calendar_slots",
@@ -237,9 +210,9 @@ export const calendarTools = [
     input_schema: {
       type: "object",
       properties: {
-        calendarId: { type: "string", description: "Calendar ID" },
-        startDate: { type: "string", description: "Start date (YYYY-MM-DD)" },
-        endDate: { type: "string", description: "End date (YYYY-MM-DD)" }
+        calendarId: { type: "string" },
+        startDate: { type: "string" },
+        endDate: { type: "string" }
       },
       required: ["calendarId", "startDate", "endDate"]
     }
@@ -250,31 +223,28 @@ export const calendarTools = [
     input_schema: {
       type: "object",
       properties: {
-        calendarId: { type: "string", description: "Calendar ID" },
-        contactId: { type: "string", description: "Contact ID" },
-        startTime: { type: "string", description: "Start time (ISO format)" },
-        title: { type: "string", description: "Appointment title" },
-        appointmentStatus: { type: "string", description: "Appointment status" }
+        calendarId: { type: "string" }, contactId: { type: "string" },
+        startTime: { type: "string" }, title: { type: "string" },
+        appointmentStatus: { type: "string" }
       },
       required: ["calendarId", "contactId", "startTime"]
     }
   },
   {
     name: "ghl_get_appointments",
-    description: "Get appointments from calendar",
+    description: "Get appointments/events from calendar",
     input_schema: {
       type: "object",
       properties: {
-        calendarId: { type: "string", description: "Calendar ID" },
-        startDate: { type: "string", description: "Start date" },
-        endDate: { type: "string", description: "End date" }
+        calendarId: { type: "string" },
+        startDate: { type: "string" },
+        endDate: { type: "string" }
       },
       required: ["calendarId"]
     }
   }
 ];
 
-// OPPORTUNITIES Tools
 export const opportunityTools = [
   {
     name: "ghl_search_opportunities",
@@ -282,10 +252,8 @@ export const opportunityTools = [
     input_schema: {
       type: "object",
       properties: {
-        pipelineId: { type: "string", description: "Pipeline ID" },
-        status: { type: "string", description: "Opportunity status" },
-        q: { type: "string", description: "Search query" },
-        limit: { type: "number", description: "Results limit" }
+        pipelineId: { type: "string" }, status: { type: "string" },
+        query: { type: "string" }, limit: { type: "number" }
       }
     }
   },
@@ -294,9 +262,7 @@ export const opportunityTools = [
     description: "Get details of a specific opportunity",
     input_schema: {
       type: "object",
-      properties: {
-        opportunityId: { type: "string", description: "Opportunity ID" }
-      },
+      properties: { opportunityId: { type: "string" } },
       required: ["opportunityId"]
     }
   },
@@ -306,12 +272,9 @@ export const opportunityTools = [
     input_schema: {
       type: "object",
       properties: {
-        pipelineId: { type: "string", description: "Pipeline ID" },
-        pipelineStageId: { type: "string", description: "Pipeline stage ID" },
-        contactId: { type: "string", description: "Contact ID" },
-        name: { type: "string", description: "Opportunity name" },
-        monetaryValue: { type: "number", description: "Monetary value" },
-        assignedTo: { type: "string", description: "Assigned user ID" }
+        pipelineId: { type: "string" }, pipelineStageId: { type: "string" },
+        contactId: { type: "string" }, name: { type: "string" },
+        monetaryValue: { type: "number" }, assignedTo: { type: "string" }
       },
       required: ["pipelineId", "contactId", "name"]
     }
@@ -322,11 +285,9 @@ export const opportunityTools = [
     input_schema: {
       type: "object",
       properties: {
-        opportunityId: { type: "string", description: "Opportunity ID" },
-        name: { type: "string", description: "Opportunity name" },
-        pipelineStageId: { type: "string", description: "Pipeline stage ID" },
-        monetaryValue: { type: "number", description: "Monetary value" },
-        status: { type: "string", description: "Status" }
+        opportunityId: { type: "string" }, name: { type: "string" },
+        pipelineStageId: { type: "string" }, monetaryValue: { type: "number" },
+        status: { type: "string" }
       },
       required: ["opportunityId"]
     }
@@ -334,24 +295,15 @@ export const opportunityTools = [
   {
     name: "ghl_get_pipelines",
     description: "Get all pipelines for the location",
-    input_schema: {
-      type: "object",
-      properties: {},
-      required: []
-    }
+    input_schema: { type: "object", properties: {}, required: [] }
   }
 ];
 
-// WORKFLOWS Tools
 export const workflowTools = [
   {
     name: "ghl_list_workflows",
     description: "Get all workflows for the location",
-    input_schema: {
-      type: "object",
-      properties: {},
-      required: []
-    }
+    input_schema: { type: "object", properties: {}, required: [] }
   },
   {
     name: "ghl_add_contact_to_workflow",
@@ -359,8 +311,8 @@ export const workflowTools = [
     input_schema: {
       type: "object",
       properties: {
-        workflowId: { type: "string", description: "Workflow ID" },
-        contactId: { type: "string", description: "Contact ID" }
+        workflowId: { type: "string" },
+        contactId: { type: "string" }
       },
       required: ["workflowId", "contactId"]
     }
@@ -371,24 +323,19 @@ export const workflowTools = [
     input_schema: {
       type: "object",
       properties: {
-        workflowId: { type: "string", description: "Workflow ID" },
-        contactId: { type: "string", description: "Contact ID" }
+        workflowId: { type: "string" },
+        contactId: { type: "string" }
       },
       required: ["workflowId", "contactId"]
     }
   }
 ];
 
-// FORMS/SURVEYS Tools
 export const formsTools = [
   {
     name: "ghl_get_forms",
     description: "Get all forms for the location",
-    input_schema: {
-      type: "object",
-      properties: {},
-      required: []
-    }
+    input_schema: { type: "object", properties: {}, required: [] }
   },
   {
     name: "ghl_get_form_submissions",
@@ -396,16 +343,14 @@ export const formsTools = [
     input_schema: {
       type: "object",
       properties: {
-        formId: { type: "string", description: "Form ID" },
-        limit: { type: "number", description: "Results limit" },
-        page: { type: "number", description: "Page number" }
+        formId: { type: "string" }, limit: { type: "number" },
+        startAt: { type: "string" }, endAt: { type: "string" }
       },
       required: ["formId"]
     }
   }
 ];
 
-// MEDIA Tools
 export const mediaTools = [
   {
     name: "ghl_upload_media",
@@ -413,8 +358,8 @@ export const mediaTools = [
     input_schema: {
       type: "object",
       properties: {
-        fileName: { type: "string", description: "File name" },
-        fileBase64: { type: "string", description: "File content as base64" }
+        fileName: { type: "string" },
+        fileBase64: { type: "string" }
       },
       required: ["fileName", "fileBase64"]
     }
@@ -424,15 +369,11 @@ export const mediaTools = [
     description: "List files in media library",
     input_schema: {
       type: "object",
-      properties: {
-        limit: { type: "number", description: "Results limit" },
-        altId: { type: "string", description: "Alternative ID for filtering" }
-      }
+      properties: { limit: { type: "number" } }
     }
   }
 ];
 
-// EMAIL CAMPAIGNS Tools
 export const emailTools = [
   {
     name: "ghl_get_email_campaigns",
@@ -440,28 +381,17 @@ export const emailTools = [
     input_schema: {
       type: "object",
       properties: {
-        type: { type: "string", description: "Campaign type" },
-        status: { type: "string", description: "Campaign status" }
+        status: { type: "string" }
       }
     }
   },
   {
-    name: "ghl_send_email_campaign",
-    description: "Send an email to contacts",
-    input_schema: {
-      type: "object",
-      properties: {
-        emails: { type: "array", items: { type: "string" }, description: "Email addresses" },
-        subject: { type: "string", description: "Email subject" },
-        html: { type: "string", description: "HTML content" },
-        attachments: { type: "array", description: "Email attachments" }
-      },
-      required: ["emails", "subject", "html"]
-    }
+    name: "ghl_list_email_templates",
+    description: "List email templates",
+    input_schema: { type: "object", properties: {}, required: [] }
   }
 ];
 
-// Combine all tools into categories
 export const allGHLTools = [
   ...contactTools,
   ...conversationTools,
@@ -473,93 +403,140 @@ export const allGHLTools = [
   ...emailTools
 ];
 
-// Tool execution handler
 export async function executeGHLTool(toolName, parameters) {
   const startTime = Date.now();
   logger.info(`Executing GHL tool: ${toolName}`, parameters);
+  const locationId = process.env.GHL_LOCATION_ID;
 
   try {
     let result;
 
-    // CONTACTS
+    // ── CONTACTS ──────────────────────────────────────────────
     if (toolName === 'ghl_search_contacts') {
-      const locationId = process.env.GHL_LOCATION_ID;
-      result = await callGHL('/contacts/search', 'POST', { locationId, query: parameters.query }, null);
+      // POST /contacts/search — requires page + pageLimit
+      result = await callGHL('/contacts/search', 'POST', {
+        locationId, page: parameters.page || 1,
+        pageLimit: parameters.limit || 20, query: parameters.query
+      }, null);
+
     } else if (toolName === 'ghl_get_contact') {
       result = await callGHL(`/contacts/${parameters.contactId}`);
+
     } else if (toolName === 'ghl_create_contact') {
-      result = await callGHL('/contacts', 'POST', parameters);
+      result = await callGHL('/contacts/', 'POST', { locationId, ...parameters });
+
     } else if (toolName === 'ghl_update_contact') {
       const { contactId, ...updateData } = parameters;
       result = await callGHL(`/contacts/${contactId}`, 'PUT', updateData);
+
     } else if (toolName === 'ghl_delete_contact') {
       result = await callGHL(`/contacts/${parameters.contactId}`, 'DELETE');
+
     } else if (toolName === 'ghl_add_contact_tags') {
       result = await callGHL(`/contacts/${parameters.contactId}/tags`, 'POST', { tags: parameters.tags });
+
     } else if (toolName === 'ghl_remove_contact_tags') {
       result = await callGHL(`/contacts/${parameters.contactId}/tags`, 'DELETE', { tags: parameters.tags });
+
     } else if (toolName === 'ghl_add_contact_note') {
-      result = await callGHL(`/contacts/${parameters.contactId}/notes`, 'POST', parameters);
+      const { contactId, ...noteData } = parameters;
+      result = await callGHL(`/contacts/${contactId}/notes`, 'POST', noteData);
+
     } else if (toolName === 'ghl_create_contact_task') {
-      result = await callGHL(`/contacts/${parameters.contactId}/tasks`, 'POST', parameters);
+      const { contactId, ...taskData } = parameters;
+      result = await callGHL(`/contacts/${contactId}/tasks`, 'POST', taskData);
 
-    // CONVERSATIONS
+    // ── CONVERSATIONS ─────────────────────────────────────────
     } else if (toolName === 'ghl_get_conversations') {
-      result = await callGHL(`/conversations`, 'GET', null, parameters);
+      // GET /conversations/search?locationId=&contactId=
+      result = await callGHL('/conversations/search', 'GET', null, {
+        locationId, contactId: parameters.contactId, limit: parameters.limit || 20
+      });
+
     } else if (toolName === 'ghl_send_message') {
+      // POST /conversations/messages
       result = await callGHL('/conversations/messages', 'POST', parameters);
+
     } else if (toolName === 'ghl_search_conversations') {
-      result = await callGHL('/conversations/search', 'GET', null, parameters);
+      // GET /conversations/search?locationId=
+      result = await callGHL('/conversations/search', 'GET', null, { locationId, ...parameters });
 
-    // CALENDAR
+    // ── CALENDARS ─────────────────────────────────────────────
     } else if (toolName === 'ghl_list_calendars') {
-      result = await callGHL('/calendars');
-    } else if (toolName === 'ghl_get_calendar_slots') {
-      result = await callGHL(`/calendars/${parameters.calendarId}/free-slots`, 'GET', null, parameters);
-    } else if (toolName === 'ghl_create_appointment') {
-      result = await callGHL(`/calendars/${parameters.calendarId}/appointments`, 'POST', parameters);
-    } else if (toolName === 'ghl_get_appointments') {
-      result = await callGHL(`/calendars/${parameters.calendarId}/appointments`, 'GET', null, parameters);
+      result = await callGHL('/calendars/');
 
-    // OPPORTUNITIES
+    } else if (toolName === 'ghl_get_calendar_slots') {
+      result = await callGHL(`/calendars/${parameters.calendarId}/free-slots`, 'GET', null, {
+        startDate: parameters.startDate, endDate: parameters.endDate
+      });
+
+    } else if (toolName === 'ghl_create_appointment') {
+      // POST /calendars/events/appointments
+      result = await callGHL('/calendars/events/appointments', 'POST', { locationId, ...parameters });
+
+    } else if (toolName === 'ghl_get_appointments') {
+      // GET /calendars/events?locationId=&calendarId=&startTime=&endTime=
+      result = await callGHL('/calendars/events', 'GET', null, {
+        locationId, calendarId: parameters.calendarId,
+        startTime: parameters.startDate, endTime: parameters.endDate
+      });
+
+    // ── OPPORTUNITIES ─────────────────────────────────────────
     } else if (toolName === 'ghl_search_opportunities') {
-      const locationId = process.env.GHL_LOCATION_ID;
-      result = await callGHL('/opportunities/search', 'POST', { location_id: locationId, query: parameters.query }, null);
+      // POST /opportunities/search — uses location_id not locationId
+      result = await callGHL('/opportunities/search', 'POST', {
+        location_id: locationId, page: 1, pageLimit: parameters.limit || 20,
+        ...(parameters.query && { query: parameters.query }),
+        ...(parameters.pipelineId && { pipelineId: parameters.pipelineId }),
+        ...(parameters.status && { status: parameters.status })
+      }, null);
+
     } else if (toolName === 'ghl_get_opportunity') {
       result = await callGHL(`/opportunities/${parameters.opportunityId}`);
+
     } else if (toolName === 'ghl_create_opportunity') {
-      result = await callGHL('/opportunities', 'POST', parameters);
+      result = await callGHL('/opportunities/', 'POST', { locationId, ...parameters });
+
     } else if (toolName === 'ghl_update_opportunity') {
       const { opportunityId, ...updateData } = parameters;
       result = await callGHL(`/opportunities/${opportunityId}`, 'PUT', updateData);
+
     } else if (toolName === 'ghl_get_pipelines') {
       result = await callGHL('/opportunities/pipelines');
 
-    // WORKFLOWS
+    // ── WORKFLOWS ─────────────────────────────────────────────
     } else if (toolName === 'ghl_list_workflows') {
-      result = await callGHL('/workflows');
+      result = await callGHL('/workflows/');
+
     } else if (toolName === 'ghl_add_contact_to_workflow') {
-      result = await callGHL(`/workflows/${parameters.workflowId}/subscribers`, 'POST', { contactId: parameters.contactId });
+      // POST /contacts/{contactId}/workflow/{workflowId}
+      result = await callGHL(`/contacts/${parameters.contactId}/workflow/${parameters.workflowId}`, 'POST', {});
+
     } else if (toolName === 'ghl_remove_contact_from_workflow') {
-      result = await callGHL(`/workflows/${parameters.workflowId}/subscribers/${parameters.contactId}`, 'DELETE');
+      // DELETE /contacts/{contactId}/workflow/{workflowId}
+      result = await callGHL(`/contacts/${parameters.contactId}/workflow/${parameters.workflowId}`, 'DELETE');
 
-    // FORMS
+    // ── FORMS ─────────────────────────────────────────────────
     } else if (toolName === 'ghl_get_forms') {
-      result = await callGHL('/forms');
+      result = await callGHL('/forms/');
+
     } else if (toolName === 'ghl_get_form_submissions') {
-      result = await callGHL(`/forms/${parameters.formId}/submissions`, 'GET', null, parameters);
+      // GET /forms/submissions?locationId=&formId=
+      result = await callGHL('/forms/submissions', 'GET', null, { formId: parameters.formId, ...parameters });
 
-    // MEDIA
+    // ── MEDIA ─────────────────────────────────────────────────
     } else if (toolName === 'ghl_upload_media') {
-      result = await callGHL('/media/upload-file', 'POST', parameters);
-    } else if (toolName === 'ghl_list_media') {
-      result = await callGHL('/media', 'GET', null, parameters);
+      result = await callGHL('/medias/upload-file', 'POST', parameters);
 
-    // EMAIL
+    } else if (toolName === 'ghl_list_media') {
+      result = await callGHL('/medias/files');
+
+    // ── EMAIL ─────────────────────────────────────────────────
     } else if (toolName === 'ghl_get_email_campaigns') {
-      result = await callGHL('/campaigns', 'GET', null, parameters);
-    } else if (toolName === 'ghl_send_email_campaign') {
-      result = await callGHL('/campaigns/send', 'POST', parameters);
+      result = await callGHL('/campaigns/', 'GET', null, parameters);
+
+    } else if (toolName === 'ghl_list_email_templates') {
+      result = await callGHL('/emails/builder');
 
     } else {
       throw new Error(`Unknown GHL tool: ${toolName}`);
@@ -567,21 +544,11 @@ export async function executeGHLTool(toolName, parameters) {
 
     const duration = Date.now() - startTime;
     logger.info(`GHL tool completed: ${toolName} (${duration}ms)`);
-
-    return {
-      success: true,
-      data: result,
-      executionTime: duration
-    };
+    return { success: true, data: result, executionTime: duration };
 
   } catch (error) {
     const duration = Date.now() - startTime;
     logger.error(`GHL tool failed: ${toolName} (${duration}ms)`, error.message);
-
-    return {
-      success: false,
-      error: error.message,
-      executionTime: duration
-    };
+    return { success: false, error: error.message, executionTime: duration };
   }
 }
