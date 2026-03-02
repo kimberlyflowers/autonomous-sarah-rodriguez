@@ -136,23 +136,68 @@ function Chat({ theme }) {
     },
     messageBubble: {
       padding: '12px 16px',
-      borderRadius: 12,
+      borderRadius: 18,
       fontSize: 14,
       lineHeight: 1.4,
+      wordBreak: 'break-word',
+      position: 'relative',
+      marginBottom: '2px',
     },
     messageBubbleUser: {
-      backgroundColor: theme.bg,
-      color: theme.text,
-      border: `1px solid ${theme.border}`,
+      backgroundColor: '#E5E5EA',
+      color: '#000',
+      borderBottomRightRadius: '4px', // Reduced for tail
     },
-    messageBubbleBot: {
+    messageBubbleSarah: {
       background: `linear-gradient(135deg, ${theme.accent}, ${theme.accent2})`,
       color: 'white',
+      borderBottomLeftRadius: '4px', // Reduced for tail
     },
     messageTime: {
       fontSize: 11,
       opacity: 0.6,
       marginTop: 4,
+      textAlign: 'center',
+      color: theme.textMuted,
+    },
+    // Bubble wrapper for positioning tails
+    bubbleWrapper: {
+      position: 'relative',
+      display: 'inline-block',
+      maxWidth: '70%',
+    },
+    bubbleWrapperUser: {
+      marginLeft: 'auto',
+    },
+    bubbleWrapperSarah: {
+      marginRight: 'auto',
+    },
+    // Markdown styling inside bubbles
+    markdownContent: {
+      '& p': {
+        margin: '0 0 8px 0',
+      },
+      '& p:last-child': {
+        margin: 0,
+      },
+      '& ul, & ol': {
+        margin: '8px 0',
+        paddingLeft: '20px',
+      },
+      '& li': {
+        margin: '4px 0',
+      },
+      '& strong': {
+        fontWeight: 600,
+      },
+      '& h1, & h2, & h3': {
+        margin: '8px 0 4px 0',
+        fontWeight: 600,
+        lineHeight: 1.2,
+      },
+      '& h1': { fontSize: '16px' },
+      '& h2': { fontSize: '15px' },
+      '& h3': { fontSize: '14px' },
     },
     inputContainer: {
       padding: 16,
@@ -233,19 +278,44 @@ function Chat({ theme }) {
               >
                 {message.isUser ? 'U' : 'SR'}
               </div>
-              <div>
+              <div style={{
+                ...styles.bubbleWrapper,
+                ...(message.isUser ? styles.bubbleWrapperUser : styles.bubbleWrapperSarah),
+              }}>
                 <div
                   style={{
                     ...styles.messageBubble,
-                    ...(message.isUser ? styles.messageBubbleUser : styles.messageBubbleBot),
+                    ...(message.isUser ? styles.messageBubbleUser : styles.messageBubbleSarah),
                   }}
                 >
                   {message.isUser ? (
                     message.text
                   ) : (
-                    <ReactMarkdown>{message.text}</ReactMarkdown>
+                    <div style={styles.markdownContent}>
+                      <ReactMarkdown>{message.text}</ReactMarkdown>
+                    </div>
                   )}
                 </div>
+                {/* Speech bubble tail */}
+                <div
+                  style={{
+                    position: 'absolute',
+                    bottom: '2px',
+                    ...(message.isUser ? {
+                      right: '-6px',
+                      width: 0,
+                      height: 0,
+                      borderLeft: '6px solid #E5E5EA',
+                      borderBottom: '6px solid transparent',
+                    } : {
+                      left: '-6px',
+                      width: 0,
+                      height: 0,
+                      borderRight: `6px solid ${theme.accent}`,
+                      borderBottom: '6px solid transparent',
+                    })
+                  }}
+                />
                 <div style={styles.messageTime}>{message.timestamp}</div>
               </div>
             </div>
@@ -256,7 +326,7 @@ function Chat({ theme }) {
           <div style={{ ...styles.message, ...styles.messageBot }}>
             <div style={{ ...styles.avatar, ...styles.avatarBot }}>SR</div>
             <div>
-              <div style={{ ...styles.messageBubble, ...styles.messageBubbleBot }}>
+              <div style={{ ...styles.messageBubble, ...styles.messageBubbleSarah }}>
                 Thinking...
               </div>
             </div>
