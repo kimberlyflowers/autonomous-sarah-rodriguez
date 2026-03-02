@@ -548,6 +548,80 @@ const SARAH_TOOLS = [
     input_schema: { type: "object", properties: {}, required: [] }
   },
 
+  {
+    name: "ghl_create_email_template",
+    description: "Create a new email template.",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+        subject: { type: "string" },
+        html: { type: "string", description: "HTML content" }
+      },
+      required: ["name", "subject", "html"]
+    }
+  },
+  {
+    name: "ghl_create_trigger_link",
+    description: "Create a trigger link that fires a workflow when clicked.",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+        redirectTo: { type: "string", description: "Target URL" }
+      },
+      required: ["name", "redirectTo"]
+    }
+  },
+  {
+    name: "ghl_send_document",
+    description: "Send a document or contract for signature.",
+    input_schema: {
+      type: "object",
+      properties: {
+        documentId: { type: "string" },
+        contactId: { type: "string" }
+      },
+      required: ["documentId", "contactId"]
+    }
+  },
+  {
+    name: "ghl_update_contact_custom_field",
+    description: "Update custom field values on a contact.",
+    input_schema: {
+      type: "object",
+      properties: {
+        contactId: { type: "string" },
+        customFields: { type: "object", description: "Key-value pairs of custom field data" }
+      },
+      required: ["contactId", "customFields"]
+    }
+  },
+  {
+    name: "ghl_update_opportunity_stage",
+    description: "Move an opportunity to a different pipeline stage.",
+    input_schema: {
+      type: "object",
+      properties: {
+        opportunityId: { type: "string" },
+        pipelineStageId: { type: "string" }
+      },
+      required: ["opportunityId", "pipelineStageId"]
+    }
+  },
+  {
+    name: "ghl_upload_media",
+    description: "Upload a media file to the GHL media library.",
+    input_schema: {
+      type: "object",
+      properties: {
+        fileName: { type: "string" },
+        file: { type: "string", description: "Base64 encoded file content" }
+      },
+      required: ["fileName", "file"]
+    }
+  },
+
   // ── BLOOM INTERNAL ────────────────────────────────────────────────────────
   {
     name: "bloom_log",
