@@ -8,6 +8,13 @@ const logger = createLogger('ghl');
 
 class GHLClient {
   constructor() {
+    // DEBUG: Check GHL environment variables
+    console.log('DEBUG GHL: All env vars containing GHL:', Object.keys(process.env).filter(key => key.includes('GHL')));
+    console.log('DEBUG GHL: GHL_API_KEY exists:', 'GHL_API_KEY' in process.env);
+    console.log('DEBUG GHL: GHL_API_KEY length:', process.env.GHL_API_KEY?.length || 0);
+    console.log('DEBUG GHL: GHL_LOCATION_ID exists:', 'GHL_LOCATION_ID' in process.env);
+    console.log('DEBUG GHL: GHL_LOCATION_ID value:', process.env.GHL_LOCATION_ID || 'UNDEFINED');
+
     this.apiKey = process.env.GHL_API_KEY;
     this.locationId = process.env.GHL_LOCATION_ID;
     this.baseUrl = 'https://services.leadconnectorhq.com';
