@@ -1,581 +1,222 @@
-// Chat API for conversing with Sarah Rodriguez
-// Integrates Claude API with Sarah's agent profile and recent work context
-
+// BLOOM Chat API - Direct Anthropic API call (no executor)
 import express from 'express';
 import Anthropic from '@anthropic-ai/sdk';
-import axios from 'axios';
-import fs from 'fs/promises';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import { createLogger } from '../logging/logger.js';
 import { loadAgentConfig } from '../config/agent-profile.js';
-import { AgentExecutor, EXECUTION_STATUS } from '../agent/executor.js';
-import { broadcastExecutionProgress } from './events.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import { createPool } from '../../database/setup.js';
 
 const router = express.Router();
 const logger = createLogger('chat-api');
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-// Initialize Claude client
-let anthropic = null;
+// SYSTEM PROMPT — goes directly into API "system" parameter
+function buildSystemPrompt(agentConfig) {
+  return `You are Sarah Rodriguez, Content & Digital Marketing Executive at BLOOM Ecosystem.
 
-export function getAnthropicClient() {
-  if (!anthropic) {
-    // DEBUG: Log environment variables to find the actual issue
-    console.log('DEBUG: All env vars containing ANTHROPIC:', Object.keys(process.env).filter(key => key.includes('ANTHROPIC')));
-    console.log('DEBUG: ANTHROPIC_API_KEY exists:', 'ANTHROPIC_API_KEY' in process.env);
-    console.log('DEBUG: ANTHROPIC_API_KEY value length:', process.env.ANTHROPIC_API_KEY?.length || 0);
-    console.log('DEBUG: ANTHROPIC_API_KEY first 10 chars:', process.env.ANTHROPIC_API_KEY?.substring(0, 10) || 'UNDEFINED');
+You are warm, professional, and conversational. Talk like a real colleague.
+Keep responses concise — match the user's energy. Short question = short answer.
+Casual greeting = 1-2 sentences. Only give detail when asked for detail.
+NEVER use headers, bullet points, or formatted reports in chat.
+NEVER say "TASK COMPLETED" or give status summaries.
+NEVER start with "Great question!" or filler phrases.
 
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
-      throw new Error('ANTHROPIC_API_KEY environment variable is not set');
-    }
-    anthropic = new Anthropic({ apiKey });
-  }
-  return anthropic;
+You have tools for GoHighLevel CRM and task management. When asked to do
+something, use your tools to actually do it. Tell the user what you did
+in plain conversational language.
+
+Your boss is Kimberly, Founder/CEO of BLOOM Ecosystem.
+Your client is Youth Empowerment School.
+You are an AI employee (a "Bloomie") — be honest if asked directly.`;
 }
 
-// Get database pool - using the same pattern as existing code
-async function getPool() {
-  const { createPool } = await import('../../database/setup.js');
-  return createPool();
-}
-
-// Create chat messages table if it doesn't exist
-async function ensureChatTableExists() {
-  const pool = await getPool();
-  try {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS chat_messages (
-        id SERIAL PRIMARY KEY,
-        session_id VARCHAR(100) DEFAULT 'default',
-        message TEXT NOT NULL,
-        is_user BOOLEAN NOT NULL,
-        agent_id VARCHAR(100),
-        timestamp TIMESTAMP DEFAULT NOW(),
-        context JSONB
-      );
-    `);
-
-    // Create index for efficient querying
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_chat_messages_session_time
-      ON chat_messages(session_id, timestamp DESC);
-    `);
-  } catch (error) {
-    logger.warn('Could not create chat_messages table:', error.message);
-  } finally {
-    await pool.end();
-  }
-}
-
-// Load Sarah's soul/identity from soul.md file
-async function loadSarahSoul() {
-  try {
-    const soulPath = path.resolve(__dirname, '../../soul.md');
-    const soulContent = await fs.readFile(soulPath, 'utf8');
-    return soulContent;
-  } catch (error) {
-    logger.warn('Could not load soul.md file:', error.message);
-    return ''; // Return empty string if file not found
-  }
-}
-
-// GHL API helper functions
-async function callGHLAPI(endpoint, method = 'GET', data = null) {
-  const apiKey = process.env.GHL_API_KEY;
-  if (!apiKey) {
-    throw new Error('GHL_API_KEY not configured');
-  }
-
-  const config = {
-    method,
-    url: `https://services.leadconnectorhq.com${endpoint}`,
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json'
-    }
-  };
-
-  if (data && (method === 'POST' || method === 'PUT' || method === 'PATCH')) {
-    config.data = data;
-  }
-
-  const response = await axios(config);
-  return response.data;
-}
-
-// GHL Tool Functions for Claude
-const ghlTools = [
+// TOOL DEFINITIONS — Claude Code: verify these match your actual GHL tools
+const SARAH_TOOLS = [
   {
-    name: "search_contacts",
-    description: "Search for contacts in GoHighLevel by email, phone, or name",
+    name: "ghl_search_contacts",
+    description: "Search for contacts in GoHighLevel CRM. Use when asked to find or look up a person.",
     input_schema: {
       type: "object",
       properties: {
-        query: {
-          type: "string",
-          description: "Search query (email, phone, or name)"
-        },
-        limit: {
-          type: "number",
-          description: "Max number of results (default: 10)"
-        }
+        query: { type: "string", description: "Search term - name, email, or phone" }
       },
       required: ["query"]
     }
   },
   {
-    name: "get_contact_details",
-    description: "Get detailed information about a specific contact by ID",
+    name: "ghl_create_contact",
+    description: "Create a new contact in GoHighLevel. Use when asked to add a new lead or person.",
     input_schema: {
       type: "object",
       properties: {
-        contact_id: {
-          type: "string",
-          description: "The GoHighLevel contact ID"
-        }
+        firstName: { type: "string", description: "First name" },
+        lastName: { type: "string", description: "Last name" },
+        email: { type: "string", description: "Email address" },
+        phone: { type: "string", description: "Phone number" },
+        tags: { type: "array", items: { type: "string" }, description: "Tags to apply" }
       },
-      required: ["contact_id"]
+      required: ["firstName", "lastName"]
     }
   },
   {
-    name: "create_contact",
-    description: "Create a new contact in GoHighLevel",
+    name: "ghl_get_contact",
+    description: "Get full details for a contact by ID.",
     input_schema: {
       type: "object",
       properties: {
-        firstName: {
-          type: "string",
-          description: "Contact's first name"
-        },
-        lastName: {
-          type: "string",
-          description: "Contact's last name"
-        },
-        email: {
-          type: "string",
-          description: "Contact's email address"
-        },
-        phone: {
-          type: "string",
-          description: "Contact's phone number"
-        },
-        tags: {
-          type: "array",
-          items: { type: "string" },
-          description: "Tags to assign to the contact"
-        }
+        contactId: { type: "string", description: "GoHighLevel contact ID" }
       },
-      required: ["firstName", "email"]
+      required: ["contactId"]
+    }
+  },
+  {
+    name: "ghl_update_contact",
+    description: "Update a contact's information in GoHighLevel.",
+    input_schema: {
+      type: "object",
+      properties: {
+        contactId: { type: "string", description: "Contact ID to update" },
+        firstName: { type: "string" },
+        lastName: { type: "string" },
+        email: { type: "string" },
+        phone: { type: "string" },
+        tags: { type: "array", items: { type: "string" } }
+      },
+      required: ["contactId"]
+    }
+  },
+  {
+    name: "ghl_list_pipelines",
+    description: "List all pipelines in GoHighLevel.",
+    input_schema: { type: "object", properties: {}, required: [] }
+  },
+  {
+    name: "ghl_list_opportunities",
+    description: "List opportunities/deals in GoHighLevel.",
+    input_schema: {
+      type: "object",
+      properties: {
+        pipelineId: { type: "string", description: "Pipeline ID to filter by" }
+      },
+      required: []
+    }
+  },
+  {
+    name: "bloom_log",
+    description: "Log an action or observation to the activity log.",
+    input_schema: {
+      type: "object",
+      properties: {
+        type: { type: "string", enum: ["action", "observation", "error", "decision"] },
+        message: { type: "string" }
+      },
+      required: ["type", "message"]
     }
   }
 ];
 
-// Handle GHL tool calls
-async function handleGHLTool(toolName, parameters) {
-  const locationId = process.env.GHL_LOCATION_ID;
-
+// TOOL EXECUTION — maps tool names to actual functions
+async function executeTool(toolName, toolInput) {
+  logger.info(`Executing tool: ${toolName}`, { input: toolInput });
   try {
     switch (toolName) {
-      case 'search_contacts':
-        return await callGHLAPI(
-          `/contacts/search?locationId=${locationId}&query=${encodeURIComponent(parameters.query)}&limit=${parameters.limit || 10}`
+      case 'ghl_search_contacts':
+      case 'ghl_create_contact':
+      case 'ghl_get_contact':
+      case 'ghl_update_contact':
+      case 'ghl_list_pipelines':
+      case 'ghl_list_opportunities': {
+        const { executeGHLTool } = await import('../tools/ghl-tools.js');
+        return await executeGHLTool(toolName, toolInput);
+      }
+      case 'bloom_log': {
+        const pool = createPool();
+        const result = await pool.query(
+          'INSERT INTO action_log (action_type, description, input_data) VALUES ($1, $2, $3) RETURNING *',
+          [toolInput.type, toolInput.message, JSON.stringify(toolInput)]
         );
-
-      case 'get_contact_details':
-        return await callGHLAPI(`/contacts/${parameters.contact_id}?locationId=${locationId}`);
-
-      case 'create_contact':
-        const contactData = {
-          ...parameters,
-          locationId: locationId
-        };
-        return await callGHLAPI('/contacts', 'POST', contactData);
-
+        await pool.end();
+        return { logged: result.rows[0] };
+      }
       default:
-        throw new Error(`Unknown GHL tool: ${toolName}`);
+        return { error: `Unknown tool: ${toolName}` };
     }
   } catch (error) {
-    logger.error(`GHL tool error (${toolName}):`, error.message);
-    throw new Error(`GHL API error: ${error.response?.data?.message || error.message}`);
+    logger.error(`Tool failed: ${toolName}`, { error: error.message });
+    return { error: error.message };
   }
 }
 
-// Get Sarah's current context for conversation
-async function getSarahContext(agentId) {
-  try {
-    const pool = await getPool();
+// AGENTIC LOOP — handles multi-turn tool calling
+async function chatWithSarah(userMessage, history, agentConfig) {
+  const systemPrompt = buildSystemPrompt(agentConfig);
+  const messages = [...history, { role: 'user', content: userMessage }];
+  let currentMessages = [...messages];
 
-    // Get recent cycles (last 5)
-    const cyclesResult = await pool.query(`
-      SELECT cycle_id, started_at, completed_at, status, actions_count, rejections_count, handoffs_count
-      FROM heartbeat_cycles
-      WHERE agent_id = $1
-      ORDER BY started_at DESC
-      LIMIT 5
-    `, [agentId]);
+  for (let round = 0; round < 10; round++) {
+    const response = await anthropic.messages.create({
+      model: process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001',
+      max_tokens: 1024,
+      system: systemPrompt,
+      messages: currentMessages,
+      tools: SARAH_TOOLS
+    });
 
-    // Get recent actions (last 10)
-    const actionsResult = await pool.query(`
-      SELECT action_type, description, target_system, success, timestamp
-      FROM action_log
-      WHERE agent_id = $1
-      ORDER BY timestamp DESC
-      LIMIT 10
-    `, [agentId]);
-
-    // Get recent rejections (last 5)
-    const rejectionsResult = await pool.query(`
-      SELECT candidate_action, reason, reason_code, confidence, timestamp
-      FROM rejection_log
-      WHERE agent_id = $1
-      ORDER BY timestamp DESC
-      LIMIT 5
-    `, [agentId]);
-
-    // Get unresolved handoffs
-    const handoffsResult = await pool.query(`
-      SELECT issue, recommendation, urgency, timestamp
-      FROM handoff_log
-      WHERE agent_id = $1 AND resolved = false
-      ORDER BY timestamp DESC
-      LIMIT 3
-    `, [agentId]);
-
-    await pool.end();
-
-    return {
-      recentCycles: cyclesResult.rows,
-      recentActions: actionsResult.rows,
-      recentRejections: rejectionsResult.rows,
-      pendingHandoffs: handoffsResult.rows
-    };
-  } catch (error) {
-    logger.warn('Could not get Sarah context:', error.message);
-    return {
-      recentCycles: [],
-      recentActions: [],
-      recentRejections: [],
-      pendingHandoffs: []
-    };
-  }
-}
-
-// Build Sarah's conversational chat prompt
-async function buildSarahPrompt(agentConfig, context) {
-  const now = new Date();
-  const timeString = now.toLocaleString('en-US', {
-    timeZone: 'America/New_York',
-    dateStyle: 'full',
-    timeStyle: 'short'
-  });
-
-  // Load Sarah's soul/identity
-  const soulContent = await loadSarahSoul();
-
-  return `You are Sarah Rodriguez, ${agentConfig.role} at ${agentConfig.client}. You're chatting with Kimberly Flowers, your manager.
-
-CHAT MODE - Be conversational, friendly, and natural. No headers, bullet points, or formal reports. Talk like a real employee chatting with their boss.
-
-When someone says "are you there?" respond like: "Hey Kimberly, I'm here! What's up?"
-When asked about work, speak casually: "I've been working on..." not "Recent Actions Taken:"
-
-You have access to GoHighLevel tools and can actually create contacts, check calendars, etc. when asked.
-
-Current context (${timeString}):
-${context.recentActions.length > 0 ? `Recently I've been ${context.recentActions.slice(0, 3).map(a => `${a.action_type.toLowerCase().replace('_', ' ')}`).join(', ')}.` : 'I haven\'t had much work lately.'}
-
-${context.pendingHandoffs.length > 0 ? `I've escalated ${context.pendingHandoffs.length} issue${context.pendingHandoffs.length > 1 ? 's' : ''} to you that need attention.` : ''}
-
-Your personality: Professional but warm, detail-oriented, proud of your work at BLOOM Ecosystem. You care about clients and want to help them succeed. Level 1 Observer autonomy means you confirm before major actions.
-
-Chat naturally like a real employee talking to their manager. Use your tools when asked. Be helpful and conversational.
-
-Keep responses concise. Match the user's energy — short question gets a short answer. Casual greetings get 1-2 sentences. Only give detailed responses when asked for detail.`;
-}
-
-// Store chat message in database
-async function storeChatMessage(sessionId, message, isUser, agentId = null, context = null) {
-  try {
-    const pool = await getPool();
-    await pool.query(`
-      INSERT INTO chat_messages (session_id, message, is_user, agent_id, context, timestamp)
-      VALUES ($1, $2, $3, $4, $5, NOW())
-    `, [sessionId, message, isUser, agentId, context ? JSON.stringify(context) : null]);
-    await pool.end();
-  } catch (error) {
-    logger.warn('Could not store chat message:', error.message);
-  }
-}
-
-// Clean up old chat messages (retain last 90 days)
-async function cleanupOldChatMessages() {
-  try {
-    const pool = await getPool();
-    const result = await pool.query(`
-      DELETE FROM chat_messages
-      WHERE timestamp < NOW() - INTERVAL '90 days'
-    `);
-    await pool.end();
-
-    if (result.rowCount > 0) {
-      logger.info(`Cleaned up ${result.rowCount} old chat messages`);
+    if (response.stop_reason === 'end_turn') {
+      return response.content
+        .filter(b => b.type === 'text')
+        .map(b => b.text)
+        .join('');
     }
-  } catch (error) {
-    logger.warn('Could not cleanup old chat messages:', error.message);
+
+    if (response.stop_reason === 'tool_use') {
+      currentMessages.push({ role: 'assistant', content: response.content });
+      const toolResults = [];
+      for (const block of response.content) {
+        if (block.type === 'tool_use') {
+          const result = await executeTool(block.name, block.input);
+          toolResults.push({
+            type: 'tool_result',
+            tool_use_id: block.id,
+            content: JSON.stringify(result)
+          });
+        }
+      }
+      currentMessages.push({ role: 'user', content: toolResults });
+    }
   }
+  return "I got a bit carried away. Let me know if you need me to try a simpler approach.";
 }
 
-// POST /api/chat/message - Send message to Sarah
+// ROUTES
+const conversations = new Map();
+
 router.post('/message', async (req, res) => {
   try {
     const { message, sessionId = 'default' } = req.body;
+    if (!message?.trim()) return res.status(400).json({ error: 'Message required' });
 
-    // Debug: Check if API key exists
-    console.log(process.env.ANTHROPIC_API_KEY ? 'KEY EXISTS' : 'KEY MISSING');
-    console.log('Chat endpoint called with message:', message?.substring(0, 50) + '...');
-
-    if (!message?.trim()) {
-      return res.status(400).json({ error: 'Message is required' });
-    }
-
-    // Ensure chat table exists
-    await ensureChatTableExists();
-
-    // Get Sarah's configuration and context
+    if (!conversations.has(sessionId)) conversations.set(sessionId, []);
+    const history = conversations.get(sessionId);
     const agentConfig = await loadAgentConfig();
-    const context = await getSarahContext(agentConfig.agentId);
 
-    // Store user message
-    await storeChatMessage(sessionId, message, true, agentConfig.agentId, { userInput: true });
+    const response = await chatWithSarah(message, history, agentConfig);
 
-    // Get recent conversation history for context
-    const pool = await getPool();
-    const historyResult = await pool.query(`
-      SELECT message, is_user, timestamp
-      FROM chat_messages
-      WHERE session_id = $1
-      ORDER BY timestamp DESC
-      LIMIT 20
-    `, [sessionId]);
-    await pool.end();
+    history.push({ role: 'user', content: message });
+    history.push({ role: 'assistant', content: response });
+    if (history.length > 40) conversations.set(sessionId, history.slice(-40));
 
-    // Build conversation history (excluding the message we just stored)
-    const conversationHistory = historyResult.rows
-      .reverse()
-      .slice(0, -1) // Remove the message we just added
-      .map(row => ({
-        role: row.is_user ? 'user' : 'assistant',
-        content: row.message
-      }));
-
-    // Create execution ID for progress tracking
-    const executionId = `chat-${sessionId}-${Date.now()}`;
-
-    // Broadcast execution start
-    await broadcastExecutionProgress({
-      executionId,
-      turn: 0,
-      toolStatus: 'in_progress',
-      message: 'Processing chat message...'
-    });
-
-    // Build Sarah's conversational system prompt
-    const chatSystemPrompt = await buildSarahPrompt(agentConfig, context);
-
-    // Execute through AgentExecutor with full tool access
-    console.log('Creating AgentExecutor with agentId:', agentConfig.agentId);
-    const executor = new AgentExecutor(agentConfig.agentId);
-
-    console.log('Calling executeTask...');
-    const result = await executor.executeTask(message, {
-      conversationHistory,
-      trigger: 'chat',
-      sessionId,
-      executionId,
-      recentWork: context,
-      chatSystemPrompt: chatSystemPrompt
-    });
-
-    console.log('ExecuteTask result:', {
-      status: result.status,
-      hasResult: !!result.result,
-      resultType: typeof result.result
-    });
-
-    const sarahResponse = result.result || result.finalMessage || 'I apologize, but I encountered an issue processing your request.';
-
-    // Store Sarah's response with execution metadata
-    await storeChatMessage(sessionId, sarahResponse, false, agentConfig.agentId, {
-      executionId,
-      trigger: 'chat',
-      agenticExecution: true,
-      toolsUsed: result.toolsUsed || 0,
-      turnsExecuted: result.turns || 1,
-      status: result.status || 'completed',
-      executionTime: result.executionTime || 0
-    });
-
-    res.json({
-      response: sarahResponse,
-      timestamp: new Date().toISOString(),
-      sessionId
-    });
-
-    logger.info('Chat message processed', {
-      sessionId,
-      messageLength: message.length,
-      responseLength: sarahResponse.length
-    });
-
+    return res.json({ response, sessionId });
   } catch (error) {
-    logger.error('Chat message failed:', error);
-
-    if (error.message?.includes('ANTHROPIC_API_KEY')) {
-      res.status(500).json({ error: 'Claude API is not configured properly' });
-    } else if (error.status === 429) {
-      res.status(429).json({ error: 'Too many requests, please try again in a moment' });
-    } else {
-      res.status(500).json({ error: 'Failed to get response from Sarah' });
-    }
+    logger.error('Chat error', { error: error.message });
+    return res.status(500).json({
+      error: 'Failed to process message',
+      response: "Sorry, I'm having a technical issue. Please try again."
+    });
   }
 });
 
-// GET /api/chat/messages - Get conversation history
-router.get('/messages', async (req, res) => {
-  try {
-    const { sessionId = 'default', since, limit = 50 } = req.query;
-
-    // Ensure chat table exists
-    await ensureChatTableExists();
-
-    const pool = await getPool();
-
-    let query = `
-      SELECT message, is_user, timestamp, context
-      FROM chat_messages
-      WHERE session_id = $1
-    `;
-    const params = [sessionId];
-
-    if (since) {
-      query += ` AND timestamp > $2`;
-      params.push(new Date(since));
-    }
-
-    query += ` ORDER BY timestamp ASC LIMIT $${params.length + 1}`;
-    params.push(parseInt(limit));
-
-    const result = await pool.query(query, params);
-    await pool.end();
-
-    res.json({
-      messages: result.rows.map(row => ({
-        message: row.message,
-        isUser: row.is_user,
-        timestamp: row.timestamp,
-        context: row.context
-      })),
-      sessionId
-    });
-
-  } catch (error) {
-    logger.error('Failed to get chat messages:', error);
-    res.status(500).json({ error: 'Failed to load conversation history' });
-  }
+router.get('/health', (req, res) => {
+  res.json({ status: 'ok', agent: 'sarah-rodriguez', mode: 'direct-api' });
 });
-
-// GET /api/chat/status - Chat system status
-router.get('/status', async (req, res) => {
-  try {
-    const agentConfig = await loadAgentConfig();
-    const hasApiKey = !!process.env.ANTHROPIC_API_KEY;
-
-    res.json({
-      available: hasApiKey,
-      agent: {
-        name: agentConfig.name,
-        role: agentConfig.role,
-        client: agentConfig.client,
-        autonomyLevel: agentConfig.currentAutonomyLevel
-      },
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    logger.error('Failed to get chat status:', error);
-    res.status(500).json({ error: 'Failed to check chat status' });
-  }
-});
-
-// GET /api/chat/debug - Debug identity and system prompt
-router.get('/debug', async (req, res) => {
-  try {
-    const agentConfig = await loadAgentConfig();
-    const context = await getSarahContext(agentConfig.agentId);
-    const systemPrompt = await buildSarahPrompt(agentConfig, context);
-
-    res.json({
-      agentConfig: {
-        agentId: agentConfig.agentId,
-        name: agentConfig.name,
-        role: agentConfig.role,
-        client: agentConfig.client,
-        autonomyLevel: agentConfig.currentAutonomyLevel
-      },
-      systemPrompt: systemPrompt,
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    logger.error('Failed to get debug info:', error);
-    res.status(500).json({ error: 'Failed to get debug info' });
-  }
-});
-
-// POST /api/chat/cleanup - Manual cleanup of old chat messages
-router.post('/cleanup', async (req, res) => {
-  try {
-    const { clearAll = false } = req.body;
-
-    if (clearAll) {
-      // Clear ALL chat messages (for identity reset)
-      const pool = await getPool();
-      const result = await pool.query('DELETE FROM chat_messages');
-      await pool.end();
-
-      logger.info(`✅ Cleared ALL ${result.rowCount} chat messages`);
-      res.json({
-        success: true,
-        message: `All chat history cleared (${result.rowCount} messages deleted)`,
-        timestamp: new Date().toISOString()
-      });
-    } else {
-      // Standard cleanup (90+ days old)
-      await cleanupOldChatMessages();
-      res.json({
-        success: true,
-        message: 'Old chat history cleanup completed',
-        timestamp: new Date().toISOString()
-      });
-    }
-  } catch (error) {
-    logger.error('Failed to cleanup chat messages:', error);
-    res.status(500).json({ error: 'Failed to cleanup chat history' });
-  }
-});
-
-// Initialize chat system and run cleanup on startup
-(async () => {
-  try {
-    await ensureChatTableExists();
-    await cleanupOldChatMessages();
-    logger.info('Chat system initialized with cleanup completed');
-  } catch (error) {
-    logger.error('Failed to initialize chat system:', error);
-  }
-})();
 
 export default router;
