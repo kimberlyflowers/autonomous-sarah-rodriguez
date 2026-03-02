@@ -3,11 +3,16 @@ import express from 'express';
 import Anthropic from '@anthropic-ai/sdk';
 import { createLogger } from '../logging/logger.js';
 import { loadAgentConfig } from '../config/agent-profile.js';
-import { createPool } from '../../database/setup.js';
 
 const router = express.Router();
 const logger = createLogger('chat-api');
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+// Get database pool - using the same pattern as existing code
+async function getPool() {
+  const { createPool } = await import('../../database/setup.js');
+  return createPool();
+}
 
 // SYSTEM PROMPT — goes directly into API "system" parameter
 function buildSystemPrompt(agentConfig) {
@@ -129,7 +134,7 @@ async function executeTool(toolName, toolInput) {
         return await executeGHLTool(toolName, toolInput);
       }
       case 'bloom_log': {
-        const pool = createPool();
+        const pool = await getPool();
         const result = await pool.query(
           'INSERT INTO action_log (action_type, description, input_data) VALUES ($1, $2, $3) RETURNING *',
           [toolInput.type, toolInput.message, JSON.stringify(toolInput)]
