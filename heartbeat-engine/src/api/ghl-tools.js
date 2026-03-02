@@ -24,7 +24,8 @@ async function callGHL(endpoint, method = 'GET', data = null, params = {}) {
     headers: {
       'Authorization': `Bearer ${apiKey}`,
       'Version': GHL_API_VERSION,
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
     },
     params: {
       locationId,
@@ -482,7 +483,8 @@ export async function executeGHLTool(toolName, parameters) {
 
     // CONTACTS
     if (toolName === 'ghl_search_contacts') {
-      result = await callGHL('/contacts/search', 'GET', null, parameters);
+      const locationId = process.env.GHL_LOCATION_ID;
+      result = await callGHL('/contacts/search', 'POST', { locationId, query: parameters.query }, null);
     } else if (toolName === 'ghl_get_contact') {
       result = await callGHL(`/contacts/${parameters.contactId}`);
     } else if (toolName === 'ghl_create_contact') {
@@ -521,7 +523,8 @@ export async function executeGHLTool(toolName, parameters) {
 
     // OPPORTUNITIES
     } else if (toolName === 'ghl_search_opportunities') {
-      result = await callGHL('/opportunities/search', 'GET', null, parameters);
+      const locationId = process.env.GHL_LOCATION_ID;
+      result = await callGHL('/opportunities/search', 'POST', { location_id: locationId, query: parameters.query }, null);
     } else if (toolName === 'ghl_get_opportunity') {
       result = await callGHL(`/opportunities/${parameters.opportunityId}`);
     } else if (toolName === 'ghl_create_opportunity') {

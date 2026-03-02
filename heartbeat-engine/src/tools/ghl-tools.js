@@ -24,7 +24,8 @@ async function callGHL(endpoint, method = 'GET', data = null, params = {}) {
     headers: {
       'Authorization': `Bearer ${apiKey}`,
       'Version': GHL_API_VERSION,
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
     },
     params: {
       locationId,
@@ -1653,7 +1654,8 @@ export const ghlToolDefinitions = {
 // Tool execution handlers
 export const ghlExecutors = {
   ghl_search_contacts: async (params) => {
-    return await callGHL('/contacts/search', 'GET', null, params);
+    const locationId = process.env.GHL_LOCATION_ID;
+    return await callGHL('/contacts/search', 'POST', { locationId, query: params.query }, null);
   },
 
   ghl_get_contact: async (params) => {
@@ -1694,7 +1696,8 @@ export const ghlExecutors = {
   },
 
   ghl_search_opportunities: async (params) => {
-    return await callGHL('/opportunities/search', 'GET', null, params);
+    const locationId = process.env.GHL_LOCATION_ID;
+    return await callGHL('/opportunities/search', 'POST', { location_id: locationId, query: params.query }, null);
   },
 
   ghl_create_opportunity: async (params) => {
