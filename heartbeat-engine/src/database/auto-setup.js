@@ -94,12 +94,12 @@ export async function ensureDatabaseExists() {
       FROM information_schema.tables
       WHERE table_schema = 'public' AND table_name IN (
         'agents', 'heartbeat_cycles', 'action_log', 'rejection_log',
-        'handoff_log', 'trust_metrics', 'memory_snapshots'
+        'handoff_log', 'trust_metrics', 'memory_snapshots', 'bloom_context'
       )
     `);
 
     const tableCount = parseInt(tableResult.rows[0].table_count);
-    const expectedTables = 7;
+    const expectedTables = 8;
 
     if (tableCount === 0) {
       logger.info('🏗️  Creating database schema (no tables found)...');
