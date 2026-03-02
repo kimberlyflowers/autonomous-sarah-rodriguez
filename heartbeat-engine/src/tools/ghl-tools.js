@@ -1676,7 +1676,7 @@ export const ghlExecutors = {
   },
 
   ghl_get_conversations: async (params) => {
-    return await callGHL('/conversations/search', 'GET', null, params);
+    return await callGHL('/conversations', 'GET', null, params);
   },
 
   ghl_send_message: async (params) => {
@@ -1800,7 +1800,8 @@ export const ghlExecutors = {
   },
 
   ghl_get_location_info: async (params) => {
-    return await callGHL('/locations/search', 'GET', null, { limit: 1 });
+    const locationId = process.env.GHL_LOCATION_ID;
+    return await callGHL(`/locations/${locationId}`);
   },
 
   // CAMPAIGNS
@@ -1953,17 +1954,17 @@ export const ghlExecutors = {
 
   // MEDIA/FILES
   ghl_list_media: async (params) => {
-    return await callGHL('/medias', 'GET', null, params);
+    return await callGHL('/media', 'GET', null, params);
   },
 
   ghl_upload_media: async (params) => {
     const { file, fileName, folder } = params;
     // Note: This would need proper file upload handling in a real implementation
-    return await callGHL('/medias/upload-file', 'POST', { file, fileName, folder });
+    return await callGHL('/media/upload-file', 'POST', { file, fileName, folder });
   },
 
   ghl_delete_media: async (params) => {
-    return await callGHL(`/medias/${params.mediaId}`, 'DELETE');
+    return await callGHL(`/media/${params.mediaId}`, 'DELETE');
   },
 
   // COURSES
