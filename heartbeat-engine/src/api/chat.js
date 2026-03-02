@@ -488,6 +488,7 @@ router.get('/status', async (req, res) => {
       agent: {
         name: agentConfig.name,
         role: agentConfig.role,
+        client: agentConfig.client,
         autonomyLevel: agentConfig.currentAutonomyLevel
       },
       timestamp: new Date().toISOString()
@@ -495,6 +496,30 @@ router.get('/status', async (req, res) => {
   } catch (error) {
     logger.error('Failed to get chat status:', error);
     res.status(500).json({ error: 'Failed to check chat status' });
+  }
+});
+
+// GET /api/chat/debug - Debug identity and system prompt
+router.get('/debug', async (req, res) => {
+  try {
+    const agentConfig = await loadAgentConfig();
+    const context = await getSarahContext(agentConfig.agentId);
+    const systemPrompt = await buildSarahPrompt(agentConfig, context);
+
+    res.json({
+      agentConfig: {
+        agentId: agentConfig.agentId,
+        name: agentConfig.name,
+        role: agentConfig.role,
+        client: agentConfig.client,
+        autonomyLevel: agentConfig.currentAutonomyLevel
+      },
+      systemPrompt: systemPrompt,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('Failed to get debug info:', error);
+    res.status(500).json({ error: 'Failed to get debug info' });
   }
 });
 
