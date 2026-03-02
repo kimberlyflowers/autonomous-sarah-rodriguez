@@ -505,7 +505,7 @@ export async function executeGHLTool(toolName, parameters) {
 
     // CONVERSATIONS
     } else if (toolName === 'ghl_get_conversations') {
-      result = await callGHL(`/conversations/search`, 'GET', null, parameters);
+      result = await callGHL(`/conversations`, 'GET', null, parameters);
     } else if (toolName === 'ghl_send_message') {
       result = await callGHL('/conversations/messages', 'POST', parameters);
     } else if (toolName === 'ghl_search_conversations') {
@@ -551,9 +551,9 @@ export async function executeGHLTool(toolName, parameters) {
 
     // MEDIA
     } else if (toolName === 'ghl_upload_media') {
-      result = await callGHL('/medias/upload-file', 'POST', parameters);
+      result = await callGHL('/media/upload-file', 'POST', parameters);
     } else if (toolName === 'ghl_list_media') {
-      result = await callGHL('/medias', 'GET', null, parameters);
+      result = await callGHL('/media', 'GET', null, parameters);
 
     // EMAIL
     } else if (toolName === 'ghl_get_email_campaigns') {
