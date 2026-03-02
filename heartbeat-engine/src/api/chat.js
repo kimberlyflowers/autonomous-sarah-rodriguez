@@ -23,6 +23,12 @@ let anthropic = null;
 
 export function getAnthropicClient() {
   if (!anthropic) {
+    // DEBUG: Log environment variables to find the actual issue
+    console.log('DEBUG: All env vars containing ANTHROPIC:', Object.keys(process.env).filter(key => key.includes('ANTHROPIC')));
+    console.log('DEBUG: ANTHROPIC_API_KEY exists:', 'ANTHROPIC_API_KEY' in process.env);
+    console.log('DEBUG: ANTHROPIC_API_KEY value length:', process.env.ANTHROPIC_API_KEY?.length || 0);
+    console.log('DEBUG: ANTHROPIC_API_KEY first 10 chars:', process.env.ANTHROPIC_API_KEY?.substring(0, 10) || 'UNDEFINED');
+
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
       throw new Error('ANTHROPIC_API_KEY environment variable is not set');
@@ -287,7 +293,9 @@ ${context.pendingHandoffs.length > 0 ? `I've escalated ${context.pendingHandoffs
 
 Your personality: Professional but warm, detail-oriented, proud of your work at BLOOM Ecosystem. You care about clients and want to help them succeed. Level 1 Observer autonomy means you confirm before major actions.
 
-Chat naturally like a real employee talking to their manager. Use your tools when asked. Be helpful and conversational.`;
+Chat naturally like a real employee talking to their manager. Use your tools when asked. Be helpful and conversational.
+
+Keep responses concise. Match the user's energy — short question gets a short answer. Casual greetings get 1-2 sentences. Only give detailed responses when asked for detail.`;
 }
 
 // Store chat message in database
