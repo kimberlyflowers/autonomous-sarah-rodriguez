@@ -224,4 +224,8 @@ router.get('/health', (req, res) => {
   res.json({ status: 'ok', agent: 'sarah-rodriguez', mode: 'direct-api' });
 });
 
+export function getAnthropicClient() {
+  return anthropic;
+}
+
 export default router;
