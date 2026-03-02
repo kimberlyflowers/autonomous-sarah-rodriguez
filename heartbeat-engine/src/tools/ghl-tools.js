@@ -1,5 +1,6 @@
 // Model-Agnostic GHL API v2 Tool Definitions for Sarah Rodriguez
 // Supports both Claude (tool_use) and OpenAI (function_calling) formats
+// ALL endpoints verified against: marketplace.gohighlevel.com/docs
 
 import axios from 'axios';
 import { createLogger } from '../logging/logger.js';
@@ -57,8 +58,8 @@ export const ghlToolDefinitions = {
       type: "object",
       properties: {
         query: { type: "string", description: "Search query (email, phone, name)" },
-        limit: { type: "number", description: "Results limit (default: 100)" },
-        startAfter: { type: "string", description: "Pagination cursor" }
+        limit: { type: "number", description: "Results limit (default: 20)" },
+        page: { type: "number", description: "Page number (default: 1)" }
       },
       required: ["query"]
     },
@@ -177,11 +178,7 @@ export const ghlToolDefinitions = {
   ghl_list_calendars: {
     name: "ghl_list_calendars",
     description: "Get all calendars for the location",
-    parameters: {
-      type: "object",
-      properties: {},
-      required: []
-    },
+    parameters: { type: "object", properties: {}, required: [] },
     category: "calendars",
     operation: "read"
   },
@@ -220,6 +217,22 @@ export const ghlToolDefinitions = {
     operation: "write"
   },
 
+  ghl_get_appointments: {
+    name: "ghl_get_appointments",
+    description: "Get appointments/events from calendar",
+    parameters: {
+      type: "object",
+      properties: {
+        calendarId: { type: "string", description: "Calendar ID" },
+        startDate: { type: "string", description: "Start date" },
+        endDate: { type: "string", description: "End date" }
+      },
+      required: ["calendarId"]
+    },
+    category: "calendars",
+    operation: "read"
+  },
+
   // OPPORTUNITIES
   ghl_search_opportunities: {
     name: "ghl_search_opportunities",
@@ -229,9 +242,23 @@ export const ghlToolDefinitions = {
       properties: {
         pipelineId: { type: "string", description: "Pipeline ID" },
         status: { type: "string", description: "Opportunity status" },
-        q: { type: "string", description: "Search query" },
+        query: { type: "string", description: "Search query" },
         limit: { type: "number", description: "Results limit" }
       }
+    },
+    category: "opportunities",
+    operation: "read"
+  },
+
+  ghl_get_opportunity: {
+    name: "ghl_get_opportunity",
+    description: "Get details of a specific opportunity",
+    parameters: {
+      type: "object",
+      properties: {
+        opportunityId: { type: "string", description: "Opportunity ID" }
+      },
+      required: ["opportunityId"]
     },
     category: "opportunities",
     operation: "read"
@@ -256,86 +283,28 @@ export const ghlToolDefinitions = {
     operation: "write"
   },
 
-  // WORKFLOWS
-  ghl_list_workflows: {
-    name: "ghl_list_workflows",
-    description: "Get all workflows for the location",
-    parameters: {
-      type: "object",
-      properties: {},
-      required: []
-    },
-    category: "workflows",
-    operation: "read"
-  },
-
-  ghl_add_contact_to_workflow: {
-    name: "ghl_add_contact_to_workflow",
-    description: "Add a contact to a workflow",
+  ghl_update_opportunity: {
+    name: "ghl_update_opportunity",
+    description: "Update an opportunity",
     parameters: {
       type: "object",
       properties: {
-        workflowId: { type: "string", description: "Workflow ID" },
-        contactId: { type: "string", description: "Contact ID" }
+        opportunityId: { type: "string", description: "Opportunity ID" },
+        name: { type: "string", description: "Opportunity name" },
+        pipelineStageId: { type: "string", description: "Pipeline stage ID" },
+        monetaryValue: { type: "number", description: "Monetary value" },
+        status: { type: "string", description: "Status" }
       },
-      required: ["workflowId", "contactId"]
+      required: ["opportunityId"]
     },
-    category: "workflows",
+    category: "opportunities",
     operation: "write"
   },
 
-  // FORMS
-  ghl_get_forms: {
-    name: "ghl_get_forms",
-    description: "Get all forms for the location",
-    parameters: {
-      type: "object",
-      properties: {},
-      required: []
-    },
-    category: "forms",
-    operation: "read"
-  },
-
-  ghl_get_form_submissions: {
-    name: "ghl_get_form_submissions",
-    description: "Get submissions for a specific form",
-    parameters: {
-      type: "object",
-      properties: {
-        formId: { type: "string", description: "Form ID" },
-        limit: { type: "number", description: "Results limit" },
-        page: { type: "number", description: "Page number" }
-      },
-      required: ["formId"]
-    },
-    category: "forms",
-    operation: "read"
-  },
-
-  // PIPELINES & STAGES
   ghl_list_pipelines: {
     name: "ghl_list_pipelines",
     description: "Get all pipelines for the location",
-    parameters: {
-      type: "object",
-      properties: {},
-      required: []
-    },
-    category: "pipelines",
-    operation: "read"
-  },
-
-  ghl_get_pipeline_stages: {
-    name: "ghl_get_pipeline_stages",
-    description: "Get stages for a specific pipeline",
-    parameters: {
-      type: "object",
-      properties: {
-        pipelineId: { type: "string", description: "Pipeline ID" }
-      },
-      required: ["pipelineId"]
-    },
+    parameters: { type: "object", properties: {}, required: [] },
     category: "pipelines",
     operation: "read"
   },
@@ -355,18 +324,55 @@ export const ghlToolDefinitions = {
     operation: "write"
   },
 
-  // TASKS
-  ghl_list_tasks: {
-    name: "ghl_list_tasks",
-    description: "Get tasks for contacts or opportunities",
+  // WORKFLOWS
+  ghl_list_workflows: {
+    name: "ghl_list_workflows",
+    description: "Get all workflows for the location",
+    parameters: { type: "object", properties: {}, required: [] },
+    category: "workflows",
+    operation: "read"
+  },
+
+  ghl_add_contact_to_workflow: {
+    name: "ghl_add_contact_to_workflow",
+    description: "Add a contact to a workflow",
     parameters: {
       type: "object",
       properties: {
-        contactId: { type: "string", description: "Contact ID to filter tasks" },
-        opportunityId: { type: "string", description: "Opportunity ID to filter tasks" },
-        completed: { type: "boolean", description: "Filter by completion status" },
-        limit: { type: "number", description: "Results limit" }
-      }
+        workflowId: { type: "string", description: "Workflow ID" },
+        contactId: { type: "string", description: "Contact ID" }
+      },
+      required: ["workflowId", "contactId"]
+    },
+    category: "workflows",
+    operation: "write"
+  },
+
+  ghl_remove_contact_from_workflow: {
+    name: "ghl_remove_contact_from_workflow",
+    description: "Remove a contact from a workflow",
+    parameters: {
+      type: "object",
+      properties: {
+        workflowId: { type: "string", description: "Workflow ID" },
+        contactId: { type: "string", description: "Contact ID" }
+      },
+      required: ["workflowId", "contactId"]
+    },
+    category: "workflows",
+    operation: "write"
+  },
+
+  // TASKS
+  ghl_list_tasks: {
+    name: "ghl_list_tasks",
+    description: "Get tasks for a contact",
+    parameters: {
+      type: "object",
+      properties: {
+        contactId: { type: "string", description: "Contact ID" }
+      },
+      required: ["contactId"]
     },
     category: "tasks",
     operation: "read"
@@ -374,19 +380,17 @@ export const ghlToolDefinitions = {
 
   ghl_create_task: {
     name: "ghl_create_task",
-    description: "Create a new task",
+    description: "Create a new task for a contact",
     parameters: {
       type: "object",
       properties: {
+        contactId: { type: "string", description: "Contact ID" },
         title: { type: "string", description: "Task title" },
-        description: { type: "string", description: "Task description" },
-        contactId: { type: "string", description: "Associated contact ID" },
-        opportunityId: { type: "string", description: "Associated opportunity ID" },
+        body: { type: "string", description: "Task description" },
         dueDate: { type: "string", description: "Due date (ISO format)" },
-        assignedTo: { type: "string", description: "Assigned user ID" },
-        priority: { type: "string", enum: ["low", "medium", "high"], description: "Task priority" }
+        assignedTo: { type: "string", description: "Assigned user ID" }
       },
-      required: ["title"]
+      required: ["contactId", "title"]
     },
     category: "tasks",
     operation: "write"
@@ -398,13 +402,13 @@ export const ghlToolDefinitions = {
     parameters: {
       type: "object",
       properties: {
+        contactId: { type: "string", description: "Contact ID" },
         taskId: { type: "string", description: "Task ID" },
         completed: { type: "boolean", description: "Mark as completed" },
         title: { type: "string", description: "Updated title" },
-        description: { type: "string", description: "Updated description" },
         dueDate: { type: "string", description: "Updated due date" }
       },
-      required: ["taskId"]
+      required: ["contactId", "taskId"]
     },
     category: "tasks",
     operation: "write"
@@ -413,14 +417,13 @@ export const ghlToolDefinitions = {
   // NOTES
   ghl_get_notes: {
     name: "ghl_get_notes",
-    description: "Get notes for a contact or opportunity",
+    description: "Get notes for a contact",
     parameters: {
       type: "object",
       properties: {
-        contactId: { type: "string", description: "Contact ID" },
-        opportunityId: { type: "string", description: "Opportunity ID" },
-        limit: { type: "number", description: "Results limit" }
-      }
+        contactId: { type: "string", description: "Contact ID" }
+      },
+      required: ["contactId"]
     },
     category: "notes",
     operation: "read"
@@ -428,34 +431,21 @@ export const ghlToolDefinitions = {
 
   ghl_create_note: {
     name: "ghl_create_note",
-    description: "Add a note to a contact or opportunity",
+    description: "Add a note to a contact",
     parameters: {
       type: "object",
       properties: {
-        body: { type: "string", description: "Note content" },
         contactId: { type: "string", description: "Contact ID" },
-        opportunityId: { type: "string", description: "Opportunity ID" },
+        body: { type: "string", description: "Note content" },
         userId: { type: "string", description: "User ID creating the note" }
       },
-      required: ["body"]
+      required: ["contactId", "body"]
     },
     category: "notes",
     operation: "write"
   },
 
   // TAGS
-  ghl_get_contact_tags: {
-    name: "ghl_get_contact_tags",
-    description: "Get all available tags for contacts",
-    parameters: {
-      type: "object",
-      properties: {},
-      required: []
-    },
-    category: "tags",
-    operation: "read"
-  },
-
   ghl_add_contact_tag: {
     name: "ghl_add_contact_tag",
     description: "Add tag to a contact",
@@ -486,15 +476,19 @@ export const ghlToolDefinitions = {
     operation: "write"
   },
 
+  ghl_list_location_tags: {
+    name: "ghl_list_location_tags",
+    description: "List all tags for the location",
+    parameters: { type: "object", properties: {}, required: [] },
+    category: "tags",
+    operation: "read"
+  },
+
   // CUSTOM FIELDS
   ghl_get_custom_fields: {
     name: "ghl_get_custom_fields",
     description: "Get all custom fields for the location",
-    parameters: {
-      type: "object",
-      properties: {},
-      required: []
-    },
+    parameters: { type: "object", properties: {}, required: [] },
     category: "custom_fields",
     operation: "read"
   },
@@ -514,15 +508,11 @@ export const ghlToolDefinitions = {
     operation: "write"
   },
 
-  // USERS & LOCATIONS
+  // USERS & LOCATION
   ghl_list_users: {
     name: "ghl_list_users",
     description: "Get all users in the location",
-    parameters: {
-      type: "object",
-      properties: {},
-      required: []
-    },
+    parameters: { type: "object", properties: {}, required: [] },
     category: "users",
     operation: "read"
   },
@@ -530,11 +520,7 @@ export const ghlToolDefinitions = {
   ghl_get_location_info: {
     name: "ghl_get_location_info",
     description: "Get location information and settings",
-    parameters: {
-      type: "object",
-      properties: {},
-      required: []
-    },
+    parameters: { type: "object", properties: {}, required: [] },
     category: "locations",
     operation: "read"
   },
@@ -542,29 +528,64 @@ export const ghlToolDefinitions = {
   // CAMPAIGNS
   ghl_list_campaigns: {
     name: "ghl_list_campaigns",
-    description: "Get email and SMS campaigns",
+    description: "Get all campaigns",
     parameters: {
       type: "object",
       properties: {
-        type: { type: "string", enum: ["email", "sms"], description: "Campaign type" },
-        status: { type: "string", enum: ["draft", "scheduled", "sending", "sent"], description: "Campaign status" }
+        status: { type: "string", description: "Campaign status filter" }
       }
     },
     category: "campaigns",
     operation: "read"
   },
 
-  ghl_get_campaign_stats: {
-    name: "ghl_get_campaign_stats",
-    description: "Get statistics for a campaign",
+  // FORMS
+  ghl_list_forms: {
+    name: "ghl_list_forms",
+    description: "Get all forms for the location",
+    parameters: { type: "object", properties: {}, required: [] },
+    category: "forms",
+    operation: "read"
+  },
+
+  ghl_get_form_submissions: {
+    name: "ghl_get_form_submissions",
+    description: "Get submissions for a specific form",
     parameters: {
       type: "object",
       properties: {
-        campaignId: { type: "string", description: "Campaign ID" }
+        formId: { type: "string", description: "Form ID" },
+        limit: { type: "number", description: "Results limit" },
+        startAt: { type: "string", description: "Start date filter" },
+        endAt: { type: "string", description: "End date filter" }
       },
-      required: ["campaignId"]
+      required: ["formId"]
     },
-    category: "campaigns",
+    category: "forms",
+    operation: "read"
+  },
+
+  // SURVEYS
+  ghl_list_surveys: {
+    name: "ghl_list_surveys",
+    description: "List surveys in the location",
+    parameters: { type: "object", properties: {}, required: [] },
+    category: "surveys",
+    operation: "read"
+  },
+
+  ghl_get_survey_submissions: {
+    name: "ghl_get_survey_submissions",
+    description: "Get survey submissions",
+    parameters: {
+      type: "object",
+      properties: {
+        surveyId: { type: "string", description: "Survey ID" },
+        limit: { type: "number", description: "Results limit" }
+      },
+      required: ["surveyId"]
+    },
+    category: "surveys",
     operation: "read"
   },
 
@@ -576,9 +597,6 @@ export const ghlToolDefinitions = {
       type: "object",
       properties: {
         limit: { type: "number", description: "Results limit" },
-        offset: { type: "number", description: "Pagination offset" },
-        startDate: { type: "string", description: "Start date filter (YYYY-MM-DD)" },
-        endDate: { type: "string", description: "End date filter (YYYY-MM-DD)" },
         status: { type: "string", enum: ["draft", "sent", "paid", "overdue"], description: "Invoice status" }
       }
     },
@@ -588,7 +606,7 @@ export const ghlToolDefinitions = {
 
   ghl_get_invoice: {
     name: "ghl_get_invoice",
-    description: "Get detailed information about a specific invoice",
+    description: "Get a specific invoice",
     parameters: {
       type: "object",
       properties: {
@@ -608,41 +626,10 @@ export const ghlToolDefinitions = {
       properties: {
         contactId: { type: "string", description: "Contact ID" },
         title: { type: "string", description: "Invoice title" },
-        number: { type: "string", description: "Invoice number" },
         dueDate: { type: "string", description: "Due date (YYYY-MM-DD)" },
-        items: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              description: { type: "string" },
-              quantity: { type: "number" },
-              price: { type: "number" }
-            }
-          },
-          description: "Invoice line items"
-        },
-        notes: { type: "string", description: "Invoice notes" }
+        items: { type: "array", description: "Invoice line items" }
       },
       required: ["contactId", "title", "items"]
-    },
-    category: "invoices",
-    operation: "write"
-  },
-
-  ghl_update_invoice: {
-    name: "ghl_update_invoice",
-    description: "Update an existing invoice",
-    parameters: {
-      type: "object",
-      properties: {
-        invoiceId: { type: "string", description: "Invoice ID" },
-        title: { type: "string", description: "Invoice title" },
-        dueDate: { type: "string", description: "Due date (YYYY-MM-DD)" },
-        items: { type: "array", description: "Updated line items" },
-        notes: { type: "string", description: "Invoice notes" }
-      },
-      required: ["invoiceId"]
     },
     category: "invoices",
     operation: "write"
@@ -662,137 +649,11 @@ export const ghlToolDefinitions = {
     operation: "write"
   },
 
-  ghl_void_invoice: {
-    name: "ghl_void_invoice",
-    description: "Void an invoice",
-    parameters: {
-      type: "object",
-      properties: {
-        invoiceId: { type: "string", description: "Invoice ID" }
-      },
-      required: ["invoiceId"]
-    },
-    category: "invoices",
-    operation: "write"
-  },
-
-  // ESTIMATES
-  ghl_list_estimates: {
-    name: "ghl_list_estimates",
-    description: "List estimates for the location",
-    parameters: {
-      type: "object",
-      properties: {
-        limit: { type: "number", description: "Results limit" },
-        offset: { type: "number", description: "Pagination offset" },
-        status: { type: "string", enum: ["draft", "sent", "accepted", "declined"], description: "Estimate status" }
-      }
-    },
-    category: "estimates",
-    operation: "read"
-  },
-
-  ghl_get_estimate: {
-    name: "ghl_get_estimate",
-    description: "Get detailed information about a specific estimate",
-    parameters: {
-      type: "object",
-      properties: {
-        estimateId: { type: "string", description: "Estimate ID" }
-      },
-      required: ["estimateId"]
-    },
-    category: "estimates",
-    operation: "read"
-  },
-
-  ghl_create_estimate: {
-    name: "ghl_create_estimate",
-    description: "Create a new estimate",
-    parameters: {
-      type: "object",
-      properties: {
-        contactId: { type: "string", description: "Contact ID" },
-        title: { type: "string", description: "Estimate title" },
-        number: { type: "string", description: "Estimate number" },
-        validUntil: { type: "string", description: "Valid until date (YYYY-MM-DD)" },
-        items: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              description: { type: "string" },
-              quantity: { type: "number" },
-              price: { type: "number" }
-            }
-          },
-          description: "Estimate line items"
-        },
-        notes: { type: "string", description: "Estimate notes" }
-      },
-      required: ["contactId", "title", "items"]
-    },
-    category: "estimates",
-    operation: "write"
-  },
-
-  ghl_update_estimate: {
-    name: "ghl_update_estimate",
-    description: "Update an existing estimate",
-    parameters: {
-      type: "object",
-      properties: {
-        estimateId: { type: "string", description: "Estimate ID" },
-        title: { type: "string", description: "Estimate title" },
-        validUntil: { type: "string", description: "Valid until date (YYYY-MM-DD)" },
-        items: { type: "array", description: "Updated line items" },
-        notes: { type: "string", description: "Estimate notes" }
-      },
-      required: ["estimateId"]
-    },
-    category: "estimates",
-    operation: "write"
-  },
-
-  ghl_send_estimate: {
-    name: "ghl_send_estimate",
-    description: "Send an estimate to the contact",
-    parameters: {
-      type: "object",
-      properties: {
-        estimateId: { type: "string", description: "Estimate ID" }
-      },
-      required: ["estimateId"]
-    },
-    category: "estimates",
-    operation: "write"
-  },
-
   // PRODUCTS
   ghl_list_products: {
     name: "ghl_list_products",
     description: "List products in the location",
-    parameters: {
-      type: "object",
-      properties: {
-        limit: { type: "number", description: "Results limit" },
-        offset: { type: "number", description: "Pagination offset" }
-      }
-    },
-    category: "products",
-    operation: "read"
-  },
-
-  ghl_get_product: {
-    name: "ghl_get_product",
-    description: "Get detailed information about a specific product",
-    parameters: {
-      type: "object",
-      properties: {
-        productId: { type: "string", description: "Product ID" }
-      },
-      required: ["productId"]
-    },
+    parameters: { type: "object", properties: { limit: { type: "number" } } },
     category: "products",
     operation: "read"
   },
@@ -805,11 +666,7 @@ export const ghlToolDefinitions = {
       properties: {
         name: { type: "string", description: "Product name" },
         description: { type: "string", description: "Product description" },
-        price: { type: "number", description: "Product price" },
-        currency: { type: "string", description: "Currency code (USD, EUR, etc.)" },
-        category: { type: "string", description: "Product category" },
-        isActive: { type: "boolean", description: "Whether product is active" },
-        image: { type: "string", description: "Product image URL" }
+        price: { type: "number", description: "Product price" }
       },
       required: ["name", "price"]
     },
@@ -817,174 +674,18 @@ export const ghlToolDefinitions = {
     operation: "write"
   },
 
-  ghl_update_product: {
-    name: "ghl_update_product",
-    description: "Update an existing product",
-    parameters: {
-      type: "object",
-      properties: {
-        productId: { type: "string", description: "Product ID" },
-        name: { type: "string", description: "Product name" },
-        description: { type: "string", description: "Product description" },
-        price: { type: "number", description: "Product price" },
-        isActive: { type: "boolean", description: "Whether product is active" }
-      },
-      required: ["productId"]
-    },
-    category: "products",
-    operation: "write"
-  },
-
-  ghl_delete_product: {
-    name: "ghl_delete_product",
-    description: "Delete a product",
-    parameters: {
-      type: "object",
-      properties: {
-        productId: { type: "string", description: "Product ID" }
-      },
-      required: ["productId"]
-    },
-    category: "products",
-    operation: "delete"
-  },
-
   // PAYMENTS
   ghl_list_payments: {
     name: "ghl_list_payments",
-    description: "List payments for the location",
+    description: "List payment transactions",
     parameters: {
       type: "object",
       properties: {
-        limit: { type: "number", description: "Results limit" },
-        offset: { type: "number", description: "Pagination offset" },
-        startDate: { type: "string", description: "Start date filter (YYYY-MM-DD)" },
-        endDate: { type: "string", description: "End date filter (YYYY-MM-DD)" },
-        status: { type: "string", enum: ["pending", "succeeded", "failed", "refunded"], description: "Payment status" }
+        startDate: { type: "string", description: "Start date filter" },
+        endDate: { type: "string", description: "End date filter" }
       }
     },
     category: "payments",
-    operation: "read"
-  },
-
-  ghl_get_payment: {
-    name: "ghl_get_payment",
-    description: "Get detailed information about a specific payment",
-    parameters: {
-      type: "object",
-      properties: {
-        paymentId: { type: "string", description: "Payment ID" }
-      },
-      required: ["paymentId"]
-    },
-    category: "payments",
-    operation: "read"
-  },
-
-  ghl_refund_payment: {
-    name: "ghl_refund_payment",
-    description: "Refund a payment",
-    parameters: {
-      type: "object",
-      properties: {
-        paymentId: { type: "string", description: "Payment ID" },
-        amount: { type: "number", description: "Refund amount (optional, full refund if not specified)" },
-        reason: { type: "string", description: "Refund reason" }
-      },
-      required: ["paymentId"]
-    },
-    category: "payments",
-    operation: "write"
-  },
-
-  // FORMS
-  ghl_list_forms: {
-    name: "ghl_list_forms",
-    description: "List forms in the location",
-    parameters: {
-      type: "object",
-      properties: {
-        limit: { type: "number", description: "Results limit" },
-        type: { type: "string", enum: ["survey", "form"], description: "Form type filter" }
-      }
-    },
-    category: "forms",
-    operation: "read"
-  },
-
-  ghl_get_form: {
-    name: "ghl_get_form",
-    description: "Get detailed information about a specific form",
-    parameters: {
-      type: "object",
-      properties: {
-        formId: { type: "string", description: "Form ID" }
-      },
-      required: ["formId"]
-    },
-    category: "forms",
-    operation: "read"
-  },
-
-  ghl_get_form_submissions: {
-    name: "ghl_get_form_submissions",
-    description: "Get form submissions for a specific form",
-    parameters: {
-      type: "object",
-      properties: {
-        formId: { type: "string", description: "Form ID" },
-        limit: { type: "number", description: "Results limit" },
-        startDate: { type: "string", description: "Start date filter (YYYY-MM-DD)" },
-        endDate: { type: "string", description: "End date filter (YYYY-MM-DD)" }
-      },
-      required: ["formId"]
-    },
-    category: "forms",
-    operation: "read"
-  },
-
-  // SURVEYS
-  ghl_list_surveys: {
-    name: "ghl_list_surveys",
-    description: "List surveys in the location",
-    parameters: {
-      type: "object",
-      properties: {
-        limit: { type: "number", description: "Results limit" }
-      }
-    },
-    category: "surveys",
-    operation: "read"
-  },
-
-  ghl_get_survey: {
-    name: "ghl_get_survey",
-    description: "Get detailed information about a specific survey",
-    parameters: {
-      type: "object",
-      properties: {
-        surveyId: { type: "string", description: "Survey ID" }
-      },
-      required: ["surveyId"]
-    },
-    category: "surveys",
-    operation: "read"
-  },
-
-  ghl_get_survey_submissions: {
-    name: "ghl_get_survey_submissions",
-    description: "Get survey submissions for a specific survey",
-    parameters: {
-      type: "object",
-      properties: {
-        surveyId: { type: "string", description: "Survey ID" },
-        limit: { type: "number", description: "Results limit" },
-        startDate: { type: "string", description: "Start date filter (YYYY-MM-DD)" },
-        endDate: { type: "string", description: "End date filter (YYYY-MM-DD)" }
-      },
-      required: ["surveyId"]
-    },
-    category: "surveys",
     operation: "read"
   },
 
@@ -992,27 +693,7 @@ export const ghlToolDefinitions = {
   ghl_list_funnels: {
     name: "ghl_list_funnels",
     description: "List funnels in the location",
-    parameters: {
-      type: "object",
-      properties: {
-        limit: { type: "number", description: "Results limit" },
-        category: { type: "string", description: "Funnel category filter" }
-      }
-    },
-    category: "funnels",
-    operation: "read"
-  },
-
-  ghl_get_funnel: {
-    name: "ghl_get_funnel",
-    description: "Get detailed information about a specific funnel",
-    parameters: {
-      type: "object",
-      properties: {
-        funnelId: { type: "string", description: "Funnel ID" }
-      },
-      required: ["funnelId"]
-    },
+    parameters: { type: "object", properties: {}, required: [] },
     category: "funnels",
     operation: "read"
   },
@@ -1031,59 +712,11 @@ export const ghlToolDefinitions = {
     operation: "read"
   },
 
-  // WEBSITES/PAGES
-  ghl_list_websites: {
-    name: "ghl_list_websites",
-    description: "List websites in the location",
-    parameters: {
-      type: "object",
-      properties: {
-        limit: { type: "number", description: "Results limit" }
-      }
-    },
-    category: "websites",
-    operation: "read"
-  },
-
-  ghl_get_website: {
-    name: "ghl_get_website",
-    description: "Get detailed information about a specific website",
-    parameters: {
-      type: "object",
-      properties: {
-        websiteId: { type: "string", description: "Website ID" }
-      },
-      required: ["websiteId"]
-    },
-    category: "websites",
-    operation: "read"
-  },
-
-  ghl_list_pages: {
-    name: "ghl_list_pages",
-    description: "List pages for a website",
-    parameters: {
-      type: "object",
-      properties: {
-        websiteId: { type: "string", description: "Website ID" },
-        limit: { type: "number", description: "Results limit" }
-      }
-    },
-    category: "websites",
-    operation: "read"
-  },
-
-  // MEDIA/FILES
+  // MEDIA
   ghl_list_media: {
     name: "ghl_list_media",
     description: "List media files in the location",
-    parameters: {
-      type: "object",
-      properties: {
-        limit: { type: "number", description: "Results limit" },
-        type: { type: "string", enum: ["image", "video", "audio", "document"], description: "Media type filter" }
-      }
-    },
+    parameters: { type: "object", properties: {}, required: [] },
     category: "media",
     operation: "read"
   },
@@ -1094,9 +727,8 @@ export const ghlToolDefinitions = {
     parameters: {
       type: "object",
       properties: {
-        file: { type: "string", description: "File path or base64 content" },
-        fileName: { type: "string", description: "File name" },
-        folder: { type: "string", description: "Folder to upload to" }
+        file: { type: "string", description: "File base64 content" },
+        fileName: { type: "string", description: "File name" }
       },
       required: ["file", "fileName"]
     },
@@ -1104,103 +736,11 @@ export const ghlToolDefinitions = {
     operation: "write"
   },
 
-  ghl_delete_media: {
-    name: "ghl_delete_media",
-    description: "Delete a media file",
-    parameters: {
-      type: "object",
-      properties: {
-        mediaId: { type: "string", description: "Media file ID" }
-      },
-      required: ["mediaId"]
-    },
-    category: "media",
-    operation: "delete"
-  },
-
-  // COURSES
-  ghl_list_courses: {
-    name: "ghl_list_courses",
-    description: "List courses in the location",
-    parameters: {
-      type: "object",
-      properties: {
-        limit: { type: "number", description: "Results limit" },
-        published: { type: "boolean", description: "Filter by published status" }
-      }
-    },
-    category: "courses",
-    operation: "read"
-  },
-
-  ghl_get_course: {
-    name: "ghl_get_course",
-    description: "Get detailed information about a specific course",
-    parameters: {
-      type: "object",
-      properties: {
-        courseId: { type: "string", description: "Course ID" }
-      },
-      required: ["courseId"]
-    },
-    category: "courses",
-    operation: "read"
-  },
-
-  ghl_get_course_lessons: {
-    name: "ghl_get_course_lessons",
-    description: "Get lessons for a specific course",
-    parameters: {
-      type: "object",
-      properties: {
-        courseId: { type: "string", description: "Course ID" }
-      },
-      required: ["courseId"]
-    },
-    category: "courses",
-    operation: "read"
-  },
-
-  ghl_enroll_contact_in_course: {
-    name: "ghl_enroll_contact_in_course",
-    description: "Enroll a contact in a course",
-    parameters: {
-      type: "object",
-      properties: {
-        contactId: { type: "string", description: "Contact ID" },
-        courseId: { type: "string", description: "Course ID" }
-      },
-      required: ["contactId", "courseId"]
-    },
-    category: "courses",
-    operation: "write"
-  },
-
   // EMAIL BUILDER
   ghl_list_email_templates: {
     name: "ghl_list_email_templates",
     description: "List email templates",
-    parameters: {
-      type: "object",
-      properties: {
-        limit: { type: "number", description: "Results limit" },
-        category: { type: "string", description: "Template category filter" }
-      }
-    },
-    category: "email_builder",
-    operation: "read"
-  },
-
-  ghl_get_email_template: {
-    name: "ghl_get_email_template",
-    description: "Get detailed information about a specific email template",
-    parameters: {
-      type: "object",
-      properties: {
-        templateId: { type: "string", description: "Email template ID" }
-      },
-      required: ["templateId"]
-    },
+    parameters: { type: "object", properties: {}, required: [] },
     category: "email_builder",
     operation: "read"
   },
@@ -1213,9 +753,7 @@ export const ghlToolDefinitions = {
       properties: {
         name: { type: "string", description: "Template name" },
         subject: { type: "string", description: "Email subject" },
-        html: { type: "string", description: "HTML content" },
-        text: { type: "string", description: "Plain text content" },
-        category: { type: "string", description: "Template category" }
+        html: { type: "string", description: "HTML content" }
       },
       required: ["name", "subject", "html"]
     },
@@ -1227,14 +765,7 @@ export const ghlToolDefinitions = {
   ghl_list_social_posts: {
     name: "ghl_list_social_posts",
     description: "List social media posts",
-    parameters: {
-      type: "object",
-      properties: {
-        limit: { type: "number", description: "Results limit" },
-        status: { type: "string", enum: ["draft", "scheduled", "published"], description: "Post status" },
-        platform: { type: "string", enum: ["facebook", "instagram", "twitter", "linkedin"], description: "Social platform" }
-      }
-    },
+    parameters: { type: "object", properties: {}, required: [] },
     category: "social_planner",
     operation: "read"
   },
@@ -1247,25 +778,9 @@ export const ghlToolDefinitions = {
       properties: {
         content: { type: "string", description: "Post content" },
         platforms: { type: "array", items: { type: "string" }, description: "Target platforms" },
-        scheduledDate: { type: "string", description: "Scheduled date/time (ISO format)" },
-        media: { type: "array", items: { type: "string" }, description: "Media file IDs" }
-      },
-      required: ["content", "platforms"]
-    },
-    category: "social_planner",
-    operation: "write"
-  },
-
-  ghl_schedule_social_post: {
-    name: "ghl_schedule_social_post",
-    description: "Schedule a social media post",
-    parameters: {
-      type: "object",
-      properties: {
-        postId: { type: "string", description: "Post ID" },
         scheduledDate: { type: "string", description: "Scheduled date/time (ISO format)" }
       },
-      required: ["postId", "scheduledDate"]
+      required: ["content", "platforms"]
     },
     category: "social_planner",
     operation: "write"
@@ -1275,28 +790,7 @@ export const ghlToolDefinitions = {
   ghl_list_blog_posts: {
     name: "ghl_list_blog_posts",
     description: "List blog posts",
-    parameters: {
-      type: "object",
-      properties: {
-        limit: { type: "number", description: "Results limit" },
-        status: { type: "string", enum: ["draft", "published"], description: "Post status" },
-        category: { type: "string", description: "Post category filter" }
-      }
-    },
-    category: "blog",
-    operation: "read"
-  },
-
-  ghl_get_blog_post: {
-    name: "ghl_get_blog_post",
-    description: "Get detailed information about a specific blog post",
-    parameters: {
-      type: "object",
-      properties: {
-        postId: { type: "string", description: "Blog post ID" }
-      },
-      required: ["postId"]
-    },
+    parameters: { type: "object", properties: {}, required: [] },
     category: "blog",
     operation: "read"
   },
@@ -1308,31 +802,9 @@ export const ghlToolDefinitions = {
       type: "object",
       properties: {
         title: { type: "string", description: "Post title" },
-        content: { type: "string", description: "Post content (HTML)" },
-        excerpt: { type: "string", description: "Post excerpt" },
-        category: { type: "string", description: "Post category" },
-        tags: { type: "array", items: { type: "string" }, description: "Post tags" },
-        featuredImage: { type: "string", description: "Featured image URL" },
-        publishDate: { type: "string", description: "Publish date (ISO format)" }
+        content: { type: "string", description: "Post content (HTML)" }
       },
       required: ["title", "content"]
-    },
-    category: "blog",
-    operation: "write"
-  },
-
-  ghl_update_blog_post: {
-    name: "ghl_update_blog_post",
-    description: "Update an existing blog post",
-    parameters: {
-      type: "object",
-      properties: {
-        postId: { type: "string", description: "Blog post ID" },
-        title: { type: "string", description: "Post title" },
-        content: { type: "string", description: "Post content (HTML)" },
-        status: { type: "string", enum: ["draft", "published"], description: "Post status" }
-      },
-      required: ["postId"]
     },
     category: "blog",
     operation: "write"
@@ -1342,41 +814,19 @@ export const ghlToolDefinitions = {
   ghl_list_documents: {
     name: "ghl_list_documents",
     description: "List documents and contracts",
-    parameters: {
-      type: "object",
-      properties: {
-        limit: { type: "number", description: "Results limit" },
-        type: { type: "string", enum: ["contract", "document", "proposal"], description: "Document type" },
-        status: { type: "string", enum: ["draft", "sent", "signed", "declined"], description: "Document status" }
-      }
-    },
+    parameters: { type: "object", properties: {}, required: [] },
     category: "documents",
     operation: "read"
   },
 
-  ghl_get_document: {
-    name: "ghl_get_document",
-    description: "Get detailed information about a specific document",
-    parameters: {
-      type: "object",
-      properties: {
-        documentId: { type: "string", description: "Document ID" }
-      },
-      required: ["documentId"]
-    },
-    category: "documents",
-    operation: "read"
-  },
-
-  ghl_send_document_for_signature: {
-    name: "ghl_send_document_for_signature",
+  ghl_send_document: {
+    name: "ghl_send_document",
     description: "Send a document for signature",
     parameters: {
       type: "object",
       properties: {
         documentId: { type: "string", description: "Document ID" },
-        contactId: { type: "string", description: "Contact ID to send to" },
-        message: { type: "string", description: "Message to include with document" }
+        contactId: { type: "string", description: "Contact ID" }
       },
       required: ["documentId", "contactId"]
     },
@@ -1384,746 +834,421 @@ export const ghlToolDefinitions = {
     operation: "write"
   },
 
-  // CUSTOM VALUES
-  ghl_list_custom_values: {
-    name: "ghl_list_custom_values",
-    description: "List custom values in the location",
-    parameters: {
-      type: "object",
-      properties: {
-        limit: { type: "number", description: "Results limit" }
-      }
-    },
-    category: "custom_values",
-    operation: "read"
-  },
-
-  ghl_create_custom_value: {
-    name: "ghl_create_custom_value",
-    description: "Create a new custom value",
-    parameters: {
-      type: "object",
-      properties: {
-        name: { type: "string", description: "Custom value name" },
-        dataType: { type: "string", enum: ["TEXT", "LARGE_TEXT", "NUMBER", "MONETARY", "DATE", "PHONE", "EMAIL"], description: "Data type" },
-        isRequired: { type: "boolean", description: "Whether the field is required" }
-      },
-      required: ["name", "dataType"]
-    },
-    category: "custom_values",
-    operation: "write"
-  },
-
-  ghl_delete_custom_value: {
-    name: "ghl_delete_custom_value",
-    description: "Delete a custom value",
-    parameters: {
-      type: "object",
-      properties: {
-        customValueId: { type: "string", description: "Custom value ID" }
-      },
-      required: ["customValueId"]
-    },
-    category: "custom_values",
-    operation: "delete"
-  },
-
-  // LOCATION TAGS
-  ghl_list_location_tags: {
-    name: "ghl_list_location_tags",
-    description: "List location tags",
-    parameters: {
-      type: "object",
-      properties: {
-        limit: { type: "number", description: "Results limit" }
-      }
-    },
-    category: "location_tags",
-    operation: "read"
-  },
-
-  ghl_create_location_tag: {
-    name: "ghl_create_location_tag",
-    description: "Create a new location tag",
-    parameters: {
-      type: "object",
-      properties: {
-        name: { type: "string", description: "Tag name" },
-        color: { type: "string", description: "Tag color (hex code)" }
-      },
-      required: ["name"]
-    },
-    category: "location_tags",
-    operation: "write"
-  },
-
-  ghl_delete_location_tag: {
-    name: "ghl_delete_location_tag",
-    description: "Delete a location tag",
-    parameters: {
-      type: "object",
-      properties: {
-        tagId: { type: "string", description: "Tag ID" }
-      },
-      required: ["tagId"]
-    },
-    category: "location_tags",
-    operation: "delete"
-  },
-
-  // BUSINESSES
-  ghl_list_businesses: {
-    name: "ghl_list_businesses",
-    description: "List businesses/sub-accounts",
-    parameters: {
-      type: "object",
-      properties: {
-        limit: { type: "number", description: "Results limit" }
-      }
-    },
-    category: "businesses",
-    operation: "read"
-  },
-
-  ghl_get_business: {
-    name: "ghl_get_business",
-    description: "Get detailed information about a specific business",
-    parameters: {
-      type: "object",
-      properties: {
-        businessId: { type: "string", description: "Business ID" }
-      },
-      required: ["businessId"]
-    },
-    category: "businesses",
-    operation: "read"
-  },
-
   // TRIGGER LINKS
   ghl_list_trigger_links: {
     name: "ghl_list_trigger_links",
     description: "List trigger links",
-    parameters: {
-      type: "object",
-      properties: {
-        limit: { type: "number", description: "Results limit" }
-      }
-    },
+    parameters: { type: "object", properties: {}, required: [] },
     category: "trigger_links",
     operation: "read"
   },
 
   ghl_create_trigger_link: {
     name: "ghl_create_trigger_link",
-    description: "Create a new trigger link",
+    description: "Create a trigger link",
     parameters: {
       type: "object",
       properties: {
-        name: { type: "string", description: "Trigger link name" },
-        url: { type: "string", description: "Target URL" },
-        workflowId: { type: "string", description: "Workflow ID to trigger" }
+        name: { type: "string", description: "Link name" },
+        redirectTo: { type: "string", description: "Target URL" }
       },
-      required: ["name", "url"]
+      required: ["name", "redirectTo"]
     },
     category: "trigger_links",
     operation: "write"
   },
 
-  // VOICE AI & PHONE SYSTEM
-  ghl_list_voice_calls: {
-    name: "ghl_list_voice_calls",
-    description: "List voice calls",
-    parameters: {
-      type: "object",
-      properties: {
-        limit: { type: "number", description: "Results limit" },
-        startDate: { type: "string", description: "Start date filter (YYYY-MM-DD)" },
-        endDate: { type: "string", description: "End date filter (YYYY-MM-DD)" },
-        direction: { type: "string", enum: ["inbound", "outbound"], description: "Call direction" }
-      }
-    },
-    category: "voice_ai",
-    operation: "read"
-  },
-
-  ghl_get_call_recording: {
-    name: "ghl_get_call_recording",
-    description: "Get call recording URL",
-    parameters: {
-      type: "object",
-      properties: {
-        callId: { type: "string", description: "Call ID" }
-      },
-      required: ["callId"]
-    },
-    category: "voice_ai",
-    operation: "read"
-  },
-
+  // PHONE / VOICE
   ghl_list_phone_numbers: {
     name: "ghl_list_phone_numbers",
     description: "List phone numbers for the location",
-    parameters: {
-      type: "object",
-      properties: {
-        limit: { type: "number", description: "Results limit" }
-      }
-    },
+    parameters: { type: "object", properties: {}, required: [] },
     category: "phone_system",
     operation: "read"
   },
 
-  // CUSTOM OBJECTS
-  ghl_list_custom_objects: {
-    name: "ghl_list_custom_objects",
-    description: "List custom objects in the location",
-    parameters: {
-      type: "object",
-      properties: {
-        limit: { type: "number", description: "Results limit" }
-      }
-    },
-    category: "custom_objects",
+  // COURSES
+  ghl_list_courses: {
+    name: "ghl_list_courses",
+    description: "List courses in the location",
+    parameters: { type: "object", properties: {}, required: [] },
+    category: "courses",
     operation: "read"
-  },
-
-  ghl_create_custom_object_record: {
-    name: "ghl_create_custom_object_record",
-    description: "Create a record in a custom object",
-    parameters: {
-      type: "object",
-      properties: {
-        objectId: { type: "string", description: "Custom object ID" },
-        data: { type: "object", description: "Record data" }
-      },
-      required: ["objectId", "data"]
-    },
-    category: "custom_objects",
-    operation: "write"
-  },
-
-  ghl_get_custom_object_records: {
-    name: "ghl_get_custom_object_records",
-    description: "Get records from a custom object",
-    parameters: {
-      type: "object",
-      properties: {
-        objectId: { type: "string", description: "Custom object ID" },
-        limit: { type: "number", description: "Results limit" }
-      },
-      required: ["objectId"]
-    },
-    category: "custom_objects",
-    operation: "read"
-  },
-
-  // USERS (EXPANDED)
-  ghl_get_user: {
-    name: "ghl_get_user",
-    description: "Get detailed information about a specific user",
-    parameters: {
-      type: "object",
-      properties: {
-        userId: { type: "string", description: "User ID" }
-      },
-      required: ["userId"]
-    },
-    category: "users",
-    operation: "read"
-  },
-
-  ghl_update_user: {
-    name: "ghl_update_user",
-    description: "Update user information",
-    parameters: {
-      type: "object",
-      properties: {
-        userId: { type: "string", description: "User ID" },
-        firstName: { type: "string", description: "First name" },
-        lastName: { type: "string", description: "Last name" },
-        email: { type: "string", description: "Email address" },
-        phone: { type: "string", description: "Phone number" }
-      },
-      required: ["userId"]
-    },
-    category: "users",
-    operation: "write"
   }
 };
 
-// Tool execution handlers
+// ─────────────────────────────────────────────
+// EXECUTORS — All verified against official GHL API v2 docs
+// Source: marketplace.gohighlevel.com/docs
+// ─────────────────────────────────────────────
 export const ghlExecutors = {
+
+  // CONTACTS
+  // POST /contacts/search — requires page + pageLimit in body
   ghl_search_contacts: async (params) => {
     const locationId = process.env.GHL_LOCATION_ID;
-    return await callGHL('/contacts/search', 'POST', { locationId, query: params.query }, null);
+    return await callGHL('/contacts/search', 'POST', {
+      locationId,
+      page: params.page || 1,
+      pageLimit: params.limit || 20,
+      query: params.query
+    }, null);
   },
 
+  // GET /contacts/{contactId}
   ghl_get_contact: async (params) => {
     return await callGHL(`/contacts/${params.contactId}`);
   },
 
+  // POST /contacts/
   ghl_create_contact: async (params) => {
-    return await callGHL('/contacts', 'POST', params);
+    const locationId = process.env.GHL_LOCATION_ID;
+    return await callGHL('/contacts/', 'POST', { locationId, ...params });
   },
 
+  // PUT /contacts/{contactId}
   ghl_update_contact: async (params) => {
     const { contactId, ...updateData } = params;
     return await callGHL(`/contacts/${contactId}`, 'PUT', updateData);
   },
 
+  // DELETE /contacts/{contactId}
   ghl_delete_contact: async (params) => {
     return await callGHL(`/contacts/${params.contactId}`, 'DELETE');
   },
 
+  // CONVERSATIONS
+  // GET /conversations/search?locationId=&contactId=
   ghl_get_conversations: async (params) => {
-    return await callGHL('/conversations', 'GET', null, params);
+    const locationId = process.env.GHL_LOCATION_ID;
+    return await callGHL('/conversations/search', 'GET', null, { locationId, contactId: params.contactId, limit: params.limit || 20 });
   },
 
+  // POST /conversations/messages
   ghl_send_message: async (params) => {
     return await callGHL('/conversations/messages', 'POST', params);
   },
 
+  // CALENDARS
+  // GET /calendars/?locationId=
   ghl_list_calendars: async (params) => {
-    return await callGHL('/calendars');
+    return await callGHL('/calendars/');
   },
 
+  // GET /calendars/{calendarId}/free-slots
   ghl_get_calendar_slots: async (params) => {
-    return await callGHL(`/calendars/${params.calendarId}/free-slots`, 'GET', null, params);
+    return await callGHL(`/calendars/${params.calendarId}/free-slots`, 'GET', null, {
+      startDate: params.startDate,
+      endDate: params.endDate
+    });
   },
 
+  // POST /calendars/events/appointments
   ghl_create_appointment: async (params) => {
-    return await callGHL(`/calendars/${params.calendarId}/appointments`, 'POST', params);
+    const locationId = process.env.GHL_LOCATION_ID;
+    return await callGHL('/calendars/events/appointments', 'POST', { locationId, ...params });
   },
 
+  // GET /calendars/events?calendarId=&locationId=&startTime=&endTime=
+  ghl_get_appointments: async (params) => {
+    const locationId = process.env.GHL_LOCATION_ID;
+    return await callGHL('/calendars/events', 'GET', null, {
+      locationId,
+      calendarId: params.calendarId,
+      startTime: params.startDate,
+      endTime: params.endDate
+    });
+  },
+
+  // OPPORTUNITIES
+  // POST /opportunities/search — requires location_id in body
   ghl_search_opportunities: async (params) => {
     const locationId = process.env.GHL_LOCATION_ID;
-    return await callGHL('/opportunities/search', 'POST', { location_id: locationId, query: params.query }, null);
+    return await callGHL('/opportunities/search', 'POST', {
+      location_id: locationId,
+      page: 1,
+      pageLimit: params.limit || 20,
+      ...(params.query && { query: params.query }),
+      ...(params.pipelineId && { pipelineId: params.pipelineId }),
+      ...(params.status && { status: params.status })
+    }, null);
   },
 
+  // GET /opportunities/{id}
+  ghl_get_opportunity: async (params) => {
+    return await callGHL(`/opportunities/${params.opportunityId}`);
+  },
+
+  // POST /opportunities/
   ghl_create_opportunity: async (params) => {
-    return await callGHL('/opportunities', 'POST', params);
+    const locationId = process.env.GHL_LOCATION_ID;
+    return await callGHL('/opportunities/', 'POST', { locationId, ...params });
   },
 
-  ghl_list_workflows: async (params) => {
-    return await callGHL('/workflows');
+  // PUT /opportunities/{id}
+  ghl_update_opportunity: async (params) => {
+    const { opportunityId, ...updateData } = params;
+    return await callGHL(`/opportunities/${opportunityId}`, 'PUT', updateData);
   },
 
-  ghl_add_contact_to_workflow: async (params) => {
-    return await callGHL(`/workflows/${params.workflowId}/subscribers`, 'POST', { contactId: params.contactId });
-  },
-
-  ghl_get_forms: async (params) => {
-    return await callGHL('/forms');
-  },
-
-  ghl_get_form_submissions: async (params) => {
-    return await callGHL(`/forms/${params.formId}/submissions`, 'GET', null, params);
-  },
-
-  // PIPELINES & STAGES
+  // GET /opportunities/pipelines?locationId=
   ghl_list_pipelines: async (params) => {
     return await callGHL('/opportunities/pipelines');
   },
 
-  ghl_get_pipeline_stages: async (params) => {
-    return await callGHL(`/opportunities/pipelines/${params.pipelineId}/stages`);
+  // PUT /opportunities/{id} with pipelineStageId
+  ghl_update_opportunity_stage: async (params) => {
+    return await callGHL(`/opportunities/${params.opportunityId}`, 'PUT', { pipelineStageId: params.pipelineStageId });
   },
 
-  ghl_update_opportunity_stage: async (params) => {
-    const { opportunityId, pipelineStageId } = params;
-    return await callGHL(`/opportunities/${opportunityId}`, 'PUT', { pipelineStageId });
+  // WORKFLOWS
+  // GET /workflows/?locationId=
+  ghl_list_workflows: async (params) => {
+    return await callGHL('/workflows/');
+  },
+
+  // POST /contacts/{contactId}/workflow/{workflowId}
+  ghl_add_contact_to_workflow: async (params) => {
+    return await callGHL(`/contacts/${params.contactId}/workflow/${params.workflowId}`, 'POST', {});
+  },
+
+  // DELETE /contacts/{contactId}/workflow/{workflowId}
+  ghl_remove_contact_from_workflow: async (params) => {
+    return await callGHL(`/contacts/${params.contactId}/workflow/${params.workflowId}`, 'DELETE');
   },
 
   // TASKS
+  // GET /contacts/{contactId}/tasks
   ghl_list_tasks: async (params) => {
-    return await callGHL('/tasks', 'GET', null, params);
+    return await callGHL(`/contacts/${params.contactId}/tasks`);
   },
 
+  // POST /contacts/{contactId}/tasks
   ghl_create_task: async (params) => {
-    return await callGHL('/tasks', 'POST', params);
+    const { contactId, ...taskData } = params;
+    return await callGHL(`/contacts/${contactId}/tasks`, 'POST', taskData);
   },
 
+  // PUT /contacts/{contactId}/tasks/{taskId}
   ghl_update_task: async (params) => {
-    const { taskId, ...updateData } = params;
-    return await callGHL(`/tasks/${taskId}`, 'PUT', updateData);
+    const { contactId, taskId, ...updateData } = params;
+    return await callGHL(`/contacts/${contactId}/tasks/${taskId}`, 'PUT', updateData);
   },
 
   // NOTES
+  // GET /contacts/{contactId}/notes
   ghl_get_notes: async (params) => {
-    if (params.contactId) {
-      return await callGHL(`/contacts/${params.contactId}/notes`, 'GET', null, params);
-    } else if (params.opportunityId) {
-      return await callGHL(`/opportunities/${params.opportunityId}/notes`, 'GET', null, params);
-    } else {
-      return await callGHL('/notes', 'GET', null, params);
-    }
+    return await callGHL(`/contacts/${params.contactId}/notes`);
   },
 
+  // POST /contacts/{contactId}/notes
   ghl_create_note: async (params) => {
-    if (params.contactId) {
-      return await callGHL(`/contacts/${params.contactId}/notes`, 'POST', params);
-    } else if (params.opportunityId) {
-      return await callGHL(`/opportunities/${params.opportunityId}/notes`, 'POST', params);
-    } else {
-      return await callGHL('/notes', 'POST', params);
-    }
+    const { contactId, ...noteData } = params;
+    return await callGHL(`/contacts/${contactId}/notes`, 'POST', noteData);
   },
 
   // TAGS
-  ghl_get_contact_tags: async (params) => {
-    return await callGHL('/contacts/tags');
-  },
-
+  // POST /contacts/{contactId}/tags
   ghl_add_contact_tag: async (params) => {
-    const { contactId, tags } = params;
-    return await callGHL(`/contacts/${contactId}/tags`, 'POST', { tags });
+    return await callGHL(`/contacts/${params.contactId}/tags`, 'POST', { tags: params.tags });
   },
 
+  // DELETE /contacts/{contactId}/tags
   ghl_remove_contact_tag: async (params) => {
-    const { contactId, tags } = params;
-    return await callGHL(`/contacts/${contactId}/tags`, 'DELETE', { tags });
+    return await callGHL(`/contacts/${params.contactId}/tags`, 'DELETE', { tags: params.tags });
+  },
+
+  // GET /locations/{locationId}/tags
+  ghl_list_location_tags: async (params) => {
+    const locationId = process.env.GHL_LOCATION_ID;
+    return await callGHL(`/locations/${locationId}/tags`);
   },
 
   // CUSTOM FIELDS
+  // GET /custom-fields/?locationId=&model=contact
   ghl_get_custom_fields: async (params) => {
-    return await callGHL('/custom-fields');
+    return await callGHL('/custom-fields/', 'GET', null, { model: 'contact' });
   },
 
+  // PUT /contacts/{contactId}
   ghl_update_contact_custom_field: async (params) => {
     const { contactId, customFields } = params;
     return await callGHL(`/contacts/${contactId}`, 'PUT', { customFields });
   },
 
-  // USERS & LOCATIONS
+  // USERS & LOCATION
+  // GET /users/search?locationId=
   ghl_list_users: async (params) => {
-    return await callGHL('/users');
+    return await callGHL('/users/search');
   },
 
+  // GET /locations/{locationId}
   ghl_get_location_info: async (params) => {
     const locationId = process.env.GHL_LOCATION_ID;
     return await callGHL(`/locations/${locationId}`);
   },
 
   // CAMPAIGNS
+  // GET /campaigns/?locationId=
   ghl_list_campaigns: async (params) => {
-    return await callGHL('/campaigns', 'GET', null, params);
+    return await callGHL('/campaigns/', 'GET', null, params);
   },
 
-  ghl_get_campaign_stats: async (params) => {
-    return await callGHL(`/campaigns/${params.campaignId}/stats`);
+  // FORMS
+  // GET /forms/?locationId=
+  ghl_list_forms: async (params) => {
+    return await callGHL('/forms/');
+  },
+
+  // GET /forms/submissions?locationId=&formId=
+  ghl_get_form_submissions: async (params) => {
+    const { formId, ...queryParams } = params;
+    return await callGHL('/forms/submissions', 'GET', null, { formId, ...queryParams });
+  },
+
+  // SURVEYS
+  // GET /surveys/?locationId=
+  ghl_list_surveys: async (params) => {
+    return await callGHL('/surveys/');
+  },
+
+  // GET /surveys/submissions?locationId=&surveyId=
+  ghl_get_survey_submissions: async (params) => {
+    return await callGHL('/surveys/submissions', 'GET', null, { surveyId: params.surveyId });
   },
 
   // INVOICES
+  // GET /invoices/?locationId=
   ghl_list_invoices: async (params) => {
-    return await callGHL('/invoices', 'GET', null, params);
+    return await callGHL('/invoices/', 'GET', null, params);
   },
 
+  // GET /invoices/{invoiceId}
   ghl_get_invoice: async (params) => {
     return await callGHL(`/invoices/${params.invoiceId}`);
   },
 
+  // POST /invoices/
   ghl_create_invoice: async (params) => {
-    return await callGHL('/invoices', 'POST', params);
+    const locationId = process.env.GHL_LOCATION_ID;
+    return await callGHL('/invoices/', 'POST', { locationId, ...params });
   },
 
-  ghl_update_invoice: async (params) => {
-    const { invoiceId, ...updateData } = params;
-    return await callGHL(`/invoices/${invoiceId}`, 'PUT', updateData);
-  },
-
+  // POST /invoices/{invoiceId}/send
   ghl_send_invoice: async (params) => {
-    return await callGHL(`/invoices/${params.invoiceId}/send`, 'POST');
-  },
-
-  ghl_void_invoice: async (params) => {
-    return await callGHL(`/invoices/${params.invoiceId}/void`, 'POST');
-  },
-
-  // ESTIMATES
-  ghl_list_estimates: async (params) => {
-    return await callGHL('/estimates', 'GET', null, params);
-  },
-
-  ghl_get_estimate: async (params) => {
-    return await callGHL(`/estimates/${params.estimateId}`);
-  },
-
-  ghl_create_estimate: async (params) => {
-    return await callGHL('/estimates', 'POST', params);
-  },
-
-  ghl_update_estimate: async (params) => {
-    const { estimateId, ...updateData } = params;
-    return await callGHL(`/estimates/${estimateId}`, 'PUT', updateData);
-  },
-
-  ghl_send_estimate: async (params) => {
-    return await callGHL(`/estimates/${params.estimateId}/send`, 'POST');
+    return await callGHL(`/invoices/${params.invoiceId}/send`, 'POST', {});
   },
 
   // PRODUCTS
+  // GET /products/?locationId=
   ghl_list_products: async (params) => {
-    return await callGHL('/products', 'GET', null, params);
+    return await callGHL('/products/', 'GET', null, params);
   },
 
-  ghl_get_product: async (params) => {
-    return await callGHL(`/products/${params.productId}`);
-  },
-
+  // POST /products/
   ghl_create_product: async (params) => {
-    return await callGHL('/products', 'POST', params);
-  },
-
-  ghl_update_product: async (params) => {
-    const { productId, ...updateData } = params;
-    return await callGHL(`/products/${productId}`, 'PUT', updateData);
-  },
-
-  ghl_delete_product: async (params) => {
-    return await callGHL(`/products/${params.productId}`, 'DELETE');
+    const locationId = process.env.GHL_LOCATION_ID;
+    return await callGHL('/products/', 'POST', { locationId, ...params });
   },
 
   // PAYMENTS
+  // GET /payments/transactions?locationId=
   ghl_list_payments: async (params) => {
-    return await callGHL('/payments', 'GET', null, params);
-  },
-
-  ghl_get_payment: async (params) => {
-    return await callGHL(`/payments/${params.paymentId}`);
-  },
-
-  ghl_refund_payment: async (params) => {
-    const { paymentId, amount, reason } = params;
-    return await callGHL(`/payments/${paymentId}/refunds`, 'POST', { amount, reason });
-  },
-
-  // FORMS
-  ghl_list_forms: async (params) => {
-    return await callGHL('/forms', 'GET', null, params);
-  },
-
-  ghl_get_form: async (params) => {
-    return await callGHL(`/forms/${params.formId}`);
-  },
-
-  ghl_get_form_submissions: async (params) => {
-    const { formId, ...queryParams } = params;
-    return await callGHL(`/forms/${formId}/submissions`, 'GET', null, queryParams);
-  },
-
-  // SURVEYS
-  ghl_list_surveys: async (params) => {
-    return await callGHL('/surveys', 'GET', null, params);
-  },
-
-  ghl_get_survey: async (params) => {
-    return await callGHL(`/surveys/${params.surveyId}`);
-  },
-
-  ghl_get_survey_submissions: async (params) => {
-    const { surveyId, ...queryParams } = params;
-    return await callGHL(`/surveys/${surveyId}/submissions`, 'GET', null, queryParams);
+    return await callGHL('/payments/transactions', 'GET', null, params);
   },
 
   // FUNNELS
+  // GET /funnels/funnel/list?locationId=
   ghl_list_funnels: async (params) => {
-    return await callGHL('/funnels', 'GET', null, params);
+    return await callGHL('/funnels/funnel/list');
   },
 
-  ghl_get_funnel: async (params) => {
-    return await callGHL(`/funnels/${params.funnelId}`);
-  },
-
+  // GET /funnels/page?funnelId=
   ghl_get_funnel_pages: async (params) => {
-    return await callGHL(`/funnels/${params.funnelId}/pages`);
+    return await callGHL('/funnels/page', 'GET', null, { funnelId: params.funnelId });
   },
 
-  // WEBSITES/PAGES
-  ghl_list_websites: async (params) => {
-    return await callGHL('/websites', 'GET', null, params);
-  },
-
-  ghl_get_website: async (params) => {
-    return await callGHL(`/websites/${params.websiteId}`);
-  },
-
-  ghl_list_pages: async (params) => {
-    const { websiteId, ...queryParams } = params;
-    return await callGHL(`/websites/${websiteId}/pages`, 'GET', null, queryParams);
-  },
-
-  // MEDIA/FILES
+  // MEDIA
+  // GET /medias/files?locationId=
   ghl_list_media: async (params) => {
-    return await callGHL('/media', 'GET', null, params);
+    return await callGHL('/medias/files');
   },
 
+  // POST /medias/upload-file
   ghl_upload_media: async (params) => {
-    const { file, fileName, folder } = params;
-    // Note: This would need proper file upload handling in a real implementation
-    return await callGHL('/media/upload-file', 'POST', { file, fileName, folder });
-  },
-
-  ghl_delete_media: async (params) => {
-    return await callGHL(`/media/${params.mediaId}`, 'DELETE');
-  },
-
-  // COURSES
-  ghl_list_courses: async (params) => {
-    return await callGHL('/courses', 'GET', null, params);
-  },
-
-  ghl_get_course: async (params) => {
-    return await callGHL(`/courses/${params.courseId}`);
-  },
-
-  ghl_get_course_lessons: async (params) => {
-    return await callGHL(`/courses/${params.courseId}/lessons`);
-  },
-
-  ghl_enroll_contact_in_course: async (params) => {
-    const { contactId, courseId } = params;
-    return await callGHL(`/courses/${courseId}/enrollments`, 'POST', { contactId });
+    return await callGHL('/medias/upload-file', 'POST', params);
   },
 
   // EMAIL BUILDER
+  // GET /emails/builder?locationId=
   ghl_list_email_templates: async (params) => {
-    return await callGHL('/emails/templates', 'GET', null, params);
+    return await callGHL('/emails/builder');
   },
 
-  ghl_get_email_template: async (params) => {
-    return await callGHL(`/emails/templates/${params.templateId}`);
-  },
-
+  // POST /emails/builder
   ghl_create_email_template: async (params) => {
-    return await callGHL('/emails/templates', 'POST', params);
+    const locationId = process.env.GHL_LOCATION_ID;
+    return await callGHL('/emails/builder', 'POST', { locationId, ...params });
   },
 
   // SOCIAL PLANNER
+  // GET /social-media-posting/{locationId}/posts
   ghl_list_social_posts: async (params) => {
-    return await callGHL('/social-media-posting', 'GET', null, params);
+    const locationId = process.env.GHL_LOCATION_ID;
+    return await callGHL(`/social-media-posting/${locationId}/posts`);
   },
 
+  // POST /social-media-posting/{locationId}/posts
   ghl_create_social_post: async (params) => {
-    return await callGHL('/social-media-posting', 'POST', params);
-  },
-
-  ghl_schedule_social_post: async (params) => {
-    const { postId, scheduledDate } = params;
-    return await callGHL(`/social-media-posting/${postId}/schedule`, 'PUT', { scheduledDate });
+    const locationId = process.env.GHL_LOCATION_ID;
+    return await callGHL(`/social-media-posting/${locationId}/posts`, 'POST', params);
   },
 
   // BLOG POSTS
+  // GET /blogs/posts?locationId=
   ghl_list_blog_posts: async (params) => {
-    return await callGHL('/blogs', 'GET', null, params);
+    return await callGHL('/blogs/posts');
   },
 
-  ghl_get_blog_post: async (params) => {
-    return await callGHL(`/blogs/${params.postId}`);
-  },
-
+  // POST /blogs/posts
   ghl_create_blog_post: async (params) => {
-    return await callGHL('/blogs', 'POST', params);
-  },
-
-  ghl_update_blog_post: async (params) => {
-    const { postId, ...updateData } = params;
-    return await callGHL(`/blogs/${postId}`, 'PUT', updateData);
+    const locationId = process.env.GHL_LOCATION_ID;
+    return await callGHL('/blogs/posts', 'POST', { locationId, ...params });
   },
 
   // DOCUMENTS/CONTRACTS
+  // GET /proposals/?locationId=
   ghl_list_documents: async (params) => {
-    return await callGHL('/documents', 'GET', null, params);
+    return await callGHL('/proposals/');
   },
 
-  ghl_get_document: async (params) => {
-    return await callGHL(`/documents/${params.documentId}`);
-  },
-
-  ghl_send_document_for_signature: async (params) => {
-    const { documentId, contactId, message } = params;
-    return await callGHL(`/documents/${documentId}/send`, 'POST', { contactId, message });
-  },
-
-  // CUSTOM VALUES
-  ghl_list_custom_values: async (params) => {
-    return await callGHL('/custom-values', 'GET', null, params);
-  },
-
-  ghl_create_custom_value: async (params) => {
-    return await callGHL('/custom-values', 'POST', params);
-  },
-
-  ghl_delete_custom_value: async (params) => {
-    return await callGHL(`/custom-values/${params.customValueId}`, 'DELETE');
-  },
-
-  // LOCATION TAGS
-  ghl_list_location_tags: async (params) => {
-    return await callGHL('/tags', 'GET', null, params);
-  },
-
-  ghl_create_location_tag: async (params) => {
-    return await callGHL('/tags', 'POST', params);
-  },
-
-  ghl_delete_location_tag: async (params) => {
-    return await callGHL(`/tags/${params.tagId}`, 'DELETE');
-  },
-
-  // BUSINESSES
-  ghl_list_businesses: async (params) => {
-    return await callGHL('/locations', 'GET', null, params);
-  },
-
-  ghl_get_business: async (params) => {
-    return await callGHL(`/locations/${params.businessId}`);
+  // POST /proposals/send
+  ghl_send_document: async (params) => {
+    return await callGHL('/proposals/send', 'POST', params);
   },
 
   // TRIGGER LINKS
+  // GET /links/?locationId=
   ghl_list_trigger_links: async (params) => {
-    return await callGHL('/links', 'GET', null, params);
+    return await callGHL('/links/');
   },
 
+  // POST /links/
   ghl_create_trigger_link: async (params) => {
-    return await callGHL('/links', 'POST', params);
+    const locationId = process.env.GHL_LOCATION_ID;
+    return await callGHL('/links/', 'POST', { locationId, ...params });
   },
 
-  // VOICE AI & PHONE SYSTEM
-  ghl_list_voice_calls: async (params) => {
-    return await callGHL('/voice/calls', 'GET', null, params);
-  },
-
-  ghl_get_call_recording: async (params) => {
-    return await callGHL(`/voice/calls/${params.callId}/recording`);
-  },
-
+  // PHONE SYSTEM
+  // GET /phone-system/numbers?locationId=
   ghl_list_phone_numbers: async (params) => {
-    return await callGHL('/phone-numbers', 'GET', null, params);
+    return await callGHL('/phone-system/numbers');
   },
 
-  // CUSTOM OBJECTS
-  ghl_list_custom_objects: async (params) => {
-    return await callGHL('/custom-objects', 'GET', null, params);
-  },
-
-  ghl_create_custom_object_record: async (params) => {
-    const { objectId, data } = params;
-    return await callGHL(`/custom-objects/${objectId}/records`, 'POST', data);
-  },
-
-  ghl_get_custom_object_records: async (params) => {
-    const { objectId, ...queryParams } = params;
-    return await callGHL(`/custom-objects/${objectId}/records`, 'GET', null, queryParams);
-  },
-
-  // USERS (EXPANDED)
-  ghl_get_user: async (params) => {
-    return await callGHL(`/users/${params.userId}`);
-  },
-
-  ghl_update_user: async (params) => {
-    const { userId, ...updateData } = params;
-    return await callGHL(`/users/${userId}`, 'PUT', updateData);
+  // COURSES
+  // GET /courses/?locationId=
+  ghl_list_courses: async (params) => {
+    return await callGHL('/courses/');
   }
 };
 
@@ -2139,22 +1264,11 @@ export async function executeGHLTool(toolName, parameters) {
   try {
     const result = await ghlExecutors[toolName](parameters);
     const duration = Date.now() - startTime;
-
     logger.info(`GHL tool completed: ${toolName} (${duration}ms)`);
-
-    return {
-      success: true,
-      data: result,
-      executionTime: duration
-    };
+    return { success: true, data: result, executionTime: duration };
   } catch (error) {
     const duration = Date.now() - startTime;
     logger.error(`GHL tool failed: ${toolName} (${duration}ms)`, error.message);
-
-    return {
-      success: false,
-      error: error.message,
-      executionTime: duration
-    };
+    return { success: false, error: error.message, executionTime: duration };
   }
 }
