@@ -376,6 +376,9 @@ router.post('/message', async (req, res) => {
       message: 'Processing chat message...'
     });
 
+    // Build Sarah's conversational system prompt
+    const chatSystemPrompt = await buildSarahPrompt(agentConfig, context);
+
     // Execute through AgentExecutor with full tool access
     console.log('Creating AgentExecutor with agentId:', agentConfig.agentId);
     const executor = new AgentExecutor(agentConfig.agentId);
@@ -386,7 +389,8 @@ router.post('/message', async (req, res) => {
       trigger: 'chat',
       sessionId,
       executionId,
-      recentWork: context
+      recentWork: context,
+      chatSystemPrompt: chatSystemPrompt
     });
 
     console.log('ExecuteTask result:', {

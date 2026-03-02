@@ -83,7 +83,17 @@ export class AgentExecutor {
     try {
       // Load agent configuration and build system prompt
       const agentConfig = await loadAgentConfig(this.agentId);
-      const systemPrompt = await this.buildSystemPrompt(agentConfig, context);
+
+      let systemPrompt;
+      if (context.trigger === 'chat') {
+        // Use conversational system prompt passed from chat.js
+        systemPrompt = context.chatSystemPrompt;
+        logger.info('Using conversational chat prompt for execution');
+      } else {
+        // Use agentic execution prompt for heartbeat/tasks
+        systemPrompt = await this.buildSystemPrompt(agentConfig, context);
+        logger.info('Using agentic execution prompt for task');
+      }
 
       // Store task context and initialize conversation with advanced context management
       await this.contextManager.storeWorkingContext('current_task', {
@@ -537,6 +547,16 @@ Use the available tools to complete this task. Work step by step and explain you
     }
 
     return claudeTools;
+  }
+
+  /**
+   * Generate tool description for logging and display
+   */
+  getToolDescription(toolName, input) {
+    const inputStr = input && typeof input === 'object' ?
+      Object.keys(input).join(', ') :
+      (input || '');
+    return `${toolName}(${inputStr})`;
   }
 
   /**
