@@ -104,14 +104,20 @@ export class AgentExecutor {
       }, 'current_task');
 
       // Add initial task to conversation context
-      await this.contextManager.addConversationTurn('user',
-        `Execute this task autonomously: ${task}
+      if (context.trigger === 'chat') {
+        // For chat, add the message directly without agentic framing
+        await this.contextManager.addConversationTurn('user', task, { type: 'chat_message', priority: 9 });
+      } else {
+        // For agentic tasks, use the full execution framing
+        await this.contextManager.addConversationTurn('user',
+          `Execute this task autonomously: ${task}
 
 Available context: ${JSON.stringify(context, null, 2)}
 
 Use the available tools to complete this task. Work step by step and explain your reasoning. When you've completed the task, clearly state "TASK COMPLETED" followed by a summary of what was accomplished.`,
-        { type: 'current_task', priority: 9 }
-      );
+          { type: 'current_task', priority: 9 }
+        );
+      }
 
       // Select optimal model for this task if adaptive models are enabled
       if (this.useAdaptiveModels) {
