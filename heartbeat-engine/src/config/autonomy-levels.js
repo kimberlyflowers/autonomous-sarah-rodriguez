@@ -9,97 +9,31 @@ const logger = createLogger('autonomy');
 export const autonomyLevels = {
   1: {
     level: 1,
-    name: 'Observer',
-    description: 'Can check systems and report findings. Cannot take action.',
-    allowed: [
-      'read_ghl',
-      'read_email',
-      'read_calendar',
-      'read_tasks',
-      'generate_reports',
-      'log_interaction',
-      'send_notification'
-    ],
-    blocked: [
-      'send_email',
-      'create_task',
-      'update_contact',
-      'modify_calendar',
-      'send_sms',
-      'update_pipeline',
-      'create_appointment',
-      'delete_data'
-    ],
-    escalation: 'all_actions', // escalate everything that requires action
-    maxDailyActions: 0, // read-only
-    requiresApproval: true,
-    graduationCriteria: {
-      cyclesRequired: 50,
-      successRateThreshold: 0.95,
-      appropriateEscalationRate: 0.8,
-      timeInLevel: '7 days'
-    }
-  },
-
-  2: {
-    level: 2,
     name: 'Assistant',
-    description: 'Can handle routine tasks with guardrails. Escalates edge cases.',
+    description: 'Handles routine operations autonomously. Escalates edge cases and high-stakes decisions.',
     allowed: [
       'read_ghl',
       'read_email',
       'read_calendar',
       'read_tasks',
       'send_followup_email',
-      'create_internal_task',
-      'update_task_status',
-      'send_reminder',
-      'log_interaction',
-      'send_notification',
-      'schedule_reminder'
-    ],
-    blocked: [
-      'send_cold_email',
-      'delete_contact',
-      'modify_pricing',
-      'access_billing',
-      'update_pipeline',
-      'create_appointment',
-      'bulk_operations'
-    ],
-    escalation: 'non_routine', // escalate anything outside normal patterns
-    maxDailyActions: 10,
-    requiresApproval: false,
-    graduationCriteria: {
-      cyclesRequired: 100,
-      successRateThreshold: 0.92,
-      appropriateEscalationRate: 0.75,
-      timeInLevel: '14 days'
-    }
-  },
-
-  3: {
-    level: 3,
-    name: 'Operator',
-    description: 'Can execute most operations. Logs everything for review.',
-    allowed: [
-      'read_ghl',
-      'read_email',
-      'read_calendar',
-      'read_tasks',
       'send_email',
       'create_task',
+      'update_task_status',
+      'create_internal_task',
       'update_contact',
+      'create_contact',
       'create_appointment',
       'send_reminder',
-      'generate_reports',
-      'update_pipeline',
       'log_interaction',
       'send_notification',
       'schedule_reminder',
-      'send_followup_email',
-      'update_task_status',
-      'send_appointment_reminder'
+      'send_appointment_reminder',
+      'add_contact_tag',
+      'remove_contact_tag',
+      'add_contact_to_workflow',
+      'send_sms',
+      'generate_reports'
     ],
     blocked: [
       'delete_contact',
@@ -109,21 +43,78 @@ export const autonomyLevels = {
       'delete_data',
       'modify_integrations'
     ],
-    escalation: 'high_stakes_only', // only escalate significant decisions
-    maxDailyActions: 50,
+    escalation: 'non_routine',
+    maxDailyActions: 100,
     requiresApproval: false,
     graduationCriteria: {
-      cyclesRequired: 200,
+      cyclesRequired: 100,
+      successRateThreshold: 0.92,
+      appropriateEscalationRate: 0.75,
+      timeInLevel: '14 days'
+    }
+  },
+
+  2: {
+    level: 2,
+    name: 'Partner',
+    description: 'Full operational autonomy including pipeline and opportunity management. Weekly review.',
+    allowed: [
+      'read_ghl',
+      'read_email',
+      'read_calendar',
+      'read_tasks',
+      'send_email',
+      'send_followup_email',
+      'send_cold_email',
+      'create_task',
+      'update_task_status',
+      'update_contact',
+      'create_contact',
+      'create_appointment',
+      'send_reminder',
+      'generate_reports',
+      'update_pipeline',
+      'create_opportunity',
+      'update_opportunity',
+      'log_interaction',
+      'send_notification',
+      'schedule_reminder',
+      'send_appointment_reminder',
+      'add_contact_tag',
+      'remove_contact_tag',
+      'add_contact_to_workflow',
+      'remove_contact_from_workflow',
+      'send_sms',
+      'send_invoice',
+      'create_invoice',
+      'upload_media',
+      'create_note',
+      'create_social_post',
+      'create_blog_post'
+    ],
+    blocked: [
+      'delete_contact',
+      'modify_pricing',
+      'access_billing',
+      'bulk_operations',
+      'delete_data',
+      'modify_integrations'
+    ],
+    escalation: 'high_stakes_only',
+    maxDailyActions: 500,
+    requiresApproval: false,
+    graduationCriteria: {
+      cyclesRequired: 300,
       successRateThreshold: 0.90,
       appropriateEscalationRate: 0.70,
       timeInLevel: '30 days'
     }
   },
 
-  4: {
-    level: 4,
-    name: 'Partner',
-    description: 'Full operational autonomy. Weekly review instead of per-action.',
+  3: {
+    level: 3,
+    name: 'Operator',
+    description: 'Reserved for future expansion. Full autonomous operations.',
     allowed: [
       'all_operations'
     ],
@@ -131,11 +122,10 @@ export const autonomyLevels = {
       'delete_data',
       'modify_billing',
       'change_agent_config',
-      'access_sensitive_data',
       'modify_integrations'
     ],
-    escalation: 'critical_only', // only escalate critical issues
-    maxDailyActions: 100,
+    escalation: 'critical_only',
+    maxDailyActions: 2000,
     requiresApproval: false,
     graduationCriteria: {
       cyclesRequired: 500,
@@ -143,6 +133,20 @@ export const autonomyLevels = {
       appropriateEscalationRate: 0.65,
       timeInLevel: '60 days'
     }
+  },
+
+  4: {
+    level: 4,
+    name: 'Admin',
+    description: 'Internal use only. Full system access.',
+    allowed: [
+      'all_operations'
+    ],
+    blocked: [],
+    escalation: 'critical_only',
+    maxDailyActions: 9999,
+    requiresApproval: false,
+    graduationCriteria: null
   }
 };
 

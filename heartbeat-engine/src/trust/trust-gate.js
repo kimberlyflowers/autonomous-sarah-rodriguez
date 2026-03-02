@@ -1,9 +1,9 @@
 // Trust Gate System - Autonomy Level Enforcement
 // Ensures Sarah only performs actions within her current trust level
-// Level 1 (Observer): Read-only operations, analysis, recommendations
-// Level 2 (Assistant): Basic write operations with human oversight
-// Level 3 (Operator): Independent operations within defined boundaries
-// Level 4 (Manager): Full autonomous decision-making
+// Level 1 (Assistant): Full working Bloomie - read + write, no deletion
+// Level 2 (Partner):   Pipeline/sales autonomy + everything in Level 1
+// Level 3 (Operator):  Reserved for future expansion
+// Level 4 (Admin):     Internal system use only
 
 import { createLogger } from '../logging/logger.js';
 import { loadAgentConfig } from '../config/agent-profile.js';
@@ -12,96 +12,135 @@ import { logRejection, logHandoff } from '../logging/index.js';
 const logger = createLogger('trust-gate');
 
 // Action categories and their minimum autonomy levels
+// Level 1 = Assistant (full working Bloomie), Level 2 = Partner (pipeline/sales autonomy)
 const ACTION_PERMISSIONS = {
-  // Level 1 (Observer) - Read-only operations
+  // ── LEVEL 1 (Assistant) - Everything a working Bloomie needs ──────────────
+
+  // Read operations
   'ghl_search_contacts': { level: 1, category: 'read', risk: 'low' },
   'ghl_get_contact': { level: 1, category: 'read', risk: 'low' },
   'ghl_get_conversations': { level: 1, category: 'read', risk: 'low' },
+  'ghl_search_conversations': { level: 1, category: 'read', risk: 'low' },
   'ghl_list_calendars': { level: 1, category: 'read', risk: 'low' },
   'ghl_get_calendar_slots': { level: 1, category: 'read', risk: 'low' },
+  'ghl_get_appointments': { level: 1, category: 'read', risk: 'low' },
   'ghl_search_opportunities': { level: 1, category: 'read', risk: 'low' },
+  'ghl_get_opportunity': { level: 1, category: 'read', risk: 'low' },
   'ghl_list_workflows': { level: 1, category: 'read', risk: 'low' },
   'ghl_get_forms': { level: 1, category: 'read', risk: 'low' },
+  'ghl_list_forms': { level: 1, category: 'read', risk: 'low' },
   'ghl_get_form_submissions': { level: 1, category: 'read', risk: 'low' },
+  'ghl_list_surveys': { level: 1, category: 'read', risk: 'low' },
+  'ghl_get_survey_submissions': { level: 1, category: 'read', risk: 'low' },
   'ghl_list_pipelines': { level: 1, category: 'read', risk: 'low' },
   'ghl_get_pipeline_stages': { level: 1, category: 'read', risk: 'low' },
   'ghl_list_tasks': { level: 1, category: 'read', risk: 'low' },
   'ghl_get_notes': { level: 1, category: 'read', risk: 'low' },
   'ghl_get_contact_tags': { level: 1, category: 'read', risk: 'low' },
+  'ghl_list_location_tags': { level: 1, category: 'read', risk: 'low' },
   'ghl_get_custom_fields': { level: 1, category: 'read', risk: 'low' },
   'ghl_list_users': { level: 1, category: 'read', risk: 'low' },
   'ghl_get_location_info': { level: 1, category: 'read', risk: 'low' },
   'ghl_list_campaigns': { level: 1, category: 'read', risk: 'low' },
   'ghl_get_campaign_stats': { level: 1, category: 'read', risk: 'low' },
+  'ghl_list_products': { level: 1, category: 'read', risk: 'low' },
+  'ghl_get_product': { level: 1, category: 'read', risk: 'low' },
+  'ghl_list_invoices': { level: 1, category: 'read', risk: 'low' },
+  'ghl_get_invoice': { level: 1, category: 'read', risk: 'low' },
+  'ghl_list_payments': { level: 1, category: 'read', risk: 'low' },
+  'ghl_list_funnels': { level: 1, category: 'read', risk: 'low' },
+  'ghl_get_funnel_pages': { level: 1, category: 'read', risk: 'low' },
+  'ghl_list_media': { level: 1, category: 'read', risk: 'low' },
+  'ghl_list_email_templates': { level: 1, category: 'read', risk: 'low' },
+  'ghl_list_social_posts': { level: 1, category: 'read', risk: 'low' },
+  'ghl_list_blog_posts': { level: 1, category: 'read', risk: 'low' },
+  'ghl_get_blog_post': { level: 1, category: 'read', risk: 'low' },
+  'ghl_list_documents': { level: 1, category: 'read', risk: 'low' },
+  'ghl_list_trigger_links': { level: 1, category: 'read', risk: 'low' },
+  'ghl_list_phone_numbers': { level: 1, category: 'read', risk: 'low' },
+  'ghl_list_courses': { level: 1, category: 'read', risk: 'low' },
   'log_decision': { level: 1, category: 'logging', risk: 'low' },
-  'create_task': { level: 1, category: 'planning', risk: 'low' },
 
-  // Internal BLOOM tools - Level 1 (Observer) permissions
+  // Write operations — Level 1 Assistant can do all of these
+  'ghl_send_message': { level: 1, category: 'communication', risk: 'medium' },
+  'ghl_update_contact': { level: 1, category: 'data_modification', risk: 'medium' },
+  'ghl_create_contact': { level: 1, category: 'data_creation', risk: 'medium' },
+  'ghl_create_appointment': { level: 1, category: 'scheduling', risk: 'medium' },
+  'ghl_add_contact_to_workflow': { level: 1, category: 'workflow', risk: 'medium' },
+  'ghl_remove_contact_from_workflow': { level: 1, category: 'workflow', risk: 'medium' },
+  'ghl_create_task': { level: 1, category: 'data_creation', risk: 'medium' },
+  'ghl_update_task': { level: 1, category: 'data_modification', risk: 'medium' },
+  'ghl_create_note': { level: 1, category: 'data_creation', risk: 'medium' },
+  'ghl_add_contact_tag': { level: 1, category: 'data_modification', risk: 'medium' },
+  'ghl_add_contact_tags': { level: 1, category: 'data_modification', risk: 'medium' },
+  'ghl_remove_contact_tag': { level: 1, category: 'data_modification', risk: 'medium' },
+  'ghl_remove_contact_tags': { level: 1, category: 'data_modification', risk: 'medium' },
+  'ghl_update_contact_custom_field': { level: 1, category: 'data_modification', risk: 'medium' },
+  'ghl_create_invoice': { level: 1, category: 'data_creation', risk: 'medium' },
+  'ghl_send_invoice': { level: 1, category: 'communication', risk: 'medium' },
+  'ghl_upload_media': { level: 1, category: 'data_creation', risk: 'low' },
+  'ghl_create_email_template': { level: 1, category: 'data_creation', risk: 'low' },
+  'ghl_create_social_post': { level: 1, category: 'communication', risk: 'medium' },
+  'ghl_create_blog_post': { level: 1, category: 'data_creation', risk: 'low' },
+  'ghl_update_blog_post': { level: 1, category: 'data_modification', risk: 'low' },
+  'ghl_send_document': { level: 1, category: 'communication', risk: 'medium' },
+  'ghl_create_trigger_link': { level: 1, category: 'data_creation', risk: 'low' },
+  'ghl_create_product': { level: 1, category: 'data_creation', risk: 'medium' },
+
+  // Internal BLOOM tools
   'bloom_list_tasks': { level: 1, category: 'read', risk: 'low' },
   'bloom_log_decision': { level: 1, category: 'logging', risk: 'low' },
   'bloom_log_observation': { level: 1, category: 'logging', risk: 'low' },
   'bloom_retrieve_context': { level: 1, category: 'read', risk: 'low' },
   'bloom_analyze_patterns': { level: 1, category: 'read', risk: 'low' },
   'bloom_generate_summary': { level: 1, category: 'read', risk: 'low' },
+  'bloom_create_task': { level: 1, category: 'planning', risk: 'low' },
+  'bloom_update_task': { level: 1, category: 'planning', risk: 'low' },
+  'bloom_store_context': { level: 1, category: 'data_creation', risk: 'low' },
+  'bloom_escalate_issue': { level: 1, category: 'escalation', risk: 'medium' },
+  'bloom_log': { level: 1, category: 'logging', risk: 'low' },
+  'create_task': { level: 1, category: 'planning', risk: 'low' },
 
-  // Level 2 (Assistant) - Basic write operations
-  'ghl_send_message': { level: 2, category: 'communication', risk: 'medium' },
-  'ghl_update_contact': { level: 2, category: 'data_modification', risk: 'medium' },
-  'ghl_create_contact': { level: 2, category: 'data_creation', risk: 'medium' },
-  'ghl_create_appointment': { level: 2, category: 'scheduling', risk: 'medium' },
-  'ghl_add_contact_to_workflow': { level: 2, category: 'workflow', risk: 'medium' },
-  'ghl_create_task': { level: 2, category: 'data_creation', risk: 'medium' },
-  'ghl_update_task': { level: 2, category: 'data_modification', risk: 'medium' },
-  'ghl_create_note': { level: 2, category: 'data_creation', risk: 'medium' },
-  'ghl_add_contact_tag': { level: 2, category: 'data_modification', risk: 'medium' },
-  'ghl_remove_contact_tag': { level: 2, category: 'data_modification', risk: 'medium' },
-  'ghl_update_contact_custom_field': { level: 2, category: 'data_modification', risk: 'medium' },
+  // ── LEVEL 2 (Partner) - Pipeline/sales autonomy ───────────────────────────
+  'ghl_create_opportunity': { level: 2, category: 'sales', risk: 'high' },
+  'ghl_update_opportunity': { level: 2, category: 'sales', risk: 'high' },
+  'ghl_update_opportunity_stage': { level: 2, category: 'sales', risk: 'high' },
 
-  // Internal BLOOM tools - Level 2 (Assistant) permissions
-  'bloom_create_task': { level: 2, category: 'planning', risk: 'low' },
-  'bloom_update_task': { level: 2, category: 'planning', risk: 'low' },
-  'bloom_store_context': { level: 2, category: 'data_creation', risk: 'low' },
-  'bloom_escalate_issue': { level: 2, category: 'escalation', risk: 'medium' },
-
-  // Level 3 (Operator) - Independent operations
-  'ghl_create_opportunity': { level: 3, category: 'sales', risk: 'high' },
-  'ghl_update_opportunity_stage': { level: 3, category: 'sales', risk: 'high' },
+  // ── LEVEL 3+ - Admin/system operations ────────────────────────────────────
   'ghl_delete_contact': { level: 3, category: 'data_deletion', risk: 'high' },
-
-  // Level 4 (Manager) - Full autonomous operations
   'system_configuration': { level: 4, category: 'administration', risk: 'critical' },
   'financial_transactions': { level: 4, category: 'financial', risk: 'critical' }
 };
 
 // Risk-based daily action limits by level
 const DAILY_ACTION_LIMITS = {
-  1: { // Observer
-    communication: 0,      // Can't send messages
-    data_modification: 0,  // Can't modify data
-    data_creation: 0,      // Can't create data
-    data_deletion: 0,      // Can't delete data
-    total: 50              // Total actions per day
-  },
-  2: { // Assistant
-    communication: 10,     // Limited messaging
-    data_modification: 20, // Limited updates
-    data_creation: 15,     // Limited creation
-    data_deletion: 0,      // Still can't delete
-    total: 100             // More total actions
-  },
-  3: { // Operator
-    communication: 50,
+  1: { // Assistant - full working Bloomie
+    communication: 100,
     data_modification: 100,
-    data_creation: 75,
-    data_deletion: 5,      // Very limited deletion
+    data_creation: 100,
+    data_deletion: 0,      // No deletion at Level 1
     total: 500
   },
-  4: { // Manager
-    communication: 200,
-    data_modification: 500,
+  2: { // Partner - full pipeline autonomy
+    communication: 300,
+    data_modification: 300,
     data_creation: 300,
-    data_deletion: 50,
-    total: 2000
+    data_deletion: 0,
+    total: 1500
+  },
+  3: { // Operator
+    communication: 500,
+    data_modification: 500,
+    data_creation: 500,
+    data_deletion: 10,
+    total: 5000
+  },
+  4: { // Admin
+    communication: 9999,
+    data_modification: 9999,
+    data_creation: 9999,
+    data_deletion: 9999,
+    total: 9999
   }
 };
 
