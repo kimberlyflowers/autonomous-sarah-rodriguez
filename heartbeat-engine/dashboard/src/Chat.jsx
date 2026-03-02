@@ -260,6 +260,7 @@ function Chat({ theme }) {
                     ...(message.isUser ? styles.messageBubbleUser : styles.messageBubbleSarah),
                   }}
                 >
+                  {/* Test ReactMarkdown rendering */}
                   {message.isUser ? (
                     message.text
                   ) : (
