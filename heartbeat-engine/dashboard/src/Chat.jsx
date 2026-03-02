@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import ReactMarkdown from 'react-markdown';
 
 function Chat({ theme }) {
   const [messages, setMessages] = useState([]);
@@ -239,7 +240,11 @@ function Chat({ theme }) {
                     ...(message.isUser ? styles.messageBubbleUser : styles.messageBubbleBot),
                   }}
                 >
-                  {message.text}
+                  {message.isUser ? (
+                    message.text
+                  ) : (
+                    <ReactMarkdown>{message.text}</ReactMarkdown>
+                  )}
                 </div>
                 <div style={styles.messageTime}>{message.timestamp}</div>
               </div>
