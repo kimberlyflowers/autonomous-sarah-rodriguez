@@ -136,18 +136,17 @@ function useSarahChat() {
 
   const sendFiles = async (files, text='') => {
     const ts = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
-    const label = files.map(f=>f.name).join(', ');
-    const preview = text ? `${text} [+${files.length} file(s): ${label}]` : `[${files.length} file(s): ${label}]`;
-    setMessages(p=>[...p,{id:Date.now(),b:false,t:preview,tm:ts}]);
     setLoading(true);
     try {
-      // Read files as base64
+      // Read files as base64 AND keep dataURL for preview
       const encoded = await Promise.all(files.map(f=>new Promise((res,rej)=>{
         const r=new FileReader();
-        r.onload=()=>res({name:f.name,type:f.type,data:r.result.split(',')[1]});
+        r.onload=()=>res({name:f.name,type:f.type,data:r.result.split(',')[1],dataUrl:r.result});
         r.onerror=rej;
         r.readAsDataURL(f);
       })));
+      // Show outgoing message with file previews
+      setMessages(p=>[...p,{id:Date.now(),b:false,t:text||'',tm:ts,files:encoded}]);
       const resp = await fetch("/api/chat/upload",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:text,sessionId:sid.current,files:encoded})});
       const data = await resp.json();
       const ts2 = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
@@ -559,6 +558,50 @@ function EscalationPanel({c,sse}) {
   );
 }
 
+// ── RESIZABLE PANEL — drag left edge to resize screen viewer
+function ResizablePanel({c,defaultWidth,minWidth,maxWidth,children}) {
+  const [width,setWidth] = useState(defaultWidth||480);
+  const dragging = useRef(false);
+  const startX = useRef(0);
+  const startW = useRef(0);
+
+  const onMouseDown = (e) => {
+    dragging.current = true;
+    startX.current = e.clientX;
+    startW.current = width;
+    document.body.style.cursor = "ew-resize";
+    document.body.style.userSelect = "none";
+  };
+
+  useEffect(()=>{
+    const onMove = (e) => {
+      if(!dragging.current) return;
+      const delta = startX.current - e.clientX;
+      const newW = Math.min(maxWidth||800, Math.max(minWidth||280, startW.current + delta));
+      setWidth(newW);
+    };
+    const onUp = () => {
+      if(!dragging.current) return;
+      dragging.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return()=>{ window.removeEventListener("mousemove",onMove); window.removeEventListener("mouseup",onUp); };
+  },[]);
+
+  return(
+    <div style={{width,flexShrink:0,borderLeft:"1px solid "+c.ln,display:"flex",flexDirection:"column",position:"relative"}}>
+      <div onMouseDown={onMouseDown} style={{position:"absolute",left:0,top:0,bottom:0,width:8,cursor:"ew-resize",zIndex:10,display:"flex",alignItems:"center",justifyContent:"center"}} title="Drag to resize">
+        <div style={{width:3,height:40,borderRadius:2,background:c.ln}}/>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+
 // ── SCREEN VIEWER — exact copy from Jaden
 function Screen({c,mob,live,mode,setMode}) {
   if(mode==="hidden") return null;
@@ -652,6 +695,7 @@ export default function App() {
   const btm=useRef(null);
   const fRef=useRef(null);
   const [pendingFiles,setPendingFiles]=useState([]);
+  const [artifacts,setArtifacts]=useState([]);
   const sbOpen=sbO==="full"||sbO==="mini";
 
   const agent={nm:"Sarah Rodriguez",role:"Marketing & Operations Executive",img:null,grad:"linear-gradient(135deg,#F4A261,#E76F8B)"};
@@ -686,6 +730,7 @@ export default function App() {
   const navTabs=[
     {k:"chat",l:mob?"💬":"💬 Chat"},
     {k:"monitor",l:mob?"📊":"📊 Monitor"},
+    {k:"artifacts",l:mob?"🎨":"🎨 Artifacts"},
     {k:"cron",l:mob?"⏰":"⏰ Jobs"},
     {k:"settings",l:mob?"⚙️":"⚙️ Settings"},
   ];
@@ -854,8 +899,21 @@ export default function App() {
                       {messages.map((m)=>(
                         <div key={m.id} style={{display:"flex",justifyContent:m.b?"flex-start":"flex-end",marginBottom:14}}>
                           {m.b&&<div style={{marginRight:8,marginTop:2}}><Face sz={mob?26:28} agent={agent}/></div>}
-                          <div style={{maxWidth:mob?"85%":"70%",padding:"12px 16px",fontSize:mob?13:14,lineHeight:1.55,color:m.b?c.tx:"#fff",borderRadius:m.b?"6px 18px 18px 18px":"18px 6px 18px 18px",background:m.b?c.cd:"linear-gradient(135deg,#F4A261,#E76F8B)",border:m.b?"1px solid "+c.ln:"none"}}>
-                            {m.t}
+                          <div style={{maxWidth:mob?"85%":"72%",padding:"10px 14px",fontSize:mob?13:14,lineHeight:1.55,color:m.b?c.tx:"#fff",borderRadius:m.b?"6px 18px 18px 18px":"18px 6px 18px 18px",background:m.b?c.cd:"linear-gradient(135deg,#F4A261,#E76F8B)",border:m.b?"1px solid "+c.ln:"none"}}>
+                            {/* File previews */}
+                            {m.files&&m.files.length>0&&(
+                              <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:m.t?8:4}}>
+                                {m.files.map((f,fi)=>(
+                                  f.type?.startsWith("image/")
+                                    ? <img key={fi} src={f.dataUrl} alt={f.name} style={{maxWidth:220,maxHeight:160,borderRadius:8,objectFit:"cover",border:"1px solid rgba(255,255,255,0.15)"}}/>
+                                    : <div key={fi} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 10px",borderRadius:8,background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.15)"}}>
+                                        <span style={{fontSize:18}}>{f.type==="application/pdf"?"📄":f.type?.includes("sheet")||f.name?.endsWith(".csv")?"📊":f.type?.includes("word")||f.name?.endsWith(".docx")?"📝":"📎"}</span>
+                                        <span style={{fontSize:11,fontWeight:600,color:m.b?c.tx:"#fff",maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</span>
+                                      </div>
+                                ))}
+                              </div>
+                            )}
+                            {m.t&&<div>{m.t}</div>}
                             <div style={{fontSize:10,opacity:0.45,marginTop:5,textAlign:m.b?"left":"right"}}>{m.tm}</div>
                           </div>
                         </div>
@@ -871,9 +929,9 @@ export default function App() {
                       <div ref={btm}/>
                     </div>
                     {!mob&&scrM!=="hidden"&&(
-                      <div style={{width:480,flexShrink:0,borderLeft:"1px solid "+c.ln,display:"flex",flexDirection:"column"}}>
+                      <ResizablePanel c={c} defaultWidth={480} minWidth={280} maxWidth={800}>
                         <Screen c={c} mob={false} live={scrLive} mode="docked" setMode={setScrM}/>
-                      </div>
+                      </ResizablePanel>
                     )}
                   </div>
                   <div style={{flexShrink:0,padding:mob?"6px 10px":"8px 16px",background:c.cd,borderTop:"1px solid "+c.ln}}>
@@ -922,6 +980,39 @@ export default function App() {
                 <ActionLog c={c} sse={sse}/>
               </div>
               <EscalationPanel c={c} sse={sse}/>
+            </div>
+          )}
+
+
+          {/* ══ ARTIFACTS ══ */}
+          {pg==="artifacts"&&(
+            <div style={{overflowY:"auto",height:"calc(100vh - 52px)",padding:mob?"16px 12px 40px":"20px 20px 40px"}}>
+              <div style={{marginBottom:20}}>
+                <h1 style={{fontSize:mob?20:24,fontWeight:700,color:c.tx,marginBottom:6}}>🎨 Artifacts</h1>
+                <p style={{fontSize:13,color:c.so}}>Documents, images, and outputs Sarah has created for you</p>
+              </div>
+              {artifacts.length===0?(
+                <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"60px 20px",textAlign:"center"}}>
+                  <div style={{width:64,height:64,borderRadius:20,background:"linear-gradient(135deg,#F4A261,#E76F8B)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,marginBottom:16}}>🎨</div>
+                  <div style={{fontSize:16,fontWeight:700,color:c.tx,marginBottom:8}}>No artifacts yet</div>
+                  <div style={{fontSize:13,color:c.so,maxWidth:360,marginBottom:24}}>Ask Sarah to write a document, create a draft, or generate a report and it will appear here.</div>
+                  <button onClick={()=>setPg("chat")} style={{padding:"10px 20px",borderRadius:12,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#F4A261,#E76F8B)",color:"#fff",fontSize:13,fontWeight:600}}>Go to Chat</button>
+                </div>
+              ):(
+                <div style={{display:"grid",gridTemplateColumns:mob?"1fr":"repeat(auto-fill,minmax(280px,1fr))",gap:16}}>
+                  {artifacts.map((a,i)=>(
+                    <div key={i} style={{borderRadius:16,background:c.cd,border:"1px solid "+c.ln,overflow:"hidden",cursor:"pointer"}} onClick={()=>setArtifactOpen(a)}>
+                      <div style={{height:140,background:c.sf,display:"flex",alignItems:"center",justifyContent:"center",fontSize:48}}>
+                        {a.type==="image"?<img src={a.content} style={{width:"100%",height:"100%",objectFit:"cover"}} alt={a.title}/>:a.type==="doc"?"📄":a.type==="sheet"?"📊":"📎"}
+                      </div>
+                      <div style={{padding:"12px 14px"}}>
+                        <div style={{fontSize:13,fontWeight:700,color:c.tx,marginBottom:4}}>{a.title}</div>
+                        <div style={{fontSize:11,color:c.so}}>{a.type} · {a.createdAt}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
