@@ -61,6 +61,15 @@ anything — news, facts, research, trends, competitors, pricing, whatever. Use 
 the full content of a specific URL. If someone asks you to research something or you need current
 info to give a good answer, search for it. Don't guess — look it up.
 
+IMAGE CREATION (another superpower):
+You can generate professional images on demand. Use image_generate to create flyers, social media
+posts, banners, book covers, logos, product mockups, brand assets — anything visual. Be VERY
+specific in your prompts: include exact text, colors, layout details, dimensions, and style.
+Use image_edit to modify existing images — change text, swap backgrounds, adjust colors.
+Your primary engine is GPT Image 1.5 (incredible for design work). If text rendering needs fixing,
+switch to Nano Banana by setting engine to 'gemini'. For portrait/tall assets like flyers use
+size '1024x1536'. For landscape/banners use '1536x1024'. For social posts use '1024x1024'.
+
 IMPORTANT — don't undersell yourself:
 Never tell Kimberly you "can't" do something that you actually can. If someone uploads an
 image, you can see it — say so and engage with it. If they need a blog post written, write it.
@@ -753,6 +762,37 @@ const SARAH_TOOLS = [
       },
       required: ["url"]
     }
+  },
+  // ── IMAGE GENERATION & EDITING ───────────────────────────────────────────
+  {
+    name: "image_generate",
+    description: "Generate an image from a text description. Perfect for creating flyers, social media posts, banners, book covers, logos, product mockups, brand assets, and any visual content. Be very specific and detailed in your prompt — include exact text you want displayed, colors, layout, and style. Uses GPT Image 1.5 by default (best for design assets). Set engine to 'gemini' for Nano Banana if text consistency needs fixing.",
+    input_schema: {
+      type: "object",
+      properties: {
+        prompt: { type: "string", description: "Detailed description of the image to generate. Include exact text, colors, layout, style, and mood." },
+        size: { type: "string", enum: ["1024x1024", "1024x1536", "1536x1024"], description: "1024x1024=square (social), 1024x1536=portrait (flyers/covers), 1536x1024=landscape (banners)", default: "1024x1024" },
+        quality: { type: "string", enum: ["low", "medium", "high"], description: "Image quality level", default: "high" },
+        background: { type: "string", enum: ["opaque", "transparent"], description: "Use 'transparent' for logos/overlays", default: "opaque" },
+        engine: { type: "string", enum: ["auto", "gpt", "gemini"], description: "'auto' picks best engine. 'gpt' = GPT Image 1.5. 'gemini' = Nano Banana / Imagen for text-heavy fixes.", default: "auto" }
+      },
+      required: ["prompt"]
+    }
+  },
+  {
+    name: "image_edit",
+    description: "Edit an existing image with text instructions. Change text, swap backgrounds, adjust colors, add/remove elements, fix text rendering. Provide the image via URL or base64.",
+    input_schema: {
+      type: "object",
+      properties: {
+        prompt: { type: "string", description: "Description of edits to make" },
+        image_url: { type: "string", description: "URL of image to edit" },
+        image_base64: { type: "string", description: "Base64-encoded image data to edit" },
+        size: { type: "string", enum: ["1024x1024", "1024x1536", "1536x1024"], default: "1024x1024" },
+        quality: { type: "string", enum: ["low", "medium", "high"], default: "high" }
+      },
+      required: ["prompt"]
+    }
   }
 ];
 
@@ -781,6 +821,12 @@ async function executeTool(toolName, toolInput) {
     if (toolName.startsWith('web_')) {
       const { executeWebSearchTool } = await import('../tools/web-search-tools.js');
       return await executeWebSearchTool(toolName, toolInput);
+    }
+
+    // Image generation & editing tools — GPT Image + Nano Banana
+    if (toolName.startsWith('image_')) {
+      const { executeImageTool } = await import('../tools/image-tools.js');
+      return await executeImageTool(toolName, toolInput);
     }
 
     // Browser tools — Sarah's own computer
