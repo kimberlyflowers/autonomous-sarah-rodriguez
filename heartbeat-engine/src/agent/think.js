@@ -24,16 +24,29 @@ export async function think(context) {
 
     logger.info('Calling Claude API for decision making...');
 
-    const response = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 4000,
-      temperature: 0.1, // Low temperature for consistent decision making
-      system: buildSystemPrompt(context),
-      messages: [{
-        role: 'user',
-        content: prompt
-      }]
-    });
+    // Retry with backoff on 529 overload — heartbeat shouldn't crash Sarah's chat
+    let response;
+    for (let attempt = 0; attempt <= 2; attempt++) {
+      try {
+        response = await anthropic.messages.create({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 4000,
+          temperature: 0.1,
+          system: buildSystemPrompt(context),
+          messages: [{ role: 'user', content: prompt }]
+        });
+        break;
+      } catch (retryErr) {
+        const isOverloaded = retryErr?.status === 529 || retryErr?.message?.includes('overloaded');
+        if (isOverloaded && attempt < 2) {
+          const delay = Math.pow(2, attempt) * 3000;
+          logger.warn(`API overloaded during heartbeat think, waiting ${delay/1000}s before retry`);
+          await new Promise(r => setTimeout(r, delay));
+          continue;
+        }
+        throw retryErr;
+      }
+    }
 
     const decisions = parseClaudeResponse(response.content[0].text);
 

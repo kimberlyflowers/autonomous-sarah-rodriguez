@@ -751,13 +751,33 @@ async function executeTool(toolName, toolInput) {
 }
 
 // AGENTIC LOOP — handles multi-turn tool calling
+async function callAnthropicWithRetry(params, maxRetries = 3) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await anthropic.messages.create(params);
+    } catch (err) {
+      const status = err?.status || err?.error?.status;
+      const isOverloaded = status === 529 || status === 529 ||
+        err?.message?.includes('overloaded') || err?.message?.includes('529');
+      const isRateLimit = status === 429;
+      if ((isOverloaded || isRateLimit) && attempt < maxRetries) {
+        const delay = Math.pow(2, attempt) * 2000 + Math.random() * 1000; // 2s, 4s, 8s
+        logger.warn(`Anthropic API overloaded, retrying in ${Math.round(delay/1000)}s (attempt ${attempt+1}/${maxRetries})`);
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
 async function chatWithSarah(userMessage, history, agentConfig) {
   const systemPrompt = buildSystemPrompt(agentConfig);
   const messages = [...history, { role: 'user', content: userMessage }];
   let currentMessages = [...messages];
 
   for (let round = 0; round < 10; round++) {
-    const response = await anthropic.messages.create({
+    const response = await callAnthropicWithRetry({
       model: process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001',
       max_tokens: 1024,
       system: systemPrompt,

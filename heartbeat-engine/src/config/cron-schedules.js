@@ -14,7 +14,7 @@ export const cronSchedules = {
 
   // Light check - every 2 hours outside business hours
   overnight: {
-    cron: '0 */2 19-7 * * *', // Every 2 hours, 7pm-7am
+    cron: '0 */2 * * *', // Every 2 hours
     type: 'light_check',
     description: 'Overnight monitoring for urgent issues only',
     timezone: 'America/New_York',
@@ -59,7 +59,7 @@ export const cronSchedules = {
 
   // Health check - every 5 minutes (for monitoring)
   healthCheck: {
-    cron: '*/5 * * * *', // Every 5 minutes
+    cron: '*/30 * * * *', // Every 30 minutes
     type: 'health_check',
     description: 'System health monitoring',
     timezone: 'America/New_York',
@@ -71,7 +71,7 @@ export const cronSchedules = {
 export const autonomyScheduleModifiers = {
   1: { // Observer - more frequent monitoring, less action
     operational: {
-      cron: '*/15 8-18 * * 1-5', // Every 15 minutes - more observation
+      cron: '*/60 8-18 * * 1-5', // Every 60 minutes - don't spam API
       type: 'observation_cycle'
     }
   },
