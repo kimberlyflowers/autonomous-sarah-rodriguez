@@ -871,6 +871,29 @@ async function loadHistory(pool, sessionId) {
   return res.rows.map(r => ({ role: r.role, content: r.content }));
 }
 
+async function generateSessionTitle(pool, sessionId, userMsg, assistantMsg) {
+  try {
+    const prompt = `Based on this conversation exchange, generate a short, specific chat title (4-6 words max). 
+No punctuation at the end. No quotes. Just the title itself — like Claude does it.
+
+User: ${userMsg.slice(0, 300)}
+Assistant: ${assistantMsg.slice(0, 300)}
+
+Title:`;
+    const result = await callAnthropicWithRetry({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 20,
+      messages: [{ role: 'user', content: prompt }]
+    });
+    const title = result.content[0]?.text?.trim().replace(/^["']|["']$/g, '').slice(0, 60);
+    if (title) {
+      await pool.query(`UPDATE chat_sessions SET title=$1 WHERE id=$2`, [title, sessionId]);
+    }
+  } catch (e) {
+    // Non-critical — title stays as first-message truncation fallback
+  }
+}
+
 async function saveMessages(pool, sessionId, userMsg, assistantMsg, files = null) {
   const userText = typeof userMsg === 'string' ? userMsg : JSON.stringify(userMsg);
   await pool.query(
@@ -885,7 +908,7 @@ async function saveMessages(pool, sessionId, userMsg, assistantMsg, files = null
     `UPDATE chat_sessions SET
        updated_at = NOW(),
        message_count = message_count + 2,
-       title = CASE WHEN title IS NULL THEN LEFT($2, 60) ELSE title END
+       title = CASE WHEN title IS NULL THEN LEFT(REGEXP_REPLACE($2, '\s+\S*$', ''), 60) ELSE title END
      WHERE id = $1`,
     [sessionId, userText]
   );
@@ -991,6 +1014,11 @@ router.post('/message', async (req, res) => {
 
     const response = await chatWithSarah(enrichedMessage, history, agentConfig);
     await saveMessages(pool, sessionId, message, response);
+
+    // Generate a smart title after the first message (history was empty = first exchange)
+    if (history.length === 0) {
+      generateSessionTitle(pool, sessionId, message, response).catch(() => {});
+    }
 
     return res.json({ response, sessionId });
   } catch (error) {
