@@ -844,7 +844,9 @@ async function executeTool(toolName, toolInput) {
           return await executeBrowserTool('browser_screenshot', toolInput);
         }
         // Fall back to local browser
-        const r = await fetch(`${base}/screenshot`);
+        const localPort = process.env.PORT || 3000;
+        const localBase = `http://localhost:${localPort}/api/browser`;
+        const r = await fetch(`${localBase}/screenshot`);
         const d = await r.json();
         return { live: d.live, url: d.url, message: d.live ? `Browser active at ${d.url}` : 'Browser idle' };
       }
@@ -904,64 +906,36 @@ async function chatWithSarah(userMessage, history, agentConfig) {
   const messages = [...history, { role: 'user', content: userMessage }];
   let currentMessages = [...messages];
 
-  // Use unified client — supports Anthropic, OpenAI, DeepSeek
-  const { getLLMClient } = await import('../llm/unified-client.js');
-  const llm = getLLMClient();
-
   for (let round = 0; round < 10; round++) {
-    let response;
+    const response = await callAnthropicWithRetry({
+      model: process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001',
+      max_tokens: 1024,
+      system: systemPrompt,
+      messages: currentMessages,
+      tools: SARAH_TOOLS
+    });
 
-    try {
-      response = await llm.chat({
-        messages: currentMessages,
-        system: systemPrompt,
-        tools: SARAH_TOOLS,
-        maxTokens: 1024,
-      });
-    } catch (error) {
-      // Retry once on overload
-      if (error.message?.includes('overloaded') || error.status === 529) {
-        logger.warn('LLM overloaded, retrying in 3s...');
-        await new Promise(r => setTimeout(r, 3000));
-        response = await llm.chat({
-          messages: currentMessages,
-          system: systemPrompt,
-          tools: SARAH_TOOLS,
-          maxTokens: 1024,
-        });
-      } else {
-        throw error;
-      }
-    }
-
-    if (response.stopReason === 'end_turn') {
+    if (response.stop_reason === 'end_turn') {
       return response.content
         .filter(b => b.type === 'text')
         .map(b => b.text)
         .join('');
     }
 
-    if (response.stopReason === 'tool_use') {
-      currentMessages.push(llm.formatAssistantMessage(response.content));
-
+    if (response.stop_reason === 'tool_use') {
+      currentMessages.push({ role: 'assistant', content: response.content });
       const toolResults = [];
       for (const block of response.content) {
         if (block.type === 'tool_use') {
           const result = await executeTool(block.name, block.input);
           toolResults.push({
+            type: 'tool_result',
             tool_use_id: block.id,
-            content: JSON.stringify(result),
+            content: JSON.stringify(result)
           });
         }
       }
-
-      const toolResultMessage = llm.formatToolResults(toolResults);
-      if (Array.isArray(toolResultMessage)) {
-        // OpenAI format returns array of messages
-        currentMessages.push(...toolResultMessage);
-      } else {
-        currentMessages.push(toolResultMessage);
-      }
+      currentMessages.push({ role: 'user', content: toolResults });
     }
   }
   return "I got a bit carried away. Let me know if you need me to try a simpler approach.";
