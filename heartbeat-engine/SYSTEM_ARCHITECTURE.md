@@ -505,3 +505,48 @@ await contextManager.compressContext();
 **Last Updated**: March 1, 2026
 **Version**: 2.0.0 (Complete Autonomous Architecture)
 **Status**: Production Ready with Full Monitoring
+---
+
+## Dashboard UI — Current State (March 3, 2026)
+
+**Version**: 2.1.0 | **Last Updated**: March 3, 2026
+
+### File Location
+`heartbeat-engine/dashboard/src/App.jsx` (~1490 lines)
+
+### ⚠️ CRITICAL Deploy Rule
+**ALWAYS commit `heartbeat-engine/dashboard/dist/` with every push.**
+Railway has no root `package.json` — it cannot build the dashboard.
+Workflow: edit source → `cd heartbeat-engine/dashboard && rm -rf dist && npm run build` → commit BOTH src and dist → push.
+
+### Completed Features ✅
+- Dark/light mode toggle
+- Chat with Sarah (persistent sessions, DB-backed, AI-generated titles polling every 8s)
+- Project/Business switcher — sidebar + header (Petal Core Beauty / Youth Empowerment School / BLOOM Internal)
+- Files & Deliverables tab — pulls from `/api/dashboard/action-log`
+- ProgressRing component (SVG circular %)
+- ActiveTaskTracker — step list with checkmarks + "Working now" pulse, shown in right panel below browser
+- Kimberly/Owner bottom menu — expands upward: Settings, Developer Mode, Light/Dark, Log out
+- Autopilot status pill above Kimberly button
+- Settings removed from top nav (lives in Kimberly menu only)
+- Resizable right panel with browser/screen view
+- SSE real-time updates, Health/Status tab, Cron/Jobs tab
+
+### 🔲 Still To Build (matching Bloomie reference image)
+1. **Inline task completion cards** in chat — green "✅ Task completed — [tool name]" card
+2. **Email draft approval cards** inline in chat — subject + "Review & Approve" CTA button
+3. **Autopilot job count** — wire to real cron jobs state
+4. **Model selector** dropdown in chat header (Auto ▾)
+5. **Mobile layout** optimization
+
+### Bug History (March 3, 2026)
+- `btm useRef` accidentally deleted → white screen crash on mount ← FIXED
+- Import path `../../database/auto-setup.js` wrong in `chat.js` ← FIXED
+- `tool_performance` check fires "critical" on cold start (0 executions = 0% rate) — false alarm, not yet suppressed
+
+### Next Session Starting Point
+Build inline chat cards in App.jsx around line 1192 (message render block).
+Messages are plain text. Cards are detected by parsing Sarah's response for:
+- "Task completed" / "✅" + name → green task card
+- "drafted"/"email"/"Subject:" → email draft card with Review & Approve button
+Implement `parseMessageCards(text)` helper above App export, call in `messages.map()`.
