@@ -836,24 +836,46 @@ async function ensureSession(pool, sessionId) {
     )
   `);
 
-  // Migrate: add any missing columns to existing tables (handles old schema)
-  const migrations = [
+  // Nuclear migration: check if chat_messages has the right schema
+  // If it has old columns (message/sender/timestamp), rename it and create fresh
+  try {
+    const cols = await pool.query(`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_name='chat_messages' AND table_schema='public'
+    `);
+    const colNames = cols.rows.map(r => r.column_name);
+    const hasOldSchema = colNames.includes('message') || colNames.includes('sender');
+    const hasMissingCols = !colNames.includes('role') || !colNames.includes('content');
+
+    if (hasOldSchema || hasMissingCols) {
+      logger.info('chat_messages has legacy schema — migrating to new schema');
+      // Archive old table, create fresh one
+      await pool.query(`ALTER TABLE chat_messages RENAME TO chat_messages_legacy_${Date.now()}`);
+      await pool.query(`
+        CREATE TABLE chat_messages (
+          id SERIAL PRIMARY KEY,
+          session_id VARCHAR(64),
+          role VARCHAR(16),
+          content TEXT,
+          files JSONB,
+          created_at TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
+      logger.info('chat_messages recreated with correct schema');
+    }
+  } catch(e) {
+    logger.warn('Schema migration check failed (non-critical):', e.message);
+  }
+
+  // Add any missing columns to chat_sessions
+  const sessionMigrations = [
     `ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS agent_id VARCHAR(64) DEFAULT 'bloomie-sarah-rodriguez'`,
     `ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS title TEXT`,
     `ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`,
     `ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS message_count INTEGER DEFAULT 0`,
-    `ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS session_id VARCHAR(64)`,
-    `ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS role VARCHAR(16)`,
-    `ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS content TEXT`,
-    `ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS files JSONB`,
-    `ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()`,
-    // Drop NOT NULL on legacy columns from old schema so new inserts don't break
-    `ALTER TABLE chat_messages ALTER COLUMN message DROP NOT NULL`,
-    `ALTER TABLE chat_messages ALTER COLUMN sender DROP NOT NULL`,
-    `ALTER TABLE chat_messages ALTER COLUMN timestamp DROP NOT NULL`,
   ];
-  for (const sql of migrations) {
-    try { await pool.query(sql); } catch(e) { /* column may already exist */ }
+  for (const sql of sessionMigrations) {
+    try { await pool.query(sql); } catch(e) { /* already exists */ }
   }
 
   // Ensure session row exists
