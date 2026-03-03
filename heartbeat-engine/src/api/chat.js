@@ -55,6 +55,12 @@ workflow. Use browser_screenshot to capture what a page looks like. If someone a
 something on a website — checking a page, filling a form, grabbing info from a URL — just do it.
 You have a real browser at your disposal.
 
+WEB RESEARCH (another superpower):
+You can search the internet and read web pages. Use web_search to find current information about
+anything — news, facts, research, trends, competitors, pricing, whatever. Use web_fetch to read
+the full content of a specific URL. If someone asks you to research something or you need current
+info to give a good answer, search for it. Don't guess — look it up.
+
 IMPORTANT — don't undersell yourself:
 Never tell Kimberly you "can't" do something that you actually can. If someone uploads an
 image, you can see it — say so and engage with it. If they need a blog post written, write it.
@@ -723,6 +729,30 @@ const SARAH_TOOLS = [
       },
       required: ["url"]
     }
+  },
+  // ── WEB SEARCH & FETCH ───────────────────────────────────────────────────
+  {
+    name: "web_search",
+    description: "Search the web for current information. Returns relevant results with titles, URLs, and descriptions. Use this to research topics, find current news, look up facts, verify information, or find resources. Always use this when you need information that might have changed since your training data.",
+    input_schema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Search query — be specific and concise for best results" },
+        count: { type: "integer", description: "Number of results to return (default 5, max 20)", default: 5 }
+      },
+      required: ["query"]
+    }
+  },
+  {
+    name: "web_fetch",
+    description: "Fetch and extract the text content from a specific URL. Use this to read articles, documentation, or any web page. Returns the visible text content of the page.",
+    input_schema: {
+      type: "object",
+      properties: {
+        url: { type: "string", description: "The URL to fetch content from" }
+      },
+      required: ["url"]
+    }
   }
 ];
 
@@ -745,6 +775,12 @@ async function executeTool(toolName, toolInput) {
     if (toolName.startsWith('ghl_')) {
       const { executeGHLTool } = await import('../tools/ghl-tools.js');
       return await executeGHLTool(toolName, toolInput);
+    }
+
+    // Web search & fetch tools — model-agnostic
+    if (toolName.startsWith('web_')) {
+      const { executeWebSearchTool } = await import('../tools/web-search-tools.js');
+      return await executeWebSearchTool(toolName, toolInput);
     }
 
     // Browser tools — Sarah's own computer
@@ -822,36 +858,64 @@ async function chatWithSarah(userMessage, history, agentConfig) {
   const messages = [...history, { role: 'user', content: userMessage }];
   let currentMessages = [...messages];
 
-  for (let round = 0; round < 10; round++) {
-    const response = await callAnthropicWithRetry({
-      model: process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001',
-      max_tokens: 1024,
-      system: systemPrompt,
-      messages: currentMessages,
-      tools: SARAH_TOOLS
-    });
+  // Use unified client — supports Anthropic, OpenAI, DeepSeek
+  const { getLLMClient } = await import('../llm/unified-client.js');
+  const llm = getLLMClient();
 
-    if (response.stop_reason === 'end_turn') {
+  for (let round = 0; round < 10; round++) {
+    let response;
+
+    try {
+      response = await llm.chat({
+        messages: currentMessages,
+        system: systemPrompt,
+        tools: SARAH_TOOLS,
+        maxTokens: 1024,
+      });
+    } catch (error) {
+      // Retry once on overload
+      if (error.message?.includes('overloaded') || error.status === 529) {
+        logger.warn('LLM overloaded, retrying in 3s...');
+        await new Promise(r => setTimeout(r, 3000));
+        response = await llm.chat({
+          messages: currentMessages,
+          system: systemPrompt,
+          tools: SARAH_TOOLS,
+          maxTokens: 1024,
+        });
+      } else {
+        throw error;
+      }
+    }
+
+    if (response.stopReason === 'end_turn') {
       return response.content
         .filter(b => b.type === 'text')
         .map(b => b.text)
         .join('');
     }
 
-    if (response.stop_reason === 'tool_use') {
-      currentMessages.push({ role: 'assistant', content: response.content });
+    if (response.stopReason === 'tool_use') {
+      currentMessages.push(llm.formatAssistantMessage(response.content));
+
       const toolResults = [];
       for (const block of response.content) {
         if (block.type === 'tool_use') {
           const result = await executeTool(block.name, block.input);
           toolResults.push({
-            type: 'tool_result',
             tool_use_id: block.id,
-            content: JSON.stringify(result)
+            content: JSON.stringify(result),
           });
         }
       }
-      currentMessages.push({ role: 'user', content: toolResults });
+
+      const toolResultMessage = llm.formatToolResults(toolResults);
+      if (Array.isArray(toolResultMessage)) {
+        // OpenAI format returns array of messages
+        currentMessages.push(...toolResultMessage);
+      } else {
+        currentMessages.push(toolResultMessage);
+      }
     }
   }
   return "I got a bit carried away. Let me know if you need me to try a simpler approach.";
@@ -1185,6 +1249,51 @@ router.get('/crm-link', (req, res) => {
 
 router.get('/health', (req, res) => {
   res.json({ status: 'ok', agent: 'sarah-rodriguez', mode: 'direct-api' });
+});
+
+// ── MODEL SWITCHING ──────────────────────────────────────────────────────
+
+// GET /api/chat/models — list available models
+router.get('/models', async (req, res) => {
+  try {
+    const { getLLMClient } = await import('../llm/unified-client.js');
+    const client = getLLMClient();
+    res.json({
+      current: client.model,
+      provider: client.provider,
+      available: client.getAvailableModels(),
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/chat/models/switch — switch active model
+router.post('/models/switch', async (req, res) => {
+  try {
+    const { model } = req.body;
+    if (!model) return res.status(400).json({ error: 'model is required' });
+
+    const { getLLMClient } = await import('../llm/unified-client.js');
+    const client = getLLMClient();
+    const success = client.switchModel(model);
+
+    if (success) {
+      res.json({
+        success: true,
+        model: client.model,
+        provider: client.provider,
+        message: `Switched to ${model}`,
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        error: `Cannot switch to ${model} — missing API key`,
+      });
+    }
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 export function getAnthropicClient() {
