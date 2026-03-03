@@ -753,6 +753,84 @@ function Screen({c,mob,mode,setMode}) {
 /* ═══════════════════════════════════════════════════════════════
    MAIN APP — Jaden's layout, Sarah's data
    ═══════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════
+   PROGRESS RING — circular progress indicator
+   ═══════════════════════════════════════════════════════════════ */
+function ProgressRing({pct,sz,stroke,color,bg}) {
+  const s=sz||60; const sw=stroke||5;
+  const r=(s-sw)/2; const circ=2*Math.PI*r;
+  const offset=circ*(1-(pct||0)/100);
+  return(
+    <svg width={s} height={s} style={{transform:"rotate(-90deg)"}}>
+      <circle cx={s/2} cy={s/2} r={r} fill="none" stroke={bg||"rgba(255,255,255,.1)"} strokeWidth={sw}/>
+      <circle cx={s/2} cy={s/2} r={r} fill="none" stroke={color||"#F4A261"} strokeWidth={sw}
+        strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round"
+        style={{transition:"stroke-dashoffset .6s ease"}}/>
+    </svg>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ACTIVE TASK TRACKER — right panel task progress
+   ═══════════════════════════════════════════════════════════════ */
+function ActiveTaskTracker({c}) {
+  const [tasks,setTasks]=useState([]);
+  useEffect(()=>{
+    const go=async()=>{
+      try{
+        const r=await fetch("/api/dashboard/agentic-executions?limit=3");
+        if(r.ok){const d=await r.json(); setTasks(d.executions||d||[]);}
+      }catch{}
+    };
+    go();
+    const t=setInterval(go,15000);
+    return()=>clearInterval(t);
+  },[]);
+
+  if(tasks.length===0) return(
+    <div style={{padding:"16px",textAlign:"center",color:c.fa,fontSize:12}}>No active tasks</div>
+  );
+
+  return(
+    <div style={{padding:"8px 0"}}>
+      {tasks.map((task,i)=>{
+        const steps=task.steps||task.tool_calls||[];
+        const done=steps.filter(s=>s.status==="done"||s.status==="completed"||s.success).length;
+        const total=Math.max(steps.length,1);
+        const pct=Math.round((done/total)*100);
+        const isActive=task.status==="running"||task.status==="active";
+        return(
+          <div key={i} style={{padding:"12px 16px",borderBottom:i<tasks.length-1?"1px solid "+c.ln+"60":"none"}}>
+            <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}>
+              <div style={{position:"relative",flexShrink:0}}>
+                <ProgressRing pct={pct} sz={44} stroke={4} color={isActive?c.ac:c.gr} bg={c.ln}/>
+                <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:c.tx}}>{pct}%</div>
+              </div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:12,fontWeight:700,color:c.tx,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{task.task||task.name||"Running task"}</div>
+                <div style={{fontSize:10,color:c.so,marginTop:2}}>{done} of {total} steps · {isActive?"Working now":"Complete"}</div>
+              </div>
+            </div>
+            {steps.slice(0,4).map((s,si)=>{
+              const isDone=s.status==="done"||s.status==="completed"||s.success;
+              const isNow=isActive&&si===done;
+              return(
+                <div key={si} style={{display:"flex",alignItems:"flex-start",gap:8,padding:"3px 0",opacity:isDone||isNow?1:0.4}}>
+                  <div style={{width:16,height:16,borderRadius:"50%",background:isDone?c.gr:isNow?"transparent":c.ln,border:isNow?"2px solid "+c.ac:"none",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginTop:1}}>
+                    {isDone&&<span style={{fontSize:9,color:"#fff"}}>✓</span>}
+                    {isNow&&<span style={{width:6,height:6,borderRadius:"50%",background:c.ac,animation:"pulse 1.2s ease infinite",display:"block"}}/>}
+                  </div>
+                  <div style={{fontSize:11,color:isDone?c.so:isNow?c.tx:c.fa,textDecoration:isDone?"line-through":"none",lineHeight:1.4}}>{s.tool||s.name||s.description||"Step "+(si+1)}</div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function App() {
   const W=useW();
   const mob=W<768;
@@ -762,7 +840,9 @@ export default function App() {
   const sse=useSSE();
   const agentOnline=useAgentOnline();
   const {crmUrl,contactsUrl}=useCRMLink();
-  const {messages,setMessages,send,sendFiles,loading,sessions,currentSessionId,newSession,loadSession,deleteSession}=useSarahChat();
+  const {messages,setMessages,send,sendFiles,loading,sessions,currentSessionId,newSession,loadSession,deleteSession,fetchSessions}=useSarahChat();
+  // Periodically refresh session titles (AI title generates async after first message)
+  useEffect(()=>{ const t=setInterval(fetchSessions,8000); return()=>clearInterval(t); },[]);
   const connected=agentOnline; // true online/offline from health poll
 
   const [pg,setPg]=useState("chat");
@@ -774,6 +854,11 @@ export default function App() {
   const [stab,setStab]=useState("General");
   const [hlpO,setHlpO]=useState(false);
   const [umO,setUmO]=useState(false);
+  const [projO,setProjO]=useState(false);
+  const [activeProj,setActiveProj]=useState("Petal Core Beauty");
+  const projects=["Petal Core Beauty","Youth Empowerment School","BLOOM Internal"];
+  const [files,setFiles]=useState([]);
+  const [filesLoading,setFilesLoading]=useState(false);
   const [heartbeatInterval,setHeartbeatInterval]=useState("0 */6 * * *");
   const [heartbeatEnabled,setHeartbeatEnabled]=useState(true);
   const [cronJobs,setCronJobs]=useState([
@@ -783,10 +868,21 @@ export default function App() {
     {id:"c4",nm:"Task completion scan",ic:"✅",freq:"Hourly",next:"—",last:"—",ok:true,on:true},
   ]);
 
-  const btm=useRef(null);
+  // Fetch deliverables when files tab opens
+  useEffect(()=>{
+    if(pg!=="artifacts") return;
+    setFilesLoading(true);
+    fetch("/api/dashboard/action-log?limit=50")
+      .then(r=>r.ok?r.json():null)
+      .then(d=>{
+        const acts=(d?.actions||[]).filter(a=>a.tool==="create_document"||a.tool==="send_email"||a.type==="file"||a.artifact);
+        setFiles(acts);
+      })
+      .catch(()=>{})
+      .finally(()=>setFilesLoading(false));
+  },[pg]);
   const fRef=useRef(null);
   const [pendingFiles,setPendingFiles]=useState([]);
-  const [artifacts,setArtifacts]=useState([]);
   const sbOpen=sbO==="full"||sbO==="mini";
 
   const agent={nm:"Sarah Rodriguez",role:"Marketing & Operations Executive",img:null,grad:"linear-gradient(135deg,#F4A261,#E76F8B)"};
@@ -820,8 +916,8 @@ export default function App() {
 
   const navTabs=[
     {k:"chat",l:mob?"💬":"💬 Chat"},
-    {k:"monitor",l:mob?"📊":"📊 Monitor"},
-    {k:"artifacts",l:mob?"🎨":"🎨 Artifacts"},
+    {k:"monitor",l:mob?"📊":"📊 Status"},
+    {k:"artifacts",l:mob?"📁":"📁 Files"},
     {k:"cron",l:mob?"⏰":"⏰ Jobs"},
     {k:"settings",l:mob?"⚙️":"⚙️ Settings"},
   ];
@@ -866,6 +962,28 @@ export default function App() {
               </button>
             ))}
           </div>
+          {/* Business / Project switcher */}
+          {!mob&&(
+            <div style={{display:"flex",alignItems:"center",gap:6}}>
+              <div style={{position:"relative"}}>
+                <button onClick={()=>setProjO(!projO)} style={{display:"flex",alignItems:"center",gap:5,padding:"5px 10px",borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:11,fontWeight:600,color:c.so}}>
+                  <span style={{fontSize:13}}>🌸</span>
+                  <span style={{color:c.tx,maxWidth:80,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{activeProj.split(" ")[0]}</span>
+                  <span style={{fontSize:9}}>▾</span>
+                </button>
+                {projO&&(
+                  <div style={{position:"absolute",top:"100%",left:0,zIndex:80,background:c.cd,border:"1px solid "+c.ln,borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,.18)",overflow:"hidden",marginTop:4,minWidth:180}}>
+                    {projects.map(p=>(
+                      <button key={p} onClick={()=>{setActiveProj(p);setProjO(false);}} style={{width:"100%",textAlign:"left",padding:"9px 12px",border:"none",cursor:"pointer",background:activeProj===p?c.ac+"15":"transparent",fontSize:12,fontWeight:activeProj===p?600:500,color:activeProj===p?c.ac:c.tx,display:"flex",alignItems:"center",gap:8}} onMouseEnter={e=>{if(activeProj!==p)e.currentTarget.style.background=c.hv;}} onMouseLeave={e=>{if(activeProj!==p)e.currentTarget.style.background="transparent";}}>
+                        {activeProj===p&&<span style={{fontSize:10,color:c.ac}}>✓</span>}
+                        <span>{p}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
           <div style={{display:"flex",alignItems:"center",gap:6,padding:"4px 10px",borderRadius:12,background:connected?c.gf:"#fef2f2",border:"1px solid "+(connected?c.gr+"30":"#fecaca")}}>
             <span style={{width:6,height:6,borderRadius:"50%",background:connected?c.gr:"#ef4444",animation:connected?"pulse 1.5s ease infinite":"none"}}/>
             <span style={{fontSize:10,fontWeight:600,color:connected?c.gr:"#dc2626"}}>{connected?"Connected":"Offline"}</span>
@@ -917,6 +1035,29 @@ export default function App() {
               {/* FULL sidebar */}
               {sbO==="full"&&(
                 <>
+                  {/* Project switcher */}
+                  <div style={{padding:"10px 14px 0",flexShrink:0,position:"relative"}}>
+                    <button onClick={()=>setProjO(!projO)} style={{width:"100%",padding:"8px 10px",borderRadius:10,border:"1px solid "+c.ln,background:c.sf,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between",fontSize:11,fontWeight:600,color:c.so}}>
+                      <span style={{display:"flex",alignItems:"center",gap:6}}><span style={{fontSize:14}}>🏢</span><span style={{color:c.tx,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:140}}>{activeProj}</span></span>
+                      <span style={{fontSize:10,transition:"transform .2s",display:"inline-block",transform:projO?"rotate(180deg)":"rotate(0deg)"}}>▾</span>
+                    </button>
+                    {projO&&(
+                      <div style={{position:"absolute",top:"100%",left:14,right:14,zIndex:70,background:c.cd,border:"1px solid "+c.ln,borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,.15)",overflow:"hidden",marginTop:4}}>
+                        {projects.map(p=>(
+                          <button key={p} onClick={()=>{setActiveProj(p);setProjO(false);}} style={{width:"100%",textAlign:"left",padding:"9px 12px",border:"none",cursor:"pointer",background:activeProj===p?c.ac+"15":"transparent",fontSize:12,fontWeight:activeProj===p?600:500,color:activeProj===p?c.ac:c.tx,display:"flex",alignItems:"center",gap:8}} onMouseEnter={e=>{if(activeProj!==p)e.currentTarget.style.background=c.hv;}} onMouseLeave={e=>{if(activeProj!==p)e.currentTarget.style.background="transparent";}}>
+                            {activeProj===p&&<span style={{fontSize:10,color:c.ac}}>✓</span>}
+                            <span>{p}</span>
+                          </button>
+                        ))}
+                        <div style={{borderTop:"1px solid "+c.ln,padding:"7px 12px"}}>
+                          <button style={{width:"100%",textAlign:"left",padding:"4px 0",border:"none",background:"transparent",cursor:"pointer",fontSize:11,color:c.so,display:"flex",alignItems:"center",gap:6}} onMouseEnter={e=>e.currentTarget.style.color=c.ac} onMouseLeave={e=>e.currentTarget.style.color=c.so}>
+                            <span>+</span><span>Add project</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   {/* Agent identity card */}
                   <div style={{padding:"12px 14px 8px",borderBottom:"1px solid "+c.ln,flexShrink:0}}>
                     <div style={{padding:"10px 12px",borderRadius:12,background:c.sf,border:"1px solid "+c.ln,display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
@@ -1074,7 +1215,16 @@ export default function App() {
                     </div>
                     {!mob&&scrM!=="hidden"&&(
                       <ResizablePanel c={c} defaultWidth={480} minWidth={280} maxWidth={800}>
-                        <Screen c={c} mob={false} mode="docked" setMode={setScrM}/>
+                        <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+                          <Screen c={c} mob={false} mode="docked" setMode={setScrM}/>
+                          <div style={{borderTop:"1px solid "+c.ln,background:c.cd,flexShrink:0}}>
+                            <div style={{padding:"10px 16px",borderBottom:"1px solid "+c.ln,display:"flex",alignItems:"center",gap:8}}>
+                              <span style={{width:8,height:8,borderRadius:"50%",background:c.ac,animation:"pulse 1.5s ease infinite"}}/>
+                              <span style={{fontSize:12,fontWeight:700,color:c.tx}}>Active Tasks</span>
+                            </div>
+                            <ActiveTaskTracker c={c}/>
+                          </div>
+                        </div>
                       </ResizablePanel>
                     )}
                   </div>
@@ -1139,38 +1289,6 @@ export default function App() {
             </div>
           )}
 
-
-          {/* ══ ARTIFACTS ══ */}
-          {pg==="artifacts"&&(
-            <div style={{overflowY:"auto",height:"calc(100vh - 52px)",padding:mob?"16px 12px 40px":"20px 20px 40px"}}>
-              <div style={{marginBottom:20}}>
-                <h1 style={{fontSize:mob?20:24,fontWeight:700,color:c.tx,marginBottom:6}}>🎨 Artifacts</h1>
-                <p style={{fontSize:13,color:c.so}}>Documents, images, and outputs Sarah has created for you</p>
-              </div>
-              {artifacts.length===0?(
-                <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"60px 20px",textAlign:"center"}}>
-                  <div style={{width:64,height:64,borderRadius:20,background:"linear-gradient(135deg,#F4A261,#E76F8B)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,marginBottom:16}}>🎨</div>
-                  <div style={{fontSize:16,fontWeight:700,color:c.tx,marginBottom:8}}>No artifacts yet</div>
-                  <div style={{fontSize:13,color:c.so,maxWidth:360,marginBottom:24}}>Ask Sarah to write a document, create a draft, or generate a report and it will appear here.</div>
-                  <button onClick={()=>setPg("chat")} style={{padding:"10px 20px",borderRadius:12,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#F4A261,#E76F8B)",color:"#fff",fontSize:13,fontWeight:600}}>Go to Chat</button>
-                </div>
-              ):(
-                <div style={{display:"grid",gridTemplateColumns:mob?"1fr":"repeat(auto-fill,minmax(280px,1fr))",gap:16}}>
-                  {artifacts.map((a,i)=>(
-                    <div key={i} style={{borderRadius:16,background:c.cd,border:"1px solid "+c.ln,overflow:"hidden",cursor:"pointer"}} onClick={()=>setArtifactOpen(a)}>
-                      <div style={{height:140,background:c.sf,display:"flex",alignItems:"center",justifyContent:"center",fontSize:48}}>
-                        {a.type==="image"?<img src={a.content} style={{width:"100%",height:"100%",objectFit:"cover"}} alt={a.title}/>:a.type==="doc"?"📄":a.type==="sheet"?"📊":"📎"}
-                      </div>
-                      <div style={{padding:"12px 14px"}}>
-                        <div style={{fontSize:13,fontWeight:700,color:c.tx,marginBottom:4}}>{a.title}</div>
-                        <div style={{fontSize:11,color:c.so}}>{a.type} · {a.createdAt}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
 
           {/* ══ CRON — Jaden's layout, Sarah's branding ══ */}
           {pg==="cron"&&(
