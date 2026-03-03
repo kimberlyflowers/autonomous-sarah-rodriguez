@@ -8,6 +8,7 @@ import { getAnthropicClient } from '../api/chat.js';
 import { executeGHLTool, ghlToolDefinitions } from '../tools/ghl-tools.js';
 import { executeInternalTool, internalToolDefinitions } from '../tools/internal-tools.js';
 import { executeBrowserTool, browserToolDefinitions } from '../tools/browser-tools.js';
+import { executeWebSearchTool, webSearchToolDefinitions } from '../tools/web-search-tools.js';
 import { subAgentSystem, SUB_AGENTS } from '../agents/sub-agent-system.js';
 import { trustGate } from '../trust/trust-gate.js';
 import { contextManager } from '../context/context-manager.js';
@@ -555,6 +556,15 @@ Use the available tools to complete this task. Work step by step and explain you
 
     // Add browser automation tools
     for (const [toolName, toolDef] of Object.entries(browserToolDefinitions)) {
+      claudeTools.push({
+        name: toolName,
+        description: toolDef.description,
+        input_schema: toolDef.parameters
+      });
+    }
+
+    // Add web search tools
+    for (const [toolName, toolDef] of Object.entries(webSearchToolDefinitions)) {
       claudeTools.push({
         name: toolName,
         description: toolDef.description,

@@ -5,6 +5,7 @@ import { createLogger } from '../logging/logger.js';
 import { executeGHLTool } from './ghl-tools.js';
 import { executeInternalTool } from './internal-tools.js';
 import { executeBrowserTool } from './browser-tools.js';
+import { executeWebSearchTool } from './web-search-tools.js';
 import { trustGate } from '../trust/trust-gate.js';
 
 const logger = createLogger('enhanced-executor');
@@ -288,6 +289,8 @@ export class EnhancedToolExecutor {
       result = await executeInternalTool(execution.toolName, execution.parameters);
     } else if (execution.toolName.startsWith('browser_')) {
       result = await executeBrowserTool(execution.toolName, execution.parameters);
+    } else if (execution.toolName.startsWith('web_')) {
+      result = await executeWebSearchTool(execution.toolName, execution.parameters);
     } else {
       throw new Error(`Unknown tool category: ${execution.toolName}`);
     }
@@ -536,6 +539,7 @@ export class EnhancedToolExecutor {
     if (toolName.startsWith('ghl_')) return 'ghl_api';
     if (toolName.startsWith('bloom_')) return 'internal_tools';
     if (toolName.startsWith('browser_')) return 'external_api';
+    if (toolName.startsWith('web_')) return 'external_api';
     if (toolName.includes('file_') || toolName.includes('_file')) return 'file_operations';
     return 'external_api';
   }
