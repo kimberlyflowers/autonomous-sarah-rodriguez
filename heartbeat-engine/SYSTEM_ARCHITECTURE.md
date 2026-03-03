@@ -218,28 +218,41 @@ const DAILY_LIMITS = {
 
 ## Dashboard & Monitoring
 
-### Real-time Web Dashboard
+### Real-time Web Dashboard (Bloomie UI — v2.1.0)
 
-**Multi-component monitoring interface:**
+**Tech**: React 18 + Vite, served as static files from `heartbeat-engine/dashboard/dist/`
+**Source**: `heartbeat-engine/dashboard/src/App.jsx` (~1490 lines)
+**Deploy note**: Railway has no root package.json — dist/ MUST be committed with every source change
 
-#### System Health Dashboard
-- **Overall health status** with traffic light indicators
-- **Component-specific health checks** with auto-healing actions
-- **Real-time metrics** and performance trends
-- **Alert management** with severity classification
-- **Manual controls** for health checks and auto-healing
+#### Navigation Tabs
+- 💬 **Chat** — primary interface, persistent sessions, AI-generated titles
+- 📊 **Status** — system health, component checks, auto-healing actions
+- 📁 **Files** — documents and deliverables Sarah has created (from action log)
+- ⏰ **Jobs** — cron/automation schedule management
 
-#### Agent Operations Monitoring
-- **Agentic executions** with multi-turn conversation tracking
-- **Sub-agent operations** with delegation history
-- **Trust gate status** with permission levels and daily limits
-- **Tool performance** with retry analysis and success rates
-- **Context analytics** with utilization and compression metrics
+#### Left Sidebar
+- Project/Business switcher (Petal Core Beauty / Youth Empowerment School / BLOOM Internal)
+- Session list with AI-generated titles, timestamps
+- Agent identity card (Sarah Rodriguez — Online indicator)
+- Autopilot status pill (green pulse + All OK)
+- Kimberly/Owner expandable menu → Settings, Developer Mode, Light/Dark, Log out
 
-#### Operational Dashboards
-- **Internal operations** (tasks, decisions, observations, context)
-- **Tool inventory** with usage statistics and risk levels
-- **Legacy monitoring** (cycle timeline, action logs, rejection logs)
+#### Right Panel (Chat view only)
+- Resizable browser/screen view (LIVE Chromium label)
+- ActiveTaskTracker below browser — step list with ✓ checkmarks and "Working now" pulse
+- ProgressRing SVG component (circular %)
+
+#### Chat Features
+- Full message history from PostgreSQL
+- File upload with previews
+- Loading dots animation while Sarah responds
+- SSE real-time connection status
+
+#### Still Building (matching Bloomie reference)
+- Inline task completion cards in chat messages
+- Email draft "Review & Approve" cards in chat
+- Model selector dropdown (Auto ▾)
+- Mobile layout optimization
 
 ### Server-Sent Events (SSE)
 
@@ -502,9 +515,9 @@ await contextManager.compressContext();
 **Deployment**: Railway Platform
 **Monitoring**: Real-time dashboard at deployed URL
 
-**Last Updated**: March 1, 2026
-**Version**: 2.0.0 (Complete Autonomous Architecture)
-**Status**: Production Ready with Full Monitoring
+**Last Updated**: March 3, 2026
+**Version**: 2.1.0 (Dashboard Feature Update — March 3, 2026)
+**Status**: Production — Dashboard actively upgraded to Bloomie reference UI
 ---
 
 ## Dashboard UI — Current State (March 3, 2026)
