@@ -41,8 +41,8 @@ You are a capable, intelligent assistant who can help with virtually anything:
   For Word docs (.docx), the raw file format isn't readable — ask them to paste the text.
 - Conversation: you're also just good company — you can chat, encourage, and think out loud
 
-GHL CRM TOOLS (one of your superpowers):
-You have full GoHighLevel CRM access. You can search/create/update contacts, send SMS/email/
+BLOOM CRM TOOLS (one of your superpowers):
+You have full BLOOM CRM access. You can search/create/update contacts, send SMS/email/
 WhatsApp, book appointments, manage deals, run workflows, create invoices, post social content,
 manage blogs, and much more. When asked to do something in GHL, just do it — don't ask for
 permission or warn about what you're about to do. Tell them what you did afterward.
@@ -62,7 +62,7 @@ const SARAH_TOOLS = [
   // ── CONTACTS ──────────────────────────────────────────────────────────────
   {
     name: "ghl_search_contacts",
-    description: "Search for contacts in GoHighLevel CRM by name, email, or phone.",
+    description: "Search for contacts in BLOOM CRM by name, email, or phone.",
     input_schema: {
       type: "object",
       properties: {
@@ -78,14 +78,14 @@ const SARAH_TOOLS = [
     input_schema: {
       type: "object",
       properties: {
-        contactId: { type: "string", description: "GoHighLevel contact ID" }
+        contactId: { type: "string", description: "BLOOM CRM contact ID" }
       },
       required: ["contactId"]
     }
   },
   {
     name: "ghl_create_contact",
-    description: "Create a new contact in GoHighLevel.",
+    description: "Create a new contact in BLOOM CRM.",
     input_schema: {
       type: "object",
       properties: {
@@ -113,7 +113,7 @@ const SARAH_TOOLS = [
   },
   {
     name: "ghl_delete_contact",
-    description: "Delete a contact from GoHighLevel. Use with caution.",
+    description: "Delete a contact from BLOOM CRM. Use with caution.",
     input_schema: {
       type: "object",
       properties: { contactId: { type: "string" } },
@@ -217,7 +217,7 @@ const SARAH_TOOLS = [
   },
   {
     name: "ghl_send_message",
-    description: "Send an SMS, email, or other message to a contact through GoHighLevel.",
+    description: "Send an SMS, email, or other message to a contact through BLOOM CRM.",
     input_schema: {
       type: "object",
       properties: {
