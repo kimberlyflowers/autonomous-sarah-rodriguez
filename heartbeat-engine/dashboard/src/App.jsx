@@ -667,8 +667,37 @@ function ResizablePanel({c,defaultWidth,minWidth,maxWidth,children}) {
 }
 
 
-// ── SCREEN VIEWER — exact copy from Jaden
-function Screen({c,mob,live,mode,setMode}) {
+// ── SCREEN VIEWER — live feed from Sarah's browser via SSE
+function Screen({c,mob,mode,setMode}) {
+  const [screenshot,setScreenshot] = useState(null);
+  const [browserUrl,setBrowserUrl] = useState(null);
+  const [live,setLive] = useState(false);
+
+  useEffect(()=>{
+    if(mode==="hidden") return;
+    let es;
+    const connect = () => {
+      es = new EventSource("/api/browser/stream");
+      es.onmessage = (e) => {
+        try {
+          const d = JSON.parse(e.data);
+          if(d.type==="screenshot") {
+            setScreenshot("data:image/jpeg;base64,"+d.data);
+            setBrowserUrl(d.url);
+            setLive(true);
+          }
+          if(d.type==="status") {
+            setLive(d.live);
+            if(d.url) setBrowserUrl(d.url);
+          }
+        } catch {}
+      };
+      es.onerror = () => { setLive(false); es.close(); setTimeout(connect, 5000); };
+    };
+    connect();
+    return () => { try { es&&es.close(); } catch {} };
+  },[mode]);
+
   if(mode==="hidden") return null;
   const wrap=mode==="full"
     ?{position:"fixed",inset:0,zIndex:300,background:"#000",display:"flex",flexDirection:"column"}
@@ -698,19 +727,15 @@ function Screen({c,mob,live,mode,setMode}) {
         </div>
       </div>
       <div style={{background:"#0a0a0a",flex:1,display:"flex",alignItems:"center",justifyContent:"center",position:"relative",overflow:"hidden"}}>
-        {live?(
-          <div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center"}}>
-            <div style={{width:mob?"85%":"65%",background:"#161616",borderRadius:8,overflow:"hidden",border:"1px solid #333"}}>
-              <div style={{padding:"6px 10px",background:"#1c1c1c",display:"flex",alignItems:"center",gap:6}}>
+        {screenshot&&live ? (
+          <div style={{width:"100%",height:"100%",display:"flex",flexDirection:"column"}}>
+            {browserUrl&&(
+              <div style={{padding:"4px 8px",background:"#1c1c1c",display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
                 <div style={{display:"flex",gap:4}}>{["#ff5f57","#febc2e","#28c840"].map((co,i)=><div key={i} style={{width:8,height:8,borderRadius:"50%",background:co}}/>)}</div>
-                <div style={{flex:1,padding:"3px 8px",borderRadius:4,background:"#111",fontSize:10,color:"#888",fontFamily:"monospace"}}>working…</div>
+                <div style={{flex:1,padding:"3px 8px",borderRadius:4,background:"#111",fontSize:10,color:"#aaa",fontFamily:"monospace",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{browserUrl}</div>
               </div>
-              <div style={{padding:20}}>
-                <div style={{height:10,width:"60%",background:"#2a2a2a",borderRadius:3,marginBottom:8}}/>
-                <div style={{height:8,width:"90%",background:"#222",borderRadius:3,marginBottom:6}}/>
-                <div style={{height:8,width:"75%",background:"#222",borderRadius:3}}/>
-              </div>
-            </div>
+            )}
+            <img src={screenshot} alt="Sarah's browser" style={{width:"100%",flex:1,objectFit:"contain",display:"block"}}/>
           </div>
         ):(
           <div style={{textAlign:"center",padding:30}}>
@@ -744,7 +769,6 @@ export default function App() {
   const [isNew,setNew]=useState(true);
   const [vcRec,setVcRec]=useState(false);
   const [scrM,setScrM]=useState("docked");
-  const [scrLive]=useState(false);
   const [sbO,setSbO]=useState(!mob?"full":"closed");
   const [stab,setStab]=useState("General");
   const [hlpO,setHlpO]=useState(false);
@@ -1049,7 +1073,7 @@ export default function App() {
                     </div>
                     {!mob&&scrM!=="hidden"&&(
                       <ResizablePanel c={c} defaultWidth={480} minWidth={280} maxWidth={800}>
-                        <Screen c={c} mob={false} live={scrLive} mode="docked" setMode={setScrM}/>
+                        <Screen c={c} mob={false} mode="docked" setMode={setScrM}/>
                       </ResizablePanel>
                     )}
                   </div>
@@ -1300,8 +1324,8 @@ export default function App() {
       </div>
 
       {/* ── POP-OUT SCREEN ── */}
-      {scrM==="pop"&&<Screen c={c} mob={mob} live={scrLive} mode="pop" setMode={setScrM}/>}
-      {scrM==="full"&&<Screen c={c} mob={mob} live={scrLive} mode="full" setMode={setScrM}/>}
+      {scrM==="pop"&&<Screen c={c} mob={mob} mode="pop" setMode={setScrM}/>}
+      {scrM==="full"&&<Screen c={c} mob={mob} mode="full" setMode={setScrM}/>}
 
       {/* ── HELP BUBBLE — exact Jaden ── */}
       {!hlpO&&(
