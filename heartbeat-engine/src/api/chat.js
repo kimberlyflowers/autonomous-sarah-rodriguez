@@ -847,6 +847,10 @@ async function ensureSession(pool, sessionId) {
     `ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS content TEXT`,
     `ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS files JSONB`,
     `ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()`,
+    // Drop NOT NULL on legacy columns from old schema so new inserts don't break
+    `ALTER TABLE chat_messages ALTER COLUMN message DROP NOT NULL`,
+    `ALTER TABLE chat_messages ALTER COLUMN sender DROP NOT NULL`,
+    `ALTER TABLE chat_messages ALTER COLUMN timestamp DROP NOT NULL`,
   ];
   for (const sql of migrations) {
     try { await pool.query(sql); } catch(e) { /* column may already exist */ }
