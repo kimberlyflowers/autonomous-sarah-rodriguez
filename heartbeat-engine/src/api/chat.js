@@ -735,6 +735,131 @@ router.post('/message', async (req, res) => {
   }
 });
 
+// POST /api/chat/upload — accept files + optional message, send to Sarah as multipart content
+router.post('/upload', async (req, res) => {
+  try {
+    const { message = '', sessionId = 'default', files = [] } = req.body;
+    // files = [{ name, type, data (base64) }]
+
+    if (!files.length && !message.trim()) {
+      return res.status(400).json({ error: 'Message or files required' });
+    }
+
+    if (!conversations.has(sessionId)) conversations.set(sessionId, []);
+    const history = conversations.get(sessionId);
+    const agentConfig = await loadAgentConfig();
+
+    // Build multipart user content for Anthropic
+    const userContent = [];
+
+    // Add each file as the appropriate content block
+    for (const f of files) {
+      const mediaType = f.type || 'application/octet-stream';
+      if (mediaType.startsWith('image/')) {
+        userContent.push({
+          type: 'image',
+          source: { type: 'base64', media_type: mediaType, data: f.data }
+        });
+      } else if (mediaType === 'application/pdf') {
+        userContent.push({
+          type: 'document',
+          source: { type: 'base64', media_type: 'application/pdf', data: f.data }
+        });
+      } else {
+        // For CSVs, text files etc — decode and send as text
+        try {
+          const decoded = Buffer.from(f.data, 'base64').toString('utf-8');
+          userContent.push({
+            type: 'text',
+            text: `[File: ${f.name}]\n${decoded}`
+          });
+        } catch {
+          userContent.push({ type: 'text', text: `[File attached: ${f.name} (${mediaType})]` });
+        }
+      }
+    }
+
+    // Add the text message
+    const textMsg = message.trim() || (files.length ? `I've shared ${files.length} file(s) with you. Please review and help me with them.` : '');
+    if (textMsg) userContent.push({ type: 'text', text: textMsg });
+
+    // Build messages array with proper content
+    const historyMessages = [...history];
+    const userMessage = userContent.length === 1 && userContent[0].type === 'text'
+      ? userContent[0].text
+      : userContent;
+
+    const response = await chatWithSarah(userMessage, historyMessages, agentConfig);
+
+    // Store in history as text summary
+    const historyText = files.length
+      ? `[Sent ${files.length} file(s): ${files.map(f => f.name).join(', ')}]${textMsg ? ' ' + textMsg : ''}`
+      : textMsg;
+    history.push({ role: 'user', content: historyText });
+    history.push({ role: 'assistant', content: response });
+    if (history.length > 40) conversations.set(sessionId, history.slice(-40));
+
+    return res.json({ response, sessionId });
+  } catch (error) {
+    logger.error('Upload chat error', { error: error.message });
+    return res.status(500).json({
+      error: 'Failed to process upload',
+      response: "Sorry, I had trouble processing that file. Please try again."
+    });
+  }
+});
+
+// POST /api/chat/upload — files (base64) + optional text message sent to Sarah
+router.post('/upload', async (req, res) => {
+  try {
+    const { message = '', sessionId = 'default', files = [] } = req.body;
+    if (!files.length && !message.trim()) {
+      return res.status(400).json({ error: 'Message or files required' });
+    }
+
+    if (!conversations.has(sessionId)) conversations.set(sessionId, []);
+    const history = conversations.get(sessionId);
+    const agentConfig = await loadAgentConfig();
+
+    // Build multipart content blocks for Anthropic
+    const userContent = [];
+    for (const f of files) {
+      const mediaType = f.type || 'application/octet-stream';
+      if (mediaType.startsWith('image/')) {
+        userContent.push({ type: 'image', source: { type: 'base64', media_type: mediaType, data: f.data } });
+      } else if (mediaType === 'application/pdf') {
+        userContent.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: f.data } });
+      } else {
+        // text / csv / json / etc — decode and inline
+        try {
+          const decoded = Buffer.from(f.data, 'base64').toString('utf-8');
+          userContent.push({ type: 'text', text: `[File: ${f.name}]\n${decoded}` });
+        } catch {
+          userContent.push({ type: 'text', text: `[File attached: ${f.name} (${mediaType})]` });
+        }
+      }
+    }
+    const textMsg = message.trim() || (files.length ? `I've shared ${files.length} file(s) with you.` : '');
+    if (textMsg) userContent.push({ type: 'text', text: textMsg });
+
+    const content = userContent.length === 1 && userContent[0].type === 'text' ? userContent[0].text : userContent;
+    const response = await chatWithSarah(content, [...history], agentConfig);
+
+    const historyLabel = files.length
+      ? `[Files: ${files.map(f => f.name).join(', ')}]${textMsg ? ' ' + textMsg : ''}`
+      : textMsg;
+    history.push({ role: 'user', content: historyLabel });
+    history.push({ role: 'assistant', content: response });
+    if (history.length > 40) conversations.set(sessionId, history.slice(-40));
+
+    return res.json({ response, sessionId });
+  } catch (error) {
+    logger.error('Upload chat error', { error: error.message });
+    return res.status(500).json({ error: 'Failed to process upload', response: "Sorry, I had trouble with that file. Please try again." });
+  }
+});
+
+
 router.get('/health', (req, res) => {
   res.json({ status: 'ok', agent: 'sarah-rodriguez', mode: 'direct-api' });
 });
