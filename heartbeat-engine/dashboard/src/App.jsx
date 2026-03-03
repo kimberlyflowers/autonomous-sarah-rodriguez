@@ -1265,15 +1265,15 @@ export default function App() {
                 </div>
               ):(
                 <>
-                  <div style={{flex:1,minHeight:0,overflowY:"auto",display:"flex"}}>
-                    <div style={{flex:1,padding:mob?"14px 12px":"18px 20px",background:c.bg}}>
+                  <div style={{flex:1,minHeight:0,overflowY:"auto",display:"flex",minWidth:0}}>
+                    <div style={{flex:1,minWidth:0,overflowY:"auto",overflowX:"hidden",padding:mob?"14px 12px":"18px 20px",background:c.bg}}>
                       {messages.map((m)=>{
                         const cards=m.b?parseMessageCards(m.t):[];
                         return (
                         <div key={m.id} style={{display:"flex",justifyContent:m.b?"flex-start":"flex-end",marginBottom:14,flexDirection:"column",alignItems:m.b?"flex-start":"flex-end"}}>
                           <div style={{display:"flex",justifyContent:m.b?"flex-start":"flex-end",width:"100%"}}>
                             {m.b&&<div style={{marginRight:8,marginTop:2}}><Face sz={mob?26:28} agent={agent}/></div>}
-                            <div style={{maxWidth:mob?"85%":"72%",padding:"10px 14px",fontSize:mob?13:14,lineHeight:1.55,color:m.b?c.tx:"#fff",borderRadius:m.b?"6px 18px 18px 18px":"18px 6px 18px 18px",background:m.b?c.cd:"linear-gradient(135deg,#F4A261,#E76F8B)",border:m.b?"1px solid "+c.ln:"none"}}>
+                            <div style={{maxWidth:mob?"85%":"72%",padding:"10px 14px",fontSize:mob?13:14,lineHeight:1.55,color:m.b?c.tx:"#fff",borderRadius:m.b?"6px 18px 18px 18px":"18px 6px 18px 18px",background:m.b?c.cd:"linear-gradient(135deg,#F4A261,#E76F8B)",border:m.b?"1px solid "+c.ln:"none",wordBreak:"break-word",overflowWrap:"anywhere"}}>
                               {/* File previews */}
                               {m.files&&m.files.length>0&&(
                                 <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:m.t?8:4}}>
@@ -1293,7 +1293,7 @@ export default function App() {
                           </div>
                           {/* Inline action cards — Sarah's messages only */}
                           {cards.length>0&&(
-                            <div style={{marginLeft:m.b?(mob?34:36):0,marginRight:m.b?0:0,maxWidth:mob?"85%":"72%",width:"100%"}}>
+                            <div style={{marginLeft:m.b?(mob?34:36):0,marginRight:m.b?0:0,maxWidth:mob?"85%":"72%"}}>
                               {cards.map((cd2,ci)=>cd2.type==="task"
                                 ? <TaskCard key={ci} name={cd2.name} c={c}/>
                                 : <EmailCard key={ci} subject={cd2.subject} c={c} onReview={()=>alert("Email review panel coming soon — will open full draft for approval")}/>
