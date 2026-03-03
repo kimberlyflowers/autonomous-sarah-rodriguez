@@ -903,6 +903,16 @@ router.post('/upload', async (req, res) => {
 });
 
 
+router.get('/crm-link', (req, res) => {
+  const locationId = process.env.GHL_LOCATION_ID;
+  if (!locationId) return res.json({ url: 'https://app.gohighlevel.com' });
+  res.json({
+    url: `https://app.gohighlevel.com/v2/location/${locationId}/dashboard`,
+    contactsUrl: `https://app.gohighlevel.com/v2/location/${locationId}/contacts`,
+    locationId
+  });
+});
+
 router.get('/health', (req, res) => {
   res.json({ status: 'ok', agent: 'sarah-rodriguez', mode: 'direct-api' });
 });
