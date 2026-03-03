@@ -174,7 +174,8 @@ function useSarahChat() {
       const data = await res.json();
       const ts2 = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
       setMessages(p=>[...p,{id:Date.now(),b:true,t:data.response||data.message||"Done.",tm:ts2}]);
-      fetchSessions(); // refresh sidebar
+      fetchSessions(); // refresh sidebar immediately
+      setTimeout(fetchSessions, 3000); // re-fetch after AI title generates
       return true;
     } catch {
       const ts2 = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
