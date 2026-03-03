@@ -114,10 +114,58 @@ function useAgentOnline() {
 function useSarahChat() {
   const [messages,setMessages] = useState([]);
   const [loading,setLoading] = useState(false);
-  const sid = useRef("session-"+Date.now());
+  const [sessions,setSessions] = useState([]);
+  const [currentSessionId,setCurrentSessionId] = useState(null);
+  const sid = useRef(null);
+
+  // Load session list on mount
+  const fetchSessions = async () => {
+    try {
+      const r = await fetch("/api/chat/sessions");
+      const d = await r.json();
+      setSessions(d.sessions || []);
+    } catch {}
+  };
+
+  useEffect(()=>{ fetchSessions(); },[]);
+
+  // Start a fresh session
+  const newSession = () => {
+    const id = "session-"+Date.now();
+    sid.current = id;
+    setCurrentSessionId(id);
+    setMessages([]);
+  };
+
+  // Load an existing session
+  const loadSession = async (sessionId) => {
+    sid.current = sessionId;
+    setCurrentSessionId(sessionId);
+    try {
+      const r = await fetch("/api/chat/sessions/"+sessionId);
+      const d = await r.json();
+      const msgs = (d.messages||[]).map(m=>({
+        id: m.id,
+        b: m.role==="assistant",
+        t: m.content,
+        tm: new Date(m.created_at).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"}),
+        files: m.files ? (typeof m.files==="string" ? JSON.parse(m.files) : m.files) : undefined
+      }));
+      setMessages(msgs);
+    } catch { setMessages([]); }
+  };
+
+  // Delete session
+  const deleteSession = async (sessionId) => {
+    await fetch("/api/chat/sessions/"+sessionId, {method:"DELETE"});
+    setSessions(p=>p.filter(s=>s.id!==sessionId));
+    if(sid.current===sessionId) { sid.current=null; setCurrentSessionId(null); setMessages([]); }
+  };
 
   const send = async (text) => {
     if(!text.trim()) return false;
+    // Auto-create session if none active
+    if(!sid.current) { const id="session-"+Date.now(); sid.current=id; setCurrentSessionId(id); }
     const ts = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
     setMessages(p=>[...p,{id:Date.now(),b:false,t:text,tm:ts}]);
     setLoading(true);
@@ -126,6 +174,7 @@ function useSarahChat() {
       const data = await res.json();
       const ts2 = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
       setMessages(p=>[...p,{id:Date.now(),b:true,t:data.response||data.message||"Done.",tm:ts2}]);
+      fetchSessions(); // refresh sidebar
       return true;
     } catch {
       const ts2 = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
@@ -147,10 +196,12 @@ function useSarahChat() {
       })));
       // Show outgoing message with file previews
       setMessages(p=>[...p,{id:Date.now(),b:false,t:text||'',tm:ts,files:encoded}]);
+      if(!sid.current){ const id="session-"+Date.now(); sid.current=id; setCurrentSessionId(id); }
       const resp = await fetch("/api/chat/upload",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:text,sessionId:sid.current,files:encoded})});
       const data = await resp.json();
       const ts2 = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
       setMessages(p=>[...p,{id:Date.now(),b:true,t:data.response||data.message||"Got it.",tm:ts2}]);
+      fetchSessions();
       return true;
     } catch {
       const ts2 = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
@@ -159,7 +210,7 @@ function useSarahChat() {
     } finally { setLoading(false); }
   };
 
-  return {messages,setMessages,send,sendFiles,loading};
+  return {messages,setMessages,send,sendFiles,loading,sessions,currentSessionId,newSession,loadSession,deleteSession,fetchSessions};
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -670,7 +721,7 @@ export default function App() {
 
   const sse=useSSE();
   const agentOnline=useAgentOnline();
-  const {messages,setMessages,send,sendFiles,loading}=useSarahChat();
+  const {messages,setMessages,send,sendFiles,loading,sessions,currentSessionId,newSession,loadSession,deleteSession}=useSarahChat();
   const connected=agentOnline; // true online/offline from health poll
 
   const [pg,setPg]=useState("chat");
@@ -711,7 +762,7 @@ export default function App() {
 
   const doSend=async()=>{
     if(!tx.trim()||loading) return;
-    const text=tx.trim(); setTx(""); if(isNew) setNew(false);
+    const text=tx.trim(); setTx(""); setNew(false);
     await send(text);
   };
 
@@ -804,40 +855,93 @@ export default function App() {
       <div style={{display:"flex",position:"relative"}}>
         {pg==="chat"&&sbO==="full"&&mob&&<div onClick={()=>setSbO("closed")} style={{position:"fixed",inset:0,top:52,background:"rgba(0,0,0,.3)",zIndex:45}}/>}
 
-        {/* ── SIDEBAR — exact Jaden layout ── */}
+        {/* ── SIDEBAR — session history like Claude ── */}
         {pg==="chat"&&sbOpen&&(
           <div style={mob?{position:"fixed",top:52,left:0,bottom:0,zIndex:50}:{}}>
             <div style={{width:sbO==="mini"?60:260,height:"calc(100vh - 52px)",background:c.cd,borderRight:"1px solid "+c.ln,display:"flex",flexDirection:"column",flexShrink:0,transition:"width .2s ease",overflow:"hidden"}}>
+
+              {/* MINI sidebar */}
               {sbO==="mini"&&(
                 <div style={{display:"flex",flexDirection:"column",alignItems:"center",padding:"12px 0",gap:4,flex:1}}>
-                  <button onClick={()=>setNew(true)} style={{width:40,height:40,borderRadius:10,border:"1.5px dashed "+c.ln,background:"transparent",cursor:"pointer",fontSize:16,color:c.so,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
-                  <div style={{marginTop:4,animation:"bloomieWiggle 3s ease-in-out infinite"}}><Face sz={36} agent={agent}/></div>
-                  <div style={{width:32,height:1,background:c.ln,margin:"6px 0"}}/>
+                  <button onClick={()=>{newSession();setNew(true);}} title="New chat" style={{width:40,height:40,borderRadius:10,border:"1.5px dashed "+c.ln,background:"transparent",cursor:"pointer",fontSize:18,color:c.so,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
+                  <div style={{width:32,height:1,background:c.ln,margin:"4px 0"}}/>
+                  {sessions.slice(0,6).map(s=>(
+                    <button key={s.id} onClick={()=>{loadSession(s.id);setNew(false);}} title={s.title||"Chat"} style={{width:40,height:40,borderRadius:10,border:currentSessionId===s.id?"2px solid "+c.ac:"1px solid "+c.ln,background:currentSessionId===s.id?c.ac+"12":"transparent",cursor:"pointer",fontSize:11,fontWeight:700,color:currentSessionId===s.id?c.ac:c.so,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      {(s.title||"C").charAt(0).toUpperCase()}
+                    </button>
+                  ))}
                   <button onClick={()=>setSbO("full")} style={{width:40,height:40,borderRadius:10,border:"none",background:c.sf,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:c.tx,marginTop:"auto"}}>K</button>
                 </div>
               )}
+
+              {/* FULL sidebar */}
               {sbO==="full"&&(
                 <>
-                  <div style={{padding:"14px 14px 8px"}}>
-                    <button onClick={()=>setNew(true)} style={{width:"100%",padding:"10px 0",borderRadius:10,border:"1.5px dashed "+c.ln,background:"transparent",cursor:"pointer",fontSize:13,fontWeight:600,color:c.so}}>+ New chat</button>
-                  </div>
-                  <div style={{margin:"0 14px 10px"}}>
-                    <div style={{padding:"10px 12px",borderRadius:12,background:c.sf,border:"1px solid "+c.ln,display:"flex",alignItems:"center",gap:10}}>
-                      <div style={{animation:"bloomieWiggle 3s ease-in-out infinite"}}><Face sz={36} agent={agent}/></div>
+                  {/* Agent identity card */}
+                  <div style={{padding:"12px 14px 8px",borderBottom:"1px solid "+c.ln,flexShrink:0}}>
+                    <div style={{padding:"10px 12px",borderRadius:12,background:c.sf,border:"1px solid "+c.ln,display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                      <div style={{animation:"bloomieWiggle 3s ease-in-out infinite"}}><Face sz={34} agent={agent}/></div>
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{fontSize:13,fontWeight:700,color:c.tx,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{agent.nm}</div>
-                        <div style={{fontSize:11,color:c.so}}>{agent.role}</div>
-                        <div style={{fontSize:10,color:connected?c.gr:c.fa,display:"flex",alignItems:"center",gap:4,marginTop:2}}>
+                        <div style={{fontSize:10,color:connected?c.gr:c.fa,display:"flex",alignItems:"center",gap:4,marginTop:1}}>
                           <span style={{width:5,height:5,borderRadius:"50%",background:connected?c.gr:c.fa,animation:connected?"pulse 1.5s ease infinite":"none"}}/>
                           {connected?"Online":"Offline"}
                         </div>
                       </div>
                     </div>
+                    <button
+                      onClick={()=>{newSession();setNew(true);}}
+                      style={{width:"100%",padding:"9px 0",borderRadius:10,border:"1.5px dashed "+c.ln,background:"transparent",cursor:"pointer",fontSize:13,fontWeight:600,color:c.so,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}
+                    >
+                      <span style={{fontSize:16}}>+</span> New chat
+                    </button>
                   </div>
-                  <div style={{flex:1}}/>
-                  <div style={{padding:"10px 14px",borderTop:"1px solid "+c.ln}}>
-                    <div style={{padding:"10px 12px",borderRadius:10,display:"flex",alignItems:"center",gap:10}}>
-                      <div style={{width:32,height:32,borderRadius:8,background:c.sf,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,color:c.tx}}>K</div>
+
+                  {/* Session list */}
+                  <div style={{flex:1,overflowY:"auto",padding:"8px 8px"}}>
+                    {sessions.length===0?(
+                      <div style={{padding:"20px 8px",textAlign:"center",fontSize:11,color:c.fa}}>No chats yet</div>
+                    ):sessions.map(s=>{
+                      const isActive = currentSessionId===s.id;
+                      const title = s.title || "New conversation";
+                      const when = new Date(s.updated_at);
+                      const now = new Date();
+                      const diff = now - when;
+                      const timeLabel = diff < 60000 ? "Just now"
+                        : diff < 3600000 ? Math.floor(diff/60000)+"m ago"
+                        : diff < 86400000 ? Math.floor(diff/3600000)+"h ago"
+                        : diff < 604800000 ? Math.floor(diff/86400000)+"d ago"
+                        : when.toLocaleDateString([],{month:"short",day:"numeric"});
+                      return(
+                        <div key={s.id} style={{position:"relative",marginBottom:2}} className="session-row">
+                          <button
+                            onClick={()=>{loadSession(s.id);setNew(false);}}
+                            style={{width:"100%",textAlign:"left",padding:"9px 10px",borderRadius:10,border:"none",cursor:"pointer",background:isActive?c.ac+"15":"transparent",transition:"background .15s"}}
+                            onMouseEnter={e=>{ if(!isActive) e.currentTarget.style.background=c.hv; }}
+                            onMouseLeave={e=>{ if(!isActive) e.currentTarget.style.background="transparent"; }}
+                          >
+                            <div style={{fontSize:12,fontWeight:isActive?600:500,color:isActive?c.ac:c.tx,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",paddingRight:20}}>{title}</div>
+                            <div style={{fontSize:10,color:c.fa,marginTop:2,display:"flex",gap:6}}>
+                              <span>{timeLabel}</span>
+                              {s.message_count>0&&<span>· {Math.floor(s.message_count/2)} msg{s.message_count>2?"s":""}</span>}
+                            </div>
+                          </button>
+                          <button
+                            onClick={e=>{e.stopPropagation();deleteSession(s.id);}}
+                            title="Delete"
+                            style={{position:"absolute",right:4,top:"50%",transform:"translateY(-50%)",width:22,height:22,borderRadius:6,border:"none",background:"transparent",cursor:"pointer",fontSize:12,color:c.fa,opacity:0,transition:"opacity .15s",display:"flex",alignItems:"center",justifyContent:"center"}}
+                            onMouseEnter={e=>{e.currentTarget.style.opacity="1";e.currentTarget.style.background=c.sf;e.currentTarget.style.color="#ef4444";}}
+                            onMouseLeave={e=>{e.currentTarget.style.opacity="0";e.currentTarget.style.background="transparent";e.currentTarget.style.color=c.fa;}}
+                          >✕</button>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Bottom — Kimberly */}
+                  <div style={{padding:"10px 14px",borderTop:"1px solid "+c.ln,flexShrink:0}}>
+                    <div style={{padding:"8px 10px",borderRadius:10,display:"flex",alignItems:"center",gap:10}}>
+                      <div style={{width:30,height:30,borderRadius:8,background:"linear-gradient(135deg,#F4A261,#E76F8B)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"#fff"}}>K</div>
                       <div><div style={{fontSize:13,fontWeight:600,color:c.tx}}>Kimberly</div><div style={{fontSize:11,color:c.so}}>Owner</div></div>
                     </div>
                   </div>

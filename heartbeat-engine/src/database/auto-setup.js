@@ -303,6 +303,32 @@ async function createBasicSchema(pool) {
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_bloom_context_agent_type ON bloom_context(agent_id, context_type, created_at DESC)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_bloom_context_expires ON bloom_context(expires_at) WHERE expires_at IS NOT NULL`);
 
+  // Chat sessions — persisted conversations between Kimberly and Sarah
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS chat_sessions (
+      id VARCHAR(64) PRIMARY KEY,
+      agent_id VARCHAR(64) NOT NULL DEFAULT 'bloomie-sarah-rodriguez',
+      title TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW(),
+      message_count INTEGER DEFAULT 0
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS chat_messages (
+      id SERIAL PRIMARY KEY,
+      session_id VARCHAR(64) NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+      role VARCHAR(16) NOT NULL,
+      content TEXT NOT NULL,
+      files JSONB,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id, created_at ASC)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_chat_sessions_updated ON chat_sessions(updated_at DESC)`);
+
   logger.info('✅ Basic schema created manually');
 }
 

@@ -707,23 +707,110 @@ async function chatWithSarah(userMessage, history, agentConfig) {
   return "I got a bit carried away. Let me know if you need me to try a simpler approach.";
 }
 
-// ROUTES
-const conversations = new Map();
+// ROUTES — DB-backed persistent sessions
+async function getPool() {
+  const { createPool } = await import('../../database/setup.js');
+  return createPool();
+}
+
+async function ensureSession(pool, sessionId) {
+  await pool.query(
+    `INSERT INTO chat_sessions(id) VALUES($1) ON CONFLICT(id) DO NOTHING`,
+    [sessionId]
+  );
+}
+
+async function loadHistory(pool, sessionId) {
+  const res = await pool.query(
+    `SELECT role, content FROM chat_messages WHERE session_id=$1 ORDER BY created_at ASC LIMIT 40`,
+    [sessionId]
+  );
+  return res.rows.map(r => ({ role: r.role, content: r.content }));
+}
+
+async function saveMessages(pool, sessionId, userMsg, assistantMsg, files = null) {
+  const userText = typeof userMsg === 'string' ? userMsg : JSON.stringify(userMsg);
+  await pool.query(
+    `INSERT INTO chat_messages(session_id, role, content, files) VALUES($1,'user',$2,$3)`,
+    [sessionId, userText, files ? JSON.stringify(files) : null]
+  );
+  await pool.query(
+    `INSERT INTO chat_messages(session_id, role, content) VALUES($1,'assistant',$2)`,
+    [sessionId, assistantMsg]
+  );
+  await pool.query(
+    `UPDATE chat_sessions SET
+       updated_at = NOW(),
+       message_count = message_count + 2,
+       title = CASE WHEN title IS NULL THEN LEFT($2, 60) ELSE title END
+     WHERE id = $1`,
+    [sessionId, userText]
+  );
+}
+
+// GET /api/chat/sessions
+router.get('/sessions', async (req, res) => {
+  const pool = await getPool();
+  try {
+    const result = await pool.query(
+      `SELECT id, title, message_count, created_at, updated_at
+       FROM chat_sessions ORDER BY updated_at DESC LIMIT 50`
+    );
+    res.json({ sessions: result.rows });
+  } catch (e) {
+    logger.error('Sessions fetch error', { error: e.message });
+    res.json({ sessions: [] });
+  } finally { await pool.end(); }
+});
+
+// GET /api/chat/sessions/:id — load full history
+router.get('/sessions/:id', async (req, res) => {
+  const pool = await getPool();
+  try {
+    const msgs = await pool.query(
+      `SELECT id, role, content, files, created_at FROM chat_messages WHERE session_id=$1 ORDER BY created_at ASC`,
+      [req.params.id]
+    );
+    res.json({ messages: msgs.rows });
+  } catch (e) {
+    logger.error('Session load error', { error: e.message });
+    res.json({ messages: [] });
+  } finally { await pool.end(); }
+});
+
+// DELETE /api/chat/sessions/:id
+router.delete('/sessions/:id', async (req, res) => {
+  const pool = await getPool();
+  try {
+    await pool.query(`DELETE FROM chat_sessions WHERE id=$1`, [req.params.id]);
+    res.json({ success: true });
+  } catch (e) {
+    res.json({ success: false });
+  } finally { await pool.end(); }
+});
+
+// PATCH /api/chat/sessions/:id/title
+router.patch('/sessions/:id/title', async (req, res) => {
+  const pool = await getPool();
+  try {
+    await pool.query(`UPDATE chat_sessions SET title=$1 WHERE id=$2`, [req.body.title, req.params.id]);
+    res.json({ success: true });
+  } catch (e) {
+    res.json({ success: false });
+  } finally { await pool.end(); }
+});
 
 router.post('/message', async (req, res) => {
+  const pool = await getPool();
   try {
-    const { message, sessionId = 'default' } = req.body;
+    const { message, sessionId = 'session-' + Date.now() } = req.body;
     if (!message?.trim()) return res.status(400).json({ error: 'Message required' });
 
-    if (!conversations.has(sessionId)) conversations.set(sessionId, []);
-    const history = conversations.get(sessionId);
+    await ensureSession(pool, sessionId);
+    const history = await loadHistory(pool, sessionId);
     const agentConfig = await loadAgentConfig();
-
     const response = await chatWithSarah(message, history, agentConfig);
-
-    history.push({ role: 'user', content: message });
-    history.push({ role: 'assistant', content: response });
-    if (history.length > 40) conversations.set(sessionId, history.slice(-40));
+    await saveMessages(pool, sessionId, message, response);
 
     return res.json({ response, sessionId });
   } catch (error) {
@@ -732,93 +819,20 @@ router.post('/message', async (req, res) => {
       error: 'Failed to process message',
       response: "Sorry, I'm having a technical issue. Please try again."
     });
-  }
+  } finally { await pool.end(); }
 });
 
 // POST /api/chat/upload — accept files + optional message, send to Sarah as multipart content
 router.post('/upload', async (req, res) => {
+  const pool = await getPool();
   try {
-    const { message = '', sessionId = 'default', files = [] } = req.body;
-    // files = [{ name, type, data (base64) }]
-
+    const { message = '', sessionId = 'session-' + Date.now(), files = [] } = req.body;
     if (!files.length && !message.trim()) {
       return res.status(400).json({ error: 'Message or files required' });
     }
 
-    if (!conversations.has(sessionId)) conversations.set(sessionId, []);
-    const history = conversations.get(sessionId);
-    const agentConfig = await loadAgentConfig();
-
-    // Build multipart user content for Anthropic
-    const userContent = [];
-
-    // Add each file as the appropriate content block
-    for (const f of files) {
-      const mediaType = f.type || 'application/octet-stream';
-      if (mediaType.startsWith('image/')) {
-        userContent.push({
-          type: 'image',
-          source: { type: 'base64', media_type: mediaType, data: f.data }
-        });
-      } else if (mediaType === 'application/pdf') {
-        userContent.push({
-          type: 'document',
-          source: { type: 'base64', media_type: 'application/pdf', data: f.data }
-        });
-      } else {
-        // For CSVs, text files etc — decode and send as text
-        try {
-          const decoded = Buffer.from(f.data, 'base64').toString('utf-8');
-          userContent.push({
-            type: 'text',
-            text: `[File: ${f.name}]\n${decoded}`
-          });
-        } catch {
-          userContent.push({ type: 'text', text: `[File attached: ${f.name} (${mediaType})]` });
-        }
-      }
-    }
-
-    // Add the text message
-    const textMsg = message.trim() || (files.length ? `I've shared ${files.length} file(s) with you. Please review and help me with them.` : '');
-    if (textMsg) userContent.push({ type: 'text', text: textMsg });
-
-    // Build messages array with proper content
-    const historyMessages = [...history];
-    const userMessage = userContent.length === 1 && userContent[0].type === 'text'
-      ? userContent[0].text
-      : userContent;
-
-    const response = await chatWithSarah(userMessage, historyMessages, agentConfig);
-
-    // Store in history as text summary
-    const historyText = files.length
-      ? `[Sent ${files.length} file(s): ${files.map(f => f.name).join(', ')}]${textMsg ? ' ' + textMsg : ''}`
-      : textMsg;
-    history.push({ role: 'user', content: historyText });
-    history.push({ role: 'assistant', content: response });
-    if (history.length > 40) conversations.set(sessionId, history.slice(-40));
-
-    return res.json({ response, sessionId });
-  } catch (error) {
-    logger.error('Upload chat error', { error: error.message });
-    return res.status(500).json({
-      error: 'Failed to process upload',
-      response: "Sorry, I had trouble processing that file. Please try again."
-    });
-  }
-});
-
-// POST /api/chat/upload — files (base64) + optional text message sent to Sarah
-router.post('/upload', async (req, res) => {
-  try {
-    const { message = '', sessionId = 'default', files = [] } = req.body;
-    if (!files.length && !message.trim()) {
-      return res.status(400).json({ error: 'Message or files required' });
-    }
-
-    if (!conversations.has(sessionId)) conversations.set(sessionId, []);
-    const history = conversations.get(sessionId);
+    await ensureSession(pool, sessionId);
+    const history = await loadHistory(pool, sessionId);
     const agentConfig = await loadAgentConfig();
 
     // Build multipart content blocks for Anthropic
@@ -830,7 +844,6 @@ router.post('/upload', async (req, res) => {
       } else if (mediaType === 'application/pdf') {
         userContent.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: f.data } });
       } else {
-        // text / csv / json / etc — decode and inline
         try {
           const decoded = Buffer.from(f.data, 'base64').toString('utf-8');
           userContent.push({ type: 'text', text: `[File: ${f.name}]\n${decoded}` });
@@ -843,20 +856,19 @@ router.post('/upload', async (req, res) => {
     if (textMsg) userContent.push({ type: 'text', text: textMsg });
 
     const content = userContent.length === 1 && userContent[0].type === 'text' ? userContent[0].text : userContent;
-    const response = await chatWithSarah(content, [...history], agentConfig);
+    const response = await chatWithSarah(content, history, agentConfig);
 
     const historyLabel = files.length
       ? `[Files: ${files.map(f => f.name).join(', ')}]${textMsg ? ' ' + textMsg : ''}`
       : textMsg;
-    history.push({ role: 'user', content: historyLabel });
-    history.push({ role: 'assistant', content: response });
-    if (history.length > 40) conversations.set(sessionId, history.slice(-40));
+    const filesMeta = files.map(f => ({ name: f.name, type: f.type }));
+    await saveMessages(pool, sessionId, historyLabel, response, filesMeta);
 
     return res.json({ response, sessionId });
   } catch (error) {
     logger.error('Upload chat error', { error: error.message });
     return res.status(500).json({ error: 'Failed to process upload', response: "Sorry, I had trouble with that file. Please try again." });
-  }
+  } finally { await pool.end(); }
 });
 
 
