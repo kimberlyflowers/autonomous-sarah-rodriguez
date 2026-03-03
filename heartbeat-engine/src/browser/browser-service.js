@@ -1,11 +1,16 @@
-// Sarah's Browser Service — Playwright-powered autonomous browsing
+// Sarah's Browser Service — connects to Browserless for managed Chrome
 // Manages a persistent browser session, captures screenshots for the Screen Viewer
+// Uses Browserless (Railway) for headless Chrome — same instance the AI sidecar uses
 
 import { chromium } from 'playwright';
 import { createLogger } from '../logging/logger.js';
 import { EventEmitter } from 'events';
 
 const logger = createLogger('browser-service');
+
+// Browserless connection config
+const BROWSERLESS_WS_URL = process.env.BROWSERLESS_WS_URL || '';
+const BROWSERLESS_TOKEN = process.env.BROWSERLESS_TOKEN || '';
 
 class BrowserService extends EventEmitter {
   constructor() {
@@ -18,31 +23,65 @@ class BrowserService extends EventEmitter {
     this.currentUrl = null;
     this.lastScreenshot = null;
     this.lastScreenshotTime = null;
+    this.usesBrowserless = false;
+  }
+
+  /**
+   * Build CDP connection URL for Browserless
+   */
+  _buildCdpUrl() {
+    if (!BROWSERLESS_WS_URL || !BROWSERLESS_TOKEN) return null;
+    const base = BROWSERLESS_WS_URL.rstrip ? BROWSERLESS_WS_URL.replace(/\/+$/, '') : BROWSERLESS_WS_URL.replace(/\/+$/, '');
+    const separator = base.includes('?') ? '&' : '?';
+    return `${base}${separator}token=${BROWSERLESS_TOKEN}`;
   }
 
   async launch() {
     if (this.isRunning) return;
     try {
-      logger.info('🌐 Launching Sarah\'s browser...');
-      // Use system Chromium in Railway, fallback to Playwright's own in dev
-      const executablePath = process.env.CHROMIUM_PATH || undefined;
-      this.browser = await chromium.launch({
-        headless: true,
-        executablePath,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-gpu',
-          '--disable-software-rasterizer',
-          '--window-size=1280,800'
-        ]
-      });
+      const cdpUrl = this._buildCdpUrl();
 
-      this.context = await this.browser.newContext({
-        viewport: { width: 1280, height: 800 },
-        userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-      });
+      if (cdpUrl) {
+        // Connect to Browserless via CDP — shared with AI sidecar
+        logger.info('🌐 Connecting to Browserless...', { url: BROWSERLESS_WS_URL });
+        this.browser = await chromium.connectOverCDP(cdpUrl);
+        this.usesBrowserless = true;
+
+        // Get or create context
+        if (this.browser.contexts().length > 0) {
+          this.context = this.browser.contexts()[0];
+        } else {
+          this.context = await this.browser.newContext({
+            viewport: { width: 1280, height: 800 },
+            userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+          });
+        }
+
+        logger.info('✅ Connected to Browserless');
+      } else {
+        // Fallback: launch local Chrome (dev mode or if Browserless not configured)
+        logger.info('🌐 Launching local browser (Browserless not configured)...');
+        const executablePath = process.env.CHROMIUM_PATH || undefined;
+        this.browser = await chromium.launch({
+          headless: true,
+          executablePath,
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--disable-software-rasterizer',
+            '--window-size=1280,800'
+          ]
+        });
+
+        this.context = await this.browser.newContext({
+          viewport: { width: 1280, height: 800 },
+          userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        });
+        this.usesBrowserless = false;
+        logger.info('✅ Local browser launched');
+      }
 
       this.page = await this.context.newPage();
       this.isRunning = true;
@@ -50,7 +89,6 @@ class BrowserService extends EventEmitter {
       // Start screenshot streaming
       this.startScreenshotStream();
 
-      logger.info('✅ Browser launched and ready');
       this.emit('ready');
     } catch (error) {
       logger.error('Failed to launch browser:', error.message);
@@ -61,23 +99,45 @@ class BrowserService extends EventEmitter {
   startScreenshotStream() {
     // Capture screenshot every 1 second when browser is active
     this.screenshotInterval = setInterval(async () => {
-      if (!this.page || !this.isRunning) return;
+      if (!this.isRunning) return;
       try {
-        const screenshot = await this.page.screenshot({
+        // If using Browserless, check for newest page across all contexts
+        // This catches pages opened by the AI sidecar too
+        let activePage = this.page;
+
+        if (this.usesBrowserless && this.browser) {
+          try {
+            const contexts = this.browser.contexts();
+            for (const ctx of contexts) {
+              const pages = ctx.pages();
+              if (pages.length > 0) {
+                // Use the most recently active page (last in array)
+                activePage = pages[pages.length - 1];
+              }
+            }
+          } catch (e) {
+            // CDP connection may have dropped — use our own page
+            activePage = this.page;
+          }
+        }
+
+        if (!activePage) return;
+
+        const screenshot = await activePage.screenshot({
           type: 'jpeg',
           quality: 70,
           fullPage: false
         });
         this.lastScreenshot = screenshot.toString('base64');
         this.lastScreenshotTime = Date.now();
-        this.currentUrl = this.page.url();
+        this.currentUrl = activePage.url();
         this.emit('screenshot', {
           data: this.lastScreenshot,
           url: this.currentUrl,
           timestamp: this.lastScreenshotTime
         });
       } catch (e) {
-        // Page may be navigating
+        // Page may be navigating or CDP reconnecting
       }
     }, 1000);
   }
@@ -149,13 +209,21 @@ class BrowserService extends EventEmitter {
       isRunning: this.isRunning,
       currentUrl: this.currentUrl,
       hasScreenshot: !!this.lastScreenshot,
-      lastScreenshotTime: this.lastScreenshotTime
+      lastScreenshotTime: this.lastScreenshotTime,
+      usesBrowserless: this.usesBrowserless
     };
   }
 
   async close() {
     if (this.screenshotInterval) clearInterval(this.screenshotInterval);
-    if (this.browser) await this.browser.close();
+    if (this.browser) {
+      if (this.usesBrowserless) {
+        // Disconnect (don't kill Browserless — sidecar may still need it)
+        try { await this.browser.close(); } catch (e) { /* ok */ }
+      } else {
+        await this.browser.close();
+      }
+    }
     this.isRunning = false;
     this.browser = null;
     this.context = null;
