@@ -794,11 +794,11 @@ async function chatWithSarah(userMessage, history, agentConfig) {
 // ROUTES — DB-backed persistent sessions
 
 async function ensureSession(pool, sessionId) {
-  // Create tables if they don't exist yet (fallback if auto-setup missed them)
+  // Create tables if missing
   await pool.query(`
     CREATE TABLE IF NOT EXISTS chat_sessions (
       id VARCHAR(64) PRIMARY KEY,
-      agent_id VARCHAR(64) NOT NULL DEFAULT 'bloomie-sarah-rodriguez',
+      agent_id VARCHAR(64) DEFAULT 'bloomie-sarah-rodriguez',
       title TEXT,
       created_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW(),
@@ -808,13 +808,31 @@ async function ensureSession(pool, sessionId) {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS chat_messages (
       id SERIAL PRIMARY KEY,
-      session_id VARCHAR(64) NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
-      role VARCHAR(16) NOT NULL,
-      content TEXT NOT NULL,
+      session_id VARCHAR(64),
+      role VARCHAR(16),
+      content TEXT,
       files JSONB,
       created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
+
+  // Migrate: add any missing columns to existing tables (handles old schema)
+  const migrations = [
+    `ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS agent_id VARCHAR(64) DEFAULT 'bloomie-sarah-rodriguez'`,
+    `ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS title TEXT`,
+    `ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`,
+    `ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS message_count INTEGER DEFAULT 0`,
+    `ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS session_id VARCHAR(64)`,
+    `ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS role VARCHAR(16)`,
+    `ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS content TEXT`,
+    `ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS files JSONB`,
+    `ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()`,
+  ];
+  for (const sql of migrations) {
+    try { await pool.query(sql); } catch(e) { /* column may already exist */ }
+  }
+
+  // Ensure session row exists
   await pool.query(
     `INSERT INTO chat_sessions(id) VALUES($1) ON CONFLICT(id) DO NOTHING`,
     [sessionId]
