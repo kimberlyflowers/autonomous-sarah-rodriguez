@@ -708,10 +708,6 @@ async function chatWithSarah(userMessage, history, agentConfig) {
 }
 
 // ROUTES — DB-backed persistent sessions
-async function getPool() {
-  const { createPool } = await import('../../database/setup.js');
-  return createPool();
-}
 
 async function ensureSession(pool, sessionId) {
   await pool.query(
