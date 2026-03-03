@@ -1,20 +1,25 @@
-# BLOOM Heartbeat Engine Dockerfile
-FROM node:20-alpine
+# BLOOM Heartbeat Engine Dockerfile — with browser automation
+FROM mcr.microsoft.com/playwright:v1.41.0-jammy
 
 # Set working directory
 WORKDIR /app
+
+# Install Node 20
+RUN apt-get update && apt-get install -y curl && \
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Install main dependencies
 COPY package*.json ./
 RUN npm ci --only=production
 
+# Install playwright browsers
+RUN npx playwright install chromium --with-deps
+
 # Copy application code
 COPY src/ ./src/
-
-# Copy database setup module
 COPY database/ ./database/
-
-# Copy dashboard code
 COPY dashboard/ ./dashboard/
 
 # Install dashboard dependencies and build React frontend
@@ -25,20 +30,10 @@ RUN npm run build
 # Switch back to main app directory
 WORKDIR /app
 
-# Create non-root user
-RUN addgroup -g 1001 -S bloom && \
-    adduser -S heartbeat -u 1001 -G bloom
-
-# Set ownership
-RUN chown -R heartbeat:bloom /app
-USER heartbeat
-
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
   CMD node -e "process.exit(0)"
 
-# Expose port for webhook receiver
 EXPOSE 3000
 
-# Start the heartbeat engine
 CMD ["npm", "start"]

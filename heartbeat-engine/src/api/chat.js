@@ -649,6 +649,48 @@ const SARAH_TOOLS = [
       required: ["type", "message"]
     }
   }
+  ,
+  // ── BROWSER — Sarah's own computer ────────────────────────────────────────
+  {
+    name: "browser_navigate",
+    description: "Navigate Sarah's browser to a URL. Use this for tasks the API cannot do — log into BLOOM CRM manually, fill forms, click buttons, verify data visually.",
+    input_schema: {
+      type: "object",
+      properties: { url: { type: "string" } },
+      required: ["url"]
+    }
+  },
+  {
+    name: "browser_screenshot",
+    description: "Take a screenshot of the current browser page to see what is on screen.",
+    input_schema: { type: "object", properties: {} }
+  },
+  {
+    name: "browser_click",
+    description: "Click an element on the current browser page.",
+    input_schema: {
+      type: "object",
+      properties: { selector: { type: "string", description: "CSS selector" } },
+      required: ["selector"]
+    }
+  },
+  {
+    name: "browser_type",
+    description: "Type text into a form field in the browser.",
+    input_schema: {
+      type: "object",
+      properties: {
+        selector: { type: "string" },
+        text: { type: "string" }
+      },
+      required: ["selector", "text"]
+    }
+  },
+  {
+    name: "browser_get_content",
+    description: "Get the visible text content of the current page.",
+    input_schema: { type: "object", properties: {} }
+  }
 ];
 
 // TOOL EXECUTION — routes all tool calls to the appropriate executor
@@ -670,6 +712,33 @@ async function executeTool(toolName, toolInput) {
     if (toolName.startsWith('ghl_')) {
       const { executeGHLTool } = await import('../tools/ghl-tools.js');
       return await executeGHLTool(toolName, toolInput);
+    }
+
+    // Browser tools — Sarah's own computer
+    if (toolName.startsWith('browser_')) {
+      const port = process.env.PORT || 3000;
+      const base = `http://localhost:${port}/api/browser`;
+      if (toolName === 'browser_navigate') {
+        const r = await fetch(`${base}/navigate`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({url: toolInput.url}) });
+        return await r.json();
+      }
+      if (toolName === 'browser_screenshot') {
+        const r = await fetch(`${base}/screenshot`);
+        const d = await r.json();
+        return { live: d.live, url: d.url, message: d.live ? `Browser active at ${d.url}` : 'Browser idle' };
+      }
+      if (toolName === 'browser_click') {
+        const r = await fetch(`${base}/click`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({selector: toolInput.selector}) });
+        return await r.json();
+      }
+      if (toolName === 'browser_type') {
+        const r = await fetch(`${base}/type`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({selector: toolInput.selector, text: toolInput.text}) });
+        return await r.json();
+      }
+      if (toolName === 'browser_get_content') {
+        const r = await fetch(`${base}/content`);
+        return await r.json();
+      }
     }
 
     return { error: `Unknown tool: ${toolName}` };
