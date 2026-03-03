@@ -1,5 +1,6 @@
 // BLOOM Chat API - Direct Anthropic API call (no executor)
 import express from 'express';
+import mammoth from 'mammoth';
 import Anthropic from '@anthropic-ai/sdk';
 import { createLogger } from '../logging/logger.js';
 import { loadAgentConfig } from '../config/agent-profile.js';
@@ -38,7 +39,7 @@ You are a capable, intelligent assistant who can help with virtually anything:
 - Problem solving: think through challenges, give recommendations, weigh options
 - Files & images: when a user uploads an image, you CAN see it and describe/analyze it.
   When they upload a PDF or text file, the content is sent to you — read and work with it.
-  For Word docs (.docx), the raw file format isn't readable — ask them to paste the text.
+  For Word docs (.docx), the text is automatically extracted so you can read and work with them fully.
 - Conversation: you're also just good company — you can chat, encourage, and think out loud
 
 BLOOM CRM TOOLS (one of your superpowers):
@@ -909,7 +910,44 @@ router.post('/message', async (req, res) => {
     await ensureSession(pool, sessionId);
     const history = await loadHistory(pool, sessionId);
     const agentConfig = await loadAgentConfig();
-    const response = await chatWithSarah(message, history, agentConfig);
+
+    // Auto-fetch Google Docs/Sheets/Slides if URL detected in message
+    let enrichedMessage = message;
+    const gdocsMatch = message.match(/https:\/\/docs\.google\.com\/(document|spreadsheets|presentation)\/d\/([a-zA-Z0-9_-]+)/);
+    if (gdocsMatch) {
+      try {
+        const docId = gdocsMatch[2];
+        const docType = gdocsMatch[1];
+        // Use export endpoint to get plain text — works for public/shared docs
+        const exportUrl = docType === 'document'
+          ? `https://docs.google.com/document/d/${docId}/export?format=txt`
+          : docType === 'spreadsheets'
+          ? `https://docs.google.com/spreadsheets/d/${docId}/export?format=csv`
+          : null;
+        if (exportUrl) {
+          const { default: https } = await import('https');
+          const docText = await new Promise((resolve, reject) => {
+            https.get(exportUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (res) => {
+              if (res.statusCode === 200) {
+                let data = '';
+                res.on('data', c => data += c);
+                res.on('end', () => resolve(data.slice(0, 8000)));
+              } else {
+                resolve(null);
+              }
+            }).on('error', reject);
+          });
+          if (docText) {
+            enrichedMessage = `${message}\n\n[Google Doc content fetched automatically:]\n${docText}`;
+          }
+        }
+      } catch(e) {
+        // If fetch fails, proceed with original message — Sarah can use browser_navigate instead
+        logger.warn('Google Docs auto-fetch failed:', e.message);
+      }
+    }
+
+    const response = await chatWithSarah(enrichedMessage, history, agentConfig);
     await saveMessages(pool, sessionId, message, response);
 
     return res.json({ response, sessionId });
@@ -943,10 +981,35 @@ router.post('/upload', async (req, res) => {
         userContent.push({ type: 'image', source: { type: 'base64', media_type: mediaType, data: f.data } });
       } else if (mediaType === 'application/pdf') {
         userContent.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: f.data } });
-      } else {
+      } else if (
+        mediaType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+        f.name?.endsWith('.docx')
+      ) {
+        // Word doc — extract text with mammoth
+        try {
+          const buf = Buffer.from(f.data, 'base64');
+          const result = await mammoth.extractRawText({ buffer: buf });
+          const text = result.value?.trim() || '';
+          userContent.push({ type: 'text', text: `[Word Document: ${f.name}]\n\n${text}` });
+        } catch (e) {
+          userContent.push({ type: 'text', text: `[Word Document: ${f.name} — could not extract text: ${e.message}]` });
+        }
+      } else if (
+        mediaType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+        f.name?.endsWith('.xlsx')
+      ) {
+        // Excel — decode as text best-effort (basic cell content)
         try {
           const decoded = Buffer.from(f.data, 'base64').toString('utf-8');
-          userContent.push({ type: 'text', text: `[File: ${f.name}]\n${decoded}` });
+          userContent.push({ type: 'text', text: `[Spreadsheet: ${f.name}]\n${decoded.slice(0, 6000)}` });
+        } catch {
+          userContent.push({ type: 'text', text: `[Spreadsheet attached: ${f.name}]` });
+        }
+      } else {
+        // CSV, TXT, JSON, MD, HTML — plain text decode
+        try {
+          const decoded = Buffer.from(f.data, 'base64').toString('utf-8');
+          userContent.push({ type: 'text', text: `[File: ${f.name}]\n\n${decoded.slice(0, 8000)}` });
         } catch {
           userContent.push({ type: 'text', text: `[File attached: ${f.name} (${mediaType})]` });
         }
