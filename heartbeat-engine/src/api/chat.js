@@ -710,6 +710,27 @@ async function chatWithSarah(userMessage, history, agentConfig) {
 // ROUTES — DB-backed persistent sessions
 
 async function ensureSession(pool, sessionId) {
+  // Create tables if they don't exist yet (fallback if auto-setup missed them)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS chat_sessions (
+      id VARCHAR(64) PRIMARY KEY,
+      agent_id VARCHAR(64) NOT NULL DEFAULT 'bloomie-sarah-rodriguez',
+      title TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW(),
+      message_count INTEGER DEFAULT 0
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS chat_messages (
+      id SERIAL PRIMARY KEY,
+      session_id VARCHAR(64) NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+      role VARCHAR(16) NOT NULL,
+      content TEXT NOT NULL,
+      files JSONB,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
   await pool.query(
     `INSERT INTO chat_sessions(id) VALUES($1) ON CONFLICT(id) DO NOTHING`,
     [sessionId]
