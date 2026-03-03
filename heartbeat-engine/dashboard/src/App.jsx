@@ -213,6 +213,20 @@ function useSarahChat() {
   return {messages,setMessages,send,sendFiles,loading,sessions,currentSessionId,newSession,loadSession,deleteSession,fetchSessions};
 }
 
+
+/* Fetch BLOOM CRM link from backend */
+function useCRMLink() {
+  const [crmUrl,setCrmUrl] = useState('https://app.gohighlevel.com');
+  const [contactsUrl,setContactsUrl] = useState('https://app.gohighlevel.com');
+  useEffect(()=>{
+    fetch("/api/chat/crm-link").then(r=>r.json()).then(d=>{
+      if(d.url) setCrmUrl(d.url);
+      if(d.contactsUrl) setContactsUrl(d.contactsUrl);
+    }).catch(()=>{});
+  },[]);
+  return {crmUrl,contactsUrl};
+}
+
 /* ═══════════════════════════════════════════════════════════════
    SARAH'S FUNCTIONAL CARDS — Jaden's visual style applied
    ═══════════════════════════════════════════════════════════════ */
@@ -721,6 +735,7 @@ export default function App() {
 
   const sse=useSSE();
   const agentOnline=useAgentOnline();
+  const {crmUrl,contactsUrl}=useCRMLink();
   const {messages,setMessages,send,sendFiles,loading,sessions,currentSessionId,newSession,loadSession,deleteSession}=useSarahChat();
   const connected=agentOnline; // true online/offline from health poll
 
@@ -1063,9 +1078,21 @@ export default function App() {
           {/* ══ MONITOR — Sarah's functional cards, Jaden's visual style ══ */}
           {pg==="monitor"&&(
             <div style={{overflowY:"auto",height:"calc(100vh - 52px)",padding:mob?"16px 12px 40px":"20px 20px 40px"}}>
-              <div style={{marginBottom:20}}>
-                <h1 style={{fontSize:mob?20:24,fontWeight:700,color:c.tx,marginBottom:6}}>📊 Operations Monitor</h1>
-                <p style={{fontSize:13,color:c.so}}>Real-time visibility into Sarah's autonomous work</p>
+              <div style={{marginBottom:20,display:"flex",alignItems:"flex-start",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
+                <div>
+                  <h1 style={{fontSize:mob?20:24,fontWeight:700,color:c.tx,marginBottom:6}}>📊 Operations Monitor</h1>
+                  <p style={{fontSize:13,color:c.so}}>Real-time visibility into Sarah's autonomous work</p>
+                </div>
+                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                  <a href={contactsUrl} target="_blank" rel="noopener noreferrer" style={{display:"flex",alignItems:"center",gap:6,padding:"8px 14px",borderRadius:10,border:"1px solid "+c.ln,background:c.cd,textDecoration:"none",color:c.tx,fontSize:12,fontWeight:600}}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={c.ac} strokeWidth="2" strokeLinecap="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+                    Verify Contacts
+                  </a>
+                  <a href={crmUrl} target="_blank" rel="noopener noreferrer" style={{display:"flex",alignItems:"center",gap:6,padding:"8px 14px",borderRadius:10,border:"none",background:"linear-gradient(135deg,#F4A261,#E76F8B)",textDecoration:"none",color:"#fff",fontSize:12,fontWeight:600}}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                    Open BLOOM CRM
+                  </a>
+                </div>
               </div>
               <div style={{display:"grid",gridTemplateColumns:mob?"1fr":"1fr 1fr",gap:16,marginBottom:16}}>
                 <SystemHealth c={c} sse={sse}/>
