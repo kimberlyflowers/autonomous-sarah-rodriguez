@@ -920,7 +920,6 @@ export default function App() {
     {k:"monitor",l:mob?"📊":"📊 Status"},
     {k:"artifacts",l:mob?"📁":"📁 Files"},
     {k:"cron",l:mob?"⏰":"⏰ Jobs"},
-    {k:"settings",l:mob?"⚙️":"⚙️ Settings"},
   ];
 
   return(
@@ -993,21 +992,7 @@ export default function App() {
 
         <div style={{display:"flex",alignItems:"center",gap:8,position:"relative"}}>
           {scrM==="hidden"&&<button onClick={()=>setScrM("docked")} style={{width:32,height:32,borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:14,color:c.so,display:"flex",alignItems:"center",justifyContent:"center"}}>🖥️</button>}
-          <button onClick={()=>setUmO(!umO)} style={{width:36,height:36,borderRadius:"50%",border:umO?"2px solid "+c.ac:"2px solid "+c.ln,background:"linear-gradient(135deg,#F4A261,#E76F8B)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,color:"#fff"}}>K</button>
-          {umO&&(
-            <div style={{position:"absolute",top:"100%",right:0,marginTop:8,width:220,background:c.cd,borderRadius:14,border:"1px solid "+c.ln,boxShadow:"0 12px 40px rgba(0,0,0,.22)",overflow:"hidden",animation:"pop .2s ease",zIndex:80}}>
-              <div style={{padding:"14px 16px",borderBottom:"1px solid "+c.ln,display:"flex",alignItems:"center",gap:10}}>
-                <div style={{width:32,height:32,borderRadius:"50%",background:"linear-gradient(135deg,#F4A261,#E76F8B)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"#fff"}}>K</div>
-                <div><div style={{fontSize:13,fontWeight:700,color:c.tx}}>Kimberly</div><div style={{fontSize:11,color:c.so}}>Owner</div></div>
-              </div>
-              <button onClick={()=>{setUmO(false);setDark(!dark);}} style={{width:"100%",textAlign:"left",padding:"11px 16px",border:"none",cursor:"pointer",background:"transparent",fontSize:13,color:c.tx,display:"flex",alignItems:"center",gap:10,borderBottom:"1px solid "+c.ln}} onMouseEnter={e=>e.currentTarget.style.background=c.hv} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                <span style={{fontSize:16}}>{dark?"☀️":"🌙"}</span>{dark?"Light mode":"Dark mode"}
-              </button>
-              <button onClick={()=>{setUmO(false);setPg("settings");}} style={{width:"100%",textAlign:"left",padding:"11px 16px",border:"none",cursor:"pointer",background:"transparent",fontSize:13,color:c.tx,display:"flex",alignItems:"center",gap:10}} onMouseEnter={e=>e.currentTarget.style.background=c.hv} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                <span style={{fontSize:16}}>⚙️</span>Settings
-              </button>
-            </div>
-          )}
+          <div style={{width:36,height:36,borderRadius:"50%",background:"linear-gradient(135deg,#F4A261,#E76F8B)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,color:"#fff"}}>K</div>
         </div>
       </div>
 
@@ -1120,12 +1105,33 @@ export default function App() {
                     })}
                   </div>
 
-                  {/* Bottom — Kimberly */}
-                  <div style={{padding:"10px 14px",borderTop:"1px solid "+c.ln,flexShrink:0}}>
-                    <div style={{padding:"8px 10px",borderRadius:10,display:"flex",alignItems:"center",gap:10}}>
-                      <div style={{width:30,height:30,borderRadius:8,background:"linear-gradient(135deg,#F4A261,#E76F8B)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"#fff"}}>K</div>
-                      <div><div style={{fontSize:13,fontWeight:600,color:c.tx}}>Kimberly</div><div style={{fontSize:11,color:c.so}}>Owner</div></div>
+                  {/* Bottom — Kimberly expandable menu */}
+                  <div style={{padding:"10px 14px",borderTop:"1px solid "+c.ln,flexShrink:0,position:"relative"}}>
+                    {/* Autopilot status */}
+                    <div style={{padding:"6px 10px",borderRadius:8,background:c.sf,border:"1px solid "+c.ln,marginBottom:8,display:"flex",alignItems:"center",gap:8}}>
+                      <span style={{width:7,height:7,borderRadius:"50%",background:c.gr,animation:"pulse 1.5s ease infinite",flexShrink:0}}/>
+                      <span style={{fontSize:11,fontWeight:600,color:c.gr}}>Autopilot</span>
+                      <span style={{fontSize:11,color:c.so,marginLeft:"auto"}}>✓ All OK</span>
                     </div>
+                    <button onClick={()=>setUmO(!umO)} style={{width:"100%",padding:"8px 10px",borderRadius:10,border:"none",cursor:"pointer",background:umO?c.sf:"transparent",display:"flex",alignItems:"center",gap:10}} onMouseEnter={e=>e.currentTarget.style.background=c.hv} onMouseLeave={e=>e.currentTarget.style.background=umO?c.sf:"transparent"}>
+                      <div style={{width:30,height:30,borderRadius:8,background:"linear-gradient(135deg,#F4A261,#E76F8B)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"#fff",flexShrink:0}}>K</div>
+                      <div style={{flex:1,textAlign:"left"}}><div style={{fontSize:13,fontWeight:600,color:c.tx}}>Kimberly</div><div style={{fontSize:11,color:c.so}}>Owner</div></div>
+                      <span style={{fontSize:12,color:c.so,transform:umO?"rotate(180deg)":"rotate(0deg)",transition:"transform .2s"}}>▾</span>
+                    </button>
+                    {umO&&(
+                      <div style={{position:"absolute",bottom:"100%",left:14,right:14,background:c.cd,border:"1px solid "+c.ln,borderRadius:12,boxShadow:"0 -8px 24px rgba(0,0,0,.15)",overflow:"hidden",marginBottom:4,zIndex:70}}>
+                        {[
+                          {ic:"⚙️",l:"Settings",fn:()=>{setPg("settings");setUmO(false);}},
+                          {ic:"🔧",l:"Developer Mode",fn:()=>setUmO(false)},
+                          {ic:dark?"☀️":"🌙",l:dark?"Light Mode":"Dark Mode",fn:()=>{setDark(!dark);setUmO(false);}},
+                          {ic:"🚪",l:"Log out",fn:()=>setUmO(false)},
+                        ].map((item,i,arr)=>(
+                          <button key={i} onClick={item.fn} style={{width:"100%",textAlign:"left",padding:"11px 14px",border:"none",cursor:"pointer",background:"transparent",fontSize:13,color:i===arr.length-1?"#ef4444":c.tx,display:"flex",alignItems:"center",gap:10,borderBottom:i<arr.length-1?"1px solid "+c.ln+"60":"none"}} onMouseEnter={e=>e.currentTarget.style.background=c.hv} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                            <span style={{fontSize:15}}>{item.ic}</span>{item.l}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </>
               )}
