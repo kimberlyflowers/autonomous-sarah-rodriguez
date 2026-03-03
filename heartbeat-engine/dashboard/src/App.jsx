@@ -881,6 +881,7 @@ export default function App() {
       .catch(()=>{})
       .finally(()=>setFilesLoading(false));
   },[pg]);
+  const btm=useRef(null);
   const fRef=useRef(null);
   const [pendingFiles,setPendingFiles]=useState([]);
   const sbOpen=sbO==="full"||sbO==="mini";
