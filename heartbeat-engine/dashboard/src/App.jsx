@@ -831,6 +831,85 @@ function ActiveTaskTracker({c}) {
   );
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   INLINE CHAT CARDS — parse Sarah's responses for actionable items
+   ═══════════════════════════════════════════════════════════════ */
+function parseMessageCards(text) {
+  if (!text) return [];
+  const cards = [];
+
+  // Detect task completion cards
+  // Patterns: "Task completed", "✅ Created...", "✅ Updated...", "Successfully created/updated/sent/scheduled"
+  const taskPatterns = [
+    /(?:✅\s*)?(?:Task completed|Completed)[:\s—–-]*(.+?)(?:\.|!|$)/gi,
+    /✅\s+(.+?)(?:\.|!|$)/gi,
+    /(?:Successfully|I've successfully|I have successfully)\s+(created|updated|sent|scheduled|published|added|deleted|removed|completed|booked|set up|configured)\s+(?:the\s+|a\s+|an\s+)?(.+?)(?:\.|!|$)/gi,
+  ];
+  const seenTasks = new Set();
+  for (const pat of taskPatterns) {
+    let m;
+    while ((m = pat.exec(text)) !== null) {
+      // For the third pattern, combine verb + object
+      const label = m[2] ? `${m[1]} ${m[2]}` : m[1];
+      const clean = label.trim().replace(/^[:\s—–-]+/, "").substring(0, 80);
+      if (clean.length > 2 && !seenTasks.has(clean.toLowerCase())) {
+        seenTasks.add(clean.toLowerCase());
+        cards.push({ type: "task", name: clean });
+      }
+    }
+  }
+
+  // Detect email draft cards
+  // Patterns: "Subject:", "I drafted", "I've drafted", "I've written", "email draft", "drafted an email"
+  const emailMatch = text.match(/(?:Subject|Re|Fwd)[:\s]+["']?(.+?)["']?(?:\n|$|\.(?:\s|$))/i)
+    || text.match(/(?:drafted|written|composed|prepared)\s+(?:an?\s+)?(?:email|message|reply).*?(?:(?:subject|titled|called)[:\s]+["']?(.+?)["']?)?(?:\.|!|$)/i);
+  if (emailMatch) {
+    const subject = (emailMatch[1] || "Email draft").trim().substring(0, 100);
+    cards.push({ type: "email", subject });
+  }
+
+  return cards;
+}
+
+function TaskCard({ name, c }) {
+  return (
+    <div style={{
+      display:"flex",alignItems:"center",gap:10,padding:"10px 14px",marginTop:8,
+      borderRadius:12,background:c.gf,border:"1px solid rgba(52,168,83,0.3)",
+    }}>
+      <div style={{width:28,height:28,borderRadius:"50%",background:"rgba(52,168,83,0.15)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+        <span style={{fontSize:14}}>✅</span>
+      </div>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontSize:11,fontWeight:700,color:c.gr,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:1}}>Task Completed</div>
+        <div style={{fontSize:13,fontWeight:600,color:c.tx,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{name}</div>
+      </div>
+    </div>
+  );
+}
+
+function EmailCard({ subject, c, onReview }) {
+  return (
+    <div style={{
+      display:"flex",alignItems:"center",gap:10,padding:"10px 14px",marginTop:8,
+      borderRadius:12,background:c.cd,border:"1px solid "+c.ln,
+    }}>
+      <div style={{width:28,height:28,borderRadius:"50%",background:"rgba(244,162,97,0.15)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+        <span style={{fontSize:14}}>📧</span>
+      </div>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontSize:11,fontWeight:700,color:c.ac,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:1}}>Email Draft</div>
+        <div style={{fontSize:13,fontWeight:600,color:c.tx,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{subject}</div>
+        <div style={{fontSize:11,color:c.so,marginTop:2}}>Ready for your review</div>
+      </div>
+      <button onClick={onReview} style={{
+        padding:"6px 14px",borderRadius:8,border:"none",cursor:"pointer",fontWeight:700,fontSize:11,
+        background:"linear-gradient(135deg,#F4A261,#E76F8B)",color:"#fff",whiteSpace:"nowrap",flexShrink:0,
+      }}>Review & Approve</button>
+    </div>
+  );
+}
+
 export default function App() {
   const W=useW();
   const mob=W<768;
@@ -1188,28 +1267,42 @@ export default function App() {
                 <>
                   <div style={{flex:1,minHeight:0,overflowY:"auto",display:"flex"}}>
                     <div style={{flex:1,padding:mob?"14px 12px":"18px 20px",background:c.bg}}>
-                      {messages.map((m)=>(
-                        <div key={m.id} style={{display:"flex",justifyContent:m.b?"flex-start":"flex-end",marginBottom:14}}>
-                          {m.b&&<div style={{marginRight:8,marginTop:2}}><Face sz={mob?26:28} agent={agent}/></div>}
-                          <div style={{maxWidth:mob?"85%":"72%",padding:"10px 14px",fontSize:mob?13:14,lineHeight:1.55,color:m.b?c.tx:"#fff",borderRadius:m.b?"6px 18px 18px 18px":"18px 6px 18px 18px",background:m.b?c.cd:"linear-gradient(135deg,#F4A261,#E76F8B)",border:m.b?"1px solid "+c.ln:"none"}}>
-                            {/* File previews */}
-                            {m.files&&m.files.length>0&&(
-                              <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:m.t?8:4}}>
-                                {m.files.map((f,fi)=>(
-                                  f.type?.startsWith("image/")
-                                    ? <img key={fi} src={f.dataUrl} alt={f.name} style={{maxWidth:220,maxHeight:160,borderRadius:8,objectFit:"cover",border:"1px solid rgba(255,255,255,0.15)"}}/>
-                                    : <div key={fi} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 10px",borderRadius:8,background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.15)"}}>
-                                        <span style={{fontSize:18}}>{f.type==="application/pdf"?"📄":f.type?.includes("sheet")||f.name?.endsWith(".csv")?"📊":f.type?.includes("word")||f.name?.endsWith(".docx")?"📝":"📎"}</span>
-                                        <span style={{fontSize:11,fontWeight:600,color:m.b?c.tx:"#fff",maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</span>
-                                      </div>
-                                ))}
-                              </div>
-                            )}
-                            {m.t&&<div>{m.t}</div>}
-                            <div style={{fontSize:10,opacity:0.45,marginTop:5,textAlign:m.b?"left":"right"}}>{m.tm}</div>
+                      {messages.map((m)=>{
+                        const cards=m.b?parseMessageCards(m.t):[];
+                        return (
+                        <div key={m.id} style={{display:"flex",justifyContent:m.b?"flex-start":"flex-end",marginBottom:14,flexDirection:"column",alignItems:m.b?"flex-start":"flex-end"}}>
+                          <div style={{display:"flex",justifyContent:m.b?"flex-start":"flex-end",width:"100%"}}>
+                            {m.b&&<div style={{marginRight:8,marginTop:2}}><Face sz={mob?26:28} agent={agent}/></div>}
+                            <div style={{maxWidth:mob?"85%":"72%",padding:"10px 14px",fontSize:mob?13:14,lineHeight:1.55,color:m.b?c.tx:"#fff",borderRadius:m.b?"6px 18px 18px 18px":"18px 6px 18px 18px",background:m.b?c.cd:"linear-gradient(135deg,#F4A261,#E76F8B)",border:m.b?"1px solid "+c.ln:"none"}}>
+                              {/* File previews */}
+                              {m.files&&m.files.length>0&&(
+                                <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:m.t?8:4}}>
+                                  {m.files.map((f,fi)=>(
+                                    f.type?.startsWith("image/")
+                                      ? <img key={fi} src={f.dataUrl} alt={f.name} style={{maxWidth:220,maxHeight:160,borderRadius:8,objectFit:"cover",border:"1px solid rgba(255,255,255,0.15)"}}/>
+                                      : <div key={fi} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 10px",borderRadius:8,background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.15)"}}>
+                                          <span style={{fontSize:18}}>{f.type==="application/pdf"?"📄":f.type?.includes("sheet")||f.name?.endsWith(".csv")?"📊":f.type?.includes("word")||f.name?.endsWith(".docx")?"📝":"📎"}</span>
+                                          <span style={{fontSize:11,fontWeight:600,color:m.b?c.tx:"#fff",maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</span>
+                                        </div>
+                                  ))}
+                                </div>
+                              )}
+                              {m.t&&<div>{m.t}</div>}
+                              <div style={{fontSize:10,opacity:0.45,marginTop:5,textAlign:m.b?"left":"right"}}>{m.tm}</div>
+                            </div>
                           </div>
+                          {/* Inline action cards — Sarah's messages only */}
+                          {cards.length>0&&(
+                            <div style={{marginLeft:m.b?(mob?34:36):0,marginRight:m.b?0:0,maxWidth:mob?"85%":"72%",width:"100%"}}>
+                              {cards.map((cd2,ci)=>cd2.type==="task"
+                                ? <TaskCard key={ci} name={cd2.name} c={c}/>
+                                : <EmailCard key={ci} subject={cd2.subject} c={c} onReview={()=>alert("Email review panel coming soon — will open full draft for approval")}/>
+                              )}
+                            </div>
+                          )}
                         </div>
-                      ))}
+                        );
+                      })}
                       {loading&&(
                         <div style={{display:"flex",justifyContent:"flex-start",marginBottom:14}}>
                           <div style={{marginRight:8,marginTop:2}}><Face sz={28} agent={agent}/></div>
