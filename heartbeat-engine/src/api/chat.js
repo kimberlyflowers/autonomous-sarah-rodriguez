@@ -48,6 +48,13 @@ WhatsApp, book appointments, manage deals, run workflows, create invoices, post 
 manage blogs, and much more. When asked to do something in GHL, just do it — don't ask for
 permission or warn about what you're about to do. Tell them what you did afterward.
 
+BROWSER AUTOMATION (another superpower):
+You can browse the web like a human. Use your browser_task tool to navigate websites, click
+buttons, fill out forms, extract data from pages, log into platforms, and automate any web-based
+workflow. Use browser_screenshot to capture what a page looks like. If someone asks you to do
+something on a website — checking a page, filling a form, grabbing info from a URL — just do it.
+You have a real browser at your disposal.
+
 IMPORTANT — don't undersell yourself:
 Never tell Kimberly you "can't" do something that you actually can. If someone uploads an
 image, you can see it — say so and engage with it. If they need a blog post written, write it.
@@ -691,6 +698,31 @@ const SARAH_TOOLS = [
     name: "browser_get_content",
     description: "Get the visible text content of the current page.",
     input_schema: { type: "object", properties: {} }
+  },
+  // ── AI BROWSER AUTOMATION ────────────────────────────────────────────────
+  {
+    name: "browser_task",
+    description: "Execute an AI-driven browser automation task. The browser agent can navigate websites, click buttons, fill forms, extract data, read page content, handle popups, and interact with web applications intelligently. Use this for any task requiring real browser interaction — logging into platforms, filling out forms, scraping data from pages, or automating web workflows.",
+    input_schema: {
+      type: "object",
+      properties: {
+        task: { type: "string", description: "Natural language description of what to accomplish in the browser. Be specific about what to click, fill, or extract." },
+        url: { type: "string", description: "Starting URL to navigate to (optional — the agent can navigate on its own)" },
+        max_steps: { type: "integer", description: "Maximum number of steps the browser agent can take (default 25, max 100)", default: 25 }
+      },
+      required: ["task"]
+    }
+  },
+  {
+    name: "browser_screenshot",
+    description: "Take a screenshot of a web page. Returns a base64-encoded PNG image. Useful for verifying page state, capturing visual content, or documenting web pages.",
+    input_schema: {
+      type: "object",
+      properties: {
+        url: { type: "string", description: "URL of the page to screenshot" }
+      },
+      required: ["url"]
+    }
   }
 ];
 
@@ -717,16 +749,30 @@ async function executeTool(toolName, toolInput) {
 
     // Browser tools — Sarah's own computer
     if (toolName.startsWith('browser_')) {
+      // AI-driven browser automation via sidecar
+      if (toolName === 'browser_task') {
+        const { executeBrowserTool } = await import('../tools/browser-tools.js');
+        return await executeBrowserTool('browser_task', toolInput);
+      }
+      if (toolName === 'browser_screenshot') {
+        // Try sidecar first for full-page screenshots, fall back to local
+        const browserAgentUrl = process.env.BROWSER_AGENT_URL;
+        if (browserAgentUrl) {
+          const { executeBrowserTool } = await import('../tools/browser-tools.js');
+          return await executeBrowserTool('browser_screenshot', toolInput);
+        }
+        // Fall back to local browser
+        const r = await fetch(`${base}/screenshot`);
+        const d = await r.json();
+        return { live: d.live, url: d.url, message: d.live ? `Browser active at ${d.url}` : 'Browser idle' };
+      }
+
+      // Legacy local browser tools
       const port = process.env.PORT || 3000;
       const base = `http://localhost:${port}/api/browser`;
       if (toolName === 'browser_navigate') {
         const r = await fetch(`${base}/navigate`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({url: toolInput.url}) });
         return await r.json();
-      }
-      if (toolName === 'browser_screenshot') {
-        const r = await fetch(`${base}/screenshot`);
-        const d = await r.json();
-        return { live: d.live, url: d.url, message: d.live ? `Browser active at ${d.url}` : 'Browser idle' };
       }
       if (toolName === 'browser_click') {
         const r = await fetch(`${base}/click`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({selector: toolInput.selector}) });
