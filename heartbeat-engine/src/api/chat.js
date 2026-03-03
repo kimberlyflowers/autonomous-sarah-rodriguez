@@ -11,7 +11,7 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // Get database pool - using the same pattern as existing code
 async function getPool() {
-  const { createPool } = await import('../../database/setup.js');
+  const { createPool } = await import('../../database/auto-setup.js');
   return createPool();
 }
 

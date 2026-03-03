@@ -58,6 +58,9 @@ const createBloomPool = () => {
   });
 };
 
+// Export for use by chat API and other modules
+export const createPool = () => createBloomPool();
+
 export async function ensureDatabaseExists() {
   logger.info('🔧 Ensuring bloom_heartbeat database exists...');
 
