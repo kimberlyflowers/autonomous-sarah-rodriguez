@@ -24,13 +24,17 @@ class BrowserService extends EventEmitter {
     if (this.isRunning) return;
     try {
       logger.info('🌐 Launching Sarah\'s browser...');
+      // Use system Chromium in Railway, fallback to Playwright's own in dev
+      const executablePath = process.env.CHROMIUM_PATH || undefined;
       this.browser = await chromium.launch({
         headless: true,
+        executablePath,
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
           '--disable-dev-shm-usage',
           '--disable-gpu',
+          '--disable-software-rasterizer',
           '--window-size=1280,800'
         ]
       });
