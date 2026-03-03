@@ -68,19 +68,19 @@ function Bloom({sz,glow}) {
    SSE — Sarah's real-time connection
    ═══════════════════════════════════════════════════════════════ */
 function useSSE() {
-  const [connected,setConnected] = useState(false);
+  const [sseOk,setSseOk] = useState(false);
   const cbs = useRef(new Map());
 
   useEffect(()=>{
     let es;
     const connect=()=>{
       try {
-        es = new EventSource("/api/dashboard/stream");
-        es.onopen=()=>setConnected(true);
+        es = new EventSource("/api/events/dashboard"); // correct SSE path
+        es.onopen=()=>setSseOk(true);
         es.onmessage=(e)=>{
           try{const d=JSON.parse(e.data);cbs.current.forEach(cb=>cb(d));}catch{}
         };
-        es.onerror=()=>{ setConnected(false); es.close(); setTimeout(connect,5000); };
+        es.onerror=()=>{ setSseOk(false); es.close(); setTimeout(connect,5000); };
       } catch { setTimeout(connect,5000); }
     };
     connect();
@@ -88,7 +88,24 @@ function useSSE() {
   },[]);
 
   const register=(key,cb)=>{ cbs.current.set(key,cb); return ()=>cbs.current.delete(key); };
-  return {connected,register};
+  return {sseOk,register};
+}
+
+/* Poll /api/chat/health — true online/offline for Sarah's API */
+function useAgentOnline() {
+  const [online,setOnline] = useState(false);
+  useEffect(()=>{
+    const check=async()=>{
+      try{
+        const r=await fetch("/api/chat/health",{signal:AbortSignal.timeout(4000)});
+        setOnline(r.ok);
+      }catch{ setOnline(false); }
+    };
+    check();
+    const t=setInterval(check,12000);
+    return()=>clearInterval(t);
+  },[]);
+  return online;
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -117,7 +134,33 @@ function useSarahChat() {
     } finally { setLoading(false); }
   };
 
-  return {messages,setMessages,send,loading};
+  const sendFiles = async (files, text='') => {
+    const ts = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
+    const label = files.map(f=>f.name).join(', ');
+    const preview = text ? `${text} [+${files.length} file(s): ${label}]` : `[${files.length} file(s): ${label}]`;
+    setMessages(p=>[...p,{id:Date.now(),b:false,t:preview,tm:ts}]);
+    setLoading(true);
+    try {
+      // Read files as base64
+      const encoded = await Promise.all(files.map(f=>new Promise((res,rej)=>{
+        const r=new FileReader();
+        r.onload=()=>res({name:f.name,type:f.type,data:r.result.split(',')[1]});
+        r.onerror=rej;
+        r.readAsDataURL(f);
+      })));
+      const resp = await fetch("/api/chat/upload",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:text,sessionId:sid.current,files:encoded})});
+      const data = await resp.json();
+      const ts2 = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
+      setMessages(p=>[...p,{id:Date.now(),b:true,t:data.response||data.message||"Got it.",tm:ts2}]);
+      return true;
+    } catch {
+      const ts2 = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
+      setMessages(p=>[...p,{id:Date.now(),b:true,t:"Couldn't process that file. Please try again.",tm:ts2}]);
+      return false;
+    } finally { setLoading(false); }
+  };
+
+  return {messages,setMessages,send,sendFiles,loading};
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -523,7 +566,7 @@ function Screen({c,mob,live,mode,setMode}) {
     ?{position:"fixed",inset:0,zIndex:300,background:"#000",display:"flex",flexDirection:"column"}
     :mode==="pop"
     ?{position:"fixed",bottom:mob?12:20,right:mob?12:20,width:mob?200:340,height:mob?130:210,zIndex:250,borderRadius:14,overflow:"hidden",boxShadow:"0 12px 48px rgba(0,0,0,.45)",border:"2px solid "+c.ac+"60"}
-    :{borderRadius:12,overflow:"hidden",border:"1.5px solid "+(live?c.gr+"50":c.ln)};
+    :{borderRadius:0,overflow:"hidden",border:"none",display:"flex",flexDirection:"column",flex:1,height:"100%"};
   return(
     <div style={wrap}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 10px",height:36,background:mode==="full"?"#111":c.cd,borderBottom:"1px solid "+c.ln,flexShrink:0}}>
@@ -546,7 +589,7 @@ function Screen({c,mob,live,mode,setMode}) {
           </button>}
         </div>
       </div>
-      <div style={{background:"#0a0a0a",flex:mode==="full"?1:undefined,aspectRatio:mode==="full"?undefined:"16/9",display:"flex",alignItems:"center",justifyContent:"center",position:"relative",overflow:"hidden"}}>
+      <div style={{background:"#0a0a0a",flex:1,display:"flex",alignItems:"center",justifyContent:"center",position:"relative",overflow:"hidden"}}>
         {live?(
           <div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center"}}>
             <div style={{width:mob?"85%":"65%",background:"#161616",borderRadius:8,overflow:"hidden",border:"1px solid #333"}}>
@@ -583,8 +626,9 @@ export default function App() {
   const c=mk(dark);
 
   const sse=useSSE();
-  const {messages,setMessages,send,loading}=useSarahChat();
-  const connected=sse.connected;
+  const agentOnline=useAgentOnline();
+  const {messages,setMessages,send,sendFiles,loading}=useSarahChat();
+  const connected=agentOnline; // true online/offline from health poll
 
   const [pg,setPg]=useState("chat");
   const [tx,setTx]=useState("");
@@ -607,6 +651,7 @@ export default function App() {
 
   const btm=useRef(null);
   const fRef=useRef(null);
+  const [pendingFiles,setPendingFiles]=useState([]);
   const sbOpen=sbO==="full"||sbO==="mini";
 
   const agent={nm:"Sarah Rodriguez",role:"Marketing & Operations Executive",img:null,grad:"linear-gradient(135deg,#F4A261,#E76F8B)"};
@@ -658,7 +703,15 @@ export default function App() {
         ::-webkit-scrollbar{width:4px}
         ::-webkit-scrollbar-thumb{background:${c.ln};border-radius:10px}
       `}</style>
-      <input ref={fRef} type="file" multiple style={{display:"none"}}/>
+      <input ref={fRef} type="file" multiple accept="image/*,.pdf,.csv,.txt,.docx,.xlsx,.json,.md" style={{display:"none"}} onChange={async(e)=>{
+        const files=[...e.target.files];
+        if(!files.length) return;
+        setNew(false);
+        await sendFiles(files, tx.trim());
+        setTx("");
+        e.target.value="";
+        setPendingFiles([]);
+      }}/>
 
       {/* ── HEADER — exact Jaden layout ── */}
       <div style={{padding:mob?"8px 12px":"10px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",background:c.cd,borderBottom:"1px solid "+c.ln,position:"sticky",top:0,zIndex:60,gap:8}}>
@@ -778,6 +831,9 @@ export default function App() {
                     <p style={{fontSize:mob?13:15,color:c.so,marginBottom:28}}>Give her tasks, check her work, or ask what's going on</p>
                     <div style={{display:"flex",gap:mob?6:10,alignItems:"center",marginBottom:20}}>
                       <input value={tx} onChange={e=>setTx(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")doSend();}} placeholder={vcRec?"Listening…":"Ask anything..."} style={{flex:1,padding:mob?"12px 14px":"14px 18px",borderRadius:14,border:"1.5px solid "+(vcRec?c.ac:c.ln),fontSize:15,fontFamily:"inherit",background:c.inp,color:c.tx,transition:"border-color .2s"}}/>
+                      <button onClick={()=>fRef.current?.click()} title="Attach file" style={{width:44,height:44,borderRadius:12,border:"1.5px solid "+c.ln,cursor:"pointer",background:c.cd,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={c.so} strokeWidth="2" strokeLinecap="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+                      </button>
                       <button onClick={toggleVoice} style={{width:44,height:44,borderRadius:12,border:vcRec?"2px solid "+c.ac:"1.5px solid "+c.ln,cursor:"pointer",background:vcRec?c.ac+"18":c.cd,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,position:"relative"}}>
                         {vcRec&&<span style={{position:"absolute",inset:-4,borderRadius:16,border:"2px solid "+c.ac,animation:"pulse 1.2s ease infinite",opacity:0.4}}/>}
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={vcRec?c.ac:c.so} strokeWidth="2" strokeLinecap="round"><rect x="9" y="1" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0014 0"/><path d="M12 17v4M8 21h8"/></svg>
@@ -815,7 +871,7 @@ export default function App() {
                       <div ref={btm}/>
                     </div>
                     {!mob&&scrM!=="hidden"&&(
-                      <div style={{width:320,flexShrink:0,padding:"8px 12px 8px 0"}}>
+                      <div style={{width:480,flexShrink:0,borderLeft:"1px solid "+c.ln,display:"flex",flexDirection:"column"}}>
                         <Screen c={c} mob={false} live={scrLive} mode="docked" setMode={setScrM}/>
                       </div>
                     )}
@@ -827,6 +883,9 @@ export default function App() {
                     </div>
                     <div style={{display:"flex",gap:mob?6:8,alignItems:"center"}}>
                       <input value={tx} onChange={e=>setTx(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")doSend();}} placeholder={vcRec?"Listening…":mob?"Message…":"Tell Sarah what you need…"} style={{flex:1,padding:mob?"10px 14px":"11px 14px",borderRadius:12,border:"1.5px solid "+(vcRec?c.ac:c.ln),fontSize:14,fontFamily:"inherit",background:c.inp,color:c.tx,transition:"border-color .2s"}}/>
+                      <button onClick={()=>fRef.current?.click()} title="Attach file" style={{width:40,height:40,borderRadius:11,border:"1.5px solid "+c.ln,cursor:"pointer",background:c.cd,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={c.so} strokeWidth="2" strokeLinecap="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+                      </button>
                       <button onClick={toggleVoice} style={{width:40,height:40,borderRadius:11,border:vcRec?"2px solid "+c.ac:"1.5px solid "+c.ln,cursor:"pointer",background:vcRec?c.ac+"18":c.cd,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,position:"relative"}}>
                         {vcRec&&<span style={{position:"absolute",inset:-4,borderRadius:15,border:"2px solid "+c.ac,animation:"pulse 1.2s ease infinite",opacity:0.4}}/>}
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={vcRec?c.ac:c.so} strokeWidth="2" strokeLinecap="round"><rect x="9" y="1" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0014 0"/><path d="M12 17v4M8 21h8"/></svg>
