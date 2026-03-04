@@ -1025,6 +1025,200 @@ function BillingUsageBar({icon,label,used,limit,rate,unit,c}){
   );
 }
 
+// ── SKILLS PAGE — Train your Bloomie ────────────────────────────────────────
+function SkillsPage({c,mob}){
+  const [skills,setSkills]=useState([]);
+  const [bloomSkills,setBloomSkills]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [showAdd,setShowAdd]=useState(false);
+  const [editSkill,setEditSkill]=useState(null);
+  const [form,setForm]=useState({name:'',trigger:'',instructions:''});
+  const [saving,setSaving]=useState(false);
+
+  // Load skills on mount
+  useEffect(()=>{
+    loadSkills();
+  },[]);
+
+  const loadSkills=async()=>{
+    setLoading(true);
+    try{
+      const r=await fetch('/api/skills');
+      const d=await r.json();
+      setBloomSkills(d.bloomSkills||[]);
+      setSkills(d.companySkills||[]);
+    }catch(e){
+      // Fallback demo data if API not ready
+      setBloomSkills([
+        {id:'bloom-1',name:'Blog Writing',description:'SEO-optimized blog posts and articles',enabled:true,builtin:true},
+        {id:'bloom-2',name:'Email Marketing',description:'Email sequences, subject lines, SMS copy',enabled:true,builtin:true},
+        {id:'bloom-3',name:'Social Media',description:'Platform-specific social content',enabled:true,builtin:true},
+        {id:'bloom-4',name:'CRM Operations',description:'GoHighLevel contacts, pipeline, workflows',enabled:true,builtin:true},
+        {id:'bloom-5',name:'Frontend Design',description:'Professional website and dashboard UI',enabled:true,builtin:true},
+        {id:'bloom-6',name:'Document Creation',description:'Professional Word docs, reports, memos',enabled:true,builtin:true},
+      ]);
+      setSkills([]);
+    }
+    setLoading(false);
+  };
+
+  const toggleBloomSkill=async(id)=>{
+    setBloomSkills(prev=>prev.map(s=>s.id===id?{...s,enabled:!s.enabled}:s));
+    try{ await fetch(`/api/skills/${id}/toggle`,{method:'POST'}); }catch(e){}
+  };
+
+  const saveSkill=async()=>{
+    if(!form.name.trim()||!form.instructions.trim()) return;
+    setSaving(true);
+    try{
+      const method=editSkill?'PUT':'POST';
+      const url=editSkill?`/api/skills/${editSkill.id}`:'/api/skills';
+      const r=await fetch(url,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(form)});
+      const d=await r.json();
+      if(d.success){
+        await loadSkills();
+        setShowAdd(false);
+        setEditSkill(null);
+        setForm({name:'',trigger:'',instructions:''});
+      }
+    }catch(e){
+      // Optimistic local add
+      const newSkill={id:'local-'+Date.now(),name:form.name,trigger:form.trigger,instructions:form.instructions,enabled:true};
+      setSkills(prev=>[...prev,newSkill]);
+      setShowAdd(false);
+      setEditSkill(null);
+      setForm({name:'',trigger:'',instructions:''});
+    }
+    setSaving(false);
+  };
+
+  const deleteSkill=async(id)=>{
+    setSkills(prev=>prev.filter(s=>s.id!==id));
+    try{ await fetch(`/api/skills/${id}`,{method:'DELETE'}); }catch(e){}
+  };
+
+  const startEdit=(skill)=>{
+    setEditSkill(skill);
+    setForm({name:skill.name,trigger:skill.trigger||'',instructions:skill.instructions||''});
+    setShowAdd(true);
+  };
+
+  const ac=c.ac||'#F4A261';
+
+  return(
+    <div style={{maxWidth:800,margin:'0 auto',padding:mob?16:32}}>
+      <h1 style={{fontSize:mob?20:26,fontWeight:700,color:c.tx,marginBottom:4}}>🧠 Skills</h1>
+      <p style={{fontSize:13,color:c.so,marginBottom:24}}>Train your Bloomie with expert knowledge and company-specific processes</p>
+
+      {/* ── BLOOM SKILLS (built-in) ──────────────────── */}
+      <div style={{marginBottom:32}}>
+        <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:12}}>
+          <span style={{fontSize:15}}>🌸</span>
+          <h2 style={{fontSize:16,fontWeight:700,color:c.tx,margin:0}}>BLOOM Skills</h2>
+          <span style={{fontSize:11,color:c.so,background:c.sf,padding:'2px 8px',borderRadius:10}}>Built-in</span>
+        </div>
+        <p style={{fontSize:12,color:c.so,marginBottom:12}}>Expert capabilities that come with every Bloomie. Toggle on/off per your needs.</p>
+        <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'1fr 1fr',gap:10}}>
+          {bloomSkills.map(skill=>(
+            <div key={skill.id} style={{padding:14,borderRadius:12,border:'1px solid '+c.ln,background:c.cd,display:'flex',alignItems:'center',gap:12,opacity:skill.enabled?1:0.5,transition:'opacity .2s'}}>
+              <div style={{flex:1}}>
+                <div style={{fontSize:13,fontWeight:600,color:c.tx}}>{skill.name}</div>
+                <div style={{fontSize:11,color:c.so,marginTop:2}}>{skill.description}</div>
+              </div>
+              <button onClick={()=>toggleBloomSkill(skill.id)} style={{width:44,height:24,borderRadius:12,border:'none',cursor:'pointer',background:skill.enabled?ac:'#555',position:'relative',transition:'background .2s',flexShrink:0}}>
+                <div style={{width:18,height:18,borderRadius:9,background:'#fff',position:'absolute',top:3,left:skill.enabled?23:3,transition:'left .2s',boxShadow:'0 1px 3px rgba(0,0,0,.2)'}}/>
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── COMPANY SKILLS (custom) ─────────────────── */}
+      <div style={{marginBottom:32}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
+          <div style={{display:'flex',alignItems:'center',gap:8}}>
+            <span style={{fontSize:15}}>🏢</span>
+            <h2 style={{fontSize:16,fontWeight:700,color:c.tx,margin:0}}>Company Skills</h2>
+            <span style={{fontSize:11,color:c.so,background:c.sf,padding:'2px 8px',borderRadius:10}}>Custom</span>
+          </div>
+          <button onClick={()=>{setShowAdd(true);setEditSkill(null);setForm({name:'',trigger:'',instructions:''});}} style={{padding:'6px 14px',borderRadius:8,border:'none',cursor:'pointer',background:ac,color:'#fff',fontSize:12,fontWeight:600}}>+ New Skill</button>
+        </div>
+        <p style={{fontSize:12,color:c.so,marginBottom:12}}>Teach your Bloomie how YOUR company does things. These are your SOPs, brand voice, and custom processes.</p>
+
+        {skills.length===0&&!showAdd&&(
+          <div style={{padding:32,borderRadius:12,border:'2px dashed '+c.ln,textAlign:'center'}}>
+            <div style={{fontSize:28,marginBottom:8}}>📝</div>
+            <div style={{fontSize:14,fontWeight:600,color:c.tx,marginBottom:4}}>No company skills yet</div>
+            <div style={{fontSize:12,color:c.so,marginBottom:12}}>Train your Bloomie on your company's processes, brand voice, and SOPs</div>
+            <button onClick={()=>setShowAdd(true)} style={{padding:'8px 20px',borderRadius:8,border:'none',cursor:'pointer',background:ac,color:'#fff',fontSize:13,fontWeight:600}}>Create Your First Skill</button>
+          </div>
+        )}
+
+        {skills.map(skill=>(
+          <div key={skill.id} style={{padding:14,borderRadius:12,border:'1px solid '+c.ln,background:c.cd,marginBottom:10}}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+              <div>
+                <div style={{fontSize:14,fontWeight:600,color:c.tx}}>{skill.name}</div>
+                {skill.trigger&&<div style={{fontSize:11,color:c.so,marginTop:2}}>Triggers: {skill.trigger}</div>}
+              </div>
+              <div style={{display:'flex',gap:6}}>
+                <button onClick={()=>startEdit(skill)} style={{padding:'4px 10px',borderRadius:6,border:'1px solid '+c.ln,background:'transparent',cursor:'pointer',fontSize:11,color:c.so}}>Edit</button>
+                <button onClick={()=>deleteSkill(skill.id)} style={{padding:'4px 10px',borderRadius:6,border:'1px solid #ef444440',background:'transparent',cursor:'pointer',fontSize:11,color:'#ef4444'}}>Delete</button>
+              </div>
+            </div>
+            {skill.instructions&&(
+              <div style={{fontSize:11,color:c.so,marginTop:8,padding:10,borderRadius:8,background:c.sf,whiteSpace:'pre-wrap',maxHeight:100,overflow:'auto'}}>{skill.instructions.slice(0,200)}{skill.instructions.length>200?'...':''}</div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* ── ADD/EDIT SKILL MODAL ────────────────────── */}
+      {showAdd&&(
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.5)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center',padding:16}} onClick={e=>e.target===e.currentTarget&&setShowAdd(false)}>
+          <div style={{background:c.cd,borderRadius:16,padding:24,width:'100%',maxWidth:520,maxHeight:'85vh',overflow:'auto',boxShadow:'0 20px 60px rgba(0,0,0,.3)'}}>
+            <h3 style={{fontSize:18,fontWeight:700,color:c.tx,marginBottom:4}}>{editSkill?'Edit Skill':'Create Company Skill'}</h3>
+            <p style={{fontSize:12,color:c.so,marginBottom:20}}>Teach your Bloomie a new process or standard</p>
+
+            <div style={{marginBottom:16}}>
+              <label style={{fontSize:12,fontWeight:600,color:c.tx,marginBottom:4,display:'block'}}>Skill Name</label>
+              <input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="e.g., New Lead Intake Process" style={{width:'100%',padding:'10px 12px',borderRadius:8,border:'1px solid '+c.ln,background:c.sf,color:c.tx,fontSize:13,outline:'none',boxSizing:'border-box'}}/>
+            </div>
+
+            <div style={{marginBottom:16}}>
+              <label style={{fontSize:12,fontWeight:600,color:c.tx,marginBottom:4,display:'block'}}>When to use this skill</label>
+              <input value={form.trigger} onChange={e=>setForm(f=>({...f,trigger:e.target.value}))} placeholder="e.g., new lead, intake form, onboarding" style={{width:'100%',padding:'10px 12px',borderRadius:8,border:'1px solid '+c.ln,background:c.sf,color:c.tx,fontSize:13,outline:'none',boxSizing:'border-box'}}/>
+              <div style={{fontSize:11,color:c.so,marginTop:4}}>Keywords that tell Sarah when to apply this skill</div>
+            </div>
+
+            <div style={{marginBottom:20}}>
+              <label style={{fontSize:12,fontWeight:600,color:c.tx,marginBottom:4,display:'block'}}>Instructions</label>
+              <textarea value={form.instructions} onChange={e=>setForm(f=>({...f,instructions:e.target.value}))} placeholder={"Describe exactly how you want this done. For example:\n\n1. When a new lead fills out the intake form...\n2. Create a contact in GHL with tags 'new-intake'\n3. Add them to the Welcome workflow\n4. Send the intake confirmation email\n5. Create a note with the form submission details\n6. Notify the team in the #new-leads channel"} style={{width:'100%',padding:'10px 12px',borderRadius:8,border:'1px solid '+c.ln,background:c.sf,color:c.tx,fontSize:13,outline:'none',minHeight:180,resize:'vertical',fontFamily:'inherit',boxSizing:'border-box',lineHeight:1.5}}/>
+              <div style={{fontSize:11,color:c.so,marginTop:4}}>Be specific — the more detail you give, the better Sarah performs this task</div>
+            </div>
+
+            <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
+              <button onClick={()=>{setShowAdd(false);setEditSkill(null);}} style={{padding:'10px 20px',borderRadius:8,border:'1px solid '+c.ln,background:'transparent',cursor:'pointer',fontSize:13,color:c.so}}>Cancel</button>
+              <button onClick={saveSkill} disabled={saving||!form.name.trim()||!form.instructions.trim()} style={{padding:'10px 24px',borderRadius:8,border:'none',cursor:'pointer',background:(!form.name.trim()||!form.instructions.trim())?'#555':ac,color:'#fff',fontSize:13,fontWeight:600,opacity:saving?.7:1}}>{saving?'Saving...':editSkill?'Save Changes':'Create Skill'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── TIPS ────────────────────────────────────── */}
+      <div style={{padding:16,borderRadius:12,background:c.sf,border:'1px solid '+c.ln}}>
+        <div style={{fontSize:13,fontWeight:600,color:c.tx,marginBottom:8}}>💡 Skill Ideas</div>
+        <div style={{fontSize:12,color:c.so,lineHeight:1.6}}>
+          <div style={{marginBottom:4}}>• <strong>Brand Voice</strong> — "Always use a warm, professional tone. Never use exclamation marks. Sign off with 'In service, Bishop Flowers'"</div>
+          <div style={{marginBottom:4}}>• <strong>New Lead Process</strong> — "When a new lead comes in: tag them, add to welcome sequence, create a deal in the pipeline"</div>
+          <div style={{marginBottom:4}}>• <strong>Blog Standards</strong> — "Always mention our three pillars: Faith, Education, Community. Include a call to action for the summer program"</div>
+          <div>• <strong>Email Signature</strong> — "All emails should include the YES logo, phone number, and website link in the footer"</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function BillingPage({c,mob}){
   const [showEstimate,setShowEstimate]=useState(false);
   const currentPlan="enterprise";
@@ -1540,6 +1734,7 @@ export default function App() {
                       <div style={{position:"absolute",bottom:"100%",left:14,right:14,background:c.cd,border:"1px solid "+c.ln,borderRadius:12,boxShadow:"0 -8px 24px rgba(0,0,0,.15)",overflow:"hidden",marginBottom:4,zIndex:70}}>
                         {[
                           {ic:"💳",l:"Billing",fn:()=>{setPg("billing");setUmO(false);}},
+                          {ic:"🧠",l:"Skills",fn:()=>{setPg("skills");setUmO(false);}},
                           {ic:"⚙️",l:"Settings",fn:()=>{setPg("settings");setUmO(false);}},
                           {ic:"🔧",l:"Developer Mode",fn:()=>setUmO(false)},
                           {ic:dark?"☀️":"🌙",l:dark?"Light Mode":"Dark Mode",fn:()=>{setDark(!dark);setUmO(false);}},
@@ -2259,6 +2454,7 @@ export default function App() {
 
           {/* ══ BILLING ══ */}
           {pg==="billing"&&(<BillingPage c={c} mob={mob}/>)}
+          {pg==="skills"&&(<SkillsPage c={c} mob={mob}/>)}
         </div>
       </div>
       {scrM==="pop"&&<Screen c={c} mob={mob} mode="pop" setMode={setScrM}/>}
