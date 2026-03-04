@@ -123,7 +123,23 @@ function useSarahChat() {
     try {
       const r = await fetch("/api/chat/sessions");
       const d = await r.json();
-      setSessions(d.sessions || []);
+      const list = d.sessions || [];
+      setSessions(list);
+      // Auto-load the most recent session if none is selected
+      if (!sid.current && list.length > 0) {
+        const latest = list[0]; // sessions come sorted by updated_at DESC
+        sid.current = latest.id;
+        setCurrentSessionId(latest.id);
+        try {
+          const mr = await fetch("/api/chat/sessions/"+latest.id);
+          const md = await mr.json();
+          setMessages((md.messages||[]).map((m,i)=>({
+            id:i, b:m.role==="assistant", t:m.content,
+            tm:m.created_at?new Date(m.created_at).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"}):"",
+            files:m.files?(typeof m.files==="string"?JSON.parse(m.files):m.files):undefined
+          })));
+        } catch {}
+      }
     } catch {}
   };
 
