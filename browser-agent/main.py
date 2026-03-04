@@ -1,6 +1,11 @@
 """
 BLOOM Browser Agent — browser-use sidecar for Sarah Rodriguez
 Connects to Browserless (Railway) for managed Chrome, uses browser-use for AI-driven interactions.
+
+Based on official browser-use docs:
+- https://docs.browser-use.com/customize/agent/all-parameters
+- https://docs.browser-use.com/customize/browser/all-parameters
+- https://docs.browser-use.com/customize/browser/remote
 """
 
 import os
@@ -20,12 +25,12 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 log = logging.getLogger("browser-agent")
 
 # ── Config
-BROWSERLESS_WS_URL = os.getenv("BROWSERLESS_WS_URL", "")  # ws://browserless.railway.internal:3000
+BROWSERLESS_WS_URL = os.getenv("BROWSERLESS_WS_URL", "")
 BROWSERLESS_TOKEN = os.getenv("BROWSERLESS_TOKEN", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5-20251001")
-SIDECAR_SECRET = os.getenv("SIDECAR_SECRET", "")  # shared secret for Sarah → sidecar auth
-SARAH_BASE_URL = os.getenv("SARAH_BASE_URL", "http://autonomous-sarah-rodriguez.railway.internal:3000")  # internal URL for screenshot push
+SIDECAR_SECRET = os.getenv("SIDECAR_SECRET", "")
+SARAH_BASE_URL = os.getenv("SARAH_BASE_URL", "http://autonomous-sarah-rodriguez.railway.internal:3000")
 PORT = int(os.getenv("PORT", "8080"))
 
 
@@ -51,17 +56,17 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="BLOOM Browser Agent",
     description="browser-use sidecar — AI-driven browser automation for Bloomie agents",
-    version="1.0.0",
+    version="2.0.0",
     lifespan=lifespan,
 )
 
 
-# ── Models
+# ── Request/Response Models
 class BrowseRequest(BaseModel):
     task: str = Field(..., description="Natural language task for the browser agent")
-    url: Optional[str] = Field(None, description="Starting URL (optional — agent can navigate itself)")
-    max_steps: int = Field(25, description="Maximum agent steps before stopping", ge=1, le=100)
-    secret: Optional[str] = Field(None, description="Shared secret for authentication")
+    url: Optional[str] = Field(None, description="Starting URL")
+    max_steps: int = Field(25, ge=1, le=100)
+    secret: Optional[str] = None
 
 
 class BrowseResponse(BaseModel):
@@ -71,10 +76,11 @@ class BrowseResponse(BaseModel):
     steps_taken: int = 0
     duration_ms: int = 0
     url_final: Optional[str] = None
+    screenshot_base64: Optional[str] = None
 
 
 class ScreenshotRequest(BaseModel):
-    url: str = Field(..., description="URL to screenshot")
+    url: str
     secret: Optional[str] = None
 
 
@@ -84,22 +90,21 @@ class ScreenshotResponse(BaseModel):
     error: Optional[str] = None
 
 
-# ── Auth helper
+# ── Helpers
 def check_auth(secret: Optional[str]):
     if SIDECAR_SECRET and secret != SIDECAR_SECRET:
         raise HTTPException(status_code=401, detail="Invalid or missing sidecar secret")
 
 
-# ── Build browser session connected to Browserless
 def build_cdp_url() -> str:
+    """Build Browserless CDP URL with token and stealth."""
     base = BROWSERLESS_WS_URL.rstrip("/")
     separator = "&" if "?" in base else "?"
     return f"{base}{separator}token={BROWSERLESS_TOKEN}&stealth=true"
 
 
-# ── Push screenshot to Sarah's dashboard in real-time
 async def push_screenshot_to_dashboard(screenshot_b64: str, url: str = None):
-    """POST a screenshot to Sarah's main server for the Screen Viewer SSE stream."""
+    """POST screenshot to Sarah's main server for Screen Viewer SSE stream."""
     if not SARAH_BASE_URL:
         return
     try:
@@ -112,24 +117,6 @@ async def push_screenshot_to_dashboard(screenshot_b64: str, url: str = None):
             )
     except Exception as e:
         log.debug(f"Screenshot push failed (non-critical): {e}")
-
-
-# ── Step callback — streams screenshots to dashboard during browsing
-def make_step_callback():
-    """Create a step callback that pushes screenshots after each agent step."""
-    def step_callback(state, model_output, step_number):
-        if state and hasattr(state, 'screenshot') and state.screenshot:
-            url = state.url if hasattr(state, 'url') else None
-            # Fire-and-forget async push
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    loop.create_task(push_screenshot_to_dashboard(state.screenshot, url))
-                else:
-                    asyncio.run(push_screenshot_to_dashboard(state.screenshot, url))
-            except Exception:
-                pass
-    return step_callback
 
 
 # ── Endpoints
@@ -146,62 +133,69 @@ async def health():
 
 @app.post("/browse", response_model=BrowseResponse)
 async def browse(req: BrowseRequest):
-    """
-    Execute an AI-driven browser task.
-    The agent connects to Browserless, navigates, clicks, fills forms, and returns results.
-    """
+    """Execute an AI-driven browser task via browser-use Agent."""
     check_auth(req.secret)
 
     if not BROWSERLESS_WS_URL or not BROWSERLESS_TOKEN or not ANTHROPIC_API_KEY:
-        return BrowseResponse(success=False, error="Sidecar not fully configured — missing env vars")
+        return BrowseResponse(success=False, error="Sidecar not configured — missing env vars")
 
     start = asyncio.get_event_loop().time()
+    browser_session = None
 
     try:
-        # Build task with optional starting URL
+        # Build task — browser-use has directly_open_url=True by default
+        # so if URL is in the task string, it auto-navigates
         task = req.task
-        if req.url:
+        if req.url and req.url not in task:
             task = f"Navigate to {req.url}. Then: {task}"
 
-        # Connect to Browserless via CDP
         cdp_url = build_cdp_url()
-        log.info(f"Starting browser task: {task[:100]}...")
+        log.info(f"Starting browser task: {task[:120]}...")
 
-        browser_session = Browser(cdp_url=cdp_url)
+        # Create Browser with CDP connection to Browserless
+        # Per docs: Browser(cdp_url=...) for remote browser
+        # headless=True since Railway has no display
+        browser_session = Browser(
+            cdp_url=cdp_url,
+            headless=True,
+        )
 
-        # Use Claude as the LLM
+        # Use browser-use's native ChatAnthropic (not langchain's)
         llm = ChatAnthropic(
             model=ANTHROPIC_MODEL,
             api_key=ANTHROPIC_API_KEY,
             temperature=0,
         )
 
-        # Create and run agent
+        # Create agent per official docs
         agent = Agent(
             task=task,
             llm=llm,
             browser=browser_session,
             max_failures=3,
+            use_vision=True,
         )
 
+        # Run the agent
         result = await agent.run(max_steps=req.max_steps)
 
         elapsed = int((asyncio.get_event_loop().time() - start) * 1000)
 
-        # Extract final result
+        # Extract final result — result is AgentHistoryList
         final_text = ""
-        if result and hasattr(result, "final_result"):
-            final_text = str(result.final_result()) if callable(result.final_result) else str(result.final_result)
-        elif result:
-            final_text = str(result)
+        if result:
+            try:
+                fr = result.final_result()
+                final_text = str(fr) if fr else ""
+            except Exception:
+                final_text = str(result)
 
-        # Try to get the final URL
+        # Get final URL from history
         final_url = None
         try:
-            if browser_session.browser and browser_session.browser.contexts:
-                pages = browser_session.browser.contexts[0].pages
-                if pages:
-                    final_url = pages[-1].url
+            urls = result.urls() if result else []
+            if urls:
+                final_url = urls[-1]
         except Exception:
             pass
 
@@ -215,7 +209,17 @@ async def browse(req: BrowseRequest):
         except Exception:
             pass
 
-        log.info(f"Task completed in {elapsed}ms, {steps} steps")
+        # Get final screenshot and push to dashboard
+        screenshot_b64 = None
+        try:
+            screenshots = result.screenshots() if result else []
+            if screenshots:
+                screenshot_b64 = screenshots[-1]
+                await push_screenshot_to_dashboard(screenshot_b64, final_url)
+        except Exception as e:
+            log.debug(f"Screenshot extraction failed: {e}")
+
+        log.info(f"Task completed in {elapsed}ms, {steps} steps, url={final_url}")
 
         return BrowseResponse(
             success=True,
@@ -223,6 +227,7 @@ async def browse(req: BrowseRequest):
             steps_taken=steps,
             duration_ms=elapsed,
             url_final=final_url,
+            screenshot_base64=screenshot_b64,
         )
 
     except Exception as e:
@@ -235,72 +240,71 @@ async def browse(req: BrowseRequest):
         )
 
     finally:
-        # Disconnect CDP but DON'T close pages — the dashboard's BrowserService
-        # streams screenshots from Browserless and needs the pages to stay alive
-        # so the user can see what Sarah browsed
+        # Close browser session properly per docs
         try:
-            if browser_session and hasattr(browser_session, 'browser') and browser_session.browser:
-                # Just disconnect the CDP connection, pages persist in Browserless
-                try:
-                    await browser_session.browser.close()
-                except Exception:
-                    pass
+            if browser_session:
+                await browser_session.close()
         except Exception:
             pass
 
 
 @app.post("/screenshot", response_model=ScreenshotResponse)
 async def screenshot(req: ScreenshotRequest):
-    """
-    Take a screenshot of a URL via Browserless.
-    Navigates to the URL, takes screenshot, and leaves page alive for Screen Viewer.
-    """
+    """Take a screenshot using browser-use Agent for consistency."""
     check_auth(req.secret)
 
     if not BROWSERLESS_WS_URL or not BROWSERLESS_TOKEN:
         return ScreenshotResponse(success=False, error="Browserless not configured")
 
+    browser_session = None
     try:
-        from playwright.async_api import async_playwright
-        import base64
-
         cdp_url = build_cdp_url()
 
-        async with async_playwright() as p:
-            browser = await p.chromium.connect_over_cdp(cdp_url)
+        browser_session = Browser(
+            cdp_url=cdp_url,
+            headless=True,
+        )
 
-            # Try to find an existing page already on this URL
-            target_page = None
-            for ctx in browser.contexts:
-                for page in ctx.pages:
-                    try:
-                        if page.url and req.url in page.url:
-                            target_page = page
-                            break
-                    except Exception:
-                        pass
-                if target_page:
-                    break
+        llm = ChatAnthropic(
+            model=ANTHROPIC_MODEL,
+            api_key=ANTHROPIC_API_KEY,
+            temperature=0,
+        )
 
-            if not target_page:
-                # Open new page and navigate — leave it alive for Screen Viewer
-                if browser.contexts:
-                    target_page = await browser.contexts[0].new_page()
-                else:
-                    ctx = await browser.new_context(viewport={"width": 1280, "height": 720})
-                    target_page = await ctx.new_page()
-                await target_page.goto(req.url, wait_until="networkidle", timeout=30000)
+        agent = Agent(
+            task=f"Navigate to {req.url} and describe what you see on the page.",
+            llm=llm,
+            browser=browser_session,
+            max_failures=2,
+            use_vision=True,
+        )
 
-            screenshot_bytes = await target_page.screenshot(type="png", full_page=False)
-            # Disconnect CDP but DON'T close pages — Screen Viewer needs them
-            await browser.close()
+        result = await agent.run(max_steps=5)
 
-        b64 = base64.b64encode(screenshot_bytes).decode("utf-8")
-        return ScreenshotResponse(success=True, screenshot_base64=b64)
+        screenshot_b64 = None
+        try:
+            screenshots = result.screenshots() if result else []
+            if screenshots:
+                screenshot_b64 = screenshots[-1]
+                await push_screenshot_to_dashboard(screenshot_b64, req.url)
+        except Exception:
+            pass
+
+        if screenshot_b64:
+            return ScreenshotResponse(success=True, screenshot_base64=screenshot_b64)
+        else:
+            return ScreenshotResponse(success=False, error="No screenshot captured")
 
     except Exception as e:
         log.error(f"Screenshot failed: {e}", exc_info=True)
         return ScreenshotResponse(success=False, error=str(e))
+
+    finally:
+        try:
+            if browser_session:
+                await browser_session.close()
+        except Exception:
+            pass
 
 
 # ── Run
