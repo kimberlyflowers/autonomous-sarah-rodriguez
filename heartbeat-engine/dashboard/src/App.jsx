@@ -890,43 +890,76 @@ function ArtifactCard({ name, c, onApprove, onReject, status }) {
   const [expanded, setExpanded] = useState(false);
   const [content, setContent] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [artFileId, setArtFileId] = useState(null);
+  const [artData, setArtData] = useState(null); // {fileId, name, status}
+  const [cardStatus, setCardStatus] = useState(status || 'pending');
 
-  const ext = name.split('.').pop()?.toLowerCase() || '';
+  const dn = artData?.name || (name === '__latest__' ? 'Loading...' : name);
+  const ext = dn.split('.').pop()?.toLowerCase() || '';
   const icon = ext === 'html' ? '🌐' : ext === 'md' ? '📝' : ext === 'js' || ext === 'py' ? '💻' : '📄';
-  const isApproved = status === 'approved';
-  const isRejected = status === 'rejected';
 
-  // Fetch content and fileId when expanding
-  const [displayName, setDisplayName] = useState(name === '__latest__' ? 'Loading...' : name);
+  // Auto-load artifact data on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch('/api/files/artifacts?limit=10');
+        const d = await r.json();
+        const match = name === '__latest__'
+          ? d.artifacts?.[0]
+          : d.artifacts?.find(a => a.name === name);
+        if (match) setArtData(match);
+      } catch {}
+    })();
+  }, [name]);
 
   const loadContent = async () => {
     if (content) { setExpanded(!expanded); return; }
+    if (!artData) { setExpanded(true); return; }
     setLoading(true);
     try {
-      const r = await fetch('/api/files/artifacts?limit=10');
-      const d = await r.json();
-      // Find by name, or if __latest__ get the most recent pending one
-      const match = name === '__latest__'
-        ? d.artifacts?.[0]
-        : d.artifacts?.find(a => a.name === name);
-      if (match) {
-        setArtFileId(match.fileId);
-        if (name === '__latest__') setDisplayName(match.name);
-        const pr = await fetch(`/api/files/preview/${match.fileId}`);
-        if (pr.headers.get('content-type')?.includes('json')) {
-          const pd = await pr.json();
-          setContent(pd.content || 'Preview not available');
-        } else {
-          setContent('Binary file — click Download to view');
-        }
+      const pr = await fetch(`/api/files/preview/${artData.fileId}`);
+      if (pr.headers.get('content-type')?.includes('json')) {
+        const pd = await pr.json();
+        setContent(pd.content || 'Preview not available');
       } else {
-        setContent('Artifact not found — it may still be saving.');
+        setContent('Binary file — click Download to view');
       }
-    } catch (e) { setContent('Failed to load preview'); }
+    } catch { setContent('Failed to load preview'); }
     setLoading(false);
     setExpanded(true);
   };
+
+  const handleApprove = async () => {
+    if (!artData?.fileId) return;
+    try {
+      const r = await fetch(`/api/files/artifacts/${artData.fileId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'approved' })
+      });
+      if (r.ok) {
+        setCardStatus('approved');
+        onApprove?.();
+      }
+    } catch (e) { console.error('Approve failed:', e); }
+  };
+
+  const handleReject = async () => {
+    if (!artData?.fileId) return;
+    try {
+      const r = await fetch(`/api/files/artifacts/${artData.fileId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'rejected' })
+      });
+      if (r.ok) {
+        setCardStatus('rejected');
+        onReject?.();
+      }
+    } catch (e) { console.error('Reject failed:', e); }
+  };
+
+  const isApproved = cardStatus === 'approved';
+  const isRejected = cardStatus === 'rejected';
 
   return (
     <div style={{marginTop:8,borderRadius:14,border:"1px solid "+(isApproved?"rgba(52,168,83,0.4)":isRejected?"rgba(234,67,53,0.3)":"rgba(244,162,97,0.4)"),background:c.cd,overflow:"hidden"}}>
@@ -935,9 +968,9 @@ function ArtifactCard({ name, c, onApprove, onReject, status }) {
         <span style={{fontSize:18}}>{icon}</span>
         <div style={{flex:1,minWidth:0}}>
           <div style={{fontSize:11,fontWeight:700,color:isApproved?c.gr:isRejected?"#ea4335":c.ac,textTransform:"uppercase",letterSpacing:"0.5px"}}>
-            {isApproved ? "✅ Approved" : isRejected ? "❌ Rejected" : "📎 Artifact"}
+            {isApproved ? "✅ Saved to Files" : isRejected ? "❌ Rejected" : "📎 Artifact — Click to preview"}
           </div>
-          <div style={{fontSize:13,fontWeight:600,color:c.tx,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{displayName||name}</div>
+          <div style={{fontSize:13,fontWeight:600,color:c.tx,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{dn}</div>
         </div>
         <span style={{fontSize:12,color:c.so,transform:expanded?"rotate(180deg)":"rotate(0deg)",transition:"transform .2s"}}>▼</span>
       </div>
@@ -946,37 +979,18 @@ function ArtifactCard({ name, c, onApprove, onReject, status }) {
       {expanded && (
         <div>
           <div style={{maxHeight:300,overflowY:"auto",padding:"12px 16px",borderTop:"1px solid "+c.ln,background:c.bg,fontFamily:"'Courier New',monospace",fontSize:12,lineHeight:1.6,color:c.tx,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>
-            {loading ? "Loading..." : content}
+            {loading ? "Loading..." : content || (artData ? "Click to load preview" : "Searching for artifact...")}
           </div>
           {/* Action buttons */}
           <div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",borderTop:"1px solid "+c.ln,background:isApproved?"rgba(52,168,83,0.06)":"rgba(244,162,97,0.06)"}}>
             {!isApproved && !isRejected && (
               <>
-                <button onClick={async()=>{
-                  if(!artFileId){
-                    const r=await fetch('/api/files/artifacts?limit=10').then(r=>r.json());
-                    const m=r.artifacts?.find(a=>a.name===name);
-                    if(m) setArtFileId(m.fileId);
-                  }
-                  if(artFileId||true){
-                    const fid=artFileId||(await fetch('/api/files/artifacts?limit=10').then(r=>r.json()).then(d=>d.artifacts?.find(a=>a.name===name)?.fileId));
-                    if(fid){
-                      await fetch(`/api/files/artifacts/${fid}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'approved'})});
-                      onApprove?.();
-                    }
-                  }
-                }} style={{padding:"6px 16px",borderRadius:8,border:"none",background:"linear-gradient(135deg,#34a853,#2d9248)",cursor:"pointer",fontSize:12,fontWeight:700,color:"#fff"}}>✓ Approve & Save to Files</button>
-                <button onClick={async()=>{
-                  const fid=artFileId||(await fetch('/api/files/artifacts?limit=10').then(r=>r.json()).then(d=>d.artifacts?.find(a=>a.name===name)?.fileId));
-                  if(fid){
-                    await fetch(`/api/files/artifacts/${fid}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'rejected'})});
-                    onReject?.();
-                  }
-                }} style={{padding:"6px 12px",borderRadius:8,border:"1px solid rgba(234,67,53,0.4)",background:"rgba(234,67,53,0.06)",cursor:"pointer",fontSize:12,fontWeight:600,color:"#ea4335"}}>✗ Reject</button>
+                <button onClick={handleApprove} disabled={!artData} style={{padding:"6px 16px",borderRadius:8,border:"none",background:artData?"linear-gradient(135deg,#34a853,#2d9248)":"#555",cursor:artData?"pointer":"not-allowed",fontSize:12,fontWeight:700,color:"#fff"}}>✓ Approve & Save to Files</button>
+                <button onClick={handleReject} disabled={!artData} style={{padding:"6px 12px",borderRadius:8,border:"1px solid rgba(234,67,53,0.4)",background:"rgba(234,67,53,0.06)",cursor:artData?"pointer":"not-allowed",fontSize:12,fontWeight:600,color:"#ea4335"}}>✗ Reject</button>
               </>
             )}
-            {isApproved && artFileId && (
-              <a href={`/api/files/download/${artFileId}`} download style={{padding:"6px 16px",borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:12,fontWeight:600,color:c.ac,textDecoration:"none"}}>↓ Download</a>
+            {isApproved && artData && (
+              <a href={`/api/files/download/${artData.fileId}`} download style={{padding:"6px 16px",borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:12,fontWeight:600,color:c.ac,textDecoration:"none"}}>↓ Download</a>
             )}
             <span style={{flex:1}}/>
             <button onClick={()=>setExpanded(false)} style={{padding:"4px 10px",borderRadius:6,border:"1px solid "+c.ln,background:"transparent",cursor:"pointer",fontSize:11,color:c.so}}>Collapse</button>
