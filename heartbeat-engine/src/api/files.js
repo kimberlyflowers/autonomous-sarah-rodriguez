@@ -187,15 +187,20 @@ router.patch('/artifacts/:fileId', async (req, res) => {
       return res.status(400).json({ error: 'status must be approved or rejected' });
     }
 
-    const result = await pool.query(`
-      UPDATE artifacts SET status = $1, approved_at = CASE WHEN $1 = 'approved' THEN NOW() ELSE approved_at END
-      WHERE file_id = $2
-      RETURNING id, file_id, name, status, approved_at
-    `, [status, fileId]);
+    // Update status
+    const result = await pool.query(
+      `UPDATE artifacts SET status = $1 WHERE file_id = $2 RETURNING id, file_id, name, status`,
+      [status, fileId]
+    );
 
     if (!result.rows.length) {
       logger.warn('Artifact not found for PATCH', { fileId });
       return res.status(404).json({ error: 'Artifact not found' });
+    }
+
+    // Set approved_at separately if approved
+    if (status === 'approved') {
+      await pool.query(`UPDATE artifacts SET approved_at = NOW() WHERE file_id = $1`, [fileId]);
     }
 
     logger.info(`Artifact ${status}`, { fileId, name: result.rows[0].name });
