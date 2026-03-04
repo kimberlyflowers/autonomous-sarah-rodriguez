@@ -93,13 +93,42 @@ export const browserToolExecutors = {
       });
 
       if (data.success) {
+        // Push sidecar screenshot to dashboard Screen Viewer
+        try {
+          const { getBrowserService } = await import('../browser/browser-service.js');
+          const browserSvc = getBrowserService();
+          const ssResp = await fetch(`${BROWSER_AGENT_URL}/screenshot`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: data.url_final, secret: BROWSER_AGENT_SECRET }),
+          });
+          if (ssResp.ok) {
+            const ssData = await ssResp.json();
+            if (ssData.success && ssData.screenshot_base64) {
+              browserSvc.isRunning = true;
+              browserSvc.currentUrl = data.url_final;
+              browserSvc.lastScreenshot = ssData.screenshot_base64;
+              browserSvc.lastScreenshotTime = Date.now();
+              browserSvc.emit('screenshot', {
+                data: ssData.screenshot_base64,
+                url: data.url_final,
+                timestamp: Date.now()
+              });
+              logger.info('Pushed sidecar screenshot to dashboard', { url: data.url_final });
+            }
+          }
+        } catch (ssErr) {
+          logger.warn('Could not push screenshot to dashboard:', ssErr.message);
+        }
+
         return {
           success: true,
+          requested_url: params.url || 'none',
           result: data.result,
           steps_taken: data.steps_taken,
           duration_ms: data.duration_ms,
           url_final: data.url_final,
-          message: `Browser task completed in ${data.steps_taken} steps (${data.duration_ms}ms): ${data.result}`
+          message: `Browser navigated to ${params.url || 'requested page'}. Final URL: ${data.url_final}. Result: ${data.result}`
         };
       } else {
         return {
@@ -140,6 +169,21 @@ export const browserToolExecutors = {
       const data = await response.json();
 
       if (data.success) {
+        // Push to dashboard Screen Viewer
+        try {
+          const { getBrowserService } = await import('../browser/browser-service.js');
+          const browserSvc = getBrowserService();
+          browserSvc.isRunning = true;
+          browserSvc.currentUrl = params.url;
+          browserSvc.lastScreenshot = data.screenshot_base64;
+          browserSvc.lastScreenshotTime = Date.now();
+          browserSvc.emit('screenshot', {
+            data: data.screenshot_base64,
+            url: params.url,
+            timestamp: Date.now()
+          });
+        } catch (e) { /* non-critical */ }
+
         return {
           success: true,
           screenshot_base64: data.screenshot_base64,
