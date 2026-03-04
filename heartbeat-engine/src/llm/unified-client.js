@@ -385,4 +385,69 @@ export function getLLMClient() {
   return _instance;
 }
 
+/**
+ * One-shot call to any model — does NOT change the client's default model.
+ * Used by the orchestrator to dispatch work to different models.
+ * Returns { text, content, usage: { inputTokens, outputTokens } }
+ */
+export async function callModel(model, { system, messages, tools = [], maxTokens = 4096, temperature = 0.3 }) {
+  const provider = detectProvider(model);
+  const providerConfig = PROVIDERS[provider];
+  const apiKey = process.env[providerConfig?.envKey];
+
+  if (!apiKey) {
+    throw new Error(`Missing API key for ${model}: set ${providerConfig?.envKey}`);
+  }
+
+  logger.info('callModel dispatch', { model, provider, messageCount: messages.length });
+
+  if (provider === 'anthropic') {
+    const client = new Anthropic({ apiKey });
+    const params = { model, max_tokens: maxTokens, temperature, messages };
+    if (system) params.system = system;
+    if (tools?.length > 0) params.tools = formatToolsAnthropic(tools);
+    const response = await client.messages.create(params);
+    const parsed = parseAnthropicResponse(response);
+    return {
+      ...parsed,
+      usage: { inputTokens: response.usage?.input_tokens || 0, outputTokens: response.usage?.output_tokens || 0 },
+      model,
+      provider
+    };
+  } else {
+    // OpenAI-compatible (OpenAI, DeepSeek)
+    const openaiMessages = [];
+    if (system) openaiMessages.push({ role: 'system', content: system });
+    for (const msg of messages) {
+      if (typeof msg.content === 'string') {
+        openaiMessages.push(msg);
+      } else if (Array.isArray(msg.content)) {
+        const text = msg.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
+        if (text) openaiMessages.push({ role: msg.role, content: text });
+      } else {
+        openaiMessages.push({ role: msg.role, content: JSON.stringify(msg.content) });
+      }
+    }
+    const body = { model, messages: openaiMessages, max_tokens: maxTokens, temperature };
+    if (tools?.length > 0) { body.tools = formatToolsOpenAI(tools); body.tool_choice = 'auto'; }
+    const response = await fetch(`${providerConfig.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`${providerConfig.name} API error ${response.status}: ${errText}`);
+    }
+    const data = await response.json();
+    const parsed = parseOpenAIResponse(data);
+    return {
+      ...parsed,
+      usage: { inputTokens: data.usage?.prompt_tokens || 0, outputTokens: data.usage?.completion_tokens || 0 },
+      model,
+      provider
+    };
+  }
+}
+
 export default UnifiedLLMClient;

@@ -317,4 +317,35 @@ router.delete('/tasks/:taskId', async (req, res) => {
   } finally { if (pool) await pool.end().catch(()=>{}); }
 });
 
+// ═══════════════════════════════════════════════════════════════
+// TASK RUNS (Activity feed)
+// ═══════════════════════════════════════════════════════════════
+
+// GET /api/agent/runs — task execution history for Activity page
+router.get('/runs', async (req, res) => {
+  try {
+    const { getTaskRuns } = await import('../orchestrator/task-executor.js');
+    const limit = parseInt(req.query.limit) || 50;
+    const runs = await getTaskRuns(limit);
+    return res.json({ runs });
+  } catch (error) {
+    logger.error('Get task runs error', { error: error.message });
+    return res.status(500).json({ error: 'Failed to load task runs' });
+  }
+});
+
+// GET /api/agent/models — current model routing config
+router.get('/models', async (req, res) => {
+  try {
+    const { getModelMap, getAvailableProviders } = await import('../orchestrator/router.js');
+    return res.json({
+      routing: getModelMap(),
+      providers: getAvailableProviders()
+    });
+  } catch (error) {
+    logger.error('Get models error', { error: error.message });
+    return res.status(500).json({ error: 'Failed to load model config' });
+  }
+});
+
 export default router;
