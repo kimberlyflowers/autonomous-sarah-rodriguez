@@ -134,7 +134,7 @@ function useSarahChat() {
           const mr = await fetch("/api/chat/sessions/"+latest.id);
           const md = await mr.json();
           setMessages((md.messages||[]).map((m,i)=>({
-            id:i, b:m.role==="assistant", t:m.content,
+            id:i, b:m.role==="assistant", t:(m.content||'').replace(/\s*\[Tool:.*?\]\s*/g,'').trim(),
             tm:m.created_at?new Date(m.created_at).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"}):"",
             files:m.files?(typeof m.files==="string"?JSON.parse(m.files):m.files):undefined
           })));
@@ -189,7 +189,7 @@ function useSarahChat() {
       const res = await fetch("/api/chat/message",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:text,sessionId:sid.current})});
       const data = await res.json();
       const ts2 = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
-      setMessages(p=>[...p,{id:Date.now(),b:true,t:data.response||data.message||"Done.",tm:ts2}]);
+      setMessages(p=>[...p,{id:Date.now(),b:true,t:(data.response||data.message||"Done.").replace(/\s*\[Tool:.*?\]\s*/g,'').trim(),tm:ts2}]);
       fetchSessions(); // refresh sidebar immediately
       setTimeout(fetchSessions, 3000); // re-fetch after AI title generates
       return true;
@@ -900,18 +900,13 @@ function parseMessageCards(text) {
   return cards;
 }
 
-function ArtifactCard({ name, c, onApprove, onReject, status, onOpenSide, mob }) {
-  const [expanded, setExpanded] = useState(false);
-  const [content, setContent] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [artData, setArtData] = useState(null); // {fileId, name, status}
-  const [cardStatus, setCardStatus] = useState(status || 'pending');
+function ArtifactCard({ name, c, onOpenSide, mob }) {
+  const [artData, setArtData] = useState(null);
 
   const dn = artData?.name || (name === '__latest__' ? 'Loading...' : name);
   const ext = dn.split('.').pop()?.toLowerCase() || '';
   const icon = ext === 'html' ? '🌐' : ext === 'md' ? '📝' : ext === 'js' || ext === 'py' ? '💻' : '📄';
 
-  // Auto-load artifact data on mount
   useEffect(() => {
     (async () => {
       try {
@@ -925,131 +920,31 @@ function ArtifactCard({ name, c, onApprove, onReject, status, onOpenSide, mob })
     })();
   }, [name]);
 
-  const loadContent = async () => {
-    if (content) { setExpanded(!expanded); return; }
-    if (!artData) { setExpanded(true); return; }
-    setLoading(true);
-    try {
-      const pr = await fetch(`/api/files/preview/${artData.fileId}`);
-      if (pr.headers.get('content-type')?.includes('json')) {
-        const pd = await pr.json();
-        setContent(pd.content || 'Preview not available');
-      } else {
-        setContent('Binary file — click Download to view');
-      }
-    } catch { setContent('Failed to load preview'); }
-    setLoading(false);
-    setExpanded(true);
-  };
-
-  const handleApprove = async () => {
-    if (!artData?.fileId) {
-      alert('Still loading artifact data — try again in a moment.');
-      return;
-    }
-    try {
-      setCardStatus('saving');
-      const r = await fetch(`/api/files/artifacts/${artData.fileId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'approved' })
-      });
-      if (r.ok) {
-        setCardStatus('approved');
-        onApprove?.();
-      } else {
-        const err = await r.text();
-        alert('Approve failed: ' + err);
-        setCardStatus('pending');
-      }
-    } catch (e) {
-      alert('Approve error: ' + e.message);
-      setCardStatus('pending');
-    }
-  };
-
-  const handleReject = async () => {
+  const handleClick = async () => {
     if (!artData?.fileId) return;
     try {
-      const r = await fetch(`/api/files/artifacts/${artData.fileId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'rejected' })
-      });
-      if (r.ok) {
-        setCardStatus('rejected');
-        onReject?.();
+      const pr = await fetch(`/api/files/preview/${artData.fileId}`);
+      let content = 'Preview not available';
+      if (pr.headers.get('content-type')?.includes('json')) {
+        const pd = await pr.json();
+        content = pd.content || content;
       }
-    } catch (e) { console.error('Reject failed:', e); }
+      if (onOpenSide) {
+        onOpenSide({ name: artData.name, content, fileId: artData.fileId });
+      }
+    } catch {}
   };
 
-  const isApproved = cardStatus === 'approved';
-  const isRejected = cardStatus === 'rejected';
-
   return (
-    <div style={{marginTop:8,borderRadius:14,border:"1px solid "+(isApproved?"rgba(52,168,83,0.4)":isRejected?"rgba(234,67,53,0.3)":"rgba(244,162,97,0.4)"),background:c.cd,overflow:"hidden"}}>
-      {/* Header bar */}
-      <div onClick={async()=>{
-        // On desktop with side panel available, open there
-        if(!mob && onOpenSide && artData) {
-          if(!content) {
-            try {
-              const pr = await fetch(`/api/files/preview/${artData.fileId}`);
-              if(pr.headers.get('content-type')?.includes('json')) {
-                const pd = await pr.json();
-                setContent(pd.content || 'Preview not available');
-                onOpenSide({name:artData.name,content:pd.content,fileId:artData.fileId});
-              }
-            } catch { onOpenSide({name:artData.name,content:content||'Loading...',fileId:artData.fileId}); }
-          } else {
-            onOpenSide({name:artData.name,content,fileId:artData.fileId});
-          }
-          return;
-        }
-        // Mobile or no side panel — expand inline
-        loadContent();
-      }} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",cursor:"pointer",background:isApproved?"rgba(52,168,83,0.06)":isRejected?"rgba(234,67,53,0.04)":"rgba(244,162,97,0.06)"}}>
-        <span style={{fontSize:18}}>{icon}</span>
-        <div style={{flex:1,minWidth:0}}>
-          <div style={{fontSize:11,fontWeight:700,color:isApproved?c.gr:isRejected?"#ea4335":c.ac,textTransform:"uppercase",letterSpacing:"0.5px"}}>
-            {isApproved ? "✅ Saved to Files" : isRejected ? "❌ Rejected" : "📎 Artifact — Click to preview"}
-          </div>
-          <div style={{fontSize:13,fontWeight:600,color:c.tx,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{dn}</div>
-        </div>
-        <span style={{fontSize:12,color:c.so,transform:expanded?"rotate(180deg)":"rotate(0deg)",transition:"transform .2s"}}>▼</span>
+    <div onClick={handleClick} style={{marginTop:8,borderRadius:12,border:"1px solid rgba(52,168,83,0.3)",background:c.cd,cursor:"pointer",overflow:"hidden",transition:"transform .15s",display:"flex",alignItems:"center",gap:10,padding:"10px 14px"}}
+      onMouseEnter={e=>e.currentTarget.style.transform="translateY(-1px)"}
+      onMouseLeave={e=>e.currentTarget.style.transform="translateY(0)"}>
+      <span style={{fontSize:20}}>{icon}</span>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontSize:11,fontWeight:700,color:c.gr,textTransform:"uppercase",letterSpacing:"0.5px"}}>📄 New File — Saved</div>
+        <div style={{fontSize:13,fontWeight:600,color:c.tx,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{dn}</div>
       </div>
-
-      {/* Expandable content preview */}
-      {expanded && (
-        <div>
-          <div style={{maxHeight:400,overflowY:"auto",padding:"16px 20px",borderTop:"1px solid "+c.ln,background:c.bg,fontSize:14,lineHeight:1.7,color:c.tx,wordBreak:"break-word"}}
-            dangerouslySetInnerHTML={{__html: (loading ? "Loading..." : content || "Click to load preview")
-              .replace(/^# (.+)$/gm, '<h1 style="font-size:20px;font-weight:700;margin:16px 0 8px">$1</h1>')
-              .replace(/^## (.+)$/gm, '<h2 style="font-size:17px;font-weight:700;margin:14px 0 6px">$1</h2>')
-              .replace(/^### (.+)$/gm, '<h3 style="font-size:15px;font-weight:700;margin:12px 0 4px">$1</h3>')
-              .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-              .replace(/\*(.+?)\*/g, '<em>$1</em>')
-              .replace(/^- (.+)$/gm, '<li style="margin-left:20px;margin-bottom:4px">$1</li>')
-              .replace(/^(\d+)\. (.+)$/gm, '<li style="margin-left:20px;margin-bottom:4px"><strong>$1.</strong> $2</li>')
-              .replace(/\n\n/g, '<br/><br/>')
-              .replace(/\n/g, '<br/>')
-            }}/>
-          {/* Action buttons */}
-          <div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",borderTop:"1px solid "+c.ln,background:isApproved?"rgba(52,168,83,0.06)":"rgba(244,162,97,0.06)"}}>
-            {!isApproved && !isRejected && (
-              <>
-                <button onClick={handleApprove} disabled={!artData||cardStatus==='saving'} style={{padding:"6px 16px",borderRadius:8,border:"none",background:artData&&cardStatus!=='saving'?"linear-gradient(135deg,#34a853,#2d9248)":"#555",cursor:artData&&cardStatus!=='saving'?"pointer":"not-allowed",fontSize:12,fontWeight:700,color:"#fff"}}>{cardStatus==='saving'?'Saving...':'✓ Approve & Save to Files'}</button>
-                <button onClick={handleReject} disabled={!artData} style={{padding:"6px 12px",borderRadius:8,border:"1px solid rgba(234,67,53,0.4)",background:"rgba(234,67,53,0.06)",cursor:artData?"pointer":"not-allowed",fontSize:12,fontWeight:600,color:"#ea4335"}}>✗ Reject</button>
-              </>
-            )}
-            {isApproved && artData && (
-              <a href={`/api/files/download/${artData.fileId}`} download style={{padding:"6px 16px",borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:12,fontWeight:600,color:c.ac,textDecoration:"none"}}>↓ Download</a>
-            )}
-            <span style={{flex:1}}/>
-            <button onClick={()=>setExpanded(false)} style={{padding:"4px 10px",borderRadius:6,border:"1px solid "+c.ln,background:"transparent",cursor:"pointer",fontSize:11,color:c.so}}>Collapse</button>
-          </div>
-        </div>
-      )}
+      <span style={{fontSize:11,color:c.so}}>View →</span>
     </div>
   );
 }
@@ -1484,9 +1379,6 @@ export default function App() {
                                 ? <TaskCard key={ci} name={cd2.name} c={c}/>
                                 : cd2.type==="artifact"
                                 ? <ArtifactCard key={ci} name={cd2.name} c={c}
-                                    status={cd2._status}
-                                    onApprove={()=>{cd2._status='approved';setMessages(p=>[...p]);setFilesRefresh(n=>n+1);setTimeout(()=>setPg('artifacts'),500);}}
-                                    onReject={()=>{cd2._status='rejected';setMessages(p=>[...p]);}}
                                     onOpenSide={(art)=>{setActiveArtifact(art);setRightTab("artifact");}}
                                     mob={mob}
                                   />
@@ -1514,15 +1406,26 @@ export default function App() {
                           <div style={{display:"flex",borderBottom:"1px solid "+c.ln,background:c.sf,flexShrink:0}}>
                             <button onClick={()=>setRightTab("browser")} style={{flex:1,padding:"8px 0",fontSize:11,fontWeight:700,border:"none",borderBottom:rightTab==="browser"?"2px solid "+c.ac:"2px solid transparent",background:"transparent",color:rightTab==="browser"?c.tx:c.so,cursor:"pointer",letterSpacing:"0.5px"}}>🖥️ Browser</button>
                             <button onClick={()=>setRightTab("artifact")} style={{flex:1,padding:"8px 0",fontSize:11,fontWeight:700,border:"none",borderBottom:rightTab==="artifact"?"2px solid "+c.ac:"2px solid transparent",background:"transparent",color:rightTab==="artifact"?c.tx:c.so,cursor:"pointer",letterSpacing:"0.5px",position:"relative"}}>
-                              📄 Artifact
+                              📄 Files
                               {activeArtifact&&<span style={{position:"absolute",top:4,right:"20%",width:6,height:6,borderRadius:"50%",background:c.ac}}/>}
                             </button>
                           </div>
 
                           {/* ── Browser tab ── */}
-                          {rightTab==="browser"&&<Screen c={c} mob={false} mode="docked" setMode={setScrM}/>}
+                          {rightTab==="browser"&&(
+                            <>
+                              <Screen c={c} mob={false} mode="docked" setMode={setScrM}/>
+                              <div style={{borderTop:"1px solid "+c.ln,background:c.cd,flexShrink:0}}>
+                                <div style={{padding:"10px 16px",borderBottom:"1px solid "+c.ln,display:"flex",alignItems:"center",gap:8}}>
+                                  <span style={{width:8,height:8,borderRadius:"50%",background:c.ac,animation:"pulse 1.5s ease infinite"}}/>
+                                  <span style={{fontSize:12,fontWeight:700,color:c.tx}}>Active Tasks</span>
+                                </div>
+                                <ActiveTaskTracker c={c}/>
+                              </div>
+                            </>
+                          )}
 
-                          {/* ── Artifact tab ── */}
+                          {/* ── Files tab ── */}
                           {rightTab==="artifact"&&(
                             activeArtifact?(
                               <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
@@ -1546,24 +1449,22 @@ export default function App() {
                                     .replace(/\n\n/g, '<br/><br/>')
                                     .replace(/\n/g, '<br/>')
                                   }}/>
+                                {/* Action buttons */}
+                                <div style={{padding:"12px 16px",borderTop:"1px solid "+c.ln,background:c.cd,display:"flex",gap:8,flexShrink:0}}>
+                                  <button onClick={()=>{setRightTab("browser");setTx("I want to make some changes to "+activeArtifact.name);}} style={{flex:1,padding:"10px 0",borderRadius:10,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:13,fontWeight:600,color:c.tx}}>✏️ Request Changes</button>
+                                  <a href={activeArtifact.fileId?`/api/files/download/${activeArtifact.fileId}`:"#"} download style={{flex:1,padding:"10px 0",borderRadius:10,border:"none",background:"linear-gradient(135deg,#34a853,#2d9248)",cursor:"pointer",fontSize:13,fontWeight:700,color:"#fff",textDecoration:"none",textAlign:"center",display:"block"}}>↓ Download</a>
+                                </div>
                               </div>
                             ):(
                               <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",textAlign:"center",padding:30}}>
                                 <div>
                                   <div style={{fontSize:36,marginBottom:10,opacity:0.3}}>📄</div>
-                                  <div style={{fontSize:13,color:"#666",marginBottom:4}}>No artifact open</div>
-                                  <div style={{fontSize:11,color:"#555"}}>Click an artifact in chat to preview it here</div>
+                                  <div style={{fontSize:13,color:"#666",marginBottom:4}}>No file open</div>
+                                  <div style={{fontSize:11,color:"#555"}}>Ask Sarah to create content — it'll appear here</div>
                                 </div>
                               </div>
                             )
                           )}
-                          <div style={{borderTop:"1px solid "+c.ln,background:c.cd,flexShrink:0}}>
-                            <div style={{padding:"10px 16px",borderBottom:"1px solid "+c.ln,display:"flex",alignItems:"center",gap:8}}>
-                              <span style={{width:8,height:8,borderRadius:"50%",background:c.ac,animation:"pulse 1.5s ease infinite"}}/>
-                              <span style={{fontSize:12,fontWeight:700,color:c.tx}}>Active Tasks</span>
-                            </div>
-                            <ActiveTaskTracker c={c}/>
-                          </div>
                         </div>
                       </ResizablePanel>
                     )}

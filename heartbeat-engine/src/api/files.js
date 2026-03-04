@@ -103,7 +103,7 @@ router.post('/artifacts', async (req, res) => {
 
     const result = await pool.query(`
       INSERT INTO artifacts (file_id, session_id, name, description, file_type, mime_type, content_text, file_path, file_size, thumbnail_base64, status, metadata)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending', $11)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'approved', $11)
       RETURNING id, file_id, name, status, created_at
     `, [fileId, sessionId, name, description, fileType, mimeType, contentText, filePath, fileSize, thumbnailBase64, JSON.stringify(metadata)]);
 
