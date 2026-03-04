@@ -1,11 +1,16 @@
 """
-BLOOM Browser Agent — browser-use sidecar for Sarah Rodriguez
-Connects to Browserless (Railway) for managed Chrome, uses browser-use for AI-driven interactions.
+BLOOM Browser Agent v2 — browser-use sidecar for Sarah Rodriguez
 
-Based on official browser-use docs:
+Smart fallback pattern (inspired by Crawl4AI's Anti-Bot & Fallback):
+1. Try self-hosted Browserless first (free)
+2. Detect Cloudflare/anti-bot blocks using structural HTML markers
+3. Auto-retry with Browser Use Cloud (paid, anti-detect)
+4. Push screenshots to dashboard Screen Viewer
+
+Docs:
 - https://docs.browser-use.com/customize/agent/all-parameters
 - https://docs.browser-use.com/customize/browser/all-parameters
-- https://docs.browser-use.com/customize/browser/remote
+- https://docs.crawl4ai.com/advanced/anti-bot-and-fallback/
 """
 
 import os
@@ -21,7 +26,7 @@ from typing import Optional
 from browser_use import Agent, Browser, ChatAnthropic
 
 # ── Logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logging.basicConfig(level=logging.INFO, format="%(levelname)-5s [%(name)s] %(message)s")
 log = logging.getLogger("browser-agent")
 
 # ── Config
@@ -31,43 +36,206 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5-20251001")
 SIDECAR_SECRET = os.getenv("SIDECAR_SECRET", "")
 SARAH_BASE_URL = os.getenv("SARAH_BASE_URL", "http://autonomous-sarah-rodriguez.railway.internal:3000")
+BROWSER_USE_API_KEY = os.getenv("BROWSER_USE_API_KEY", "")
 PORT = int(os.getenv("PORT", "8080"))
 
 
-# ── FastAPI app
+# ═══════════════════════════════════════════════════════════════════════════
+# ANTI-BOT BLOCK DETECTION
+# Based on Crawl4AI's approach: use structural markers, not generic keywords.
+# A page that *mentions* "Cloudflare" in normal content won't trigger this.
+# We check for the specific phrases that appear on actual block/challenge pages.
+# ═══════════════════════════════════════════════════════════════════════════
+
+# These are exact phrases from real Cloudflare/anti-bot block pages
+BLOCK_SIGNATURES = [
+    "sorry, you have been blocked",
+    "you are unable to access",
+    "attention required! | cloudflare",
+    "please wait while we verify your browser",
+    "ray id:",                              # Cloudflare Ray ID footer
+    "error 1015",                           # Rate limited
+    "error 1020",                           # Access denied
+    "error 1010",                           # Browser integrity check
+    "please turn javascript on and reload",  # JS challenge
+    "hcaptcha_submit",                      # hCaptcha form element
+    "cf-challenge-running",                 # Cloudflare challenge container
+    "cf_chl_opt",                           # Cloudflare challenge script
+    "managed by imperva",                   # Imperva/Incapsula
+    "datadome",                             # DataDome
+    "perimeterx",                           # PerimeterX
+]
+
+def is_blocked(text: str) -> bool:
+    """Detect if page content shows anti-bot blocking.
+    Uses structural markers per Crawl4AI pattern to avoid false positives."""
+    if not text:
+        return False
+    lower = text.lower()
+    # Need at least 2 signatures to confirm (reduces false positives)
+    matches = sum(1 for sig in BLOCK_SIGNATURES if sig in lower)
+    return matches >= 2
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# RESULT EXTRACTION HELPER
+# Pulls data from browser-use AgentHistoryList in a consistent way
+# ═══════════════════════════════════════════════════════════════════════════
+
+def extract_result(result) -> dict:
+    """Extract structured data from browser-use AgentHistoryList."""
+    data = {
+        "success": True,
+        "result": "",
+        "url_final": None,
+        "steps_taken": 0,
+        "screenshot_base64": None,
+    }
+    if not result:
+        data["success"] = False
+        data["result"] = "No result returned"
+        return data
+
+    # Final text
+    try:
+        fr = result.final_result()
+        data["result"] = str(fr) if fr else str(result)
+    except Exception:
+        data["result"] = str(result)
+
+    # Final URL
+    try:
+        urls = result.urls()
+        if urls:
+            data["url_final"] = urls[-1]
+    except Exception:
+        pass
+
+    # Steps
+    try:
+        data["steps_taken"] = result.n_steps if hasattr(result, "n_steps") else len(result.history) if hasattr(result, "history") else 0
+    except Exception:
+        pass
+
+    # Screenshot (last one captured)
+    try:
+        screenshots = result.screenshots()
+        if screenshots:
+            data["screenshot_base64"] = screenshots[-1]
+    except Exception:
+        pass
+
+    return data
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CORE: Run a browser-use Agent task
+# Separated so we can call it for self-hosted OR cloud with same logic
+# ═══════════════════════════════════════════════════════════════════════════
+
+async def run_agent(task: str, max_steps: int, use_cloud: bool = False) -> dict:
+    """Run a browser-use Agent. Returns extracted result dict.
+    
+    use_cloud=False → self-hosted Browserless (free)
+    use_cloud=True  → Browser Use Cloud (paid, anti-detect, CAPTCHA solving)
+    """
+    browser_session = None
+    try:
+        # Create browser connection
+        if use_cloud:
+            browser_session = Browser(use_cloud=True)
+            log.info("☁️  Connected to Browser Use Cloud (stealth)")
+        else:
+            cdp_url = build_cdp_url()
+            browser_session = Browser(cdp_url=cdp_url, headless=True)
+            log.info("🏠 Connected to self-hosted Browserless")
+
+        # LLM
+        llm = ChatAnthropic(
+            model=ANTHROPIC_MODEL,
+            api_key=ANTHROPIC_API_KEY,
+            temperature=0,
+        )
+
+        # Agent
+        agent = Agent(
+            task=task,
+            llm=llm,
+            browser=browser_session,
+            max_failures=3,
+            use_vision=True,
+        )
+
+        # Run
+        result = await agent.run(max_steps=max_steps)
+        return extract_result(result)
+
+    except Exception as e:
+        log.error(f"Agent failed: {e}")
+        return {"success": False, "error": str(e), "result": "", "url_final": None, "steps_taken": 0, "screenshot_base64": None}
+
+    finally:
+        try:
+            if browser_session:
+                await browser_session.close()
+        except Exception:
+            pass
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# HELPERS
+# ═══════════════════════════════════════════════════════════════════════════
+
+def check_auth(secret: Optional[str]):
+    if SIDECAR_SECRET and secret != SIDECAR_SECRET:
+        raise HTTPException(status_code=401, detail="Invalid sidecar secret")
+
+
+def build_cdp_url() -> str:
+    base = BROWSERLESS_WS_URL.rstrip("/")
+    sep = "&" if "?" in base else "?"
+    return f"{base}{sep}token={BROWSERLESS_TOKEN}&stealth=true"
+
+
+async def push_screenshot(b64: str, url: str = None):
+    """Push screenshot to Sarah's dashboard Screen Viewer via SSE."""
+    if not SARAH_BASE_URL or not b64:
+        return
+    try:
+        import aiohttp
+        async with aiohttp.ClientSession() as s:
+            await s.post(
+                f"{SARAH_BASE_URL}/api/browser/push-screenshot",
+                json={"data": b64, "url": url or ""},
+                timeout=aiohttp.ClientTimeout(total=5),
+            )
+    except Exception:
+        pass  # Non-critical — dashboard just won't update
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# FASTAPI APP
+# ═══════════════════════════════════════════════════════════════════════════
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    log.info("Browser Agent sidecar starting...")
-    missing = []
-    if not BROWSERLESS_WS_URL:
-        missing.append("BROWSERLESS_WS_URL")
-    if not BROWSERLESS_TOKEN:
-        missing.append("BROWSERLESS_TOKEN")
-    if not ANTHROPIC_API_KEY:
-        missing.append("ANTHROPIC_API_KEY")
-    if missing:
-        log.warning(f"Missing env vars: {', '.join(missing)} — agent tasks will fail")
-    else:
-        log.info(f"Config OK — Browserless: {BROWSERLESS_WS_URL}, Model: {ANTHROPIC_MODEL}")
+    log.info("🚀 BLOOM Browser Agent starting...")
+    log.info(f"   Browserless: {'✅' if BROWSERLESS_WS_URL else '❌'}")
+    log.info(f"   Anthropic:   {'✅' if ANTHROPIC_API_KEY else '❌'}")
+    log.info(f"   Cloud Key:   {'✅ (fallback ready)' if BROWSER_USE_API_KEY else '❌ (no cloud fallback)'}")
+    log.info(f"   Model:       {ANTHROPIC_MODEL}")
     yield
-    log.info("Browser Agent sidecar shutting down.")
+    log.info("Browser Agent shutting down.")
+
+app = FastAPI(title="BLOOM Browser Agent", version="2.1.0", lifespan=lifespan)
 
 
-app = FastAPI(
-    title="BLOOM Browser Agent",
-    description="browser-use sidecar — AI-driven browser automation for Bloomie agents",
-    version="2.0.0",
-    lifespan=lifespan,
-)
-
-
-# ── Request/Response Models
+# ── Models
 class BrowseRequest(BaseModel):
-    task: str = Field(..., description="Natural language task for the browser agent")
+    task: str = Field(..., description="Natural language task")
     url: Optional[str] = Field(None, description="Starting URL")
     max_steps: int = Field(25, ge=1, le=100)
     secret: Optional[str] = None
-
 
 class BrowseResponse(BaseModel):
     success: bool
@@ -77,12 +245,11 @@ class BrowseResponse(BaseModel):
     duration_ms: int = 0
     url_final: Optional[str] = None
     screenshot_base64: Optional[str] = None
-
+    used_cloud: bool = False
 
 class ScreenshotRequest(BaseModel):
     url: str
     secret: Optional[str] = None
-
 
 class ScreenshotResponse(BaseModel):
     success: bool
@@ -90,221 +257,129 @@ class ScreenshotResponse(BaseModel):
     error: Optional[str] = None
 
 
-# ── Helpers
-def check_auth(secret: Optional[str]):
-    if SIDECAR_SECRET and secret != SIDECAR_SECRET:
-        raise HTTPException(status_code=401, detail="Invalid or missing sidecar secret")
+# ═══════════════════════════════════════════════════════════════════════════
+# /browse — THE MAIN ENDPOINT
+#
+# Pattern: Self-hosted first → detect block → cloud fallback
+# Inspired by Crawl4AI's Anti-Bot & Fallback system
+# ═══════════════════════════════════════════════════════════════════════════
+
+@app.post("/browse", response_model=BrowseResponse)
+async def browse(req: BrowseRequest):
+    check_auth(req.secret)
+
+    if not ANTHROPIC_API_KEY:
+        return BrowseResponse(success=False, error="ANTHROPIC_API_KEY not configured")
+
+    start = asyncio.get_event_loop().time()
+
+    # Build task
+    task = req.task
+    if req.url and req.url not in task:
+        task = f"Navigate to {req.url}. Then: {task}"
+
+    used_cloud = False
+
+    # ── STEP 1: Try self-hosted Browserless (free)
+    if BROWSERLESS_WS_URL and BROWSERLESS_TOKEN:
+        log.info(f"🏠 [SELF-HOSTED] {task[:80]}...")
+        data = await run_agent(task, req.max_steps, use_cloud=False)
+
+        # Check: did it succeed but land on a block page?
+        if data["success"] and is_blocked(data.get("result", "")):
+            log.info("🛡️  Anti-bot block detected in self-hosted result")
+
+            if BROWSER_USE_API_KEY:
+                log.info("☁️  Retrying with Browser Use Cloud...")
+                cloud_data = await run_agent(task, req.max_steps, use_cloud=True)
+                if cloud_data["success"]:
+                    data = cloud_data
+                    used_cloud = True
+                    log.info("✅ Cloud fallback succeeded")
+                else:
+                    log.warning(f"☁️  Cloud fallback also failed: {cloud_data.get('error')}")
+            else:
+                log.warning("⚠️  No BROWSER_USE_API_KEY — can't fall back to cloud")
+
+        # Check: did self-hosted fail entirely (connection error, crash)?
+        elif not data["success"] and BROWSER_USE_API_KEY:
+            log.info(f"🏠 Self-hosted failed ({data.get('error', 'unknown')}), trying cloud...")
+            cloud_data = await run_agent(task, req.max_steps, use_cloud=True)
+            if cloud_data["success"]:
+                data = cloud_data
+                used_cloud = True
+                log.info("✅ Cloud fallback succeeded")
+
+    # ── STEP 1b: No self-hosted config → go straight to cloud
+    elif BROWSER_USE_API_KEY:
+        log.info(f"☁️  [CLOUD-ONLY] No self-hosted config, using cloud: {task[:80]}...")
+        data = await run_agent(task, req.max_steps, use_cloud=True)
+        used_cloud = True
+
+    else:
+        return BrowseResponse(success=False, error="No browser configured (need BROWSERLESS_WS_URL or BROWSER_USE_API_KEY)")
+
+    # ── STEP 2: Push screenshot to dashboard
+    if data.get("screenshot_base64"):
+        await push_screenshot(data["screenshot_base64"], data.get("url_final"))
+
+    elapsed = int((asyncio.get_event_loop().time() - start) * 1000)
+
+    return BrowseResponse(
+        success=data.get("success", False),
+        result=data.get("result"),
+        error=data.get("error"),
+        steps_taken=data.get("steps_taken", 0),
+        duration_ms=elapsed,
+        url_final=data.get("url_final"),
+        screenshot_base64=data.get("screenshot_base64"),
+        used_cloud=used_cloud,
+    )
 
 
-def build_cdp_url() -> str:
-    """Build Browserless CDP URL with token and stealth."""
-    base = BROWSERLESS_WS_URL.rstrip("/")
-    separator = "&" if "?" in base else "?"
-    return f"{base}{separator}token={BROWSERLESS_TOKEN}&stealth=true"
+# ═══════════════════════════════════════════════════════════════════════════
+# /screenshot — Quick screenshot using same fallback pattern
+# ═══════════════════════════════════════════════════════════════════════════
+
+@app.post("/screenshot", response_model=ScreenshotResponse)
+async def screenshot(req: ScreenshotRequest):
+    check_auth(req.secret)
+    task = f"Navigate to {req.url} and describe what you see on the page."
+
+    # Try self-hosted first
+    data = None
+    if BROWSERLESS_WS_URL and BROWSERLESS_TOKEN:
+        data = await run_agent(task, max_steps=5, use_cloud=False)
+        if data["success"] and is_blocked(data.get("result", "")) and BROWSER_USE_API_KEY:
+            data = await run_agent(task, max_steps=5, use_cloud=True)
+    elif BROWSER_USE_API_KEY:
+        data = await run_agent(task, max_steps=5, use_cloud=True)
+
+    if not data:
+        return ScreenshotResponse(success=False, error="No browser configured")
+
+    ss = data.get("screenshot_base64")
+    if ss:
+        await push_screenshot(ss, req.url)
+        return ScreenshotResponse(success=True, screenshot_base64=ss)
+    return ScreenshotResponse(success=False, error=data.get("error", "No screenshot captured"))
 
 
-async def push_screenshot_to_dashboard(screenshot_b64: str, url: str = None):
-    """POST screenshot to Sarah's main server for Screen Viewer SSE stream."""
-    if not SARAH_BASE_URL:
-        return
-    try:
-        import aiohttp
-        async with aiohttp.ClientSession() as session:
-            await session.post(
-                f"{SARAH_BASE_URL}/api/browser/push-screenshot",
-                json={"data": screenshot_b64, "url": url or ""},
-                timeout=aiohttp.ClientTimeout(total=5),
-            )
-    except Exception as e:
-        log.debug(f"Screenshot push failed (non-critical): {e}")
+# ═══════════════════════════════════════════════════════════════════════════
+# /health
+# ═══════════════════════════════════════════════════════════════════════════
 
-
-# ── Endpoints
 @app.get("/health")
 async def health():
     return {
         "status": "healthy",
         "service": "bloom-browser-agent",
-        "browserless_configured": bool(BROWSERLESS_WS_URL and BROWSERLESS_TOKEN),
-        "anthropic_configured": bool(ANTHROPIC_API_KEY),
+        "version": "2.1.0",
+        "self_hosted": bool(BROWSERLESS_WS_URL and BROWSERLESS_TOKEN),
+        "cloud_fallback": bool(BROWSER_USE_API_KEY),
+        "model": ANTHROPIC_MODEL,
         "timestamp": datetime.utcnow().isoformat() + "Z",
     }
-
-
-@app.post("/browse", response_model=BrowseResponse)
-async def browse(req: BrowseRequest):
-    """Execute an AI-driven browser task via browser-use Agent."""
-    check_auth(req.secret)
-
-    if not BROWSERLESS_WS_URL or not BROWSERLESS_TOKEN or not ANTHROPIC_API_KEY:
-        return BrowseResponse(success=False, error="Sidecar not configured — missing env vars")
-
-    start = asyncio.get_event_loop().time()
-    browser_session = None
-
-    try:
-        # Build task — browser-use has directly_open_url=True by default
-        # so if URL is in the task string, it auto-navigates
-        task = req.task
-        if req.url and req.url not in task:
-            task = f"Navigate to {req.url}. Then: {task}"
-
-        cdp_url = build_cdp_url()
-        log.info(f"Starting browser task: {task[:120]}...")
-
-        # Create Browser with CDP connection to Browserless
-        # Per docs: Browser(cdp_url=...) for remote browser
-        # headless=True since Railway has no display
-        browser_session = Browser(
-            cdp_url=cdp_url,
-            headless=True,
-        )
-
-        # Use browser-use's native ChatAnthropic (not langchain's)
-        llm = ChatAnthropic(
-            model=ANTHROPIC_MODEL,
-            api_key=ANTHROPIC_API_KEY,
-            temperature=0,
-        )
-
-        # Create agent per official docs
-        agent = Agent(
-            task=task,
-            llm=llm,
-            browser=browser_session,
-            max_failures=3,
-            use_vision=True,
-        )
-
-        # Run the agent
-        result = await agent.run(max_steps=req.max_steps)
-
-        elapsed = int((asyncio.get_event_loop().time() - start) * 1000)
-
-        # Extract final result — result is AgentHistoryList
-        final_text = ""
-        if result:
-            try:
-                fr = result.final_result()
-                final_text = str(fr) if fr else ""
-            except Exception:
-                final_text = str(result)
-
-        # Get final URL from history
-        final_url = None
-        try:
-            urls = result.urls() if result else []
-            if urls:
-                final_url = urls[-1]
-        except Exception:
-            pass
-
-        # Get steps taken
-        steps = 0
-        try:
-            if hasattr(result, "n_steps"):
-                steps = result.n_steps
-            elif hasattr(result, "history") and result.history:
-                steps = len(result.history)
-        except Exception:
-            pass
-
-        # Get final screenshot and push to dashboard
-        screenshot_b64 = None
-        try:
-            screenshots = result.screenshots() if result else []
-            if screenshots:
-                screenshot_b64 = screenshots[-1]
-                await push_screenshot_to_dashboard(screenshot_b64, final_url)
-        except Exception as e:
-            log.debug(f"Screenshot extraction failed: {e}")
-
-        log.info(f"Task completed in {elapsed}ms, {steps} steps, url={final_url}")
-
-        return BrowseResponse(
-            success=True,
-            result=final_text,
-            steps_taken=steps,
-            duration_ms=elapsed,
-            url_final=final_url,
-            screenshot_base64=screenshot_b64,
-        )
-
-    except Exception as e:
-        elapsed = int((asyncio.get_event_loop().time() - start) * 1000)
-        log.error(f"Browser task failed: {e}", exc_info=True)
-        return BrowseResponse(
-            success=False,
-            error=str(e),
-            duration_ms=elapsed,
-        )
-
-    finally:
-        # Close browser session properly per docs
-        try:
-            if browser_session:
-                await browser_session.close()
-        except Exception:
-            pass
-
-
-@app.post("/screenshot", response_model=ScreenshotResponse)
-async def screenshot(req: ScreenshotRequest):
-    """Take a screenshot using browser-use Agent for consistency."""
-    check_auth(req.secret)
-
-    if not BROWSERLESS_WS_URL or not BROWSERLESS_TOKEN:
-        return ScreenshotResponse(success=False, error="Browserless not configured")
-
-    browser_session = None
-    try:
-        cdp_url = build_cdp_url()
-
-        browser_session = Browser(
-            cdp_url=cdp_url,
-            headless=True,
-        )
-
-        llm = ChatAnthropic(
-            model=ANTHROPIC_MODEL,
-            api_key=ANTHROPIC_API_KEY,
-            temperature=0,
-        )
-
-        agent = Agent(
-            task=f"Navigate to {req.url} and describe what you see on the page.",
-            llm=llm,
-            browser=browser_session,
-            max_failures=2,
-            use_vision=True,
-        )
-
-        result = await agent.run(max_steps=5)
-
-        screenshot_b64 = None
-        try:
-            screenshots = result.screenshots() if result else []
-            if screenshots:
-                screenshot_b64 = screenshots[-1]
-                await push_screenshot_to_dashboard(screenshot_b64, req.url)
-        except Exception:
-            pass
-
-        if screenshot_b64:
-            return ScreenshotResponse(success=True, screenshot_base64=screenshot_b64)
-        else:
-            return ScreenshotResponse(success=False, error="No screenshot captured")
-
-    except Exception as e:
-        log.error(f"Screenshot failed: {e}", exc_info=True)
-        return ScreenshotResponse(success=False, error=str(e))
-
-    finally:
-        try:
-            if browser_session:
-                await browser_session.close()
-        except Exception:
-            pass
 
 
 # ── Run

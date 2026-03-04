@@ -120,7 +120,8 @@ export const browserToolExecutors = {
           steps_taken: data.steps_taken,
           duration_ms: data.duration_ms,
           url_final: data.url_final,
-          message: `Browser navigated to ${params.url || 'requested page'}. Final URL: ${data.url_final}. Result: ${data.result}`
+          used_cloud: data.used_cloud || false,
+          message: `Browser navigated to ${params.url || 'requested page'}. Final URL: ${data.url_final}. ${data.used_cloud ? '(Used cloud browser for anti-bot bypass) ' : ''}Result: ${data.result}`
         };
       } else {
         return {
