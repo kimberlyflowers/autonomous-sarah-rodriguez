@@ -859,12 +859,12 @@ function parseMessageCards(text) {
     }
   }
 
-  // Detect email draft cards
-  // Patterns: "Subject:", "I drafted", "I've drafted", "I've written", "email draft", "drafted an email"
-  const emailMatch = text.match(/(?:Subject|Re|Fwd)[:\s]+["']?(.+?)["']?(?:\n|$|\.(?:\s|$))/i)
-    || text.match(/(?:drafted|written|composed|prepared)\s+(?:an?\s+)?(?:email|message|reply).*?(?:(?:subject|titled|called)[:\s]+["']?(.+?)["']?)?(?:\.|!|$)/i);
+  // Detect email draft cards — only trigger on clear email drafts, not casual mentions
+  // Must have "Subject:" line OR explicit "I drafted/wrote an email" with subject
+  const emailMatch = text.match(/^Subject[:\s]+["']?(.+?)["']?\s*$/im)
+    || text.match(/(?:I've |I have |I )?(?:drafted|prepared|composed) (?:an |the |your )?email.*?(?:subject|titled|called)[:\s]+["']?(.+?)["']?(?:\.|!|$)/i);
   if (emailMatch) {
-    const subject = (emailMatch[1] || "Email draft").trim().substring(0, 100);
+    const subject = (emailMatch[1] || emailMatch[2] || "Email draft").trim().substring(0, 100);
     cards.push({ type: "email", subject });
   }
 
