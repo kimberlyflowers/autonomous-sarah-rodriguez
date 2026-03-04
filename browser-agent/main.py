@@ -94,7 +94,7 @@ def check_auth(secret: Optional[str]):
 def build_cdp_url() -> str:
     base = BROWSERLESS_WS_URL.rstrip("/")
     separator = "&" if "?" in base else "?"
-    return f"{base}{separator}token={BROWSERLESS_TOKEN}&stealth=true"
+    return f"{base}{separator}token={BROWSERLESS_TOKEN}"
 
 
 # ── Push screenshot to Sarah's dashboard in real-time
