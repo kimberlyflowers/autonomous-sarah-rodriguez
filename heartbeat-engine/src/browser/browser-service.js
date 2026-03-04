@@ -33,7 +33,7 @@ class BrowserService extends EventEmitter {
     if (!BROWSERLESS_WS_URL || !BROWSERLESS_TOKEN) return null;
     const base = BROWSERLESS_WS_URL.rstrip ? BROWSERLESS_WS_URL.replace(/\/+$/, '') : BROWSERLESS_WS_URL.replace(/\/+$/, '');
     const separator = base.includes('?') ? '&' : '?';
-    return `${base}${separator}token=${BROWSERLESS_TOKEN}&stealth=true&headless=false`;
+    return `${base}${separator}token=${BROWSERLESS_TOKEN}&stealth=true`;
   }
 
   async launch() {
