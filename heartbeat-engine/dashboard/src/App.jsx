@@ -988,6 +988,223 @@ function EmailCard({ subject, c, onReview }) {
   );
 }
 
+// ── BILLING PAGE ──
+const PLANS_DATA={
+  standard:{name:"Standard",price:500,emails:1000,sms:200,mms:50,phone:0,images:0,videos:0,tasks:5},
+  pro:{name:"Pro",price:800,emails:5000,sms:500,mms:150,phone:60,images:40,videos:0,tasks:15},
+  enterprise:{name:"Enterprise",price:1200,emails:10000,sms:1000,mms:300,phone:200,images:80,videos:30,tasks:999},
+};
+const OVERAGE_RATES={email:0.02,sms:0.03,mms:0.06,phone:0.05,image:0.15,video:2.00};
+const $=n=>"$"+n.toFixed(2);
+
+function BillingUsageBar({icon,label,used,limit,rate,unit,c}){
+  const over=Math.max(0,used-limit),isOver=over>0,progress=Math.min(100,(used/limit)*100),nearLimit=progress>75&&!isOver;
+  return(
+    <div style={{marginBottom:14}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+        <div style={{display:"flex",alignItems:"center",gap:6}}>
+          <span style={{fontSize:14}}>{icon}</span>
+          <span style={{fontSize:13,fontWeight:600}}>{label}</span>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <span style={{fontSize:12,color:isOver?c.ac2:nearLimit?"#FBBC04":c.so}}>{used.toLocaleString()} / {limit.toLocaleString()}</span>
+          {isOver&&<span style={{fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:10,background:"rgba(234,67,53,0.12)",color:"#ea4335",border:"1px solid rgba(234,67,53,0.25)"}}>+{over.toLocaleString()} OVER</span>}
+          {nearLimit&&!isOver&&<span style={{fontSize:11,fontWeight:600,padding:"2px 8px",borderRadius:10,background:"rgba(251,188,4,0.1)",color:"#FBBC04",border:"1px solid rgba(251,188,4,0.2)"}}>{Math.round(100-progress)}% left</span>}
+        </div>
+      </div>
+      <div style={{height:7,borderRadius:4,background:c.ln,overflow:"hidden",position:"relative"}}>
+        {isOver?(<>
+          <div style={{position:"absolute",left:0,top:0,height:7,borderRadius:"4px 0 0 4px",width:((limit/used)*100)+"%",background:"#34a853",zIndex:2}}/>
+          <div style={{position:"absolute",left:((limit/used)*100)+"%",top:0,height:7,borderRadius:"0 4px 4px 0",width:((over/used)*100)+"%",background:"repeating-linear-gradient(135deg,#ea4335,#ea4335 3px,rgba(234,67,53,0.6) 3px,rgba(234,67,53,0.6) 6px)",zIndex:2}}/>
+        </>):(
+          <div style={{height:7,borderRadius:4,transition:"width .5s",width:progress+"%",background:nearLimit?"#FBBC04":"#34a853"}}/>
+        )}
+      </div>
+      {isOver&&<div style={{display:"flex",justifyContent:"space-between",marginTop:4,fontSize:11,color:"#ea4335"}}><span>{over.toLocaleString()} extra × {$(rate)}/{unit}</span><span style={{fontWeight:700}}>{$(over*rate)}</span></div>}
+    </div>
+  );
+}
+
+function BillingPage({c,mob}){
+  const [showEstimate,setShowEstimate]=useState(false);
+  const currentPlan="enterprise";
+  const plan=PLANS_DATA[currentPlan];
+
+  // Simulated usage — will come from API
+  const usage={emails:7340,sms:680,mms:120,phone:145,images:52,videos:18,chatMessages:4820,blogPosts:28,emailDrafts:44,codePages:8,research:16};
+  const daysInPeriod=31,daysPassed=19,daysLeft=daysInPeriod-daysPassed;
+
+  const overageItems=[
+    {key:"email",label:"Email sends",icon:"✉️",used:usage.emails,limit:plan.emails,rate:OVERAGE_RATES.email,unit:"email"},
+    {key:"sms",label:"SMS messages",icon:"💬",used:usage.sms,limit:plan.sms,rate:OVERAGE_RATES.sms,unit:"text"},
+    {key:"mms",label:"MMS messages",icon:"📸",used:usage.mms,limit:plan.mms,rate:OVERAGE_RATES.mms,unit:"msg"},
+    {key:"phone",label:"Phone minutes",icon:"📞",used:usage.phone,limit:plan.phone,rate:OVERAGE_RATES.phone,unit:"min"},
+    {key:"image",label:"Images",icon:"🎨",used:usage.images,limit:plan.images,rate:OVERAGE_RATES.image,unit:"image"},
+    {key:"video",label:"Videos (8s)",icon:"🎬",used:usage.videos,limit:plan.videos,rate:OVERAGE_RATES.video,unit:"video"},
+  ].filter(i=>i.limit>0);
+
+  const currentOverage=overageItems.reduce((s,i)=>s+Math.max(0,i.used-i.limit)*i.rate,0);
+  const projMult=daysPassed>0?daysInPeriod/daysPassed:1;
+  const projItems=overageItems.map(i=>({...i,projected:Math.round(i.used*projMult),projOver:Math.max(0,Math.round(i.used*projMult)-i.limit),projCost:Math.max(0,Math.round(i.used*projMult)-i.limit)*i.rate}));
+  const projTotalOver=projItems.reduce((s,i)=>s+i.projCost,0);
+
+  return(
+    <div style={{overflowY:"auto",height:"calc(100vh - 52px)",padding:mob?"16px 12px 40px":"24px 28px 60px",maxWidth:860,margin:"0 auto"}}>
+      <style>{`@keyframes bFadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}`}</style>
+
+      {/* Header */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:24}}>
+        <div>
+          <h1 style={{fontSize:mob?18:20,fontWeight:700}}>💳 Billing</h1>
+          <p style={{fontSize:13,color:c.so,marginTop:3}}>Manage your plan, usage, and payment</p>
+        </div>
+        <div style={{textAlign:"right"}}>
+          <div style={{fontSize:11,color:c.so}}>Billing period</div>
+          <div style={{fontSize:13,fontWeight:600}}>Mar 1 — Mar 31, 2026</div>
+          <div style={{fontSize:11,color:c.ac2||c.ac||"#F4A261",marginTop:2}}>{daysLeft} days remaining</div>
+        </div>
+      </div>
+
+      {/* Plan + Amount */}
+      <div style={{display:"grid",gridTemplateColumns:mob?"1fr":"1fr 1fr",gap:14,marginBottom:18}}>
+        <div style={{background:c.cd,borderRadius:12,border:"1px solid "+c.ln,padding:18}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+            <div>
+              <div style={{fontSize:11,fontWeight:700,color:c.so,textTransform:"uppercase",letterSpacing:"0.5px"}}>Current Plan</div>
+              <div style={{fontSize:22,fontWeight:700,marginTop:2,background:"linear-gradient(135deg,#F4A261,#E76F8B)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>Enterprise</div>
+            </div>
+            <div style={{fontSize:24,fontWeight:700}}>{$(plan.price)}<span style={{fontSize:13,color:c.so,fontWeight:500}}>/mo</span></div>
+          </div>
+          <div style={{fontSize:12,color:c.so,lineHeight:1.6}}>Unlimited chat · Unlimited articles & emails · {plan.images} images · {plan.videos} videos · {plan.emails.toLocaleString()} email sends · {plan.sms.toLocaleString()} SMS</div>
+          <button style={{marginTop:10,padding:"7px 16px",borderRadius:8,border:"1px solid "+c.ln,background:"none",color:c.ac2||"#F4A261",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Change Plan</button>
+        </div>
+        <div style={{background:c.cd,borderRadius:12,border:currentOverage>0?"1px solid rgba(234,67,53,0.3)":"1px solid "+c.ln,padding:18}}>
+          <div style={{fontSize:11,fontWeight:700,color:c.so,textTransform:"uppercase",letterSpacing:"0.5px"}}>Current Total</div>
+          <div style={{fontSize:30,fontWeight:700,marginTop:4}}>{$(plan.price+currentOverage)}</div>
+          <div style={{display:"flex",gap:16,marginTop:6,fontSize:12}}>
+            <div><span style={{color:c.so}}>Base:</span> <span style={{fontWeight:600}}>{$(plan.price)}</span></div>
+            {currentOverage>0&&<div><span style={{color:c.so}}>Overages:</span> <span style={{fontWeight:700,color:"#ea4335"}}>{$(currentOverage)}</span></div>}
+          </div>
+          <div style={{marginTop:12}}>
+            <div style={{height:4,borderRadius:2,background:c.ln}}><div style={{height:4,borderRadius:2,background:c.ac2||"#F4A261",width:(daysPassed/daysInPeriod*100)+"%"}}/></div>
+            <div style={{display:"flex",justifyContent:"space-between",marginTop:4,fontSize:10,color:c.so}}><span>Mar 1</span><span>Day {daysPassed}</span><span>Mar 31</span></div>
+          </div>
+        </div>
+      </div>
+
+      {/* CRM Sends */}
+      <div style={{background:c.cd,borderRadius:12,border:"1px solid "+c.ln,padding:18,marginBottom:14}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+          <div style={{fontSize:15,fontWeight:700}}>CRM Communication Sends</div>
+          {currentOverage>0&&<div style={{fontSize:12,fontWeight:700,color:"#ea4335",display:"flex",alignItems:"center",gap:4}}><span style={{width:6,height:6,borderRadius:3,background:"#ea4335",display:"inline-block"}}/>{$(currentOverage)} in overages</div>}
+        </div>
+        <div style={{fontSize:12,color:c.so,marginBottom:14}}>Included with BLOOM CRM. Overages billed at end of period.</div>
+
+        {overageItems.filter(i=>["email","sms","mms","phone"].includes(i.key)).map(i=><BillingUsageBar key={i.key} {...i} c={c}/>)}
+
+        {/* Estimate toggle */}
+        <button onClick={()=>setShowEstimate(!showEstimate)} style={{width:"100%",padding:"9px 14px",borderRadius:8,cursor:"pointer",fontFamily:"inherit",border:showEstimate?"1px solid rgba(244,162,97,0.3)":"1px solid "+c.ln,background:showEstimate?"rgba(244,162,97,0.06)":c.sf||"#222",display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:4}}>
+          <span style={{fontSize:13,fontWeight:600,color:showEstimate?c.ac2||"#F4A261":c.so}}>{showEstimate?"Hide":"View"} End-of-Month Estimate</span>
+          <span style={{fontSize:12,color:c.so,transform:showEstimate?"rotate(180deg)":"none",transition:"transform .2s"}}>▼</span>
+        </button>
+
+        {showEstimate&&(
+          <div style={{marginTop:12,padding:16,borderRadius:10,background:c.sf||"#222",border:"1px solid "+c.ln,animation:"bFadeIn .25s ease"}}>
+            <div style={{fontSize:12,fontWeight:700,color:c.ac2||"#F4A261",marginBottom:4}}>Projected End-of-Month Estimate</div>
+            <div style={{fontSize:11,color:c.so,marginBottom:12}}>Based on your pace through day {daysPassed}, projected to end of billing period.</div>
+            {projItems.filter(i=>["email","sms","mms","phone"].includes(i.key)).map(i=>{
+              const isO=i.projOver>0;
+              return(
+                <div key={i.key} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderRadius:6,marginBottom:4,background:isO?"rgba(234,67,53,0.06)":"transparent",border:isO?"1px solid rgba(234,67,53,0.15)":"1px solid transparent"}}>
+                  <span style={{fontSize:14,width:22}}>{i.icon}</span>
+                  <span style={{flex:1,fontSize:12,fontWeight:600,color:isO?"#ea4335":c.tx}}>{i.label}</span>
+                  <div style={{textAlign:"right"}}>
+                    <div style={{fontSize:12,color:isO?"#ea4335":c.so}}>~{i.projected.toLocaleString()} <span style={{color:c.so}}>/ {i.limit.toLocaleString()}</span></div>
+                    {isO?<div style={{fontSize:11,fontWeight:700,color:"#ea4335"}}>+{i.projOver.toLocaleString()} over → {$(i.projCost)}</div>:<div style={{fontSize:11,color:"#34a853"}}>Within plan</div>}
+                  </div>
+                </div>
+              );
+            })}
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",borderTop:"1px solid "+c.ln,marginTop:10,paddingTop:10}}>
+              <span style={{fontSize:13,fontWeight:700}}>Estimated Total Bill</span>
+              <div style={{textAlign:"right"}}>
+                <div style={{fontSize:20,fontWeight:700,color:projTotalOver>0?"#ea4335":"#34a853"}}>{$(plan.price+projTotalOver)}</div>
+                {projTotalOver>0&&<div style={{fontSize:11,color:"#ea4335"}}>{$(plan.price)} base + {$(projTotalOver)} overages</div>}
+              </div>
+            </div>
+            {projTotalOver>10&&<div style={{marginTop:10,padding:"9px 14px",borderRadius:8,fontSize:12,lineHeight:1.5,background:"rgba(244,162,97,0.06)",border:"1px solid rgba(244,162,97,0.2)",color:c.ac2||"#F4A261"}}>💡 <strong>Tip:</strong> You're on pace for {$(projTotalOver)} in overages. Consider adjusting Sarah's send frequency or upgrading your plan.</div>}
+          </div>
+        )}
+      </div>
+
+      {/* AI Generation */}
+      <div style={{background:c.cd,borderRadius:12,border:"1px solid "+c.ln,padding:18,marginBottom:14}}>
+        <div style={{fontSize:15,fontWeight:700,marginBottom:4}}>AI Generation</div>
+        <div style={{fontSize:12,color:c.so,marginBottom:14}}>Sarah picks the best AI model for each job automatically.</div>
+        {overageItems.filter(i=>["image","video"].includes(i.key)).map(i=><BillingUsageBar key={i.key} {...i} c={c}/>)}
+        <div style={{borderTop:"1px solid "+c.ln,marginTop:6,paddingTop:14}}>
+          <div style={{fontSize:12,fontWeight:700,color:c.so,marginBottom:10}}>Content Created This Period</div>
+          <div style={{display:"grid",gridTemplateColumns:mob?"repeat(3,1fr)":"repeat(5,1fr)",gap:8}}>
+            {[{l:"Chat Messages",v:usage.chatMessages,i:"💬"},{l:"Articles",v:usage.blogPosts,i:"📝"},{l:"Emails Drafted",v:usage.emailDrafts,i:"✉️"},{l:"Pages Built",v:usage.codePages,i:"💻"},{l:"Research",v:usage.research,i:"🔍"}].map((s,idx)=>(
+              <div key={idx} style={{textAlign:"center",padding:"10px 6px",borderRadius:8,background:c.sf||"#222",border:"1px solid "+c.ln}}>
+                <div style={{fontSize:16,marginBottom:4}}>{s.i}</div>
+                <div style={{fontSize:18,fontWeight:700,color:c.ac2||"#F4A261"}}>{s.v.toLocaleString()}</div>
+                <div style={{fontSize:10,color:c.so,marginTop:2}}>{s.l}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Plan comparison */}
+      <div style={{background:c.cd,borderRadius:12,border:"1px solid "+c.ln,padding:18,marginBottom:14,overflowX:"auto"}}>
+        <div style={{fontSize:15,fontWeight:700,marginBottom:14}}>Plan Comparison</div>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:500}}>
+          <thead><tr style={{borderBottom:"1px solid "+c.ln}}>
+            <th style={{textAlign:"left",padding:"8px 12px",color:c.so,fontWeight:600,fontSize:12}}>Feature</th>
+            {Object.entries(PLANS_DATA).map(([k,p])=><th key={k} style={{textAlign:"center",padding:"8px 12px",color:k===currentPlan?c.ac2||"#F4A261":c.tx,fontWeight:700}}>{p.name}<div style={{fontSize:11,fontWeight:500,color:k===currentPlan?c.ac2||"#F4A261":c.so}}>{$(p.price)}/mo</div>{k===currentPlan&&<div style={{fontSize:9,color:"#34a853",marginTop:2}}>CURRENT</div>}</th>)}
+          </tr></thead>
+          <tbody>
+            {[
+              {l:"Chat with Sarah",v:["Unlimited","Unlimited","Unlimited"]},
+              {l:"BLOOM CRM",v:["Included","Included","Included"]},
+              {l:"Scheduled Tasks",v:["5","15","Unlimited"]},
+              {l:"Emails included",v:["1,000","5,000","10,000"]},
+              {l:"SMS included",v:["200","500","1,000"]},
+              {l:"Images",v:["—","40/mo","80/mo"]},
+              {l:"Videos",v:["—","—","30/mo"]},
+              {l:"Phone minutes",v:["—","60 min","200 min"]},
+              {l:"Email overage",v:["$0.02","$0.02","$0.02"]},
+              {l:"SMS overage",v:["$0.03","$0.03","$0.03"]},
+              {l:"Image overage",v:["—","$0.15","$0.15"]},
+              {l:"Video overage",v:["—","—","$2.00"]},
+            ].map((r,i)=><tr key={i} style={{borderBottom:"1px solid rgba(42,42,42,0.4)"}}><td style={{padding:"8px 12px",color:c.so,fontSize:12}}>{r.l}</td>{r.v.map((v,j)=><td key={j} style={{textAlign:"center",padding:"8px 12px",color:v==="—"?c.so:v==="Unlimited"||v==="Included"?"#34a853":c.tx,fontWeight:v==="Unlimited"||v==="Included"?600:400}}>{v}</td>)}</tr>)}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Video add-on */}
+      <div style={{background:"linear-gradient(135deg,rgba(244,162,97,0.06),rgba(231,111,139,0.06))",borderRadius:12,border:"1px solid rgba(244,162,97,0.2)",padding:18,marginBottom:14,display:"flex",justifyContent:"space-between",alignItems:"center",gap:14,flexWrap:"wrap"}}>
+        <div>
+          <div style={{fontSize:14,fontWeight:700,color:c.ac2||"#F4A261"}}>Video Creator Pack</div>
+          <div style={{fontSize:12,color:c.so,marginTop:3}}>Need more videos? Add 100 videos/month for $200. Extra clips at $1.50 each.</div>
+        </div>
+        <button style={{padding:"10px 22px",borderRadius:8,border:"none",cursor:"pointer",fontFamily:"inherit",background:"linear-gradient(135deg,#F4A261,#E76F8B)",fontSize:13,fontWeight:700,color:"#fff",flexShrink:0}}>Add to Plan</button>
+      </div>
+
+      {/* Payment method */}
+      <div style={{background:c.cd,borderRadius:12,border:"1px solid "+c.ln,padding:18}}>
+        <div style={{fontSize:15,fontWeight:700,marginBottom:12}}>Payment Method</div>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <div style={{width:48,height:32,borderRadius:6,background:c.sf||"#222",border:"1px solid "+c.ln,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>💳</div>
+          <div><div style={{fontSize:13,fontWeight:600}}>Visa ending in 4242</div><div style={{fontSize:11,color:c.so}}>Expires 08/2027</div></div>
+          <button style={{marginLeft:"auto",padding:"6px 14px",borderRadius:6,border:"1px solid "+c.ln,background:"none",color:c.so,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Update</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const W=useW();
   const mob=W<768;
@@ -1120,6 +1337,7 @@ export default function App() {
     {k:"monitor",l:mob?"📊":"📊 Status"},
     {k:"artifacts",l:mob?"📁":"📁 Files"},
     {k:"activity",l:mob?"⚡":"⚡ Activity"},
+    {k:"billing",l:mob?"💳":"💳 Billing"},
   ];
 
   return(
@@ -2038,10 +2256,11 @@ export default function App() {
               </div>
             </div>
           )}
+
+          {/* ══ BILLING ══ */}
+          {pg==="billing"&&(<BillingPage c={c} mob={mob}/>)}
         </div>
       </div>
-
-      {/* ── POP-OUT SCREEN ── */}
       {scrM==="pop"&&<Screen c={c} mob={mob} mode="pop" setMode={setScrM}/>}
       {scrM==="full"&&<Screen c={c} mob={mob} mode="full" setMode={setScrM}/>}
 
