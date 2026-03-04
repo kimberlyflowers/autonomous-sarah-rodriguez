@@ -828,6 +828,39 @@ const SARAH_TOOLS = [
       },
       required: ["name", "instruction", "frequency"]
     }
+  },
+  {
+    name: "dispatch_to_specialist",
+    description: `Dispatch work to a specialist AI model that's better suited for specific tasks. Use this when the client needs something that another model does better than you:
+
+- "writing" → Long blog posts, articles, reports (Claude Sonnet — highest quality writing)
+- "email" → Email campaigns, subject lines, SMS copy, social captions (GPT-4o — punchy persuasive copy)
+- "coding" → HTML pages, scripts, landing pages, automation code (DeepSeek — fast expert coder)
+- "image" → Banners, flyers, graphics, social images (GPT image generation)
+
+You are the client's point of contact. The specialist works behind the scenes — the client only sees you delivering the result. After receiving the specialist's output, present it naturally as your own work and save it as a file if appropriate.
+
+Do NOT use this for simple questions, conversation, or tasks you can handle yourself like CRM lookups. Only dispatch when a specialist model would produce meaningfully better output.`,
+    input_schema: {
+      type: "object",
+      properties: {
+        taskType: { 
+          type: "string", 
+          enum: ["writing", "email", "coding", "image"],
+          description: "Type of specialist work needed"
+        },
+        specialistPrompt: { 
+          type: "string", 
+          description: "Detailed prompt for the specialist. Include ALL context: brand info, tone, audience, specific requirements, examples. The specialist has no conversation history — everything they need must be in this prompt."
+        },
+        outputFormat: {
+          type: "string",
+          enum: ["markdown", "html", "code", "text", "image"],
+          description: "Expected output format from the specialist"
+        }
+      },
+      required: ["taskType", "specialistPrompt"]
+    }
   }
 ];
 
@@ -914,6 +947,70 @@ async function executeTool(toolName, toolInput) {
         };
       }
       return { success: false, error: data.error || 'Failed to create scheduled task' };
+    }
+
+    // Dispatch to specialist — multi-model routing
+    if (toolName === 'dispatch_to_specialist') {
+      try {
+        const { callModel } = await import('../llm/unified-client.js');
+        const { calculateCost } = await import('../orchestrator/router.js');
+
+        // Model mapping
+        const modelForType = {
+          writing: process.env.MODEL_WRITING || 'claude-sonnet-4-5-20250929',
+          email: process.env.MODEL_EMAIL || 'gpt-4o',
+          coding: process.env.MODEL_CODING || 'deepseek-chat',
+          image: 'gpt-4o', // placeholder — will use DALL-E/Flux later
+        };
+
+        const taskType = toolInput.taskType || 'writing';
+        const model = modelForType[taskType] || modelForType.writing;
+
+        // System prompts per specialist type
+        const specialistSystems = {
+          writing: 'You are a world-class content writer. Write polished, engaging, professional content. Output in clean markdown format. No preamble — go straight into the content.',
+          email: 'You are an expert email and copy specialist. Write punchy, persuasive, conversion-focused copy. Be concise and compelling. No preamble — deliver the copy directly.',
+          coding: 'You are an expert frontend developer and coder. Write clean, production-ready code. Include comments where helpful. No explanations unless asked — just deliver working code.',
+          image: 'You are a creative director. Describe the visual in detail so it can be generated as an image. Include composition, colors, typography, mood, and style.',
+        };
+
+        logger.info('Dispatching to specialist', { taskType, model, promptLength: toolInput.specialistPrompt?.length });
+
+        const result = await callModel(model, {
+          system: specialistSystems[taskType] || specialistSystems.writing,
+          messages: [{ role: 'user', content: toolInput.specialistPrompt }],
+          maxTokens: 4096,
+          temperature: 0.4,
+        });
+
+        const costCents = calculateCost(model, result.usage);
+
+        logger.info('Specialist completed', {
+          taskType, model,
+          tokens: (result.usage?.inputTokens || 0) + (result.usage?.outputTokens || 0),
+          costCents
+        });
+
+        return {
+          success: true,
+          specialistOutput: result.text,
+          model: model,
+          provider: result.provider,
+          taskType: taskType,
+          tokensUsed: (result.usage?.inputTokens || 0) + (result.usage?.outputTokens || 0),
+          costCents: costCents,
+          message: `Specialist (${model}) completed the ${taskType} task.`
+        };
+      } catch (dispatchError) {
+        logger.error('Specialist dispatch failed', { error: dispatchError.message, taskType: toolInput.taskType });
+        
+        // Graceful fallback — tell Sarah to do it herself
+        return {
+          success: false,
+          error: `Specialist unavailable (${dispatchError.message}). You should complete this task yourself using your own capabilities.`,
+          fallback: true
+        };
+      }
     }
 
     // Browser tools — Sarah's own computer
