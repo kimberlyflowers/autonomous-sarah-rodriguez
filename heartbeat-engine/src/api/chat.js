@@ -1107,6 +1107,7 @@ async function chatWithSarah(userMessage, history, agentConfig) {
   let currentMessages = [...messages];
 
   const toolsUsed = [];
+  const toolResults = []; // Track what tools returned for history
   for (let round = 0; round < 10; round++) {
     const response = await callAnthropicWithRetry({
       model: process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001',
@@ -1121,29 +1122,33 @@ async function chatWithSarah(userMessage, history, agentConfig) {
         .filter(b => b.type === 'text')
         .map(b => b.text)
         .join('');
-      // Append tool action summary so history remembers what Sarah did
+      // Append tool context so next turn remembers what Sarah did and saw
       if (toolsUsed.length > 0) {
-        const summary = toolsUsed.map(t => `[Tool: ${t.name}${t.input?.name ? ' → ' + t.input.name : ''}]`).join(' ');
-        return text + '\n\n' + summary;
+        const contextParts = toolsUsed.map((t, i) => {
+          const resultSummary = toolResults[i] ? JSON.stringify(toolResults[i]).slice(0, 500) : '';
+          return `[${t.name}${t.input?.url ? ': ' + t.input.url : ''}${t.input?.task ? ': ' + t.input.task.slice(0, 100) : ''}] → ${resultSummary}`;
+        });
+        return text + '\n\n[Session context — tools used this turn:\n' + contextParts.join('\n') + ']';
       }
       return text;
     }
 
     if (response.stop_reason === 'tool_use') {
       currentMessages.push({ role: 'assistant', content: response.content });
-      const toolResults = [];
+      const toolResultBlocks = [];
       for (const block of response.content) {
         if (block.type === 'tool_use') {
           toolsUsed.push({ name: block.name, input: block.input });
           const result = await executeTool(block.name, block.input);
-          toolResults.push({
+          toolResults.push(result);
+          toolResultBlocks.push({
             type: 'tool_result',
             tool_use_id: block.id,
             content: JSON.stringify(result)
           });
         }
       }
-      currentMessages.push({ role: 'user', content: toolResults });
+      currentMessages.push({ role: 'user', content: toolResultBlocks });
     }
   }
   return "I got a bit carried away. Let me know if you need me to try a simpler approach.";

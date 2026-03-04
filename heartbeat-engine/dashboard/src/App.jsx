@@ -134,7 +134,7 @@ function useSarahChat() {
           const mr = await fetch("/api/chat/sessions/"+latest.id);
           const md = await mr.json();
           setMessages((md.messages||[]).map((m,i)=>({
-            id:i, b:m.role==="assistant", t:(m.content||'').replace(/\s*\[Tool:.*?\]\s*/g,'').trim(),
+            id:i, b:m.role==="assistant", t:(m.content||'').replace(/\s*\[Session context[\s\S]*$/,'').replace(/\s*\[Tool:.*?\]\s*/g,'').trim(),
             tm:m.created_at?new Date(m.created_at).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"}):"",
             files:m.files?(typeof m.files==="string"?JSON.parse(m.files):m.files):undefined
           })));
@@ -189,7 +189,7 @@ function useSarahChat() {
       const res = await fetch("/api/chat/message",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:text,sessionId:sid.current})});
       const data = await res.json();
       const ts2 = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
-      setMessages(p=>[...p,{id:Date.now(),b:true,t:(data.response||data.message||"Done.").replace(/\s*\[Tool:.*?\]\s*/g,'').trim(),tm:ts2}]);
+      setMessages(p=>[...p,{id:Date.now(),b:true,t:(data.response||data.message||"Done.").replace(/\s*\[Session context[\s\S]*$/,'').replace(/\s*\[Tool:.*?\]\s*/g,'').trim(),tm:ts2}]);
       fetchSessions(); // refresh sidebar immediately
       setTimeout(fetchSessions, 3000); // re-fetch after AI title generates
       return true;
