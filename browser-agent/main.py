@@ -126,34 +126,41 @@ async def browse(req: BrowseRequest):
         # Build task with optional starting URL
         task = req.task
         if req.url:
-            task = f"First, navigate to {req.url}. Then: {task}"
+            task = f"Navigate to {req.url}. Then: {task}"
 
         # Connect to Browserless via CDP
         cdp_url = build_cdp_url()
         log.info(f"Starting browser task: {task[:100]}...")
 
-        browser_session = BrowserSession(cdp_url=cdp_url)
-
-        # Pre-navigate: open a fresh page at the requested URL before the agent starts
-        # This prevents the agent from seeing stale pages from previous sessions
-        if req.url:
-            try:
-                from playwright.async_api import async_playwright
-                _pw = await async_playwright().__aenter__()
-                _pre_browser = await _pw.chromium.connect_over_cdp(cdp_url)
-                if _pre_browser.contexts:
-                    _pre_page = await _pre_browser.contexts[0].new_page()
+        # Clean slate: close stale pages from previous tasks, then pre-navigate
+        try:
+            from playwright.async_api import async_playwright
+            _pw = await async_playwright().__aenter__()
+            _prep = await _pw.chromium.connect_over_cdp(cdp_url)
+            # Close all old pages so agent starts fresh
+            for ctx in _prep.contexts:
+                for page in ctx.pages:
+                    try:
+                        await page.close()
+                    except Exception:
+                        pass
+            # Open fresh page at requested URL so agent AND Screen Viewer see it
+            if req.url:
+                if _prep.contexts:
+                    _page = await _prep.contexts[0].new_page()
                 else:
-                    _ctx = await _pre_browser.new_context()
-                    _pre_page = await _ctx.new_page()
+                    _ctx = await _prep.new_context()
+                    _page = await _ctx.new_page()
                 log.info(f"Pre-navigating to {req.url}")
-                await _pre_page.goto(req.url, wait_until="domcontentloaded", timeout=30000)
-                log.info(f"Pre-navigation complete: {_pre_page.url}")
-                # Don't close — let the agent pick up this page
-                await _pre_browser.close()  # disconnect CDP without killing browser
-                await _pw.__aexit__(None, None, None)
-            except Exception as pre_err:
-                log.warning(f"Pre-navigation failed (non-critical): {pre_err}")
+                await _page.goto(req.url, wait_until="domcontentloaded", timeout=30000)
+                log.info(f"Pre-navigation done: {_page.url}")
+            # Disconnect CDP — pages stay alive in Browserless for Screen Viewer
+            await _prep.close()
+            await _pw.__aexit__(None, None, None)
+        except Exception as prep_err:
+            log.warning(f"Page prep failed (non-critical): {prep_err}")
+
+        browser_session = BrowserSession(cdp_url=cdp_url)
 
         # Use Claude as the LLM
         llm = ChatAnthropic(
@@ -221,10 +228,16 @@ async def browse(req: BrowseRequest):
         )
 
     finally:
-        # Always try to close the browser session
+        # Disconnect CDP but DON'T close pages — the dashboard's BrowserService
+        # streams screenshots from Browserless and needs the pages to stay alive
+        # so the user can see what Sarah browsed
         try:
-            if browser_session:
-                await browser_session.close()
+            if browser_session and hasattr(browser_session, 'browser') and browser_session.browser:
+                # Just disconnect the CDP connection, pages persist in Browserless
+                try:
+                    await browser_session.browser.close()
+                except Exception:
+                    pass
         except Exception:
             pass
 
