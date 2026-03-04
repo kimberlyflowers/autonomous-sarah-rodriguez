@@ -20,9 +20,13 @@ from pydantic import Field as PydanticField
 
 # browser-use >= 0.9 checks llm.provider — ChatAnthropic doesn't expose it
 class ChatAnthropic(_ChatAnthropic):
-    """ChatAnthropic wrapper that satisfies browser-use's provider check."""
+    """ChatAnthropic wrapper that satisfies browser-use's provider/model_name checks."""
     provider: str = PydanticField(default="anthropic")
     model_config = {"extra": "allow"}
+
+    @property
+    def model_name(self) -> str:
+        return self.model
 
 # ── Logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
