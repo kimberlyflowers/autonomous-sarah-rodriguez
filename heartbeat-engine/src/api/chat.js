@@ -52,8 +52,9 @@ BROWSER AUTOMATION (another superpower):
 You can browse the web like a human. Use your browser_task tool to navigate websites, click
 buttons, fill out forms, extract data from pages, log into platforms, and automate any web-based
 workflow. Use browser_screenshot to capture what a page looks like. If someone asks you to do
-something on a website — checking a page, filling a form, grabbing info from a URL — just do it.
-You have a real browser at your disposal.
+something on a website — checking a page, filling a form, grabbing info from a URL — use
+browser_task with the URL and a description of what to do. You have a real browser at your disposal.
+ALWAYS use browser_task for any browsing — it's your only browser tool.
 
 WEB RESEARCH (another superpower):
 You can search the internet and read web pages. Use web_search to find current information about
@@ -682,43 +683,7 @@ const SARAH_TOOLS = [
     }
   }
   ,
-  // ── BROWSER — Sarah's own computer ────────────────────────────────────────
-  {
-    name: "browser_navigate",
-    description: "Navigate Sarah's browser to a URL. Use this for tasks the API cannot do — log into BLOOM CRM manually, fill forms, click buttons, verify data visually.",
-    input_schema: {
-      type: "object",
-      properties: { url: { type: "string" } },
-      required: ["url"]
-    }
-  },
-  {
-    name: "browser_click",
-    description: "Click an element on the current browser page.",
-    input_schema: {
-      type: "object",
-      properties: { selector: { type: "string", description: "CSS selector" } },
-      required: ["selector"]
-    }
-  },
-  {
-    name: "browser_type",
-    description: "Type text into a form field in the browser.",
-    input_schema: {
-      type: "object",
-      properties: {
-        selector: { type: "string" },
-        text: { type: "string" }
-      },
-      required: ["selector", "text"]
-    }
-  },
-  {
-    name: "browser_get_content",
-    description: "Get the visible text content of the current page.",
-    input_schema: { type: "object", properties: {} }
-  },
-  // ── AI BROWSER AUTOMATION ────────────────────────────────────────────────
+  // ── BROWSER — AI-driven browser automation via sidecar ────────────────────
   {
     name: "browser_task",
     description: "Execute an AI-driven browser automation task. The browser agent can navigate websites, click buttons, fill forms, extract data, read page content, handle popups, and interact with web applications intelligently. Use this for any task requiring real browser interaction — logging into platforms, filling out forms, scraping data from pages, or automating web workflows.",
@@ -1051,25 +1016,7 @@ async function executeTool(toolName, toolInput) {
         return { live: d.live, url: d.url, message: d.live ? `Browser active at ${d.url}` : 'Browser idle' };
       }
 
-      // Legacy local browser tools
-      const port = process.env.PORT || 3000;
-      const base = `http://localhost:${port}/api/browser`;
-      if (toolName === 'browser_navigate') {
-        const r = await fetch(`${base}/navigate`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({url: toolInput.url}) });
-        return await r.json();
-      }
-      if (toolName === 'browser_click') {
-        const r = await fetch(`${base}/click`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({selector: toolInput.selector}) });
-        return await r.json();
-      }
-      if (toolName === 'browser_type') {
-        const r = await fetch(`${base}/type`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({selector: toolInput.selector, text: toolInput.text}) });
-        return await r.json();
-      }
-      if (toolName === 'browser_get_content') {
-        const r = await fetch(`${base}/content`);
-        return await r.json();
-      }
+      // Legacy local browser tools removed — all browsing goes through sidecar
     }
 
     return { error: `Unknown tool: ${toolName}` };
