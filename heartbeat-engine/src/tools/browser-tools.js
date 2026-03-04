@@ -93,29 +93,21 @@ export const browserToolExecutors = {
       });
 
       if (data.success) {
-        // Push sidecar screenshot to dashboard Screen Viewer
+        // Push screenshot to dashboard Screen Viewer (now included in browse response)
         try {
-          const { getBrowserService } = await import('../browser/browser-service.js');
-          const browserSvc = getBrowserService();
-          const ssResp = await fetch(`${BROWSER_AGENT_URL}/screenshot`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: data.url_final, secret: BROWSER_AGENT_SECRET }),
-          });
-          if (ssResp.ok) {
-            const ssData = await ssResp.json();
-            if (ssData.success && ssData.screenshot_base64) {
-              browserSvc.isRunning = true;
-              browserSvc.currentUrl = data.url_final;
-              browserSvc.lastScreenshot = ssData.screenshot_base64;
-              browserSvc.lastScreenshotTime = Date.now();
-              browserSvc.emit('screenshot', {
-                data: ssData.screenshot_base64,
-                url: data.url_final,
-                timestamp: Date.now()
-              });
-              logger.info('Pushed sidecar screenshot to dashboard', { url: data.url_final });
-            }
+          if (data.screenshot_base64) {
+            const { getBrowserService } = await import('../browser/browser-service.js');
+            const browserSvc = getBrowserService();
+            browserSvc.isRunning = true;
+            browserSvc.currentUrl = data.url_final;
+            browserSvc.lastScreenshot = data.screenshot_base64;
+            browserSvc.lastScreenshotTime = Date.now();
+            browserSvc.emit('screenshot', {
+              data: data.screenshot_base64,
+              url: data.url_final,
+              timestamp: Date.now()
+            });
+            logger.info('Pushed screenshot to dashboard', { url: data.url_final });
           }
         } catch (ssErr) {
           logger.warn('Could not push screenshot to dashboard:', ssErr.message);
