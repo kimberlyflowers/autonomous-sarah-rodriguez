@@ -955,7 +955,7 @@ async function chatWithSarah(userMessage, history, agentConfig) {
   for (let round = 0; round < 10; round++) {
     const response = await callAnthropicWithRetry({
       model: process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001',
-      max_tokens: 1024,
+      max_tokens: 4096,
       system: systemPrompt,
       messages: currentMessages,
       tools: SARAH_TOOLS
