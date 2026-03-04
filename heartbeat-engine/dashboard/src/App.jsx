@@ -887,14 +887,12 @@ function parseMessageCards(text) {
   // Detect artifact creation — Sarah used create_artifact tool
   const artifactMatch = text.match(/Created "(.+?)".*?(?:waiting for (?:your )?approval|ready for (?:your )?review)/i)
     || text.match(/(?:I've created|I created|Here's the|I've saved|saved as|saved it to) (?:a |an |the )?(?:deliverable|artifact|file).*?"(.+?)"/i)
-    || text.match(/(?:in your Files tab|saved to (?:your )?Files|it's in (?:your )?Files)/i);
+    || text.match(/(?:in your Files tab|saved to (?:your )?Files|it's in (?:your )?Files|ready for you to review|ready for you to (?:edit|post)|you can review it|approve it)/i);
   if (artifactMatch) {
-    // Try to get the filename from the match, or use a generic name
     const name = (artifactMatch[1] || artifactMatch[2] || "").trim();
     if (name) {
       cards.push({ type: "artifact", name });
     } else {
-      // Sarah mentioned Files tab but didn't name the file — fetch latest artifact
       cards.push({ type: "artifact", name: "__latest__" });
     }
   }
@@ -1779,7 +1777,7 @@ export default function App() {
 
       {/* ── HELP BUBBLE — exact Jaden ── */}
       {!hlpO&&(
-        <button onClick={()=>setHlpO(true)} style={{position:"fixed",bottom:mob?120:24,right:mob?8:24,width:mob?44:56,height:mob?44:56,borderRadius:"50%",border:"none",background:"linear-gradient(135deg,#F4A261,#E76F8B)",cursor:"pointer",boxShadow:"0 4px 20px rgba(231,111,139,.35)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:90,transition:"transform .2s",opacity:mob?0.85:1}} onMouseEnter={e=>e.currentTarget.style.transform="scale(1.1)"} onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>
+        <button onClick={()=>setHlpO(true)} style={{position:"fixed",bottom:mob?130:80,right:mob?8:20,width:mob?44:52,height:mob?44:52,borderRadius:"50%",border:"none",background:"linear-gradient(135deg,#F4A261,#E76F8B)",cursor:"pointer",boxShadow:"0 4px 20px rgba(231,111,139,.35)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:90,transition:"transform .2s",opacity:0.85}} onMouseEnter={e=>e.currentTarget.style.transform="scale(1.1)"} onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>
           <Bloom sz={36} glow/>
         </button>
       )}
