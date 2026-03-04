@@ -17,6 +17,7 @@ import { testLettaConnection } from './memory/letta-client.js';
 import { ensureDatabaseExists } from './database/auto-setup.js';
 import dashboardRoutes from './api/dashboard.js';
 import filesRoutes from './api/files.js';
+import agentRoutes from './api/agent.js';
 import chatRoutes from './api/chat.js';
 import eventRoutes from './api/events.js';
 import executeRoutes from './api/execute.js';
@@ -165,6 +166,7 @@ app.post('/webhook/trigger', async (req, res) => {
 // Dashboard API routes
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/files', filesRoutes);
+app.use('/api/agent', agentRoutes);
 
 // Chat API routes
 app.use('/api/chat', chatRoutes);

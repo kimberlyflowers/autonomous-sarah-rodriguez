@@ -26,11 +26,11 @@ function useW() {
 /* ═══════════════════════════════════════════════════════════════
    BLOOM + FACE — exact copy from Jaden
    ═══════════════════════════════════════════════════════════════ */
-function Face({sz,agent}) {
+function Face({sz,agent,onClick,style:extraStyle}) {
   const s=sz||30;
   const ag=agent||{nm:"Sarah",img:null,grad:"linear-gradient(135deg,#F4A261,#E76F8B)"};
   if(ag.img) return(
-    <div style={{width:s,height:s,flexShrink:0}}>
+    <div onClick={onClick} style={{width:s,height:s,flexShrink:0,...(extraStyle||{})}}>
       <div style={{width:s,height:s,borderRadius:s*0.3,overflow:"hidden",boxShadow:"0 2px 8px rgba(0,0,0,.12)"}}>
         <img src={ag.img} alt={ag.nm} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
       </div>
@@ -38,7 +38,7 @@ function Face({sz,agent}) {
   );
   const ini=ag.nm.split(" ").map(w=>w[0]).join("").slice(0,2);
   return(
-    <div style={{width:s,height:s,flexShrink:0}}>
+    <div onClick={onClick} style={{width:s,height:s,flexShrink:0,...(extraStyle||{})}}>
       <div style={{width:s,height:s,borderRadius:s*0.3,background:ag.grad,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px rgba(0,0,0,.12)"}}>
         <span style={{fontSize:s*0.38,fontWeight:700,color:"#fff"}}>{ini}</span>
       </div>
@@ -1012,6 +1012,29 @@ export default function App() {
   const [sbO,setSbO]=useState(!mob?"full":"closed");
   const [stab,setStab]=useState("General");
   const [hlpO,setHlpO]=useState(false);
+  const [profileOpen,setProfileOpen]=useState(false);
+  const [profileData,setProfileData]=useState(null);
+  const [scheduledTasks,setScheduledTasks]=useState([]);
+  const [taskFormOpen,setTaskFormOpen]=useState(false);
+  const [editingProfile,setEditingProfile]=useState(false);
+  const [editTitle,setEditTitle]=useState('');
+  const [editDesc,setEditDesc]=useState('');
+  const [newTask,setNewTask]=useState({name:'',instruction:'',taskType:'content',frequency:'daily',runTime:'09:00'});
+
+  const loadProfile = async () => {
+    try {
+      const [pRes, tRes] = await Promise.all([
+        fetch('/api/agent/profile').then(r=>r.json()),
+        fetch('/api/agent/tasks').then(r=>r.json())
+      ]);
+      setProfileData(pRes);
+      setScheduledTasks(tRes.tasks||[]);
+      if(pRes.profile){
+        setEditTitle(pRes.profile.jobTitle||'');
+        setEditDesc(pRes.profile.jobDescription||'');
+      }
+    } catch(e){ console.error('Failed to load profile',e); }
+  };
   const [umO,setUmO]=useState(false);
   const [projO,setProjO]=useState(false);
   const [activeProj,setActiveProj]=useState("Petal Core Beauty");
@@ -1307,9 +1330,9 @@ export default function App() {
             <div style={{height:"calc(100vh - 52px)",display:"flex",flexDirection:"column",overflow:"hidden"}}>
               {!isNew&&(
                 <div style={{padding:mob?"8px 12px":"10px 16px",display:"flex",alignItems:"center",gap:mob?8:10,borderBottom:"1px solid "+c.ln,background:c.cd,flexShrink:0}}>
-                  <Face sz={mob?28:32} agent={agent}/>
+                  <Face sz={mob?28:32} agent={agent} onClick={()=>{loadProfile();setProfileOpen(true);}} style={{cursor:'pointer'}}/>
                   <div style={{flex:1}}>
-                    <div style={{fontSize:mob?14:15,fontWeight:700,color:c.tx}}>{agent.nm}</div>
+                    <div onClick={()=>{loadProfile();setProfileOpen(true);}} style={{fontSize:mob?14:15,fontWeight:700,color:c.tx,cursor:'pointer'}}>{agent.nm}</div>
                     <div style={{fontSize:11,color:connected?c.gr:c.fa,display:"flex",alignItems:"center",gap:5}}>
                       <span style={{width:6,height:6,borderRadius:"50%",background:connected?c.gr:c.fa,animation:connected?"pulse 1.5s ease infinite":"none"}}/>
                       {connected?"Online":"Offline"}
@@ -1766,6 +1789,150 @@ export default function App() {
       {scrM==="full"&&<Screen c={c} mob={mob} mode="full" setMode={setScrM}/>}
 
       {/* ── HELP BUBBLE — exact Jaden ── */}
+      {/* ══ AGENT PROFILE PANEL ══ */}
+      {profileOpen&&(
+        <div onClick={()=>{setProfileOpen(false);setEditingProfile(false);setTaskFormOpen(false);}} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:200,display:"flex",justifyContent:"flex-end"}}>
+          <div onClick={e=>e.stopPropagation()} style={{width:mob?"100%":420,height:"100%",background:c.cd,borderLeft:"1px solid "+c.ln,display:"flex",flexDirection:"column",overflow:"hidden",animation:"slideIn .2s ease"}}>
+            {/* Header */}
+            <div style={{padding:"20px",background:"linear-gradient(135deg,#F4A261,#E76F8B)",flexShrink:0}}>
+              <div style={{display:"flex",alignItems:"center",gap:14}}>
+                <Face sz={56} agent={agent}/>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:20,fontWeight:700,color:"#fff"}}>{agent.nm}</div>
+                  <div style={{fontSize:13,color:"rgba(255,255,255,.85)"}}>{profileData?.profile?.jobTitle||'AI Employee'}</div>
+                  <div style={{fontSize:11,color:"rgba(255,255,255,.7)",marginTop:2,display:"flex",alignItems:"center",gap:5}}>
+                    <span style={{width:6,height:6,borderRadius:"50%",background:"#4ade80"}}/>Online
+                  </div>
+                </div>
+                <button onClick={()=>{setProfileOpen(false);setEditingProfile(false);setTaskFormOpen(false);}} style={{width:32,height:32,borderRadius:8,border:"none",background:"rgba(255,255,255,.2)",cursor:"pointer",color:"#fff",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+              </div>
+              {/* Stats row */}
+              {profileData?.stats&&(
+                <div style={{display:"flex",gap:16,marginTop:14}}>
+                  {[{l:"Messages",v:profileData.stats.messages},{l:"Files",v:profileData.stats.files},{l:"Tasks",v:profileData.stats.activeTasks}].map((s,i)=>(
+                    <div key={i} style={{textAlign:"center"}}>
+                      <div style={{fontSize:18,fontWeight:700,color:"#fff"}}>{s.v}</div>
+                      <div style={{fontSize:10,color:"rgba(255,255,255,.7)"}}>{s.l}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Scrollable content */}
+            <div style={{flex:1,overflowY:"auto",padding:"0"}}>
+              {/* Job Description */}
+              <div style={{padding:"16px 20px",borderBottom:"1px solid "+c.ln}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+                  <span style={{fontSize:13,fontWeight:700,color:c.tx,textTransform:"uppercase",letterSpacing:"0.5px"}}>Job Description</span>
+                  <button onClick={()=>{
+                    if(editingProfile){
+                      fetch('/api/agent/profile',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({jobTitle:editTitle,jobDescription:editDesc})})
+                        .then(()=>loadProfile());
+                    }
+                    setEditingProfile(!editingProfile);
+                  }} style={{padding:"4px 10px",borderRadius:6,border:"1px solid "+c.ln,background:"transparent",cursor:"pointer",fontSize:11,fontWeight:600,color:c.ac}}>
+                    {editingProfile?'Save':'Edit'}
+                  </button>
+                </div>
+                {editingProfile?(
+                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                    <input value={editTitle} onChange={e=>setEditTitle(e.target.value)} placeholder="Job title..." style={{padding:"8px 12px",borderRadius:8,border:"1.5px solid "+c.ln,background:c.inp,fontSize:13,color:c.tx,fontFamily:"inherit"}}/>
+                    <textarea value={editDesc} onChange={e=>setEditDesc(e.target.value)} placeholder="What does this agent do? Describe their responsibilities..." rows={4} style={{padding:"8px 12px",borderRadius:8,border:"1.5px solid "+c.ln,background:c.inp,fontSize:13,color:c.tx,fontFamily:"inherit",resize:"vertical"}}/>
+                  </div>
+                ):(
+                  <div>
+                    <div style={{fontSize:15,fontWeight:600,color:c.tx,marginBottom:4}}>{profileData?.profile?.jobTitle||'AI Employee'}</div>
+                    <div style={{fontSize:13,color:c.so,lineHeight:1.6}}>{profileData?.profile?.jobDescription||'Click Edit to add a job description for this agent.'}</div>
+                  </div>
+                )}
+              </div>
+
+              {/* Scheduled Tasks */}
+              <div style={{padding:"16px 20px",borderBottom:"1px solid "+c.ln}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+                  <span style={{fontSize:13,fontWeight:700,color:c.tx,textTransform:"uppercase",letterSpacing:"0.5px"}}>Scheduled Tasks</span>
+                  <button onClick={()=>setTaskFormOpen(!taskFormOpen)} style={{padding:"4px 10px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#F4A261,#E76F8B)",cursor:"pointer",fontSize:11,fontWeight:700,color:"#fff"}}>
+                    {taskFormOpen?'Cancel':'+ Add'}
+                  </button>
+                </div>
+
+                {/* New task form */}
+                {taskFormOpen&&(
+                  <div style={{padding:12,borderRadius:10,border:"1px solid "+c.ln,background:c.sf,marginBottom:12}}>
+                    <input value={newTask.name} onChange={e=>setNewTask(p=>({...p,name:e.target.value}))} placeholder="Task name..." style={{width:"100%",padding:"8px 10px",borderRadius:6,border:"1px solid "+c.ln,background:c.inp,fontSize:13,color:c.tx,marginBottom:8,fontFamily:"inherit",boxSizing:"border-box"}}/>
+                    <textarea value={newTask.instruction} onChange={e=>setNewTask(p=>({...p,instruction:e.target.value}))} placeholder="What should Sarah do?" rows={3} style={{width:"100%",padding:"8px 10px",borderRadius:6,border:"1px solid "+c.ln,background:c.inp,fontSize:13,color:c.tx,marginBottom:8,fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
+                    <div style={{display:"flex",gap:6,marginBottom:8}}>
+                      <select value={newTask.taskType} onChange={e=>setNewTask(p=>({...p,taskType:e.target.value}))} style={{flex:1,padding:"7px 8px",borderRadius:6,border:"1px solid "+c.ln,background:c.inp,fontSize:12,color:c.tx}}>
+                        <option value="content">Content</option>
+                        <option value="email">Email</option>
+                        <option value="research">Research</option>
+                        <option value="crm">CRM</option>
+                        <option value="custom">Custom</option>
+                      </select>
+                      <select value={newTask.frequency} onChange={e=>setNewTask(p=>({...p,frequency:e.target.value}))} style={{flex:1,padding:"7px 8px",borderRadius:6,border:"1px solid "+c.ln,background:c.inp,fontSize:12,color:c.tx}}>
+                        <option value="daily">Daily</option>
+                        <option value="weekdays">Weekdays</option>
+                        <option value="weekly">Weekly</option>
+                        <option value="monthly">Monthly</option>
+                      </select>
+                      <input type="time" value={newTask.runTime} onChange={e=>setNewTask(p=>({...p,runTime:e.target.value}))} style={{width:90,padding:"7px 8px",borderRadius:6,border:"1px solid "+c.ln,background:c.inp,fontSize:12,color:c.tx}}/>
+                    </div>
+                    <button onClick={async()=>{
+                      if(!newTask.name||!newTask.instruction) return;
+                      await fetch('/api/agent/tasks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(newTask)});
+                      setNewTask({name:'',instruction:'',taskType:'content',frequency:'daily',runTime:'09:00'});
+                      setTaskFormOpen(false);
+                      loadProfile();
+                    }} disabled={!newTask.name||!newTask.instruction} style={{width:"100%",padding:"9px 0",borderRadius:8,border:"none",background:newTask.name&&newTask.instruction?"linear-gradient(135deg,#34a853,#2d9248)":"#555",cursor:newTask.name&&newTask.instruction?"pointer":"not-allowed",fontSize:13,fontWeight:700,color:"#fff"}}>Create Task</button>
+                  </div>
+                )}
+
+                {/* Task list */}
+                {scheduledTasks.length===0&&!taskFormOpen&&(
+                  <div style={{textAlign:"center",padding:"16px 0",color:c.so,fontSize:12}}>No scheduled tasks yet. Add one or tell Sarah in chat.</div>
+                )}
+                {scheduledTasks.map(t=>(
+                  <div key={t.taskId} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",borderBottom:"1px solid "+c.ln+"40"}}>
+                    <button onClick={async()=>{
+                      await fetch(`/api/agent/tasks/${t.taskId}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:!t.enabled})});
+                      loadProfile();
+                    }} style={{width:20,height:20,borderRadius:4,border:"1.5px solid "+(t.enabled?c.gr:c.ln),background:t.enabled?"rgba(52,168,83,0.15)":"transparent",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,flexShrink:0}}>
+                      {t.enabled&&'✓'}
+                    </button>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:13,fontWeight:600,color:t.enabled?c.tx:c.so,opacity:t.enabled?1:0.5}}>{t.name}</div>
+                      <div style={{fontSize:11,color:c.so}}>{t.frequency} at {t.runTime || '9:00 AM'}{t.runCount>0?' · ran '+t.runCount+'x':''}</div>
+                    </div>
+                    <button onClick={async()=>{
+                      if(confirm('Delete this task?')){
+                        await fetch(`/api/agent/tasks/${t.taskId}`,{method:'DELETE'});
+                        loadProfile();
+                      }
+                    }} style={{padding:"2px 6px",borderRadius:4,border:"none",background:"transparent",cursor:"pointer",fontSize:12,color:"#ea4335"}}>✕</button>
+                  </div>
+                ))}
+              </div>
+
+              {/* Connected Tools */}
+              <div style={{padding:"16px 20px"}}>
+                <div style={{fontSize:13,fontWeight:700,color:c.tx,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:10}}>Connected Tools</div>
+                {(profileData?.connectedTools||[]).map((tool,i)=>(
+                  <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:i<(profileData?.connectedTools?.length||0)-1?"1px solid "+c.ln+"40":"none"}}>
+                    <span style={{fontSize:18}}>{tool.icon}</span>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:13,fontWeight:600,color:tool.connected?c.tx:c.so}}>{tool.name}</div>
+                      <div style={{fontSize:11,color:c.so}}>{tool.capabilities.join(', ')}</div>
+                    </div>
+                    <span style={{fontSize:11,fontWeight:600,color:tool.connected?c.gr:"#666"}}>{tool.connected?'✓ Active':'Coming soon'}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ══ FILE PREVIEW MODAL ══ */}
       {previewFile&&(
         <div onClick={()=>setPreviewFile(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:mob?8:40}}>

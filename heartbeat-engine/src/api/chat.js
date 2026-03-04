@@ -801,7 +801,7 @@ const SARAH_TOOLS = [
   // ── ARTIFACTS — create deliverables for client review ────────────────────
   {
     name: "create_artifact",
-    description: "Create a deliverable file for the client to review, approve, and download. Use this whenever you write substantial content: blog posts, social media captions, email campaigns, reports, landing page copy, SOPs, scripts, HTML pages, code, or any content the client will want to keep. The artifact appears in chat for approval, then moves to the Files tab. For images generated with image_generate, those are automatically saved — use this tool for TEXT-based content.",
+    description: "Create a deliverable file for the client to review and download. Use this whenever you write substantial content: blog posts, social media captions, email campaigns, reports, landing page copy, SOPs, scripts, HTML pages, code, or any content the client will want to keep. Files are automatically saved to the Files tab.",
     input_schema: {
       type: "object",
       properties: {
@@ -811,6 +811,22 @@ const SARAH_TOOLS = [
         fileType: { type: "string", enum: ["text", "html", "code", "markdown"], description: "Content type", default: "markdown" }
       },
       required: ["name", "description", "content"]
+    }
+  },
+  {
+    name: "create_scheduled_task",
+    description: "Create a recurring scheduled task for yourself. Use when the client asks you to do something regularly — daily blog posts, weekly newsletters, daily lead checks, etc. This adds it to your daily task schedule.",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Short task name, e.g. 'Daily blog post'" },
+        description: { type: "string", description: "What this task accomplishes" },
+        taskType: { type: "string", enum: ["content", "email", "research", "crm", "custom"], description: "Category of task" },
+        instruction: { type: "string", description: "Detailed instruction for what to do each time this runs" },
+        frequency: { type: "string", enum: ["daily", "weekdays", "weekly", "monthly"], description: "How often to run" },
+        runTime: { type: "string", description: "Time to run in HH:MM format, e.g. '09:00'" }
+      },
+      required: ["name", "instruction", "frequency"]
     }
   }
 ];
@@ -873,6 +889,31 @@ async function executeTool(toolName, toolInput) {
         };
       }
       return { success: false, error: data.error || 'Failed to create artifact' };
+    }
+
+    // Scheduled task creation
+    if (toolName === 'create_scheduled_task') {
+      const port = process.env.PORT || 3000;
+      const resp = await fetch(`http://localhost:${port}/api/agent/tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: toolInput.name,
+          description: toolInput.description || '',
+          taskType: toolInput.taskType || 'custom',
+          instruction: toolInput.instruction,
+          frequency: toolInput.frequency || 'daily',
+          runTime: toolInput.runTime || '09:00'
+        })
+      });
+      const data = await resp.json();
+      if (data.success) {
+        return {
+          success: true,
+          message: `Scheduled task "${toolInput.name}" created — runs ${toolInput.frequency || 'daily'} at ${toolInput.runTime || '9:00 AM'}.`
+        };
+      }
+      return { success: false, error: data.error || 'Failed to create scheduled task' };
     }
 
     // Browser tools — Sarah's own computer
