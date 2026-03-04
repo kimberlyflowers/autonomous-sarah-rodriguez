@@ -879,35 +879,96 @@ function parseMessageCards(text) {
   return cards;
 }
 
-function ArtifactCard({ name, c, onApprove, onReject, onPreview, status }) {
+function ArtifactCard({ name, c, onApprove, onReject, status }) {
+  const [expanded, setExpanded] = useState(false);
+  const [content, setContent] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [artFileId, setArtFileId] = useState(null);
+
   const ext = name.split('.').pop()?.toLowerCase() || '';
   const icon = ext === 'html' ? '🌐' : ext === 'md' ? '📝' : ext === 'js' || ext === 'py' ? '💻' : '📄';
   const isApproved = status === 'approved';
   const isRejected = status === 'rejected';
 
+  // Fetch content and fileId when expanding
+  const loadContent = async () => {
+    if (content) { setExpanded(!expanded); return; }
+    setLoading(true);
+    try {
+      const r = await fetch('/api/files/artifacts?limit=10');
+      const d = await r.json();
+      const match = d.artifacts?.find(a => a.name === name);
+      if (match) {
+        setArtFileId(match.fileId);
+        const pr = await fetch(`/api/files/preview/${match.fileId}`);
+        if (pr.headers.get('content-type')?.includes('json')) {
+          const pd = await pr.json();
+          setContent(pd.content || 'Preview not available');
+        } else {
+          setContent('Binary file — click Download to view');
+        }
+      } else {
+        setContent('Artifact not found — it may still be saving.');
+      }
+    } catch (e) { setContent('Failed to load preview'); }
+    setLoading(false);
+    setExpanded(true);
+  };
+
   return (
-    <div style={{
-      display:"flex",alignItems:"center",gap:10,padding:"10px 14px",marginTop:8,
-      borderRadius:12,background:c.gf || "rgba(244,162,97,0.08)",border:"1px solid rgba(244,162,97,0.3)",
-    }}>
-      <div style={{width:32,height:32,borderRadius:8,background:"rgba(244,162,97,0.15)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-        <span style={{fontSize:16}}>{icon}</span>
-      </div>
-      <div style={{flex:1,minWidth:0}}>
-        <div style={{fontSize:11,fontWeight:700,color:c.ac||"#F4A261",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:1}}>
-          {isApproved ? "✅ Approved" : isRejected ? "❌ Rejected" : "📎 New Artifact"}
+    <div style={{marginTop:8,borderRadius:14,border:"1px solid "+(isApproved?"rgba(52,168,83,0.4)":isRejected?"rgba(234,67,53,0.3)":"rgba(244,162,97,0.4)"),background:c.cd,overflow:"hidden"}}>
+      {/* Header bar */}
+      <div onClick={loadContent} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",cursor:"pointer",background:isApproved?"rgba(52,168,83,0.06)":isRejected?"rgba(234,67,53,0.04)":"rgba(244,162,97,0.06)"}}>
+        <span style={{fontSize:18}}>{icon}</span>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:11,fontWeight:700,color:isApproved?c.gr:isRejected?"#ea4335":c.ac,textTransform:"uppercase",letterSpacing:"0.5px"}}>
+            {isApproved ? "✅ Approved" : isRejected ? "❌ Rejected" : "📎 Artifact"}
+          </div>
+          <div style={{fontSize:13,fontWeight:600,color:c.tx,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{name}</div>
         </div>
-        <div style={{fontSize:13,fontWeight:600,color:c.tx,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{name}</div>
+        <span style={{fontSize:12,color:c.so,transform:expanded?"rotate(180deg)":"rotate(0deg)",transition:"transform .2s"}}>▼</span>
       </div>
-      {!isApproved && !isRejected && (
-        <div style={{display:"flex",gap:6,flexShrink:0}}>
-          <button onClick={onPreview} style={{padding:"5px 10px",borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:11,fontWeight:600,color:c.so}}>Preview</button>
-          <button onClick={onApprove} style={{padding:"5px 12px",borderRadius:8,border:"none",background:"linear-gradient(135deg,#34a853,#2d9248)",cursor:"pointer",fontSize:11,fontWeight:700,color:"#fff"}}>Approve</button>
-          <button onClick={onReject} style={{padding:"5px 10px",borderRadius:8,border:"1px solid rgba(234,67,53,0.4)",background:"rgba(234,67,53,0.08)",cursor:"pointer",fontSize:11,fontWeight:600,color:"#ea4335"}}>Reject</button>
+
+      {/* Expandable content preview */}
+      {expanded && (
+        <div>
+          <div style={{maxHeight:300,overflowY:"auto",padding:"12px 16px",borderTop:"1px solid "+c.ln,background:c.bg,fontFamily:"'Courier New',monospace",fontSize:12,lineHeight:1.6,color:c.tx,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>
+            {loading ? "Loading..." : content}
+          </div>
+          {/* Action buttons */}
+          <div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",borderTop:"1px solid "+c.ln,background:isApproved?"rgba(52,168,83,0.06)":"rgba(244,162,97,0.06)"}}>
+            {!isApproved && !isRejected && (
+              <>
+                <button onClick={async()=>{
+                  if(!artFileId){
+                    const r=await fetch('/api/files/artifacts?limit=10').then(r=>r.json());
+                    const m=r.artifacts?.find(a=>a.name===name);
+                    if(m) setArtFileId(m.fileId);
+                  }
+                  if(artFileId||true){
+                    const fid=artFileId||(await fetch('/api/files/artifacts?limit=10').then(r=>r.json()).then(d=>d.artifacts?.find(a=>a.name===name)?.fileId));
+                    if(fid){
+                      await fetch(`/api/files/artifacts/${fid}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'approved'})});
+                      onApprove?.();
+                    }
+                  }
+                }} style={{padding:"6px 16px",borderRadius:8,border:"none",background:"linear-gradient(135deg,#34a853,#2d9248)",cursor:"pointer",fontSize:12,fontWeight:700,color:"#fff"}}>✓ Approve & Save to Files</button>
+                <button onClick={async()=>{
+                  const fid=artFileId||(await fetch('/api/files/artifacts?limit=10').then(r=>r.json()).then(d=>d.artifacts?.find(a=>a.name===name)?.fileId));
+                  if(fid){
+                    await fetch(`/api/files/artifacts/${fid}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'rejected'})});
+                    onReject?.();
+                  }
+                }} style={{padding:"6px 12px",borderRadius:8,border:"1px solid rgba(234,67,53,0.4)",background:"rgba(234,67,53,0.06)",cursor:"pointer",fontSize:12,fontWeight:600,color:"#ea4335"}}>✗ Reject</button>
+              </>
+            )}
+            {isApproved && artFileId && (
+              <a href={`/api/files/download/${artFileId}`} download style={{padding:"6px 16px",borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:12,fontWeight:600,color:c.ac,textDecoration:"none"}}>↓ Download</a>
+            )}
+            <span style={{flex:1}}/>
+            <button onClick={()=>setExpanded(false)} style={{padding:"4px 10px",borderRadius:6,border:"1px solid "+c.ln,background:"transparent",cursor:"pointer",fontSize:11,color:c.so}}>Collapse</button>
+          </div>
         </div>
-      )}
-      {isApproved && (
-        <a href={`/api/files/download/${name}`} style={{padding:"5px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:11,fontWeight:600,color:c.ac,textDecoration:"none"}}>Download</a>
       )}
     </div>
   );
@@ -1340,31 +1401,10 @@ export default function App() {
                                 : cd2.type==="artifact"
                                 ? <ArtifactCard key={ci} name={cd2.name} c={c}
                                     status={cd2._status}
-                                    onPreview={()=>{window.open(`/api/files/preview/${encodeURIComponent(cd2.name)}`,'_blank')}}
-                                    onApprove={async()=>{
-                                      try{
-                                        const arts=await fetch('/api/files/artifacts?limit=5').then(r=>r.json());
-                                        const match=arts.artifacts?.find(a=>a.name===cd2.name && a.status==='pending');
-                                        if(match){
-                                          await fetch(`/api/files/artifacts/${match.fileId}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'approved'})});
-                                          cd2._status='approved';
-                                          setMessages(p=>[...p]);
-                                        }
-                                      }catch(e){console.error(e)}
-                                    }}
-                                    onReject={async()=>{
-                                      try{
-                                        const arts=await fetch('/api/files/artifacts?limit=5').then(r=>r.json());
-                                        const match=arts.artifacts?.find(a=>a.name===cd2.name && a.status==='pending');
-                                        if(match){
-                                          await fetch(`/api/files/artifacts/${match.fileId}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'rejected'})});
-                                          cd2._status='rejected';
-                                          setMessages(p=>[...p]);
-                                        }
-                                      }catch(e){console.error(e)}
-                                    }}
+                                    onApprove={()=>{cd2._status='approved';setMessages(p=>[...p]);}}
+                                    onReject={()=>{cd2._status='rejected';setMessages(p=>[...p]);}}
                                   />
-                                : <EmailCard key={ci} subject={cd2.subject} c={c} onReview={()=>alert("Email review panel coming soon — will open full draft for approval")}/>
+                                : <EmailCard key={ci} subject={cd2.subject} c={c} onReview={()=>alert("Email review panel coming soon")}/>
                               )}
                             </div>
                           )}
