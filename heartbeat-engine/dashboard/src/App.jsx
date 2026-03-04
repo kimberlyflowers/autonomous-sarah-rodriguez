@@ -1003,8 +1003,18 @@ function ArtifactCard({ name, c, onApprove, onReject, status }) {
       {/* Expandable content preview */}
       {expanded && (
         <div>
-          <div style={{maxHeight:300,overflowY:"auto",padding:"12px 16px",borderTop:"1px solid "+c.ln,background:c.bg,fontFamily:"'Courier New',monospace",fontSize:12,lineHeight:1.6,color:c.tx,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>
-            {loading ? "Loading..." : content || (artData ? "Click to load preview" : "Searching for artifact...")}
+          <div style={{maxHeight:400,overflowY:"auto",padding:"16px 20px",borderTop:"1px solid "+c.ln,background:c.bg,fontSize:14,lineHeight:1.7,color:c.tx,wordBreak:"break-word"}}
+            dangerouslySetInnerHTML={{__html: (loading ? "Loading..." : content || "Click to load preview")
+              .replace(/^# (.+)$/gm, '<h1 style="font-size:20px;font-weight:700;margin:16px 0 8px">$1</h1>')
+              .replace(/^## (.+)$/gm, '<h2 style="font-size:17px;font-weight:700;margin:14px 0 6px">$1</h2>')
+              .replace(/^### (.+)$/gm, '<h3 style="font-size:15px;font-weight:700;margin:12px 0 4px">$1</h3>')
+              .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+              .replace(/\*(.+?)\*/g, '<em>$1</em>')
+              .replace(/^- (.+)$/gm, '<li style="margin-left:20px;margin-bottom:4px">$1</li>')
+              .replace(/^(\d+)\. (.+)$/gm, '<li style="margin-left:20px;margin-bottom:4px"><strong>$1.</strong> $2</li>')
+              .replace(/\n\n/g, '<br/><br/>')
+              .replace(/\n/g, '<br/>')
+            }}/>
           </div>
           {/* Action buttons */}
           <div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",borderTop:"1px solid "+c.ln,background:isApproved?"rgba(52,168,83,0.06)":"rgba(244,162,97,0.06)"}}>
@@ -1094,6 +1104,7 @@ export default function App() {
   const [files,setFiles]=useState([]);
   const [filesLoading,setFilesLoading]=useState(false);
   const [filesRefresh,setFilesRefresh]=useState(0);
+  const [previewFile,setPreviewFile]=useState(null); // {name, content, fileId}
   const [heartbeatInterval,setHeartbeatInterval]=useState("0 */6 * * *");
   const [heartbeatEnabled,setHeartbeatEnabled]=useState(true);
   const [cronJobs,setCronJobs]=useState([
@@ -1647,7 +1658,17 @@ export default function App() {
                         onMouseLeave={e=>e.currentTarget.style.borderColor=c.ln}>
                         {/* Preview area */}
                         <div style={{height:120,background:c.sf,display:"flex",alignItems:"center",justifyContent:"center",borderBottom:"1px solid "+c.ln,cursor:"pointer",position:"relative"}}
-                          onClick={()=>window.open(`/api/files/preview/${f.fileId}`,'_blank')}>
+                          onClick={async()=>{
+                            try{
+                              const pr=await fetch(`/api/files/preview/${f.fileId}`);
+                              if(pr.headers.get('content-type')?.includes('json')){
+                                const pd=await pr.json();
+                                setPreviewFile({name:f.name,content:pd.content||'No content',fileId:f.fileId,fileType:f.fileType});
+                              } else {
+                                setPreviewFile({name:f.name,content:'Binary file — use Download button',fileId:f.fileId,fileType:f.fileType});
+                              }
+                            }catch{setPreviewFile({name:f.name,content:'Failed to load preview',fileId:f.fileId});}
+                          }}>
                           {f.fileType==='image' ? (
                             <img src={`/api/files/preview/${f.fileId}`} alt={f.name} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
                           ) : (
@@ -1776,6 +1797,34 @@ export default function App() {
       {scrM==="full"&&<Screen c={c} mob={mob} mode="full" setMode={setScrM}/>}
 
       {/* ── HELP BUBBLE — exact Jaden ── */}
+      {/* ══ FILE PREVIEW MODAL ══ */}
+      {previewFile&&(
+        <div onClick={()=>setPreviewFile(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:mob?8:40}}>
+          <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:800,maxHeight:"90vh",background:c.cd,borderRadius:16,border:"1px solid "+c.ln,display:"flex",flexDirection:"column",overflow:"hidden",boxShadow:"0 20px 60px rgba(0,0,0,.4)"}}>
+            <div style={{padding:"14px 20px",borderBottom:"1px solid "+c.ln,display:"flex",alignItems:"center",gap:10,background:c.sf}}>
+              <span style={{fontSize:18}}>📄</span>
+              <div style={{flex:1}}>
+                <div style={{fontSize:15,fontWeight:700,color:c.tx}}>{previewFile.name}</div>
+              </div>
+              <a href={`/api/files/download/${previewFile.fileId}`} download style={{padding:"6px 14px",borderRadius:8,border:"1px solid "+c.ln,background:c.cd,fontSize:12,fontWeight:600,color:c.ac,textDecoration:"none",marginRight:8}}>↓ Download</a>
+              <button onClick={()=>setPreviewFile(null)} style={{width:32,height:32,borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:16,color:c.so,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+            </div>
+            <div style={{flex:1,overflowY:"auto",padding:"20px 24px",fontSize:15,lineHeight:1.8,color:c.tx}}
+              dangerouslySetInnerHTML={{__html: (previewFile.content||'')
+                .replace(/^# (.+)$/gm, '<h1 style="font-size:24px;font-weight:700;margin:20px 0 10px">$1</h1>')
+                .replace(/^## (.+)$/gm, '<h2 style="font-size:20px;font-weight:700;margin:16px 0 8px">$1</h2>')
+                .replace(/^### (.+)$/gm, '<h3 style="font-size:17px;font-weight:600;margin:14px 0 6px">$1</h3>')
+                .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\*(.+?)\*/g, '<em>$1</em>')
+                .replace(/^- (.+)$/gm, '<li style="margin-left:20px;margin-bottom:6px">$1</li>')
+                .replace(/^(\d+)\. (.+)$/gm, '<li style="margin-left:20px;margin-bottom:6px"><strong>$1.</strong> $2</li>')
+                .replace(/\n\n/g, '<br/><br/>')
+                .replace(/\n/g, '<br/>')
+              }}/>
+          </div>
+        </div>
+      )}
+
       {!hlpO&&(
         <button onClick={()=>setHlpO(true)} style={{position:"fixed",bottom:mob?130:80,right:mob?8:20,width:mob?44:52,height:mob?44:52,borderRadius:"50%",border:"none",background:"linear-gradient(135deg,#F4A261,#E76F8B)",cursor:"pointer",boxShadow:"0 4px 20px rgba(231,111,139,.35)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:90,transition:"transform .2s",opacity:0.85}} onMouseEnter={e=>e.currentTarget.style.transform="scale(1.1)"} onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>
           <Bloom sz={36} glow/>
