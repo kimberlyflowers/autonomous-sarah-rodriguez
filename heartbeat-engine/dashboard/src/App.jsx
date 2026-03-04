@@ -114,6 +114,7 @@ function useAgentOnline() {
 function useSarahChat() {
   const [messages,setMessages] = useState([]);
   const [loading,setLoading] = useState(false);
+  const [workingStatus,setWorkingStatus] = useState("");
   const [sessions,setSessions] = useState([]);
   const [currentSessionId,setCurrentSessionId] = useState(null);
   const sid = useRef(null);
@@ -180,24 +181,37 @@ function useSarahChat() {
 
   const send = async (text) => {
     if(!text.trim()) return false;
-    // Auto-create session if none active
     if(!sid.current) { const id="session-"+Date.now(); sid.current=id; setCurrentSessionId(id); }
     const ts = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
     setMessages(p=>[...p,{id:Date.now(),b:false,t:text,tm:ts}]);
     setLoading(true);
+    setWorkingStatus("Understanding your request...");
+    
+    // Simulate progress stages while waiting for response
+    const progressStages = [
+      {delay:1500, msg:"Analyzing task type..."},
+      {delay:3500, msg:"Loading relevant skills..."},
+      {delay:6000, msg:"Drafting response..."},
+      {delay:12000, msg:"Refining output..."},
+      {delay:20000, msg:"Almost done..."},
+    ];
+    const timers = progressStages.map(s=>setTimeout(()=>setWorkingStatus(s.msg),s.delay));
+    
     try {
       const res = await fetch("/api/chat/message",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:text,sessionId:sid.current})});
       const data = await res.json();
+      timers.forEach(clearTimeout);
       const ts2 = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
-      setMessages(p=>[...p,{id:Date.now(),b:true,t:(data.response||data.message||"Done.").replace(/\s*\[Session context[\s\S]*$/,'').replace(/\s*\[Tool:.*?\]\s*/g,'').trim(),tm:ts2}]);
-      fetchSessions(); // refresh sidebar immediately
-      setTimeout(fetchSessions, 3000); // re-fetch after AI title generates
+      setMessages(p=>[...p,{id:Date.now(),b:true,t:(data.response||data.message||"Done.").replace(/\s*\[Session context[\s\S]*$/,'').replace(/\s*\[Tool:.*?\]\s*/g,'').trim(),tm:ts2,skill:data.skillUsed||null}]);
+      fetchSessions();
+      setTimeout(fetchSessions, 3000);
       return true;
     } catch {
+      timers.forEach(clearTimeout);
       const ts2 = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
       setMessages(p=>[...p,{id:Date.now(),b:true,t:"Connection issue — please try again.",tm:ts2}]);
       return false;
-    } finally { setLoading(false); }
+    } finally { setLoading(false); setWorkingStatus(""); }
   };
 
   const sendFiles = async (files, text='') => {
@@ -227,7 +241,7 @@ function useSarahChat() {
     } finally { setLoading(false); }
   };
 
-  return {messages,setMessages,send,sendFiles,loading,sessions,currentSessionId,newSession,loadSession,deleteSession,fetchSessions};
+  return {messages,setMessages,send,sendFiles,loading,workingStatus,sessions,currentSessionId,newSession,loadSession,deleteSession,fetchSessions};
 }
 
 
@@ -1408,7 +1422,7 @@ export default function App() {
   const sse=useSSE();
   const agentOnline=useAgentOnline();
   const {crmUrl,contactsUrl}=useCRMLink();
-  const {messages,setMessages,send,sendFiles,loading,sessions,currentSessionId,newSession,loadSession,deleteSession,fetchSessions}=useSarahChat();
+  const {messages,setMessages,send,sendFiles,loading,workingStatus,sessions,currentSessionId,newSession,loadSession,deleteSession,fetchSessions}=useSarahChat();
   // Periodically refresh session titles (AI title generates async after first message)
   useEffect(()=>{ const t=setInterval(fetchSessions,8000); return()=>clearInterval(t); },[]);
   const connected=agentOnline; // true online/offline from health poll
@@ -1538,6 +1552,7 @@ export default function App() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
         @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+        @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
         @keyframes pop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
         @keyframes bloomGlow{0%,100%{opacity:.5;transform:scale(1)}50%{opacity:1;transform:scale(1.15)}}
         @keyframes bloomieWiggle{0%,100%{transform:rotate(0deg)}25%{transform:rotate(-3deg)}75%{transform:rotate(3deg)}}
@@ -1846,8 +1861,17 @@ export default function App() {
                       {loading&&(
                         <div style={{display:"flex",justifyContent:"flex-start",marginBottom:14}}>
                           <div style={{marginRight:8,marginTop:2}}><Face sz={28} agent={agent}/></div>
-                          <div style={{padding:"12px 16px",borderRadius:"6px 18px 18px 18px",background:c.cd,border:"1px solid "+c.ln,display:"flex",gap:4,alignItems:"center"}}>
-                            {[0,1,2].map(i=><span key={i} style={{width:6,height:6,borderRadius:"50%",background:c.ac,animation:`pulse 1.2s ease ${i*0.2}s infinite`}}/>)}
+                          <div style={{padding:"14px 18px",borderRadius:"6px 18px 18px 18px",background:c.cd,border:"1px solid "+c.ln,minWidth:200}}>
+                            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                              <span style={{width:8,height:8,borderRadius:"50%",background:c.ac,animation:"pulse 1.2s ease infinite"}}/>
+                              <span style={{fontSize:13,fontWeight:600,color:c.tx}}>Working on it...</span>
+                            </div>
+                            <div style={{fontSize:11,color:c.so,lineHeight:1.5}}>
+                              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                                <span style={{animation:"spin 1.5s linear infinite",display:"inline-block"}}>⚙️</span>
+                                <span>{workingStatus||"Understanding your request..."}</span>
+                              </div>
+                            </div>
                           </div>
                         </div>
                       )}
