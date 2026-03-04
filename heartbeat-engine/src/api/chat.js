@@ -1378,6 +1378,8 @@ router.post('/message', async (req, res) => {
     }
 
     const response = await chatWithSarah(enrichedMessage, history, agentConfig);
+    logger.info(`💬 Chat [${sessionId}] User: ${message.slice(0, 100)}${message.length > 100 ? '...' : ''}`);
+    logger.info(`💬 Chat [${sessionId}] Sarah: ${response.replace(/\[Session context[\s\S]*$/, '').slice(0, 100)}${response.length > 100 ? '...' : ''}`);
     await saveMessages(pool, sessionId, message, response);
 
     // Generate a smart title after the first message (history was empty = first exchange)

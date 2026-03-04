@@ -246,7 +246,7 @@ async def browse(req: BrowseRequest):
 async def screenshot(req: ScreenshotRequest):
     """
     Take a screenshot of a URL via Browserless.
-    Returns base64-encoded PNG.
+    Navigates to the URL, takes screenshot, and leaves page alive for Screen Viewer.
     """
     check_auth(req.secret)
 
@@ -261,10 +261,31 @@ async def screenshot(req: ScreenshotRequest):
 
         async with async_playwright() as p:
             browser = await p.chromium.connect_over_cdp(cdp_url)
-            context = await browser.new_context(viewport={"width": 1280, "height": 720})
-            page = await context.new_page()
-            await page.goto(req.url, wait_until="networkidle", timeout=30000)
-            screenshot_bytes = await page.screenshot(type="png", full_page=False)
+
+            # Try to find an existing page already on this URL
+            target_page = None
+            for ctx in browser.contexts:
+                for page in ctx.pages:
+                    try:
+                        if page.url and req.url in page.url:
+                            target_page = page
+                            break
+                    except Exception:
+                        pass
+                if target_page:
+                    break
+
+            if not target_page:
+                # Open new page and navigate — leave it alive for Screen Viewer
+                if browser.contexts:
+                    target_page = await browser.contexts[0].new_page()
+                else:
+                    ctx = await browser.new_context(viewport={"width": 1280, "height": 720})
+                    target_page = await ctx.new_page()
+                await target_page.goto(req.url, wait_until="networkidle", timeout=30000)
+
+            screenshot_bytes = await target_page.screenshot(type="png", full_page=False)
+            # Disconnect CDP but DON'T close pages — Screen Viewer needs them
             await browser.close()
 
         b64 = base64.b64encode(screenshot_bytes).decode("utf-8")
