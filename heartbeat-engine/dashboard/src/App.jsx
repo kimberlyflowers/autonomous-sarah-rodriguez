@@ -1337,7 +1337,6 @@ export default function App() {
     {k:"monitor",l:mob?"📊":"📊 Status"},
     {k:"artifacts",l:mob?"📁":"📁 Files"},
     {k:"activity",l:mob?"⚡":"⚡ Activity"},
-    {k:"billing",l:mob?"💳":"💳 Billing"},
   ];
 
   return(
@@ -1540,6 +1539,7 @@ export default function App() {
                     {umO&&(
                       <div style={{position:"absolute",bottom:"100%",left:14,right:14,background:c.cd,border:"1px solid "+c.ln,borderRadius:12,boxShadow:"0 -8px 24px rgba(0,0,0,.15)",overflow:"hidden",marginBottom:4,zIndex:70}}>
                         {[
+                          {ic:"💳",l:"Billing",fn:()=>{setPg("billing");setUmO(false);}},
                           {ic:"⚙️",l:"Settings",fn:()=>{setPg("settings");setUmO(false);}},
                           {ic:"🔧",l:"Developer Mode",fn:()=>setUmO(false)},
                           {ic:dark?"☀️":"🌙",l:dark?"Light Mode":"Dark Mode",fn:()=>{setDark(!dark);setUmO(false);}},
