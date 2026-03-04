@@ -868,7 +868,49 @@ function parseMessageCards(text) {
     cards.push({ type: "email", subject });
   }
 
+  // Detect artifact creation — Sarah used create_artifact tool
+  const artifactMatch = text.match(/Created "(.+?)".*?(?:waiting for (?:your )?approval|ready for (?:your )?review)/i)
+    || text.match(/(?:I've created|I created|Here's the|I've saved|saved as) (?:a |an |the )?(?:deliverable|artifact|file).*?"(.+?)"/i);
+  if (artifactMatch) {
+    const name = (artifactMatch[1] || "Deliverable").trim();
+    cards.push({ type: "artifact", name });
+  }
+
   return cards;
+}
+
+function ArtifactCard({ name, c, onApprove, onReject, onPreview, status }) {
+  const ext = name.split('.').pop()?.toLowerCase() || '';
+  const icon = ext === 'html' ? '🌐' : ext === 'md' ? '📝' : ext === 'js' || ext === 'py' ? '💻' : '📄';
+  const isApproved = status === 'approved';
+  const isRejected = status === 'rejected';
+
+  return (
+    <div style={{
+      display:"flex",alignItems:"center",gap:10,padding:"10px 14px",marginTop:8,
+      borderRadius:12,background:c.gf || "rgba(244,162,97,0.08)",border:"1px solid rgba(244,162,97,0.3)",
+    }}>
+      <div style={{width:32,height:32,borderRadius:8,background:"rgba(244,162,97,0.15)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+        <span style={{fontSize:16}}>{icon}</span>
+      </div>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontSize:11,fontWeight:700,color:c.ac||"#F4A261",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:1}}>
+          {isApproved ? "✅ Approved" : isRejected ? "❌ Rejected" : "📎 New Artifact"}
+        </div>
+        <div style={{fontSize:13,fontWeight:600,color:c.tx,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{name}</div>
+      </div>
+      {!isApproved && !isRejected && (
+        <div style={{display:"flex",gap:6,flexShrink:0}}>
+          <button onClick={onPreview} style={{padding:"5px 10px",borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:11,fontWeight:600,color:c.so}}>Preview</button>
+          <button onClick={onApprove} style={{padding:"5px 12px",borderRadius:8,border:"none",background:"linear-gradient(135deg,#34a853,#2d9248)",cursor:"pointer",fontSize:11,fontWeight:700,color:"#fff"}}>Approve</button>
+          <button onClick={onReject} style={{padding:"5px 10px",borderRadius:8,border:"1px solid rgba(234,67,53,0.4)",background:"rgba(234,67,53,0.08)",cursor:"pointer",fontSize:11,fontWeight:600,color:"#ea4335"}}>Reject</button>
+        </div>
+      )}
+      {isApproved && (
+        <a href={`/api/files/download/${name}`} style={{padding:"5px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:11,fontWeight:600,color:c.ac,textDecoration:"none"}}>Download</a>
+      )}
+    </div>
+  );
 }
 
 function TaskCard({ name, c }) {
@@ -951,11 +993,10 @@ export default function App() {
   useEffect(()=>{
     if(pg!=="artifacts") return;
     setFilesLoading(true);
-    fetch("/api/dashboard/action-log?limit=50")
+    fetch("/api/files/artifacts?status=approved&limit=50")
       .then(r=>r.ok?r.json():null)
       .then(d=>{
-        const acts=(d?.actions||[]).filter(a=>a.tool==="create_document"||a.tool==="send_email"||a.type==="file"||a.artifact);
-        setFiles(acts);
+        setFiles(d?.artifacts||[]);
       })
       .catch(()=>{})
       .finally(()=>setFilesLoading(false));
@@ -1296,6 +1337,33 @@ export default function App() {
                             <div style={{marginLeft:m.b?(mob?34:36):0,marginRight:m.b?0:0,maxWidth:mob?"85%":"72%"}}>
                               {cards.map((cd2,ci)=>cd2.type==="task"
                                 ? <TaskCard key={ci} name={cd2.name} c={c}/>
+                                : cd2.type==="artifact"
+                                ? <ArtifactCard key={ci} name={cd2.name} c={c}
+                                    status={cd2._status}
+                                    onPreview={()=>{window.open(`/api/files/preview/${encodeURIComponent(cd2.name)}`,'_blank')}}
+                                    onApprove={async()=>{
+                                      try{
+                                        const arts=await fetch('/api/files/artifacts?limit=5').then(r=>r.json());
+                                        const match=arts.artifacts?.find(a=>a.name===cd2.name && a.status==='pending');
+                                        if(match){
+                                          await fetch(`/api/files/artifacts/${match.fileId}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'approved'})});
+                                          cd2._status='approved';
+                                          setMessages(p=>[...p]);
+                                        }
+                                      }catch(e){console.error(e)}
+                                    }}
+                                    onReject={async()=>{
+                                      try{
+                                        const arts=await fetch('/api/files/artifacts?limit=5').then(r=>r.json());
+                                        const match=arts.artifacts?.find(a=>a.name===cd2.name && a.status==='pending');
+                                        if(match){
+                                          await fetch(`/api/files/artifacts/${match.fileId}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'rejected'})});
+                                          cd2._status='rejected';
+                                          setMessages(p=>[...p]);
+                                        }
+                                      }catch(e){console.error(e)}
+                                    }}
+                                  />
                                 : <EmailCard key={ci} subject={cd2.subject} c={c} onReview={()=>alert("Email review panel coming soon — will open full draft for approval")}/>
                               )}
                             </div>
@@ -1455,6 +1523,67 @@ export default function App() {
                   })}
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* ══ FILES — Approved deliverables library ══ */}
+          {pg==="artifacts"&&(
+            <div style={{overflowY:"auto",height:"calc(100vh - 52px)",padding:mob?"16px 12px 40px":"20px 20px 40px",maxWidth:1000,margin:"0 auto"}}>
+              <div style={{marginBottom:24}}>
+                <h1 style={{fontSize:mob?20:24,fontWeight:700,color:c.tx,marginBottom:6}}>📁 Files & Deliverables</h1>
+                <p style={{fontSize:13,color:c.so}}>All approved content Sarah has created for you</p>
+              </div>
+              {filesLoading ? (
+                <div style={{textAlign:"center",padding:40,color:c.so}}>Loading files...</div>
+              ) : files.length === 0 ? (
+                <div style={{textAlign:"center",padding:60,color:c.so,background:c.cd,borderRadius:16,border:"1px solid "+c.ln}}>
+                  <div style={{fontSize:40,marginBottom:12}}>📂</div>
+                  <div style={{fontSize:15,fontWeight:600,color:c.tx,marginBottom:6}}>No files yet</div>
+                  <div style={{fontSize:13}}>Ask Sarah to create content — blog posts, email campaigns, SOPs, reports — and approved items will appear here.</div>
+                </div>
+              ) : (
+                <div style={{display:"grid",gridTemplateColumns:mob?"1fr":"repeat(auto-fill, minmax(280px, 1fr))",gap:14}}>
+                  {files.map((f)=>{
+                    const ext=(f.name||'').split('.').pop()?.toLowerCase()||'';
+                    const icon=f.fileType==='image'?'🖼️':ext==='html'?'🌐':ext==='md'?'📝':ext==='js'||ext==='py'?'💻':ext==='pdf'?'📄':'📎';
+                    const sizeStr=f.fileSize>1048576?`${(f.fileSize/1048576).toFixed(1)}MB`:f.fileSize>1024?`${(f.fileSize/1024).toFixed(1)}KB`:`${f.fileSize||0}B`;
+                    const date=f.approvedAt?new Date(f.approvedAt).toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'';
+                    return (
+                      <div key={f.fileId} style={{background:c.cd,borderRadius:14,border:"1px solid "+c.ln,overflow:"hidden",transition:"border-color .15s"}}
+                        onMouseEnter={e=>e.currentTarget.style.borderColor=c.ac}
+                        onMouseLeave={e=>e.currentTarget.style.borderColor=c.ln}>
+                        {/* Preview area */}
+                        <div style={{height:120,background:c.sf,display:"flex",alignItems:"center",justifyContent:"center",borderBottom:"1px solid "+c.ln,cursor:"pointer",position:"relative"}}
+                          onClick={()=>window.open(`/api/files/preview/${f.fileId}`,'_blank')}>
+                          {f.fileType==='image' ? (
+                            <img src={`/api/files/preview/${f.fileId}`} alt={f.name} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                          ) : (
+                            <span style={{fontSize:40}}>{icon}</span>
+                          )}
+                          <div style={{position:"absolute",top:8,right:8,padding:"3px 8px",borderRadius:6,background:"rgba(0,0,0,0.5)",color:"#fff",fontSize:10,fontWeight:600}}>{ext.toUpperCase()}</div>
+                        </div>
+                        {/* Info */}
+                        <div style={{padding:"12px 14px"}}>
+                          <div style={{fontSize:13,fontWeight:600,color:c.tx,marginBottom:4,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</div>
+                          {f.description&&<div style={{fontSize:11,color:c.so,marginBottom:6,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.description}</div>}
+                          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                            <span style={{fontSize:10,color:c.fa}}>{sizeStr} · {date}</span>
+                            <div style={{display:"flex",gap:6}}>
+                              <a href={`/api/files/download/${f.fileId}`} download style={{padding:"4px 10px",borderRadius:6,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:11,fontWeight:600,color:c.ac,textDecoration:"none"}}>↓ Download</a>
+                              <button onClick={async()=>{
+                                if(confirm('Remove this file?')){
+                                  await fetch(`/api/files/artifacts/${f.fileId}`,{method:'DELETE'});
+                                  setFiles(p=>p.filter(x=>x.fileId!==f.fileId));
+                                }
+                              }} style={{padding:"4px 8px",borderRadius:6,border:"1px solid rgba(234,67,53,0.3)",background:"transparent",cursor:"pointer",fontSize:11,color:"#ea4335"}}>×</button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 

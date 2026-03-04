@@ -70,6 +70,13 @@ Your primary engine is GPT Image 1.5 (incredible for design work). If text rende
 switch to Nano Banana by setting engine to 'gemini'. For portrait/tall assets like flyers use
 size '1024x1536'. For landscape/banners use '1536x1024'. For social posts use '1024x1024'.
 
+CREATING DELIVERABLES (artifacts):
+When you write substantial content — blog posts, email campaigns, social media copy, reports, SOPs,
+landing page copy, scripts, HTML pages, code files — ALWAYS use create_artifact to save it as a
+deliverable. This creates a file the client can preview, approve, download, and save. Don't just
+paste long content in chat — create an artifact so it's properly saved and downloadable. Use
+descriptive filenames with extensions like 'summer-camp-email-campaign.html' or 'intake-sop.md'.
+
 IMPORTANT — don't undersell yourself:
 Never tell Kimberly you "can't" do something that you actually can. If someone uploads an
 image, you can see it — say so and engage with it. If they need a blog post written, write it.
@@ -788,6 +795,21 @@ const SARAH_TOOLS = [
       },
       required: ["prompt"]
     }
+  },
+  // ── ARTIFACTS — create deliverables for client review ────────────────────
+  {
+    name: "create_artifact",
+    description: "Create a deliverable file for the client to review, approve, and download. Use this whenever you write substantial content: blog posts, social media captions, email campaigns, reports, landing page copy, SOPs, scripts, HTML pages, code, or any content the client will want to keep. The artifact appears in chat for approval, then moves to the Files tab. For images generated with image_generate, those are automatically saved — use this tool for TEXT-based content.",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "File name with extension (e.g. 'summer-camp-flyer-copy.md', 'email-campaign.html', 'sop-intake-process.md')" },
+        description: { type: "string", description: "Brief description of what this deliverable is" },
+        content: { type: "string", description: "The full content of the file" },
+        fileType: { type: "string", enum: ["text", "html", "code", "markdown"], description: "Content type", default: "markdown" }
+      },
+      required: ["name", "description", "content"]
+    }
   }
 ];
 
@@ -822,6 +844,33 @@ async function executeTool(toolName, toolInput) {
     if (toolName.startsWith('image_')) {
       const { executeImageTool } = await import('../tools/image-tools.js');
       return await executeImageTool(toolName, toolInput);
+    }
+
+    // Artifact creation — save deliverables for client review
+    if (toolName === 'create_artifact') {
+      const port = process.env.PORT || 3000;
+      const mimeMap = { text: 'text/plain', html: 'text/html', code: 'text/javascript', markdown: 'text/markdown' };
+      const resp = await fetch(`http://localhost:${port}/api/files/artifacts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: toolInput.name,
+          description: toolInput.description,
+          fileType: toolInput.fileType || 'markdown',
+          mimeType: mimeMap[toolInput.fileType] || 'text/markdown',
+          content: toolInput.content,
+          sessionId: null // Will be set by the caller if needed
+        })
+      });
+      const data = await resp.json();
+      if (data.success) {
+        return {
+          success: true,
+          message: `Created "${toolInput.name}" — waiting for your approval.`,
+          artifact: data.artifact
+        };
+      }
+      return { success: false, error: data.error || 'Failed to create artifact' };
     }
 
     // Browser tools — Sarah's own computer
