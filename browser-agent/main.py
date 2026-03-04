@@ -167,7 +167,7 @@ async def browse(req: BrowseRequest):
         cdp_url = build_cdp_url()
         log.info(f"Starting browser task: {task[:100]}...")
 
-        browser_session = Browser(cdp_url=cdp_url, keep_alive=True)
+        browser_session = Browser(cdp_url=cdp_url)
 
         # Use Claude as the LLM
         llm = ChatAnthropic(
