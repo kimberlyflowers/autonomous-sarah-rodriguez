@@ -22,6 +22,7 @@ import chatRoutes from './api/chat.js';
 import eventRoutes from './api/events.js';
 import executeRoutes from './api/execute.js';
 import browserRoutes from './api/browser.js';
+import skillsRoutes from './api/skills.js';
 
 // Get the current directory for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -177,6 +178,7 @@ app.use('/api/events', eventRoutes);
 // Agentic execution API routes
 app.use('/api/execute', executeRoutes);
 app.use('/api/browser', browserRoutes);
+app.use('/api/skills', skillsRoutes);
 
 // Serve React static files
 app.use(express.static(path.join(__dirname, '../dashboard/dist')));
