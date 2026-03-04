@@ -259,6 +259,16 @@ async function startHeartbeatEngine() {
 
     logger.info('🎯 BLOOM Autonomous Agent infrastructure ready');
 
+    // Auto-launch browser service so Screen Viewer is live from startup
+    try {
+      const { getBrowserService } = await import('./browser/browser-service.js');
+      const browserSvc = getBrowserService();
+      await browserSvc.launch();
+      logger.info('🌐 Browser service launched — Screen Viewer active');
+    } catch (browserErr) {
+      logger.warn('⚠️  Browser service auto-launch failed (non-critical):', browserErr.message);
+    }
+
   } catch (error) {
     logger.error('Failed to start heartbeat engine:', error);
     // Don't exit - let the health endpoint still work
