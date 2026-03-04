@@ -14,7 +14,15 @@ from pydantic import BaseModel, Field
 from typing import Optional
 
 from browser_use import Agent, BrowserSession
-from langchain_anthropic import ChatAnthropic
+from langchain_anthropic import ChatAnthropic as _ChatAnthropic
+from pydantic import Field as PydanticField
+
+
+# browser-use >= 0.9 checks llm.provider — ChatAnthropic doesn't expose it
+class ChatAnthropic(_ChatAnthropic):
+    """ChatAnthropic wrapper that satisfies browser-use's provider check."""
+    provider: str = PydanticField(default="anthropic")
+    model_config = {"extra": "allow"}
 
 # ── Logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
