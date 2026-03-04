@@ -1020,6 +1020,11 @@ export default function App() {
   const [editTitle,setEditTitle]=useState('');
   const [editDesc,setEditDesc]=useState('');
   const [newTask,setNewTask]=useState({name:'',instruction:'',taskType:'content',frequency:'daily',runTime:'09:00'});
+  const [actTab,setActTab]=useState("scheduled"); // scheduled | history
+  const [taskRuns,setTaskRuns]=useState([]);
+  const [expandedRun,setExpandedRun]=useState(null);
+  const [previewFileIdx,setPreviewFileIdx]=useState(null);
+  const [agentImgUrl,setAgentImgUrl]=useState(null);
 
   const loadProfile = async () => {
     try {
@@ -1032,8 +1037,20 @@ export default function App() {
       if(pRes.profile){
         setEditTitle(pRes.profile.jobTitle||'');
         setEditDesc(pRes.profile.jobDescription||'');
+        if(pRes.profile.avatarUrl) setAgentImgUrl(pRes.profile.avatarUrl);
       }
     } catch(e){ console.error('Failed to load profile',e); }
+  };
+
+  const loadActivity = async () => {
+    try {
+      const [tRes, rRes] = await Promise.all([
+        fetch('/api/agent/tasks').then(r=>r.json()),
+        fetch('/api/agent/tasks/runs').then(r=>r.json()).catch(()=>({runs:[]}))
+      ]);
+      setScheduledTasks(tRes.tasks||[]);
+      setTaskRuns(rRes.runs||[]);
+    } catch(e){ console.error('Failed to load activity',e); }
   };
   const [umO,setUmO]=useState(false);
   const [projO,setProjO]=useState(false);
@@ -1069,7 +1086,7 @@ export default function App() {
   const [pendingFiles,setPendingFiles]=useState([]);
   const sbOpen=sbO==="full"||sbO==="mini";
 
-  const agent={nm:"Sarah Rodriguez",role:"Marketing & Operations Executive",img:null,grad:"linear-gradient(135deg,#F4A261,#E76F8B)"};
+  const agent={nm:"Sarah Rodriguez",role:"Marketing & Operations Executive",img:agentImgUrl||null,grad:"linear-gradient(135deg,#F4A261,#E76F8B)"};
 
   useEffect(()=>{ if(btm.current) setTimeout(()=>btm.current?.scrollIntoView({behavior:"smooth"}),100); },[messages]);
 
@@ -1102,7 +1119,7 @@ export default function App() {
     {k:"chat",l:mob?"💬":"💬 Chat"},
     {k:"monitor",l:mob?"📊":"📊 Status"},
     {k:"artifacts",l:mob?"📁":"📁 Files"},
-    {k:"cron",l:mob?"⏰":"⏰ Jobs"},
+    {k:"activity",l:mob?"⚡":"⚡ Activity"},
   ];
 
   return(
@@ -1140,7 +1157,7 @@ export default function App() {
         <div style={{display:"flex",alignItems:"center",gap:mob?6:12,flexWrap:"nowrap"}}>
           <div style={{display:"flex",gap:mob?2:4,background:c.sf,padding:3,borderRadius:10}}>
             {navTabs.map(t=>(
-              <button key={t.k} onClick={()=>setPg(t.k)} style={{padding:mob?"7px 10px":"7px 14px",borderRadius:8,border:"none",cursor:"pointer",fontSize:12,fontWeight:600,background:pg===t.k?c.cd:"transparent",color:pg===t.k?c.tx:c.so,boxShadow:pg===t.k?"0 1px 4px rgba(0,0,0,.06)":"none"}}>
+              <button key={t.k} onClick={()=>{setPg(t.k);if(t.k==="activity")loadActivity();if(t.k==="profile")loadProfile();}} style={{padding:mob?"7px 10px":"7px 14px",borderRadius:8,border:"none",cursor:"pointer",fontSize:12,fontWeight:600,background:pg===t.k?c.cd:"transparent",color:pg===t.k?c.tx:c.so,boxShadow:pg===t.k?"0 1px 4px rgba(0,0,0,.06)":"none"}}>
                 {t.l}
               </button>
             ))}
@@ -1171,6 +1188,7 @@ export default function App() {
             <span style={{width:6,height:6,borderRadius:"50%",background:connected?c.gr:"#ef4444",animation:connected?"pulse 1.5s ease infinite":"none"}}/>
             <span style={{fontSize:10,fontWeight:600,color:connected?c.gr:"#dc2626"}}>{connected?"Connected":"Offline"}</span>
           </div>
+          <a href={`https://app.gohighlevel.com`} target="_blank" rel="noopener" style={{display:"flex",alignItems:"center",gap:5,padding:"4px 10px",borderRadius:8,border:"1px solid "+c.ln,background:c.cd,fontSize:10,fontWeight:600,color:c.ac,textDecoration:"none",cursor:"pointer"}}>🔗 BLOOM CRM</a>
         </div>
 
         <div style={{display:"flex",alignItems:"center",gap:8,position:"relative"}}>
@@ -1229,7 +1247,7 @@ export default function App() {
 
                   {/* Agent identity card */}
                   <div style={{padding:"12px 14px 8px",borderBottom:"1px solid "+c.ln,flexShrink:0}}>
-                    <div style={{padding:"10px 12px",borderRadius:12,background:c.sf,border:"1px solid "+c.ln,display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                    <div onClick={()=>{loadProfile();setPg("profile");}} style={{padding:"10px 12px",borderRadius:12,background:c.sf,border:"1px solid "+c.ln,display:"flex",alignItems:"center",gap:10,marginBottom:10,cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=c.hv} onMouseLeave={e=>e.currentTarget.style.background=c.sf}>
                       <div style={{animation:"bloomieWiggle 3s ease-in-out infinite"}}><Face sz={34} agent={agent}/></div>
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{fontSize:13,fontWeight:700,color:c.tx,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{agent.nm}</div>
@@ -1555,65 +1573,304 @@ export default function App() {
 
 
           {/* ══ CRON — Jaden's layout, Sarah's branding ══ */}
-          {pg==="cron"&&(
-            <div style={{overflowY:"auto",height:"calc(100vh - 52px)",padding:mob?"16px 12px 40px":"20px 20px 40px",maxWidth:1000,margin:"0 auto"}}>
-              <div style={{marginBottom:24}}>
-                <h1 style={{fontSize:mob?20:24,fontWeight:700,color:c.tx,marginBottom:6}}>⏰ Automation & Cron Jobs</h1>
-                <p style={{fontSize:13,color:c.so}}>Manage Sarah's automated tasks and proactive behaviors</p>
-              </div>
-              <div style={{padding:20,borderRadius:16,background:c.cd,border:"1px solid "+c.ln,marginBottom:20}}>
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
-                  <div>
-                    <div style={{fontSize:16,fontWeight:700,color:c.tx,marginBottom:4}}>💗 Sarah's Proactive Heartbeat</div>
-                    <div style={{fontSize:12,color:c.so}}>Set when Sarah should proactively check in with you</div>
-                  </div>
-                  <div style={{padding:"6px 12px",borderRadius:20,fontSize:11,fontWeight:600,background:heartbeatEnabled?c.gr+"15":c.fa+"15",color:heartbeatEnabled?c.gr:c.fa}}>{heartbeatEnabled?"Active":"Paused"}</div>
-                </div>
-                <div style={{display:"grid",gridTemplateColumns:mob?"1fr":"1fr 1fr",gap:16,marginBottom:16}}>
-                  <div>
-                    <div style={{fontSize:12,fontWeight:600,color:c.so,marginBottom:6}}>Schedule (Cron Expression)</div>
-                    <input value={heartbeatInterval} onChange={e=>setHeartbeatInterval(e.target.value)} placeholder="0 */6 * * *" style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1.5px solid "+c.ln,background:c.sf,fontSize:13,fontFamily:"monospace",color:c.tx}}/>
-                  </div>
-                  <div>
-                    <div style={{fontSize:12,fontWeight:600,color:c.so,marginBottom:6}}>Quick Presets</div>
-                    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                      {[{l:"Every hour",v:"0 * * * *"},{l:"Every 6hrs",v:"0 */6 * * *"},{l:"Daily 9am",v:"0 9 * * *"},{l:"Weekdays 9am",v:"0 9 * * 1-5"}].map(p=>(
-                        <button key={p.v} onClick={()=>setHeartbeatInterval(p.v)} style={{padding:"5px 8px",borderRadius:6,border:"1px solid "+c.ln,background:heartbeatInterval===p.v?c.ac+"15":c.sf,cursor:"pointer",fontSize:10,fontWeight:500,color:heartbeatInterval===p.v?c.ac:c.so}}>{p.l}</button>
-                      ))}
+          {/* ══ ACTIVITY ══ */}
+          {pg==="activity"&&(
+            <div style={{overflowY:"auto",height:"calc(100vh - 52px)"}}>
+              {/* Header */}
+              <div style={{background:c.cd,borderBottom:"1px solid "+c.ln}}>
+                <div style={{maxWidth:840,margin:"0 auto",padding:mob?"16px 16px 0":"20px 28px 0"}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
+                    <div>
+                      <h1 style={{fontSize:20,fontWeight:700,color:c.tx}}>Activity</h1>
+                      <p style={{fontSize:13,color:c.so,marginTop:3}}>What Sarah's been working on</p>
+                    </div>
+                    <div style={{display:"flex",gap:10}}>
+                      {taskRuns.some(r=>r.status==="pending")&&(
+                        <div style={{display:"flex",alignItems:"center",gap:6,padding:"6px 14px",borderRadius:20,background:c.ac+"10",border:"1px solid "+c.ac+"20"}}>
+                          <span style={{width:7,height:7,borderRadius:"50%",background:c.ac,animation:"pulse 1.5s ease infinite"}}/>
+                          <span style={{fontSize:12,fontWeight:600,color:c.ac}}>{taskRuns.filter(r=>r.status==="pending").length} running</span>
+                        </div>
+                      )}
                     </div>
                   </div>
-                </div>
-                <button onClick={()=>setHeartbeatEnabled(!heartbeatEnabled)} style={{padding:"8px 16px",borderRadius:10,border:"none",cursor:"pointer",background:heartbeatEnabled?c.fa+"30":"linear-gradient(135deg,#F4A261,#E76F8B)",color:heartbeatEnabled?c.fa:"#fff",fontSize:12,fontWeight:600}}>
-                  {heartbeatEnabled?"⏸️ Pause":"▶️ Start"} Heartbeat
-                </button>
-              </div>
-              <div style={{borderRadius:16,background:c.cd,border:"1px solid "+c.ln,overflow:"hidden"}}>
-                <div style={{padding:"13px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:"1px solid "+c.ln,background:c.sf}}>
-                  <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    <span style={{position:"relative",width:10,height:10,display:"inline-block"}}>
-                      <span style={{position:"absolute",inset:0,borderRadius:"50%",background:c.gr,animation:"pulse 1.5s ease infinite"}}/>
-                      <span style={{position:"absolute",inset:2,borderRadius:"50%",background:c.gr}}/>
-                    </span>
-                    <span style={{fontSize:13,fontWeight:700,color:c.tx}}>Automated Tasks</span>
-                    <span style={{fontSize:11,color:c.so}}>{cronJobs.filter(j=>j.on).length} active</span>
+                  <div style={{display:"flex",gap:4}}>
+                    {[{key:"scheduled",label:"Scheduled Tasks",badge:scheduledTasks.filter(t=>t.enabled).length},{key:"history",label:"Task History"}].map(tab=>(
+                      <button key={tab.key} onClick={()=>setActTab(tab.key)} style={{
+                        padding:"9px 18px",fontSize:13,fontWeight:600,border:"none",
+                        borderBottom:actTab===tab.key?"2px solid "+c.ac:"2px solid transparent",
+                        background:"transparent",color:actTab===tab.key?c.tx:c.so,cursor:"pointer",fontFamily:"inherit"
+                      }}>
+                        {tab.label}
+                        {tab.badge>0&&<span style={{marginLeft:6,fontSize:11,fontWeight:700,color:c.ac}}>{tab.badge}</span>}
+                      </button>
+                    ))}
                   </div>
-                  <button style={{padding:"4px 10px",borderRadius:6,border:"1px solid "+c.ac+"40",background:"transparent",cursor:"pointer",fontSize:10,fontWeight:600,color:c.ac}}>+ Add Job</button>
                 </div>
-                <div style={{padding:"8px 0"}}>
-                  {cronJobs.map((job,i)=>{
-                    const stCl=!job.on?c.fa:job.ok?c.gr:"#E76F8B";
+              </div>
+
+              <div style={{maxWidth:840,margin:"0 auto",padding:mob?"0 16px 60px":"0 28px 60px"}}>
+                {/* ── Scheduled Tasks ── */}
+                {actTab==="scheduled"&&(
+                  <div style={{paddingTop:20}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+                      <span style={{fontSize:13,color:c.so}}>
+                        {scheduledTasks.filter(t=>t.enabled).length} active · {scheduledTasks.filter(t=>!t.enabled).length} paused
+                      </span>
+                      <button onClick={()=>setTaskFormOpen(!taskFormOpen)} style={{padding:"8px 18px",borderRadius:8,border:"none",background:c.gradient,cursor:"pointer",fontSize:13,fontWeight:700,color:"#fff",fontFamily:"inherit"}}>
+                        {taskFormOpen?"Cancel":"+ New Task"}
+                      </button>
+                    </div>
+
+                    {/* New task form */}
+                    {taskFormOpen&&(
+                      <div style={{padding:16,borderRadius:12,border:"1px solid "+c.ln,background:c.sf,marginBottom:14}}>
+                        <input value={newTask.name} onChange={e=>setNewTask(p=>({...p,name:e.target.value}))} placeholder="Task name..." style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,fontSize:13,color:c.tx,marginBottom:8,fontFamily:"inherit",boxSizing:"border-box"}}/>
+                        <textarea value={newTask.instruction} onChange={e=>setNewTask(p=>({...p,instruction:e.target.value}))} placeholder="What should Sarah do?" rows={3} style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,fontSize:13,color:c.tx,marginBottom:8,fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
+                        <div style={{display:"flex",gap:6,marginBottom:10}}>
+                          <select value={newTask.taskType} onChange={e=>setNewTask(p=>({...p,taskType:e.target.value}))} style={{flex:1,padding:"8px 10px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,fontSize:12,color:c.tx,fontFamily:"inherit"}}>
+                            <option value="content">📝 Content</option><option value="email">✉️ Email</option><option value="research">🔍 Research</option><option value="crm">📊 CRM</option><option value="custom">⚡ Custom</option>
+                          </select>
+                          <select value={newTask.frequency} onChange={e=>setNewTask(p=>({...p,frequency:e.target.value}))} style={{flex:1,padding:"8px 10px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,fontSize:12,color:c.tx,fontFamily:"inherit"}}>
+                            <option value="daily">Daily</option><option value="weekdays">Weekdays</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option>
+                          </select>
+                          <input type="time" value={newTask.runTime} onChange={e=>setNewTask(p=>({...p,runTime:e.target.value}))} style={{width:100,padding:"8px 10px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,fontSize:12,color:c.tx,fontFamily:"inherit"}}/>
+                        </div>
+                        <button onClick={async()=>{
+                          if(!newTask.name||!newTask.instruction) return;
+                          await fetch('/api/agent/tasks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(newTask)});
+                          setNewTask({name:'',instruction:'',taskType:'content',frequency:'daily',runTime:'09:00'});
+                          setTaskFormOpen(false);
+                          loadActivity();
+                        }} disabled={!newTask.name||!newTask.instruction} style={{width:"100%",padding:"10px 0",borderRadius:8,border:"none",background:newTask.name&&newTask.instruction?c.gradient:"#444",cursor:newTask.name&&newTask.instruction?"pointer":"not-allowed",fontSize:13,fontWeight:700,color:"#fff",fontFamily:"inherit"}}>Create Task</button>
+                      </div>
+                    )}
+
+                    {/* Task cards */}
+                    {scheduledTasks.map((task,i)=>{
+                      const typeIc={content:"📝",email:"✉️",research:"🔍",crm:"📊",custom:"⚡"}[task.taskType]||"⚡";
+                      return(
+                        <div key={task.taskId} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 16px",borderRadius:10,background:c.sf,border:"1px solid "+c.ln,opacity:task.enabled?1:0.45,marginBottom:6}}>
+                          <button onClick={async()=>{
+                            await fetch(`/api/agent/tasks/${task.taskId}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:!task.enabled})});
+                            loadActivity();
+                          }} style={{width:38,height:22,borderRadius:11,border:"none",background:task.enabled?c.gr:"#444",cursor:"pointer",position:"relative",flexShrink:0}}>
+                            <div style={{width:16,height:16,borderRadius:"50%",background:"#fff",position:"absolute",top:3,left:task.enabled?19:3,transition:"left .2s",boxShadow:"0 1px 3px rgba(0,0,0,.3)"}}/>
+                          </button>
+                          <span style={{fontSize:18,flexShrink:0}}>{typeIc}</span>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontSize:14,fontWeight:600,color:c.tx}}>{task.name}</div>
+                            <div style={{fontSize:12,color:c.so,marginTop:1}}>{task.description||task.instruction}</div>
+                          </div>
+                          <div style={{textAlign:"right",flexShrink:0,minWidth:80}}>
+                            <div style={{fontSize:11,fontWeight:600,color:c.tx,textTransform:"capitalize"}}>{task.frequency} · {task.runTime||"9:00"}</div>
+                            <div style={{fontSize:11,color:task.enabled?c.so:c.fa,marginTop:2}}>{task.enabled?"Active":"Paused"}</div>
+                            {task.runCount>0&&<div style={{fontSize:10,color:c.fa,marginTop:1}}>{task.runCount} runs</div>}
+                          </div>
+                          <button onClick={async()=>{if(confirm('Delete this task?')){await fetch(`/api/agent/tasks/${task.taskId}`,{method:'DELETE'});loadActivity();}}} style={{width:28,height:28,borderRadius:6,border:"1px solid "+c.ln,background:"transparent",cursor:"pointer",color:c.fa,fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>✕</button>
+                        </div>
+                      );
+                    })}
+
+                    {scheduledTasks.length===0&&!taskFormOpen&&(
+                      <div style={{textAlign:"center",padding:60,color:c.so}}>
+                        <div style={{fontSize:28,marginBottom:8,opacity:0.25}}>📋</div>
+                        <div style={{fontSize:14,fontWeight:600,color:c.tx,marginBottom:4}}>No scheduled tasks yet</div>
+                        <div style={{fontSize:13,marginBottom:16}}>Add one here or tell Sarah in chat</div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* ── Task History ── */}
+                {actTab==="history"&&(
+                  <div style={{paddingTop:20}}>
+                    {taskRuns.length===0?(
+                      <div style={{textAlign:"center",padding:60,color:c.so}}>
+                        <div style={{fontSize:28,marginBottom:8,opacity:0.25}}>📋</div>
+                        <div style={{fontSize:14,fontWeight:600,color:c.tx,marginBottom:4}}>No activity yet</div>
+                        <div style={{fontSize:13}}>Once Sarah starts running scheduled tasks, her work will show up here.</div>
+                      </div>
+                    ):(
+                      <div style={{display:"flex",flexDirection:"column",gap:2}}>
+                        {taskRuns.map((run,i)=>{
+                          const sdColors={queued:c.warn,pending:c.ac,completed:c.gr,failed:c.err};
+                          const sdLabels={pending:"Running...",queued:"Queued",failed:"Failed"};
+                          const typeIc={content:"📝",email:"✉️",research:"🔍",crm:"📊",custom:"⚡"}[run.taskType]||"⚡";
+                          const expanded=expandedRun===run.id;
+                          const ev=run.evidence||{};
+                          return(
+                            <div key={run.id}>
+                              <div onClick={()=>setExpandedRun(expanded?null:run.id)} style={{
+                                display:"flex",alignItems:"center",gap:12,padding:"13px 16px",borderRadius:expanded?"10px 10px 0 0":10,
+                                background:c.sf,border:"1px solid "+c.ln,borderBottom:expanded?"1px solid "+c.ln+"60":"1px solid "+c.ln,
+                                cursor:"pointer",marginBottom:expanded?0:6
+                              }}>
+                                <span style={{width:8,height:8,borderRadius:"50%",background:sdColors[run.status]||c.so,flexShrink:0,animation:run.status==="pending"?"pulse 1.5s ease infinite":"none"}}/>
+                                <span style={{fontSize:16,flexShrink:0}}>{typeIc}</span>
+                                <div style={{flex:1,minWidth:0}}>
+                                  <div style={{display:"flex",alignItems:"baseline",gap:6}}>
+                                    <span style={{fontSize:13,fontWeight:600,color:c.tx}}>{run.taskName}</span>
+                                    {sdLabels[run.status]&&<span style={{fontSize:11,color:sdColors[run.status],fontWeight:500}}>{sdLabels[run.status]}</span>}
+                                  </div>
+                                  {run.result&&!expanded&&<div style={{fontSize:12,color:c.so,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{run.result}</div>}
+                                </div>
+                                <div style={{textAlign:"right",flexShrink:0}}>
+                                  <span style={{fontSize:11,color:c.fa}}>{run.time||""}</span>
+                                  {run.duration&&<div style={{fontSize:10,color:c.fa,marginTop:1}}>{run.duration}</div>}
+                                </div>
+                              </div>
+                              {expanded&&(
+                                <div style={{background:c.sf,borderRadius:"0 0 10px 10px",border:"1px solid "+c.ln,borderTop:"none",marginBottom:6}}>
+                                  {run.result&&<div style={{padding:"12px 16px",fontSize:13,color:c.tx,lineHeight:1.6,borderBottom:ev.actions?.length?"1px solid "+c.ln+"40":"none"}}>{run.result}</div>}
+                                  {ev.actions?.length>0&&(
+                                    <div style={{padding:"10px 16px"}}>
+                                      <div style={{fontSize:11,fontWeight:700,color:c.so,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>What Sarah did</div>
+                                      {ev.actions.map((a,ai)=>(
+                                        <div key={ai} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"7px 0",borderBottom:ai<ev.actions.length-1?"1px solid "+c.ln+"30":"none"}}>
+                                          <span style={{fontSize:14,flexShrink:0,marginTop:1}}>{a.icon||"•"}</span>
+                                          <div>
+                                            <div style={{fontSize:13,fontWeight:600,color:c.tx}}>{a.label}</div>
+                                            {a.detail&&<div style={{fontSize:12,color:c.so,marginTop:1}}>{a.detail}{a.crmLink&&<a href={a.crmLink} target="_blank" rel="noopener" style={{color:c.ac,textDecoration:"none",marginLeft:6}}>View in CRM →</a>}</div>}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {ev.files?.length>0&&(
+                                    <div style={{padding:"10px 16px",borderTop:"1px solid "+c.ln+"40"}}>
+                                      <div style={{fontSize:11,fontWeight:700,color:c.so,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>Files created</div>
+                                      {ev.files.map((f,fi)=>(
+                                        <div key={fi} style={{borderRadius:8,border:"1px solid "+c.ln,overflow:"hidden",marginBottom:6}}>
+                                          <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:c.cd}}>
+                                            <span>📄</span>
+                                            <span style={{flex:1,fontSize:13,fontWeight:600,color:c.gr}}>{f.name}</span>
+                                            <button onClick={e=>{e.stopPropagation();setPreviewFileIdx(previewFileIdx===fi?null:fi);}} style={{padding:"3px 10px",borderRadius:5,border:"1px solid "+c.ln,background:"transparent",cursor:"pointer",fontSize:11,fontWeight:600,color:c.ac,fontFamily:"inherit"}}>{previewFileIdx===fi?"Close":"Preview"}</button>
+                                            <button style={{padding:"3px 10px",borderRadius:5,border:"none",background:c.gr+"15",cursor:"pointer",fontSize:11,fontWeight:600,color:c.gr,fontFamily:"inherit"}}>Open in Files →</button>
+                                          </div>
+                                          {previewFileIdx===fi&&f.preview&&<div style={{padding:"12px 16px",borderTop:"1px solid "+c.ln,maxHeight:200,overflowY:"auto",fontSize:13,lineHeight:1.7,color:c.tx+"cc"}} dangerouslySetInnerHTML={{__html:(f.preview||'').replace(/^# (.+)$/gm,'<div style="font-size:16px;font-weight:700;margin:10px 0 6px">$1</div>').replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/\n\n/g,'<br/><br/>')}}/>}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ══ AGENT PROFILE (full page) ══ */}
+          {pg==="profile"&&(
+            <div style={{overflowY:"auto",height:"calc(100vh - 52px)"}}>
+              {/* Header banner */}
+              <div style={{background:c.gradient,padding:mob?"24px 16px":"32px 28px"}}>
+                <div style={{maxWidth:840,margin:"0 auto",display:"flex",flexDirection:mob?"column":"row",alignItems:"center",gap:mob?16:20}}>
+                  {/* Avatar with upload */}
+                  <div style={{position:"relative"}}>
+                    <Face sz={mob?72:88} agent={agent}/>
+                    <label style={{position:"absolute",bottom:-2,right:-2,width:28,height:28,borderRadius:"50%",background:c.cd,border:"2px solid rgba(255,255,255,.3)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13}}>
+                      📷
+                      <input type="file" accept="image/*" style={{display:"none"}} onChange={async(e)=>{
+                        const file=e.target.files[0]; if(!file) return;
+                        const reader=new FileReader();
+                        reader.onload=async(ev)=>{
+                          const dataUrl=ev.target.result;
+                          setAgentImgUrl(dataUrl);
+                          try{await fetch('/api/agent/profile',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({avatarUrl:dataUrl})});}catch(err){console.error(err);}
+                        };
+                        reader.readAsDataURL(file);
+                      }}/>
+                    </label>
+                  </div>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:mob?22:26,fontWeight:700,color:"#fff"}}>{agent.nm}</div>
+                    <div style={{fontSize:14,color:"rgba(255,255,255,.8)",marginTop:2}}>{profileData?.profile?.jobTitle||'AI Employee'}</div>
+                    <div style={{display:"flex",alignItems:"center",gap:5,marginTop:4}}>
+                      <span style={{width:7,height:7,borderRadius:"50%",background:"#4ade80"}}/>
+                      <span style={{fontSize:12,color:"rgba(255,255,255,.7)"}}>Online</span>
+                    </div>
+                  </div>
+                  {/* Stats */}
+                  {profileData?.stats&&(
+                    <div style={{display:"flex",gap:mob?20:28}}>
+                      {[{l:"Messages",v:profileData.stats.messages},{l:"Files",v:profileData.stats.files},{l:"Tasks",v:profileData.stats.activeTasks}].map((s,i)=>(
+                        <div key={i} style={{textAlign:"center"}}>
+                          <div style={{fontSize:22,fontWeight:700,color:"#fff"}}>{s.v}</div>
+                          <div style={{fontSize:11,color:"rgba(255,255,255,.6)"}}>{s.l}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Content */}
+              <div style={{maxWidth:840,margin:"0 auto",padding:mob?"16px":"24px 28px"}}>
+                <div style={{display:"grid",gridTemplateColumns:mob?"1fr":"1fr 1fr",gap:20}}>
+                  {/* Job Description */}
+                  <div style={{padding:20,borderRadius:12,background:c.cd,border:"1px solid "+c.ln}}>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+                      <span style={{fontSize:14,fontWeight:700,color:c.tx}}>Job Description</span>
+                      <button onClick={()=>{
+                        if(editingProfile){fetch('/api/agent/profile',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({jobTitle:editTitle,jobDescription:editDesc})}).then(()=>loadProfile());}
+                        setEditingProfile(!editingProfile);
+                      }} style={{padding:"5px 12px",borderRadius:6,border:"1px solid "+c.ln,background:"transparent",cursor:"pointer",fontSize:12,fontWeight:600,color:c.ac,fontFamily:"inherit"}}>
+                        {editingProfile?'Save':'Edit'}
+                      </button>
+                    </div>
+                    {editingProfile?(
+                      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                        <input value={editTitle} onChange={e=>setEditTitle(e.target.value)} placeholder="Job title..." style={{padding:"10px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,fontSize:13,color:c.tx,fontFamily:"inherit"}}/>
+                        <textarea value={editDesc} onChange={e=>setEditDesc(e.target.value)} placeholder="Describe responsibilities..." rows={5} style={{padding:"10px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,fontSize:13,color:c.tx,fontFamily:"inherit",resize:"vertical"}}/>
+                      </div>
+                    ):(
+                      <div>
+                        <div style={{fontSize:16,fontWeight:600,color:c.tx,marginBottom:6}}>{profileData?.profile?.jobTitle||'AI Employee'}</div>
+                        <div style={{fontSize:13,color:c.so,lineHeight:1.7}}>{profileData?.profile?.jobDescription||'Click Edit to add a job description.'}</div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Connected Tools */}
+                  <div style={{padding:20,borderRadius:12,background:c.cd,border:"1px solid "+c.ln}}>
+                    <div style={{fontSize:14,fontWeight:700,color:c.tx,marginBottom:12}}>Connected Tools</div>
+                    {(profileData?.connectedTools||[]).map((tool,i)=>(
+                      <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 0",borderBottom:i<(profileData?.connectedTools?.length||0)-1?"1px solid "+c.ln+"40":"none"}}>
+                        <span style={{fontSize:18}}>{tool.icon}</span>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:13,fontWeight:600,color:tool.connected?c.tx:c.so}}>{tool.name}</div>
+                          <div style={{fontSize:11,color:c.so}}>{tool.capabilities.join(', ')}</div>
+                        </div>
+                        <span style={{fontSize:11,fontWeight:600,color:tool.connected?c.gr:c.fa}}>{tool.connected?'Active':'Soon'}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Scheduled Tasks preview */}
+                <div style={{padding:20,borderRadius:12,background:c.cd,border:"1px solid "+c.ln,marginTop:20}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+                    <span style={{fontSize:14,fontWeight:700,color:c.tx}}>Scheduled Tasks</span>
+                    <button onClick={()=>setPg("activity")} style={{padding:"5px 12px",borderRadius:6,border:"1px solid "+c.ln,background:"transparent",cursor:"pointer",fontSize:12,fontWeight:600,color:c.ac,fontFamily:"inherit"}}>View all →</button>
+                  </div>
+                  {scheduledTasks.length===0?(
+                    <div style={{padding:16,textAlign:"center",color:c.so,fontSize:12}}>No scheduled tasks yet</div>
+                  ):scheduledTasks.slice(0,3).map((task,i)=>{
+                    const typeIc={content:"📝",email:"✉️",research:"🔍",crm:"📊",custom:"⚡"}[task.taskType]||"⚡";
                     return(
-                      <div key={job.id} style={{padding:"12px 16px",display:"flex",alignItems:"center",gap:10,borderBottom:i<cronJobs.length-1?"1px solid "+c.ln+"60":"none",opacity:job.on?1:0.5}}>
-                        <div style={{position:"relative",flexShrink:0}}>
-                          <span style={{fontSize:16}}>{job.ic}</span>
-                          <span style={{position:"absolute",bottom:-2,right:-2,width:8,height:8,borderRadius:"50%",background:stCl,border:"1.5px solid "+c.cd}}/>
+                      <div key={task.taskId} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:i<Math.min(scheduledTasks.length,3)-1?"1px solid "+c.ln+"40":"none"}}>
+                        <span>{typeIc}</span>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:13,fontWeight:600,color:task.enabled?c.tx:c.so}}>{task.name}</div>
+                          <div style={{fontSize:11,color:c.so}}>{task.frequency} at {task.runTime||"9:00"}</div>
                         </div>
-                        <div style={{flex:1,minWidth:0}}>
-                          <div style={{fontSize:13,fontWeight:600,color:job.on?c.tx:c.so,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{job.nm}</div>
-                          <div style={{fontSize:10,color:c.fa,marginTop:1}}>{job.freq} • {job.on?"Next: "+job.next:"Paused"}</div>
-                        </div>
-                        {job.on&&<div style={{fontSize:9,color:job.ok?c.gr:"#E76F8B",fontWeight:600}}>{job.ok?"✓ OK":"⚠ Failed"}</div>}
-                        <button onClick={()=>toggleCron(job.id)} style={{width:22,height:22,borderRadius:6,border:"1px solid "+c.ln,background:"transparent",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,color:c.so,flexShrink:0}}>{job.on?"⏸":"▶"}</button>
+                        <span style={{fontSize:11,color:task.enabled?c.gr:c.fa}}>{task.enabled?"Active":"Paused"}</span>
                       </div>
                     );
                   })}

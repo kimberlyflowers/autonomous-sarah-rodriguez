@@ -17,6 +17,7 @@ async function ensureTables(pool) {
       agent_id VARCHAR(64) DEFAULT 'bloomie-sarah-rodriguez' UNIQUE,
       job_title TEXT DEFAULT 'AI Employee',
       job_description TEXT DEFAULT '',
+      avatar_url TEXT,
       created_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW()
     )
@@ -118,6 +119,7 @@ router.get('/profile', async (req, res) => {
         agentId: profile.agent_id,
         jobTitle: profile.job_title || 'AI Employee',
         jobDescription: profile.job_description || '',
+        avatarUrl: profile.avatar_url || null,
         createdAt: profile.created_at,
         updatedAt: profile.updated_at
       },
@@ -147,16 +149,17 @@ router.patch('/profile', async (req, res) => {
   try {
     pool = await getPool();
     await ensureTables(pool);
-    const { jobTitle, jobDescription } = req.body;
+    const { jobTitle, jobDescription, avatarUrl } = req.body;
 
     const result = await pool.query(`
       UPDATE agent_profile 
       SET job_title = COALESCE($1, job_title),
           job_description = COALESCE($2, job_description),
+          avatar_url = COALESCE($3, avatar_url),
           updated_at = NOW()
       WHERE agent_id = 'bloomie-sarah-rodriguez'
       RETURNING *
-    `, [jobTitle || null, jobDescription || null]);
+    `, [jobTitle || null, jobDescription || null, avatarUrl || null]);
 
     logger.info('Profile updated', { jobTitle, jobDescription: jobDescription?.slice(0, 50) });
     return res.json({ success: true, profile: result.rows[0] });
@@ -169,6 +172,29 @@ router.patch('/profile', async (req, res) => {
 // ═══════════════════════════════════════════════════════════════
 // SCHEDULED TASKS ENDPOINTS
 // ═══════════════════════════════════════════════════════════════
+
+// GET /api/agent/tasks/runs — task execution history
+router.get('/tasks/runs', async (req, res) => {
+  let pool;
+  try {
+    pool = await getPool();
+    // task_runs table will be created when heartbeat execution is wired up
+    // For now return empty array
+    try {
+      const result = await pool.query(`
+        SELECT * FROM task_runs 
+        WHERE agent_id = 'bloomie-sarah-rodriguez'
+        ORDER BY created_at DESC LIMIT 50
+      `);
+      return res.json({ runs: result.rows });
+    } catch {
+      // Table doesn't exist yet — that's fine
+      return res.json({ runs: [] });
+    }
+  } catch (error) {
+    return res.json({ runs: [] });
+  } finally { if (pool) await pool.end().catch(()=>{}); }
+});
 
 // GET /api/agent/tasks
 router.get('/tasks', async (req, res) => {
