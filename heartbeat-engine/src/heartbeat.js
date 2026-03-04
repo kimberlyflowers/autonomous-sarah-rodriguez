@@ -168,6 +168,19 @@ export async function runHeartbeat(agentConfig, trigger = {}) {
       duration: Date.now() - startTime
     });
 
+    // PHASE 5.5: SCHEDULED TASKS - Check and run any due scheduled tasks
+    logger.info('📋 PHASE 5.5: Checking scheduled tasks...');
+    let scheduledTaskResults = { tasksRun: 0 };
+    try {
+      const { checkAndRunScheduledTasks } = await import('./orchestrator/task-executor.js');
+      scheduledTaskResults = await checkAndRunScheduledTasks();
+      if (scheduledTaskResults.tasksRun > 0) {
+        logger.info(`📋 Ran ${scheduledTaskResults.tasksRun} scheduled task(s)`, { results: scheduledTaskResults.results });
+      }
+    } catch (schedError) {
+      logger.error('Scheduled task check failed', { error: schedError.message });
+    }
+
     // PHASE 6: LOG - Record cycle completion
     const duration = Date.now() - startTime;
     await logHeartbeat(cycleId, {
