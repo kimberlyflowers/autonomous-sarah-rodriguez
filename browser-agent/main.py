@@ -38,6 +38,7 @@ BROWSERLESS_TOKEN = os.getenv("BROWSERLESS_TOKEN", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5-20251001")
 SIDECAR_SECRET = os.getenv("SIDECAR_SECRET", "")  # shared secret for Sarah → sidecar auth
+SARAH_BASE_URL = os.getenv("SARAH_BASE_URL", "http://autonomous-sarah-rodriguez.railway.internal:3000")  # internal URL for screenshot push
 PORT = int(os.getenv("PORT", "8080"))
 
 
@@ -107,6 +108,41 @@ def build_cdp_url() -> str:
     base = BROWSERLESS_WS_URL.rstrip("/")
     separator = "&" if "?" in base else "?"
     return f"{base}{separator}token={BROWSERLESS_TOKEN}"
+
+
+# ── Push screenshot to Sarah's dashboard in real-time
+async def push_screenshot_to_dashboard(screenshot_b64: str, url: str = None):
+    """POST a screenshot to Sarah's main server for the Screen Viewer SSE stream."""
+    if not SARAH_BASE_URL:
+        return
+    try:
+        import aiohttp
+        async with aiohttp.ClientSession() as session:
+            await session.post(
+                f"{SARAH_BASE_URL}/api/browser/push-screenshot",
+                json={"data": screenshot_b64, "url": url or ""},
+                timeout=aiohttp.ClientTimeout(total=5),
+            )
+    except Exception as e:
+        log.debug(f"Screenshot push failed (non-critical): {e}")
+
+
+# ── Step callback — streams screenshots to dashboard during browsing
+def make_step_callback():
+    """Create a step callback that pushes screenshots after each agent step."""
+    def step_callback(state, model_output, step_number):
+        if state and hasattr(state, 'screenshot') and state.screenshot:
+            url = state.url if hasattr(state, 'url') else None
+            # Fire-and-forget async push
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    loop.create_task(push_screenshot_to_dashboard(state.screenshot, url))
+                else:
+                    asyncio.run(push_screenshot_to_dashboard(state.screenshot, url))
+            except Exception:
+                pass
+    return step_callback
 
 
 # ── Endpoints
@@ -181,13 +217,14 @@ async def browse(req: BrowseRequest):
             temperature=0,
         )
 
-        # Create and run agent
+        # Create and run agent with step callback for live Screen Viewer
         agent = Agent(
             task=task,
             llm=llm,
             browser_session=browser_session,
             max_failures=3,
         )
+        agent.register_new_step_callback(make_step_callback())
 
         result = await agent.run(max_steps=req.max_steps)
 

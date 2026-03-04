@@ -144,4 +144,26 @@ router.post('/close', async (req, res) => {
   }
 });
 
+// POST /api/browser/push-screenshot — receives screenshots from sidecar, pushes to SSE stream
+router.post('/push-screenshot', express.json({ limit: '10mb' }), (req, res) => {
+  try {
+    const { data, url } = req.body;
+    if (!data) return res.status(400).json({ error: 'No screenshot data' });
+
+    const browser = getBrowserService();
+    browser.isRunning = true;
+    browser.currentUrl = url || browser.currentUrl;
+    browser.lastScreenshot = data;
+    browser.lastScreenshotTime = Date.now();
+    browser.emit('screenshot', {
+      data: data,
+      url: url || '',
+      timestamp: Date.now()
+    });
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 export default router;
