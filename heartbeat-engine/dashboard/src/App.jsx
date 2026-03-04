@@ -1779,7 +1779,7 @@ export default function App() {
 
       {/* ── HELP BUBBLE — exact Jaden ── */}
       {!hlpO&&(
-        <button onClick={()=>setHlpO(true)} style={{position:"fixed",bottom:mob?16:24,right:mob?16:24,width:56,height:56,borderRadius:"50%",border:"none",background:"linear-gradient(135deg,#F4A261,#E76F8B)",cursor:"pointer",boxShadow:"0 4px 20px rgba(231,111,139,.35)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:90,transition:"transform .2s"}} onMouseEnter={e=>e.currentTarget.style.transform="scale(1.1)"} onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>
+        <button onClick={()=>setHlpO(true)} style={{position:"fixed",bottom:mob?80:24,right:mob?12:24,width:mob?48:56,height:mob?48:56,borderRadius:"50%",border:"none",background:"linear-gradient(135deg,#F4A261,#E76F8B)",cursor:"pointer",boxShadow:"0 4px 20px rgba(231,111,139,.35)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:90,transition:"transform .2s"}} onMouseEnter={e=>e.currentTarget.style.transform="scale(1.1)"} onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>
           <Bloom sz={36} glow/>
         </button>
       )}
