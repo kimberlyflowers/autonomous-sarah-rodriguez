@@ -15,6 +15,7 @@ const MODEL_MAP = {
   crm:          process.env.MODEL_CRM           || 'claude-haiku-4-5-20251001',
   research:     process.env.MODEL_RESEARCH      || 'claude-haiku-4-5-20251001',
   design:       process.env.MODEL_IMAGE         || 'gpt-4o', // placeholder until image gen
+  video:        process.env.MODEL_VIDEO         || 'veo3', // premium tier
   data:         process.env.MODEL_DATA          || 'claude-haiku-4-5-20251001',
 };
 

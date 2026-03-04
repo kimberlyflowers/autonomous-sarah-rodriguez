@@ -837,6 +837,7 @@ const SARAH_TOOLS = [
 - "email" → Email campaigns, subject lines, SMS copy, social captions (GPT-4o — punchy persuasive copy)
 - "coding" → HTML pages, scripts, landing pages, automation code (DeepSeek — fast expert coder)
 - "image" → Banners, flyers, graphics, social images (GPT image generation)
+- "video" → Short video clips, social reels, product demos (Veo3/Kling — premium feature, check if enabled first)
 
 You are the client's point of contact. The specialist works behind the scenes — the client only sees you delivering the result. After receiving the specialist's output, present it naturally as your own work and save it as a file if appropriate.
 
@@ -846,7 +847,7 @@ Do NOT use this for simple questions, conversation, or tasks you can handle your
       properties: {
         taskType: { 
           type: "string", 
-          enum: ["writing", "email", "coding", "image"],
+          enum: ["writing", "email", "coding", "image", "video"],
           description: "Type of specialist work needed"
         },
         specialistPrompt: { 
@@ -961,10 +962,24 @@ async function executeTool(toolName, toolInput) {
           email: process.env.MODEL_EMAIL || 'gpt-4o',
           coding: process.env.MODEL_CODING || 'deepseek-chat',
           image: 'gpt-4o', // placeholder — will use DALL-E/Flux later
+          video: 'veo3', // placeholder — premium tier only
         };
 
         const taskType = toolInput.taskType || 'writing';
         const model = modelForType[taskType] || modelForType.writing;
+
+        // Premium check for video
+        if (taskType === 'video') {
+          const videoEnabled = process.env.VIDEO_GENERATION_ENABLED === 'true';
+          if (!videoEnabled) {
+            return {
+              success: false,
+              error: 'Video generation is a premium feature. Let the client know this is available on the Bloomie Pro or Enterprise plan, and that you can help them upgrade if interested.',
+              premiumRequired: true,
+              feature: 'video_generation'
+            };
+          }
+        }
 
         // System prompts per specialist type
         const specialistSystems = {
@@ -972,6 +987,7 @@ async function executeTool(toolName, toolInput) {
           email: 'You are an expert email and copy specialist. Write punchy, persuasive, conversion-focused copy. Be concise and compelling. No preamble — deliver the copy directly.',
           coding: 'You are an expert frontend developer and coder. Write clean, production-ready code. Include comments where helpful. No explanations unless asked — just deliver working code.',
           image: 'You are a creative director. Describe the visual in detail so it can be generated as an image. Include composition, colors, typography, mood, and style.',
+          video: 'You are a video creative director. Write a detailed video generation prompt including: scene description, camera movement, duration, mood, lighting, style, and any text overlays. Be specific enough for AI video generation.',
         };
 
         logger.info('Dispatching to specialist', { taskType, model, promptLength: toolInput.specialistPrompt?.length });
