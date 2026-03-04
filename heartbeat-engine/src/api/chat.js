@@ -952,6 +952,7 @@ async function chatWithSarah(userMessage, history, agentConfig) {
   const messages = [...history, { role: 'user', content: userMessage }];
   let currentMessages = [...messages];
 
+  const toolsUsed = [];
   for (let round = 0; round < 10; round++) {
     const response = await callAnthropicWithRetry({
       model: process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001',
@@ -962,10 +963,16 @@ async function chatWithSarah(userMessage, history, agentConfig) {
     });
 
     if (response.stop_reason === 'end_turn') {
-      return response.content
+      const text = response.content
         .filter(b => b.type === 'text')
         .map(b => b.text)
         .join('');
+      // Append tool action summary so history remembers what Sarah did
+      if (toolsUsed.length > 0) {
+        const summary = toolsUsed.map(t => `[Tool: ${t.name}${t.input?.name ? ' → ' + t.input.name : ''}]`).join(' ');
+        return text + '\n\n' + summary;
+      }
+      return text;
     }
 
     if (response.stop_reason === 'tool_use') {
@@ -973,6 +980,7 @@ async function chatWithSarah(userMessage, history, agentConfig) {
       const toolResults = [];
       for (const block of response.content) {
         if (block.type === 'tool_use') {
+          toolsUsed.push({ name: block.name, input: block.input });
           const result = await executeTool(block.name, block.input);
           toolResults.push({
             type: 'tool_result',
