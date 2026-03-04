@@ -13,20 +13,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional
 
-from browser_use import Agent, BrowserSession
-from langchain_anthropic import ChatAnthropic as _ChatAnthropic
-from pydantic import Field as PydanticField
-
-
-# browser-use >= 0.9 checks llm.provider — ChatAnthropic doesn't expose it
-class ChatAnthropic(_ChatAnthropic):
-    """ChatAnthropic wrapper that satisfies browser-use's provider/model_name checks."""
-    provider: str = PydanticField(default="anthropic")
-    model_config = {"extra": "allow"}
-
-    @property
-    def model_name(self) -> str:
-        return self.model
+from browser_use import Agent, Browser, ChatAnthropic
 
 # ── Logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -180,35 +167,7 @@ async def browse(req: BrowseRequest):
         cdp_url = build_cdp_url()
         log.info(f"Starting browser task: {task[:100]}...")
 
-        # Clean slate: close stale pages from previous tasks, then pre-navigate
-        try:
-            from playwright.async_api import async_playwright
-            _pw = await async_playwright().__aenter__()
-            _prep = await _pw.chromium.connect_over_cdp(cdp_url)
-            # Close all old pages so agent starts fresh
-            for ctx in _prep.contexts:
-                for page in ctx.pages:
-                    try:
-                        await page.close()
-                    except Exception:
-                        pass
-            # Open fresh page at requested URL so agent AND Screen Viewer see it
-            if req.url:
-                if _prep.contexts:
-                    _page = await _prep.contexts[0].new_page()
-                else:
-                    _ctx = await _prep.new_context()
-                    _page = await _ctx.new_page()
-                log.info(f"Pre-navigating to {req.url}")
-                await _page.goto(req.url, wait_until="domcontentloaded", timeout=30000)
-                log.info(f"Pre-navigation done: {_page.url}")
-            # Disconnect CDP — pages stay alive in Browserless for Screen Viewer
-            await _prep.close()
-            await _pw.__aexit__(None, None, None)
-        except Exception as prep_err:
-            log.warning(f"Page prep failed (non-critical): {prep_err}")
-
-        browser_session = BrowserSession(cdp_url=cdp_url)
+        browser_session = Browser(cdp_url=cdp_url, keep_alive=True)
 
         # Use Claude as the LLM
         llm = ChatAnthropic(
@@ -221,7 +180,7 @@ async def browse(req: BrowseRequest):
         agent = Agent(
             task=task,
             llm=llm,
-            browser_session=browser_session,
+            browser=browser_session,
             max_failures=3,
         )
         agent.register_new_step_callback(make_step_callback())
