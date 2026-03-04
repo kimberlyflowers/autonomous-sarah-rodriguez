@@ -16,12 +16,8 @@ const FILE_STORAGE = process.env.FILE_STORAGE_PATH || '/tmp/bloom-files';
 if (!fs.existsSync(FILE_STORAGE)) fs.mkdirSync(FILE_STORAGE, { recursive: true });
 
 async function getPool() {
-  const pool = new pg.Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-    max: 3
-  });
-  return pool;
+  const { createPool } = await import('../../database/setup.js');
+  return createPool();
 }
 
 // Auto-create artifacts table
@@ -178,11 +174,14 @@ router.get('/artifacts', async (req, res) => {
 // ── APPROVE / REJECT ARTIFACT ───────────────────────────────────────────────
 // PATCH /api/files/artifacts/:fileId
 router.patch('/artifacts/:fileId', async (req, res) => {
-  const pool = await getPool();
+  let pool;
   try {
+    pool = await getPool();
     await ensureTable(pool);
     const { fileId } = req.params;
     const { status } = req.body; // 'approved' or 'rejected'
+
+    logger.info('PATCH artifact request', { fileId, status });
 
     if (!['approved', 'rejected'].includes(status)) {
       return res.status(400).json({ error: 'status must be approved or rejected' });
@@ -194,14 +193,17 @@ router.patch('/artifacts/:fileId', async (req, res) => {
       RETURNING id, file_id, name, status, approved_at
     `, [status, fileId]);
 
-    if (!result.rows.length) return res.status(404).json({ error: 'Artifact not found' });
+    if (!result.rows.length) {
+      logger.warn('Artifact not found for PATCH', { fileId });
+      return res.status(404).json({ error: 'Artifact not found' });
+    }
 
     logger.info(`Artifact ${status}`, { fileId, name: result.rows[0].name });
     return res.json({ success: true, artifact: result.rows[0] });
   } catch (error) {
-    logger.error('Update artifact error', { error: error.message });
-    return res.status(500).json({ error: 'Failed to update artifact' });
-  } finally { await pool.end(); }
+    logger.error('Update artifact error', { error: error.message, stack: error.stack });
+    return res.status(500).json({ error: 'Failed to update artifact: ' + error.message });
+  } finally { if (pool) await pool.end().catch(()=>{}); }
 });
 
 // ── DOWNLOAD FILE ───────────────────────────────────────────────────────────
