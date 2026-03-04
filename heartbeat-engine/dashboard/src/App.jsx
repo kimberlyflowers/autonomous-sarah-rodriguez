@@ -929,8 +929,12 @@ function ArtifactCard({ name, c, onApprove, onReject, status }) {
   };
 
   const handleApprove = async () => {
-    if (!artData?.fileId) return;
+    if (!artData?.fileId) {
+      alert('Still loading artifact data — try again in a moment.');
+      return;
+    }
     try {
+      setCardStatus('saving');
       const r = await fetch(`/api/files/artifacts/${artData.fileId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -939,8 +943,15 @@ function ArtifactCard({ name, c, onApprove, onReject, status }) {
       if (r.ok) {
         setCardStatus('approved');
         onApprove?.();
+      } else {
+        const err = await r.text();
+        alert('Approve failed: ' + err);
+        setCardStatus('pending');
       }
-    } catch (e) { console.error('Approve failed:', e); }
+    } catch (e) {
+      alert('Approve error: ' + e.message);
+      setCardStatus('pending');
+    }
   };
 
   const handleReject = async () => {
@@ -985,7 +996,7 @@ function ArtifactCard({ name, c, onApprove, onReject, status }) {
           <div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",borderTop:"1px solid "+c.ln,background:isApproved?"rgba(52,168,83,0.06)":"rgba(244,162,97,0.06)"}}>
             {!isApproved && !isRejected && (
               <>
-                <button onClick={handleApprove} disabled={!artData} style={{padding:"6px 16px",borderRadius:8,border:"none",background:artData?"linear-gradient(135deg,#34a853,#2d9248)":"#555",cursor:artData?"pointer":"not-allowed",fontSize:12,fontWeight:700,color:"#fff"}}>✓ Approve & Save to Files</button>
+                <button onClick={handleApprove} disabled={!artData||cardStatus==='saving'} style={{padding:"6px 16px",borderRadius:8,border:"none",background:artData&&cardStatus!=='saving'?"linear-gradient(135deg,#34a853,#2d9248)":"#555",cursor:artData&&cardStatus!=='saving'?"pointer":"not-allowed",fontSize:12,fontWeight:700,color:"#fff"}}>{cardStatus==='saving'?'Saving...':'✓ Approve & Save to Files'}</button>
                 <button onClick={handleReject} disabled={!artData} style={{padding:"6px 12px",borderRadius:8,border:"1px solid rgba(234,67,53,0.4)",background:"rgba(234,67,53,0.06)",cursor:artData?"pointer":"not-allowed",fontSize:12,fontWeight:600,color:"#ea4335"}}>✗ Reject</button>
               </>
             )}
