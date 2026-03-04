@@ -1,118 +1,117 @@
 ---
 name: email-marketing
-description: "Write high-converting email campaigns, sequences, subject lines, and SMS copy that sound like a real person wrote them. Use when the task involves email marketing, drip campaigns, newsletters, follow-up sequences, cold outreach, or SMS messaging. Also use for A/B test subject lines and email templates. This skill prevents the robotic, template-feeling emails that get ignored."
+description: "Write email campaigns, sequences, subject lines, and SMS that feel like they came from a human who cares. Use when the task involves email marketing, drip campaigns, newsletters, follow-up sequences, cold outreach, welcome sequences, re-engagement, or SMS messaging. Also use for A/B subject lines and email templates."
 ---
 
 # Email Marketing
 
-## The One Rule That Matters
+## How to Think About This
 
-Write every email as if you're writing to ONE person who is busy, skeptical, and about to hit delete. Because that's exactly what's happening. You have 2 seconds in the inbox (subject line), 5 seconds in the preview (first line), and 15 seconds to earn a click.
+Every email lands in an inbox next to messages from the reader's mom, their boss, and Amazon. Your email has to earn the right to exist there.
 
-## Subject Lines — The Most Important 6 Words You'll Write
+The secret: the best marketing emails don't feel like marketing. They feel like a message from someone who understands you. Someone who noticed you, remembered your name, and actually gives a damn.
 
-The subject line is NOT a summary of the email. It's a reason to open it.
+That's the standard. Not "did we include a CTA" — but "would a real person be glad they opened this?"
 
-**Principles:**
-- 6-10 words. Under 40 characters for mobile.
-- Curiosity OR urgency. Never both (that's clickbait).
-- Personal beats professional: "{firstName}, quick question" gets 40% higher opens than "Monthly Newsletter: March Edition"
-- The preview text is your second chance — it must COMPLEMENT the subject, not repeat it.
+## The Subject Line Is a Promise
 
-**Formulas that work:**
-- The personal question: "{firstName}, can I ask you something?"
-- The specific result: "How [Name] enrolled 14 students in 2 weeks"
-- The honest admission: "We messed up (here's how we fixed it)"
-- The unexpected: "Don't open this email"
-- The time-sensitive: "This closes Friday — here's what you'd miss"
+The subject line's ONLY job is to get the email opened. It makes a promise that the body must deliver on.
 
-**Never do this:**
-- ALL CAPS anything
-- Multiple exclamation marks!!!
-- "Newsletter" or "Update" in the subject (instant ignore)
-- Emoji in subject lines for professional audiences (test first for casual)
-- Misleading subjects that don't match the content
+What works:
+- **Personal and specific.** "You're already doing the right thing" — feels like it was meant for me.
+- **Curiosity without clickbait.** "My son actually wants to go to school now" — I need to know this story.
+- **Direct address.** "{firstName}, we saved you a spot" — my name + scarcity.
 
-## Email Body — How to Write It
+What dies in the inbox:
+- "Newsletter #14 — March Update" (nobody asked for this)
+- "Exciting news from [Company]!" (exciting for who?)
+- "Don't miss out!" (miss out on what? you haven't told me anything)
+- ALL CAPS or excessive punctuation (screaming = spam filter)
 
-### The First Line
+Always write 2 A/B variant subject lines. Test them. The winner teaches you something about your audience.
 
-This decides everything. The reader opened your email — now they're deciding if it deserves more than a glance.
+## Email 1 of Any Sequence Is NEVER About You
 
-**Good first lines:**
-- Ask a question they're already thinking: "Have you noticed your enrollment numbers flattening out?"
-- Acknowledge their reality: "I know the last thing you need is another email. So I'll keep this short."
-- Lead with the value: "I found 3 things your competitors are doing that you're not. Here they are."
+The first email a person receives after signing up should validate THEIR decision, not pitch YOUR product. They just gave you their email address. That's an act of trust. Honor it.
 
-**Bad first lines:**
-- "I hope this email finds you well" (nobody cares)
-- "I'm reaching out because..." (focus on YOU not the reader)
-- "As a leading provider of..." (immediate delete)
+Bad Email 1: "Welcome to [Company]! Here's what we offer: [features list]"
+Good Email 1: "The fact that you're here means you're already a step ahead. Most people just wonder. You actually took action."
 
-### The Body
+The first email builds trust. The second email tells a story. The third email extends an invitation. This order matters — you can't invite someone who doesn't trust you yet.
 
-- **One idea per email.** If you have three things to say, send three emails.
-- **One CTA per email.** "Click here to register" — not "click here or call us or email us or visit our website or follow us on social."
-- **Short paragraphs.** 1-2 sentences each. Long paragraphs = skipped.
-- **Conversational.** Read it out loud. If it sounds like a robot wrote it, rewrite it.
-- **The CTA goes above the fold AND at the bottom.** Two chances to click, never more.
+## Story Beats Statistics Every Time
 
-### Frameworks
+"Our satisfaction rate is 95%" → nobody feels anything.
+"His mom sat in the hallway and cried. Not because anything was wrong — because for the first time, every teacher knew her son's name." → people forward this to their spouse.
 
-**PAS (Pain → Agitate → Solution):**
-"Most small businesses lose 40% of their leads in the first 48 hours. [Pain] That's not because the leads are bad — it's because nobody followed up fast enough. Every hour that passes, the lead gets colder. [Agitate] That's why we built an automated follow-up system that texts new leads within 60 seconds. [Solution]"
+Every email in a nurture sequence should contain at least one SPECIFIC detail that a generic template could never produce. A name. A moment. A quote. A detail that makes the reader think "this is real."
 
-**BAB (Before → After → Bridge):**
-"Right now, you're manually following up with every lead. [Before] Imagine if every new inquiry got a personal text within a minute — automatically — while you focused on the students already in your program. [After] Our workflow does exactly that. Here's how to set it up. [Bridge]"
+## CTA Rules
 
-## Email Types
+- One CTA per email. ONE. Not three buttons and a P.S. link.
+- Make the CTA conversational: "Reply VISIT" beats "Click here to schedule."
+- "Reply [KEYWORD]" converts 3-5x better than link clicks because it starts a conversation in the CRM. The link is for people who are already ready.
+- Put the CTA after the emotional peak, not at the very end where people have stopped reading.
+- The P.S. line is the second-most-read part of any email. Use it for a personal, warm touch — not another CTA.
 
-### Welcome Sequence (5 emails, automated)
-1. **Immediate:** Deliver what they signed up for + set expectations ("You'll hear from us once a week")
-2. **Day 1:** Your origin story. Why you exist. Make it personal, make it real.
-3. **Day 3:** Give a quick win. Something they can DO today that helps them. No selling.
-4. **Day 5:** Social proof. A story of someone like them who got results.
-5. **Day 7:** Soft offer. "If you're ready, here's how we can help. If not, no pressure — we'll keep sharing value."
+## Sequence Architecture
 
-### Re-engagement (for cold contacts)
-- Subject: "Been a while, {firstName}" or "Did we lose you?"
-- Body: Acknowledge the gap. Don't guilt them. Offer something genuinely new or valuable. Single CTA.
-- Timing: 30/60/90 day inactivity triggers
+### Welcome Sequence (3-5 emails)
+1. **Validation** (immediate) — Honor their signup. Set expectations. No selling.
+2. **Story** (Day 2) — A real person's experience. Make the reader feel something.
+3. **Invitation** (Day 5) — One clear ask. Low friction. "Reply VISIT" or "Reply YES."
+4. **Social proof** (Day 8, optional) — Another story or testimonial. Different angle.
+5. **Gentle close** (Day 12, optional) — "No pressure. We're here when you're ready."
 
-### Event/Program Promotion
-- Lead with what THEY get, not what you're doing
-- Include: date, time, location, what to expect, who it's for
-- Create urgency only if it's real (limited seats, deadline)
-- Follow-up sequence: reminder 3 days before, day before, morning of
+### Re-engagement (for cold leads)
+- Acknowledge the silence: "It's been a while, {firstName}"
+- Offer value, not guilt: "I thought this might be useful" > "We noticed you haven't opened our emails"
+- Single, easy CTA: "Still interested? Reply YES and I'll send you [specific thing]"
+- If no response after 2 attempts, move to monthly newsletter only. Don't keep hammering.
 
-## SMS
+### Follow-Up After No Response
+- Day 2: Resend with alternate subject line (only if unopened)
+- Day 4: Switch to SMS — short, personal, conversational
+- Day 10: "No pressure" email with a piece of value (video, resource, story)
+- After that: stop. Respect > persistence.
 
-SMS is intimate. It's in their pocket. Respect that.
+## SMS Best Practices
 
-- 160 characters max (1 segment, no splitting)
-- Sound like a person: "Hey {firstName}, just wanted to let you know..." NOT "ATTENTION: New program available at YES."
-- Lead with value, end with CTA
-- Always include opt-out option
-- Send between 10am-7pm local time only
-- Max 4 SMS/month unless they've opted in to more
-- NEVER send mass SMS without explicit approval from the client
+- 160 characters or less (1 segment). Treat character count like poetry.
+- Lead with their name: "Hey {firstName}," — makes it feel 1:1.
+- Send between 10am-7pm local time. Never before 9am, never after 8pm.
+- Max 4 SMS per month unless they've opted into more.
+- Always include an easy out: "Reply STOP anytime" (it's also legally required).
+- SMS is for quick nudges, not long pitches. If it needs more than 2 sentences, send an email.
 
-## What to Deliver
+## The Follow-Up Logic (What Happens After)
 
-Every email task includes:
-1. Subject line + 2 A/B variants
-2. Preview text (40-90 chars, complements subject)
-3. Full email body (mobile-first, single column, conversational)
-4. Plain text version
-5. Suggested send time and day
-6. Target segment description
+Don't just write emails — think about what happens when someone RESPONDS:
 
-## Quality Check
+- They reply "VISIT" → Auto-tag, create pipeline deal, notify front office, send scheduling email with specific available times
+- They reply with a question → Answer personally within 2 hours, add the question to CRM notes
+- They don't open → Resend with new subject, then try SMS
+- They open but don't click → The email was interesting but the CTA wasn't compelling enough. Revise.
+- They unsubscribe → Respect it. Remove tag. Never re-add.
 
-Before delivering:
-- Would YOU open this email? Honestly?
-- Does the subject line create genuine curiosity (not clickbait)?
-- Is there ONE clear action the reader should take?
-- Does it sound like a person wrote it, or a marketing department?
-- Is it under 200 words? (For most emails, shorter = better)
-- Did you address a real concern or just make noise?
+## Output Format
+
+Every email delivery includes:
+- Subject line + 2 A/B variants
+- Preview text (the line that shows after the subject in mobile)
+- Full email body (use {firstName} and other merge fields)
+- Plain text version
+- Suggested send time and day
+- Follow-up logic: what happens if they respond, don't respond, or take the CTA
+- Segment recommendation: who should receive this
+
+## Common Mistakes to Avoid
+
+- Pitching in the first email of a sequence
+- Generic subject lines that could be from any company
+- Multiple CTAs competing for attention
+- No story, no specificity — just features and benefits
+- "Dear Valued Customer" or any non-personalized greeting
+- Sending follow-ups that are just the same email with "Just following up!"
+- Not thinking about what happens AFTER the email (the CRM workflow)
+- Writing for desktop when 80%+ of opens are mobile
