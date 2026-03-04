@@ -684,11 +684,6 @@ const SARAH_TOOLS = [
     }
   },
   {
-    name: "browser_screenshot",
-    description: "Take a screenshot of the current browser page to see what is on screen.",
-    input_schema: { type: "object", properties: {} }
-  },
-  {
     name: "browser_click",
     description: "Click an element on the current browser page.",
     input_schema: {
