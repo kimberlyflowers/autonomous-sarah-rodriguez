@@ -3,6 +3,7 @@ import express from 'express';
 import mammoth from 'mammoth';
 import Anthropic from '@anthropic-ai/sdk';
 import { createLogger } from '../logging/logger.js';
+import { getSkillCatalogSummary } from '../skills/skill-loader.js';
 import { loadAgentConfig } from '../config/agent-profile.js';
 
 const router = express.Router();
@@ -94,7 +95,8 @@ If they need advice, give it. Your job is to be genuinely useful, not to list yo
 
 Your boss is Kimberly, Founder/CEO of BLOOM Ecosystem.
 Your client is Youth Empowerment School.
-You are an AI employee (a "Bloomie") — be honest if asked directly, but lead with capability.`;
+You are an AI employee (a "Bloomie") — be honest if asked directly, but lead with capability.
+${getSkillCatalogSummary()}`;
 }
 
 // TOOL DEFINITIONS — Full suite available to Sarah
@@ -962,10 +964,17 @@ async function executeTool(toolName, toolInput) {
           video: 'You are a video creative director. Write a detailed video generation prompt including: scene description, camera movement, duration, mood, lighting, style, and any text overlays. Be specific enough for AI video generation.',
         };
 
-        logger.info('Dispatching to specialist', { taskType, model, promptLength: toolInput.specialistPrompt?.length });
+        // Inject matching skill context into specialist prompt
+        let skillContext = '';
+        try {
+          const { getSkillContext } = await import('../skills/skill-loader.js');
+          skillContext = getSkillContext(taskType, toolInput.specialistPrompt);
+        } catch (e) { /* skills not critical */ }
+
+        logger.info('Dispatching to specialist', { taskType, model, promptLength: toolInput.specialistPrompt?.length, hasSkill: !!skillContext });
 
         const result = await callModel(model, {
-          system: specialistSystems[taskType] || specialistSystems.writing,
+          system: (specialistSystems[taskType] || specialistSystems.writing) + skillContext,
           messages: [{ role: 'user', content: toolInput.specialistPrompt }],
           maxTokens: 4096,
           temperature: 0.4,
