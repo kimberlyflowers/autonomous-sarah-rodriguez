@@ -870,10 +870,17 @@ function parseMessageCards(text) {
 
   // Detect artifact creation — Sarah used create_artifact tool
   const artifactMatch = text.match(/Created "(.+?)".*?(?:waiting for (?:your )?approval|ready for (?:your )?review)/i)
-    || text.match(/(?:I've created|I created|Here's the|I've saved|saved as) (?:a |an |the )?(?:deliverable|artifact|file).*?"(.+?)"/i);
+    || text.match(/(?:I've created|I created|Here's the|I've saved|saved as|saved it to) (?:a |an |the )?(?:deliverable|artifact|file).*?"(.+?)"/i)
+    || text.match(/(?:in your Files tab|saved to (?:your )?Files|it's in (?:your )?Files)/i);
   if (artifactMatch) {
-    const name = (artifactMatch[1] || "Deliverable").trim();
-    cards.push({ type: "artifact", name });
+    // Try to get the filename from the match, or use a generic name
+    const name = (artifactMatch[1] || artifactMatch[2] || "").trim();
+    if (name) {
+      cards.push({ type: "artifact", name });
+    } else {
+      // Sarah mentioned Files tab but didn't name the file — fetch latest artifact
+      cards.push({ type: "artifact", name: "__latest__" });
+    }
   }
 
   return cards;
@@ -891,15 +898,21 @@ function ArtifactCard({ name, c, onApprove, onReject, status }) {
   const isRejected = status === 'rejected';
 
   // Fetch content and fileId when expanding
+  const [displayName, setDisplayName] = useState(name === '__latest__' ? 'Loading...' : name);
+
   const loadContent = async () => {
     if (content) { setExpanded(!expanded); return; }
     setLoading(true);
     try {
       const r = await fetch('/api/files/artifacts?limit=10');
       const d = await r.json();
-      const match = d.artifacts?.find(a => a.name === name);
+      // Find by name, or if __latest__ get the most recent pending one
+      const match = name === '__latest__'
+        ? d.artifacts?.[0]
+        : d.artifacts?.find(a => a.name === name);
       if (match) {
         setArtFileId(match.fileId);
+        if (name === '__latest__') setDisplayName(match.name);
         const pr = await fetch(`/api/files/preview/${match.fileId}`);
         if (pr.headers.get('content-type')?.includes('json')) {
           const pd = await pr.json();
@@ -924,7 +937,7 @@ function ArtifactCard({ name, c, onApprove, onReject, status }) {
           <div style={{fontSize:11,fontWeight:700,color:isApproved?c.gr:isRejected?"#ea4335":c.ac,textTransform:"uppercase",letterSpacing:"0.5px"}}>
             {isApproved ? "✅ Approved" : isRejected ? "❌ Rejected" : "📎 Artifact"}
           </div>
-          <div style={{fontSize:13,fontWeight:600,color:c.tx,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{name}</div>
+          <div style={{fontSize:13,fontWeight:600,color:c.tx,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{displayName||name}</div>
         </div>
         <span style={{fontSize:12,color:c.so,transform:expanded?"rotate(180deg)":"rotate(0deg)",transition:"transform .2s"}}>▼</span>
       </div>
@@ -1054,7 +1067,7 @@ export default function App() {
   useEffect(()=>{
     if(pg!=="artifacts") return;
     setFilesLoading(true);
-    fetch("/api/files/artifacts?status=approved&limit=50")
+    fetch("/api/files/artifacts?limit=50")
       .then(r=>r.ok?r.json():null)
       .then(d=>{
         setFiles(d?.artifacts||[]);
@@ -1604,11 +1617,18 @@ export default function App() {
                         </div>
                         {/* Info */}
                         <div style={{padding:"12px 14px"}}>
-                          <div style={{fontSize:13,fontWeight:600,color:c.tx,marginBottom:4,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</div>
+                          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
+                            <div style={{fontSize:13,fontWeight:600,color:c.tx,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{f.name}</div>
+                            <span style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:4,background:f.status==='approved'?"rgba(52,168,83,0.15)":"rgba(244,162,97,0.15)",color:f.status==='approved'?c.gr:c.ac}}>{f.status==='approved'?'APPROVED':'PENDING'}</span>
+                          </div>
                           {f.description&&<div style={{fontSize:11,color:c.so,marginBottom:6,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.description}</div>}
                           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                            <span style={{fontSize:10,color:c.fa}}>{sizeStr} · {date}</span>
+                            <span style={{fontSize:10,color:c.fa}}>{sizeStr} · {date||'Just now'}</span>
                             <div style={{display:"flex",gap:6}}>
+                              {f.status==='pending'&&<button onClick={async()=>{
+                                await fetch(`/api/files/artifacts/${f.fileId}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'approved'})});
+                                setFiles(p=>p.map(x=>x.fileId===f.fileId?{...x,status:'approved'}:x));
+                              }} style={{padding:"4px 10px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#34a853,#2d9248)",cursor:"pointer",fontSize:11,fontWeight:700,color:"#fff"}}>✓ Approve</button>}
                               <a href={`/api/files/download/${f.fileId}`} download style={{padding:"4px 10px",borderRadius:6,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:11,fontWeight:600,color:c.ac,textDecoration:"none"}}>↓ Download</a>
                               <button onClick={async()=>{
                                 if(confirm('Remove this file?')){
