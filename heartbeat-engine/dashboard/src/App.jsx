@@ -900,7 +900,7 @@ function parseMessageCards(text) {
   return cards;
 }
 
-function ArtifactCard({ name, c, onApprove, onReject, status }) {
+function ArtifactCard({ name, c, onApprove, onReject, status, onOpenSide, mob }) {
   const [expanded, setExpanded] = useState(false);
   const [content, setContent] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -989,7 +989,26 @@ function ArtifactCard({ name, c, onApprove, onReject, status }) {
   return (
     <div style={{marginTop:8,borderRadius:14,border:"1px solid "+(isApproved?"rgba(52,168,83,0.4)":isRejected?"rgba(234,67,53,0.3)":"rgba(244,162,97,0.4)"),background:c.cd,overflow:"hidden"}}>
       {/* Header bar */}
-      <div onClick={loadContent} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",cursor:"pointer",background:isApproved?"rgba(52,168,83,0.06)":isRejected?"rgba(234,67,53,0.04)":"rgba(244,162,97,0.06)"}}>
+      <div onClick={async()=>{
+        // On desktop with side panel available, open there
+        if(!mob && onOpenSide && artData) {
+          if(!content) {
+            try {
+              const pr = await fetch(`/api/files/preview/${artData.fileId}`);
+              if(pr.headers.get('content-type')?.includes('json')) {
+                const pd = await pr.json();
+                setContent(pd.content || 'Preview not available');
+                onOpenSide({name:artData.name,content:pd.content,fileId:artData.fileId});
+              }
+            } catch { onOpenSide({name:artData.name,content:content||'Loading...',fileId:artData.fileId}); }
+          } else {
+            onOpenSide({name:artData.name,content,fileId:artData.fileId});
+          }
+          return;
+        }
+        // Mobile or no side panel — expand inline
+        loadContent();
+      }} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",cursor:"pointer",background:isApproved?"rgba(52,168,83,0.06)":isRejected?"rgba(234,67,53,0.04)":"rgba(244,162,97,0.06)"}}>
         <span style={{fontSize:18}}>{icon}</span>
         <div style={{flex:1,minWidth:0}}>
           <div style={{fontSize:11,fontWeight:700,color:isApproved?c.gr:isRejected?"#ea4335":c.ac,textTransform:"uppercase",letterSpacing:"0.5px"}}>
@@ -1015,7 +1034,6 @@ function ArtifactCard({ name, c, onApprove, onReject, status }) {
               .replace(/\n\n/g, '<br/><br/>')
               .replace(/\n/g, '<br/>')
             }}/>
-          </div>
           {/* Action buttons */}
           <div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",borderTop:"1px solid "+c.ln,background:isApproved?"rgba(52,168,83,0.06)":"rgba(244,162,97,0.06)"}}>
             {!isApproved && !isRejected && (
@@ -1094,6 +1112,8 @@ export default function App() {
   const [isNew,setNew]=useState(true);
   const [vcRec,setVcRec]=useState(false);
   const [scrM,setScrM]=useState("docked");
+  const [rightTab,setRightTab]=useState("browser"); // "browser" | "artifact"
+  const [activeArtifact,setActiveArtifact]=useState(null); // {name, content, fileId}
   const [sbO,setSbO]=useState(!mob?"full":"closed");
   const [stab,setStab]=useState("General");
   const [hlpO,setHlpO]=useState(false);
@@ -1467,6 +1487,8 @@ export default function App() {
                                     status={cd2._status}
                                     onApprove={()=>{cd2._status='approved';setMessages(p=>[...p]);setFilesRefresh(n=>n+1);setTimeout(()=>setPg('artifacts'),500);}}
                                     onReject={()=>{cd2._status='rejected';setMessages(p=>[...p]);}}
+                                    onOpenSide={(art)=>{setActiveArtifact(art);setRightTab("artifact");}}
+                                    mob={mob}
                                   />
                                 : <EmailCard key={ci} subject={cd2.subject} c={c} onReview={()=>alert("Email review panel coming soon")}/>
                               )}
@@ -1488,7 +1510,53 @@ export default function App() {
                     {!mob&&scrM!=="hidden"&&(
                       <ResizablePanel c={c} defaultWidth={480} minWidth={280} maxWidth={800}>
                         <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
-                          <Screen c={c} mob={false} mode="docked" setMode={setScrM}/>
+                          {/* ── Right panel tabs ── */}
+                          <div style={{display:"flex",borderBottom:"1px solid "+c.ln,background:c.sf,flexShrink:0}}>
+                            <button onClick={()=>setRightTab("browser")} style={{flex:1,padding:"8px 0",fontSize:11,fontWeight:700,border:"none",borderBottom:rightTab==="browser"?"2px solid "+c.ac:"2px solid transparent",background:"transparent",color:rightTab==="browser"?c.tx:c.so,cursor:"pointer",letterSpacing:"0.5px"}}>🖥️ Browser</button>
+                            <button onClick={()=>setRightTab("artifact")} style={{flex:1,padding:"8px 0",fontSize:11,fontWeight:700,border:"none",borderBottom:rightTab==="artifact"?"2px solid "+c.ac:"2px solid transparent",background:"transparent",color:rightTab==="artifact"?c.tx:c.so,cursor:"pointer",letterSpacing:"0.5px",position:"relative"}}>
+                              📄 Artifact
+                              {activeArtifact&&<span style={{position:"absolute",top:4,right:"20%",width:6,height:6,borderRadius:"50%",background:c.ac}}/>}
+                            </button>
+                          </div>
+
+                          {/* ── Browser tab ── */}
+                          {rightTab==="browser"&&<Screen c={c} mob={false} mode="docked" setMode={setScrM}/>}
+
+                          {/* ── Artifact tab ── */}
+                          {rightTab==="artifact"&&(
+                            activeArtifact?(
+                              <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+                                <div style={{padding:"12px 16px",borderBottom:"1px solid "+c.ln,background:c.cd,display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
+                                  <span style={{fontSize:18}}>📝</span>
+                                  <div style={{flex:1,minWidth:0}}>
+                                    <div style={{fontSize:13,fontWeight:700,color:c.tx,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{activeArtifact.name}</div>
+                                  </div>
+                                  {activeArtifact.fileId&&<a href={`/api/files/download/${activeArtifact.fileId}`} download style={{padding:"4px 10px",borderRadius:6,border:"1px solid "+c.ln,background:c.cd,fontSize:11,fontWeight:600,color:c.ac,textDecoration:"none"}}>↓</a>}
+                                  <button onClick={()=>setActiveArtifact(null)} style={{width:26,height:26,borderRadius:6,border:"1px solid "+c.ln,background:"transparent",cursor:"pointer",fontSize:13,color:c.so,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+                                </div>
+                                <div style={{flex:1,overflowY:"auto",padding:"16px 20px",fontSize:14,lineHeight:1.8,color:c.tx}}
+                                  dangerouslySetInnerHTML={{__html: (activeArtifact.content||'')
+                                    .replace(/^# (.+)$/gm, '<h1 style="font-size:22px;font-weight:700;margin:18px 0 10px">$1</h1>')
+                                    .replace(/^## (.+)$/gm, '<h2 style="font-size:18px;font-weight:700;margin:14px 0 8px">$1</h2>')
+                                    .replace(/^### (.+)$/gm, '<h3 style="font-size:16px;font-weight:600;margin:12px 0 6px">$1</h3>')
+                                    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                                    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+                                    .replace(/^- (.+)$/gm, '<li style="margin-left:20px;margin-bottom:6px">$1</li>')
+                                    .replace(/^(\d+)\. (.+)$/gm, '<li style="margin-left:20px;margin-bottom:6px"><strong>$1.</strong> $2</li>')
+                                    .replace(/\n\n/g, '<br/><br/>')
+                                    .replace(/\n/g, '<br/>')
+                                  }}/>
+                              </div>
+                            ):(
+                              <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",textAlign:"center",padding:30}}>
+                                <div>
+                                  <div style={{fontSize:36,marginBottom:10,opacity:0.3}}>📄</div>
+                                  <div style={{fontSize:13,color:"#666",marginBottom:4}}>No artifact open</div>
+                                  <div style={{fontSize:11,color:"#555"}}>Click an artifact in chat to preview it here</div>
+                                </div>
+                              </div>
+                            )
+                          )}
                           <div style={{borderTop:"1px solid "+c.ln,background:c.cd,flexShrink:0}}>
                             <div style={{padding:"10px 16px",borderBottom:"1px solid "+c.ln,display:"flex",alignItems:"center",gap:8}}>
                               <span style={{width:8,height:8,borderRadius:"50%",background:c.ac,animation:"pulse 1.5s ease infinite"}}/>
