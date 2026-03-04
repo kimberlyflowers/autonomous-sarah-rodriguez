@@ -176,14 +176,13 @@ async def browse(req: BrowseRequest):
             temperature=0,
         )
 
-        # Create and run agent with step callback for live Screen Viewer
+        # Create and run agent
         agent = Agent(
             task=task,
             llm=llm,
             browser=browser_session,
             max_failures=3,
         )
-        agent.register_new_step_callback(make_step_callback())
 
         result = await agent.run(max_steps=req.max_steps)
 
