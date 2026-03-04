@@ -134,6 +134,27 @@ async def browse(req: BrowseRequest):
 
         browser_session = BrowserSession(cdp_url=cdp_url)
 
+        # Pre-navigate: open a fresh page at the requested URL before the agent starts
+        # This prevents the agent from seeing stale pages from previous sessions
+        if req.url:
+            try:
+                from playwright.async_api import async_playwright
+                _pw = await async_playwright().__aenter__()
+                _pre_browser = await _pw.chromium.connect_over_cdp(cdp_url)
+                if _pre_browser.contexts:
+                    _pre_page = await _pre_browser.contexts[0].new_page()
+                else:
+                    _ctx = await _pre_browser.new_context()
+                    _pre_page = await _ctx.new_page()
+                log.info(f"Pre-navigating to {req.url}")
+                await _pre_page.goto(req.url, wait_until="domcontentloaded", timeout=30000)
+                log.info(f"Pre-navigation complete: {_pre_page.url}")
+                # Don't close — let the agent pick up this page
+                await _pre_browser.close()  # disconnect CDP without killing browser
+                await _pw.__aexit__(None, None, None)
+            except Exception as pre_err:
+                log.warning(f"Pre-navigation failed (non-critical): {pre_err}")
+
         # Use Claude as the LLM
         llm = ChatAnthropic(
             model=ANTHROPIC_MODEL,
