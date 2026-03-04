@@ -1,105 +1,83 @@
 ---
 name: blog-content
-description: "Write compelling, emotionally resonant blog posts and articles that connect with real audiences. Use when the task involves blog writing, article creation, content marketing, thought leadership, or any long-form content. Also use for content calendars and strategy. This skill transforms generic AI blog posts into content that sounds like a human who cares wrote it."
+description: "Write blog posts, articles, and long-form content that actually moves people. Use when the task involves blog writing, article creation, content marketing, thought leadership, or any long-form written content. Also triggers for content calendars, content strategy, and SEO-focused writing."
 ---
 
 # Blog & Long-Form Content
 
-## Before You Write a Single Word
+## How to Think About This
 
-Stop. Don't start with an outline. Start with these questions:
+You are not writing a blog post. You are starting a conversation with someone who has a problem, doesn't know you yet, and is one boring paragraph away from closing the tab.
 
-**Who is the reader?** Not "target audience" in marketing speak. A real person. What are they worried about at 2am? What have they tried that didn't work? What do they WISH someone would just tell them straight? If you can't picture a specific person reading this, you're not ready to write.
+Your job is to make them feel SEEN before you offer them anything. The blog post is not about the business. It's about the reader's life, frustration, hope, or question. The business is the answer — but it comes later.
 
-**What does the reader feel BEFORE reading this?** Frustrated? Confused? Hopeful but skeptical? Your opening must meet them in that emotion. Not above it (lecturing), not below it (pandering). RIGHT where they are.
+## The First Two Sentences Are Everything
 
-**What should the reader feel AFTER reading this?** Empowered? Informed? Seen? Motivated to act? The entire piece builds toward this emotional destination.
+The reader decides in 3 seconds whether to keep reading. Your opening must do ONE of these:
 
-**What's the ONE thing?** If the reader remembers only one idea from this post, what is it? Every paragraph should serve that one idea. If a section doesn't connect back to it, cut it.
+- **Name an experience they've lived.** "There's a moment every parent knows. It's the one where you pick your child up from school and ask 'What did you learn today?' — and the answer is a shrug."
+- **Make a bold claim they can't ignore.** "The school system wasn't built for your child. It was built for efficiency."
+- **Ask a question that stings a little.** "When's the last time your child came home excited about something they learned?"
 
-## The Anatomy of a Post That Actually Gets Read
+NEVER open with: "In today's fast-paced world..." or "Are you looking for..." or "At [Company], we believe..." — these are the sound of someone being sold to, and people run from it.
 
-### The Hook (First 3 Sentences)
+## Structure That Holds Attention
 
-This is life or death. 80% of people read the headline. 20% read past the first paragraph. Your job is to be so specific, so human, so unexpectedly honest that they can't stop.
+Your post should feel like a conversation, not a textbook:
 
-**What works:**
-- A specific moment the reader has lived: "There's a moment every parent knows. It's the one where you pick your child up from school and ask 'What did you learn today?' — and the answer is a shrug."
-- A bold claim that challenges what they believe: "Everything you've been told about email marketing is optimized for 2019. Here's what actually works now."
-- A stat that makes them stop scrolling: "73% of small business owners spend more on software they don't use than on marketing that works."
+1. **Hook** (1-2 sentences) — Emotional entry point. Make them feel something.
+2. **"You're not alone"** (1 paragraph) — Validate that this is a real, common experience. Name specific places, demographics, or situations that make the reader think "that's me."
+3. **The insight** (2-3 sections) — The actual value. Each section should be a self-contained idea with its own mini-hook. Use H2 headings that are interesting, not generic. "It's Not Just About Academics — It's About Identity" beats "Our Academic Approach."
+4. **Address the objection** (1 section) — Every reader has a "but..." in their head. Name it. "But can we afford it?" or "But is it actually accredited?" Don't dodge the hard question — answering it directly builds massive trust.
+5. **The invitation** (closing) — Not a hard sell. An open door. "Come see us. Not a commitment — just a visit." Give them a low-friction next step.
 
-**What doesn't work:**
-- "In today's fast-paced world..." (DELETE THIS FOREVER)
-- "Are you looking for ways to..." (boring)
-- "In this blog post, we'll explore..." (nobody cares about your agenda)
-- Starting with a definition from the dictionary (instant close)
-- Generic listicle titles with no specificity ("5 Ways to Improve Your Business")
+## Voice Rules
 
-### The Bridge (Why This Matters)
+- Write in second person. "You" appears more than "we."
+- Short paragraphs. 2-3 sentences max. White space is your friend.
+- Use real names, real places, real neighborhoods when possible. "Across San Antonio — from the East Side to the South Side" hits different than "across the city."
+- Active voice always. "We built this" not "This was built."
+- If a sentence sounds like a brochure, delete it.
+- One bold or italic emphasis per section maximum. If everything is emphasized, nothing is.
 
-After the hook, the reader is paying attention but skeptical. The bridge answers: "Why should I keep reading? Why now? Why YOU?"
+## SEO (Do This, But Don't Let It Show)
 
-Connect the reader's pain to a bigger picture. Show them they're not alone. Make the problem feel urgent but solvable.
+- Title includes the primary keyword, under 60 characters
+- Meta description: 150-160 characters, keyword + emotional hook
+- H2 every 200-300 words (but they should be INTERESTING, not keyword-stuffed)
+- 1,200-2,000 words for ranking
+- Internal links to other client content
+- Alt text on images (describe what's actually in the image)
 
-### The Body (The Actual Value)
+The reader should never feel like the post was written for Google. It was written for them. The SEO is invisible scaffolding.
 
-Each section (H2) should be a standalone insight that delivers real value. The reader should be able to screenshot any section and send it to a friend.
+## What to Research Before Writing
 
-Rules:
-- Every section starts with the insight, not the buildup. Don't bury the lead.
-- Use specific examples, names, numbers, and stories. "A school in San Antonio" is 10x better than "many schools." "Revenue increased 34% in Q2" is 10x better than "revenue improved significantly."
-- Alternate between teaching and storytelling. Data → story → data → story. This creates rhythm.
-- Short paragraphs. 2-3 sentences MAX. White space is your friend. The reader's eye needs places to rest.
-- Use "you" constantly. The reader should feel spoken TO, not spoken ABOUT.
+Before writing a single word, you should know:
+- Who is the audience? Parents? Business owners? Donors? Be specific.
+- What is their biggest frustration related to this topic?
+- What objection will they have? (cost, trust, time, "is this legit?")
+- What local context matters? (neighborhood names, recent events, legislation)
+- Is there a real person's story that could anchor this piece?
 
-### The Close (What to Do Now)
+If you don't know these things, ASK the client before writing. A blog post without audience context is just words on a page.
 
-Never end with a summary. The reader just read the whole thing — they don't need a recap.
+## Output Format
 
-End with:
-1. A direct, specific call to action (not "learn more" — that's lazy)
-2. An emotional callback to the opening (tie the bow)
-3. A line that makes them feel something — hope, determination, urgency
+Every blog post delivery includes:
+- Title (under 60 characters, includes primary keyword)
+- Meta description (150-160 characters)
+- The full blog post in clean Markdown
+- 3 social media captions tailored to platform (LinkedIn, Facebook, Instagram)
+- A suggested featured image description (for image generation or stock photo search)
 
-Example: "Your child's future doesn't have to be decided by a zip code. It can be decided by a parent who refused to accept 'nothing' as an answer. That parent is you."
+## Common Mistakes to Avoid
 
-## Voice & Tone
-
-- **8th grade reading level.** Use Hemingway's rule: if a simpler word works, use it.
-- **Write like you talk.** Read it out loud. If you wouldn't say it to a friend over coffee, rewrite it.
-- **"You" > "we."** The reader is the hero, not you.
-- **Active voice always.** "We built this program" not "This program was built by us."
-- **Have opinions.** Generic content is invisible content. Take a stance. "This is the best approach and here's why" > "There are many approaches to consider."
-- **Be honest about hard things.** "Let's be honest — this is the question on every parent's mind" builds more trust than pretending objections don't exist.
-- **No jargon unless you immediately explain it.** If you say "accreditation pathway," follow it with what that means for the reader.
-
-## SEO (Do This, But Don't Let It Kill The Writing)
-
-- Title: primary keyword, under 60 characters, but make it INTERESTING
-- Meta description: 150-160 chars, includes keyword + emotional hook
-- H2s every 200-300 words
-- Internal links to client's other content
-- One authoritative external source/stat per post
-- Target 1,500-2,500 words (long enough to rank, short enough to finish)
-- Alt text on all images
-
-## What to Include With Every Blog Post
-
-When you deliver, always include:
-1. **Title** — with primary keyword, emotionally compelling
-2. **Meta description** — 150-160 chars, keyword + hook
-3. **Full blog post** — in Markdown, 1,500-2,500 words
-4. **3 social captions** — LinkedIn (professional + personal story), Facebook (community + emotion), Instagram (hook + hashtags)
-5. **Featured image description** — specific enough for image generation
-
-## The Quality Check
-
-Before delivering, ask yourself:
-- Would I actually read this? All the way to the end?
-- Does the opening make me FEEL something in the first 3 sentences?
-- Can I picture the specific person this is written for?
-- Is there at least one moment that could make someone screenshot it?
-- Does it say something real, or is it just content for content's sake?
-- Would the client be proud to put their name on this?
-
-If any answer is no, rewrite that part.
+- Starting with the company instead of the reader's problem
+- Generic openings that could apply to any business
+- Listicles with no narrative thread ("7 Ways to..." with no soul)
+- Ending with "Contact us today!" instead of an emotional close
+- Forgetting to address the reader's main objection
+- No local context — could have been written for any city
+- Too short (under 800 words rarely ranks or converts)
+- Too safe — if the post doesn't make you feel something, rewrite the opening

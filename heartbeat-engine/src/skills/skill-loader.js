@@ -98,7 +98,7 @@ const KEYWORD_SKILL_MAP = [
   { keywords: /\b(social|instagram|tiktok|facebook|linkedin|twitter|caption|hashtag)\b/i, skill: 'social-media' },
   { keywords: /\b(contact|lead|crm|ghl|pipeline|deal|appointment|invoice|workflow)\b/i, skill: 'ghl-crm' },
   { keywords: /\b(website|landing page|dashboard|component|ui|ux|frontend|html|react)\b/i, skill: 'frontend-design' },
-  { keywords: /\b(document|report|memo|letter|word doc|docx|proposal)\b/i, skill: 'docx' },
+  { keywords: /\b(document|report|memo|letter|word doc|docx|proposal|quarterly|grant|sop)\b/i, skill: 'professional-documents' },
 ];
 
 /**
