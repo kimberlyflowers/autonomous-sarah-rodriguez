@@ -1079,6 +1079,7 @@ export default function App() {
   const projects=["Petal Core Beauty","Youth Empowerment School","BLOOM Internal"];
   const [files,setFiles]=useState([]);
   const [filesLoading,setFilesLoading]=useState(false);
+  const [filesRefresh,setFilesRefresh]=useState(0);
   const [heartbeatInterval,setHeartbeatInterval]=useState("0 */6 * * *");
   const [heartbeatEnabled,setHeartbeatEnabled]=useState(true);
   const [cronJobs,setCronJobs]=useState([
@@ -1088,7 +1089,7 @@ export default function App() {
     {id:"c4",nm:"Task completion scan",ic:"✅",freq:"Hourly",next:"—",last:"—",ok:true,on:true},
   ]);
 
-  // Fetch deliverables when files tab opens
+  // Fetch deliverables when files tab opens or after approval
   useEffect(()=>{
     if(pg!=="artifacts") return;
     setFilesLoading(true);
@@ -1099,7 +1100,7 @@ export default function App() {
       })
       .catch(()=>{})
       .finally(()=>setFilesLoading(false));
-  },[pg]);
+  },[pg,filesRefresh]);
   const btm=useRef(null);
   const fRef=useRef(null);
   const [pendingFiles,setPendingFiles]=useState([]);
@@ -1439,7 +1440,7 @@ export default function App() {
                                 : cd2.type==="artifact"
                                 ? <ArtifactCard key={ci} name={cd2.name} c={c}
                                     status={cd2._status}
-                                    onApprove={()=>{cd2._status='approved';setMessages(p=>[...p]);}}
+                                    onApprove={()=>{cd2._status='approved';setMessages(p=>[...p]);setFilesRefresh(n=>n+1);setTimeout(()=>setPg('artifacts'),500);}}
                                     onReject={()=>{cd2._status='rejected';setMessages(p=>[...p]);}}
                                   />
                                 : <EmailCard key={ci} subject={cd2.subject} c={c} onReview={()=>alert("Email review panel coming soon")}/>
