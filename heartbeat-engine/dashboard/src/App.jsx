@@ -228,6 +228,14 @@ function useSarahChat() {
     if(sid.current===sessionId) { sid.current=null; setCurrentSessionId(null); setMessages([]); }
   };
 
+  const abortRef = useRef(null);
+
+  const stopSarah = () => {
+    if(abortRef.current) { abortRef.current.abort(); abortRef.current=null; }
+    setLoading(false);
+    setWorkingStatus("");
+  };
+
   const send = async (text) => {
     if(!text.trim()) return false;
     if(!sid.current) { const id="session-"+Date.now(); sid.current=id; setCurrentSessionId(id); }
@@ -239,37 +247,44 @@ function useSarahChat() {
     const isWorkTask = /\b(write|create|build|make|draft|design|generate|research|check|find|search|send|schedule|update|look up|go to|navigate|analyze|summarize|review|edit|fix|compile|prepare|pull|set up|book|cancel)\b/i.test(text)
       || /\b(blog|email|post|website|landing page|report|document|contact|lead|campaign|sequence|flyer|graphic|proposal|invoice|spreadsheet|calendar|appointment)\b/i.test(text);
     
-    // For work tasks: show instant acknowledgment, then working indicator
+    // For work tasks: show instant acknowledgment
     let ackId = null;
-    let timers = [];
     if(isWorkTask){
-      // Generate a quick acknowledgment based on what they asked
       const ackText = generateAck(text);
       ackId = Date.now();
       setMessages(p=>[...p,{id:ackId,b:true,t:ackText,tm:ts,isAck:true}]);
-      
-      // Show working indicator after brief pause
-      setTimeout(()=>setWorkingStatus("Understanding your request..."),800);
-      const progressStages = [
-        {delay:2500, msg:"Analyzing task type..."},
-        {delay:4500, msg:"Loading relevant skills..."},
-        {delay:7000, msg:"Building your deliverable..."},
-        {delay:13000, msg:"Refining output..."},
-        {delay:22000, msg:"Almost done..."},
-      ];
-      timers = progressStages.map(s=>setTimeout(()=>setWorkingStatus(s.msg),s.delay));
-    } else {
-      setWorkingStatus("");
     }
     
+    // Honest progress — time-based but truthful about what we know
+    const startTime = Date.now();
+    setWorkingStatus(isWorkTask ? "Sending to Sarah..." : "Thinking...");
+    const progressInterval = setInterval(()=>{
+      const elapsed = Math.round((Date.now()-startTime)/1000);
+      if(elapsed < 3) setWorkingStatus(isWorkTask ? "Sarah is reading your request..." : "Thinking...");
+      else if(elapsed < 8) setWorkingStatus("Sarah is working on this...");
+      else if(elapsed < 15) setWorkingStatus(`Still working... (${elapsed}s)`);
+      else if(elapsed < 30) setWorkingStatus(`This is a bigger task — hang tight... (${elapsed}s)`);
+      else if(elapsed < 60) setWorkingStatus(`Deep work in progress... (${elapsed}s)`);
+      else setWorkingStatus(`Sarah's on a complex task — still going... (${Math.round(elapsed/60)}m ${elapsed%60}s)`);
+    }, 1000);
+    
+    // Abortable fetch
+    const controller = new AbortController();
+    abortRef.current = controller;
+    
     try {
-      const res = await fetch("/api/chat/message",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:text,sessionId:sid.current})});
+      const res = await fetch("/api/chat/message",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({message:text,sessionId:sid.current}),
+        signal: controller.signal
+      });
+      clearInterval(progressInterval);
+      abortRef.current = null;
       const data = await res.json();
-      timers.forEach(clearTimeout);
       const ts2 = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
       const responseText = (data.response||data.message||"Done.").replace(/\s*\[Session context[\s\S]*$/,'').replace(/\s*\[Tool:.*?\]\s*/g,'').trim();
       
-      // Replace the acknowledgment message with the real response (or just add if no ack)
       if(ackId){
         setMessages(p=>p.filter(m=>m.id!==ackId).concat([{id:Date.now(),b:true,t:responseText,tm:ts2,skill:data.skillUsed||null,hasArtifact:!!responseText.match(/Created "|I've created|I created|saved as|saved it to|in your Files tab|saved to.*Files/i)}]));
       } else {
@@ -278,8 +293,16 @@ function useSarahChat() {
       fetchSessions();
       setTimeout(fetchSessions, 3000);
       return true;
-    } catch {
-      timers.forEach(clearTimeout);
+    } catch(err) {
+      clearInterval(progressInterval);
+      abortRef.current = null;
+      if(err.name === 'AbortError'){
+        // User cancelled
+        const ts2 = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
+        if(ackId) setMessages(p=>p.filter(m=>m.id!==ackId));
+        setMessages(p=>[...p,{id:Date.now(),b:true,t:"Stopped. What would you like me to do instead?",tm:ts2,isSystem:true}]);
+        return false;
+      }
       const ts2 = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
       setMessages(p=>[...p,{id:Date.now(),b:true,t:"Connection issue — please try again.",tm:ts2}]);
       return false;
@@ -313,7 +336,7 @@ function useSarahChat() {
     } finally { setLoading(false); }
   };
 
-  return {messages,setMessages,send,sendFiles,loading,workingStatus,sessions,currentSessionId,newSession,loadSession,deleteSession,fetchSessions};
+  return {messages,setMessages,send,sendFiles,loading,workingStatus,sessions,currentSessionId,newSession,loadSession,deleteSession,fetchSessions,stopSarah};
 }
 
 
@@ -1916,7 +1939,7 @@ export default function App() {
   const sse=useSSE();
   const agentOnline=useAgentOnline();
   const {crmUrl,contactsUrl}=useCRMLink();
-  const {messages,setMessages,send,sendFiles,loading,workingStatus,sessions,currentSessionId,newSession,loadSession,deleteSession,fetchSessions}=useSarahChat();
+  const {messages,setMessages,send,sendFiles,loading,workingStatus,sessions,currentSessionId,newSession,loadSession,deleteSession,fetchSessions,stopSarah}=useSarahChat();
   // Periodically refresh session titles (AI title generates async after first message)
   useEffect(()=>{ const t=setInterval(fetchSessions,8000); return()=>clearInterval(t); },[]);
   const connected=agentOnline; // true online/offline from health poll
@@ -2379,7 +2402,11 @@ export default function App() {
                         {vcRec&&<span style={{position:"absolute",inset:-4,borderRadius:16,border:"2px solid "+c.ac,animation:"pulse 1.2s ease infinite",opacity:0.4}}/>}
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={vcRec?c.ac:c.so} strokeWidth="2" strokeLinecap="round"><rect x="9" y="1" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0014 0"/><path d="M12 17v4M8 21h8"/></svg>
                       </button>
-                      <button onClick={doSend} disabled={!tx.trim()||loading} style={{width:44,height:44,borderRadius:12,border:"none",cursor:tx.trim()&&!loading?"pointer":"not-allowed",background:tx.trim()&&!loading?"linear-gradient(135deg,#F4A261,#E76F8B)":c.sf,color:tx.trim()&&!loading?"#fff":c.fa,fontSize:18,fontWeight:700,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>➜</button>
+                      {loading?(
+                        <button onClick={stopSarah} style={{width:44,height:44,borderRadius:12,border:"none",cursor:"pointer",background:"rgba(234,67,53,0.15)",color:"#ea4335",fontSize:16,fontWeight:700,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",transition:"background .15s"}} title="Stop Sarah">■</button>
+                      ):(
+                        <button onClick={doSend} disabled={!tx.trim()} style={{width:44,height:44,borderRadius:12,border:"none",cursor:tx.trim()?"pointer":"not-allowed",background:tx.trim()?"linear-gradient(135deg,#F4A261,#E76F8B)":c.sf,color:tx.trim()?"#fff":c.fa,fontSize:18,fontWeight:700,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>➜</button>
+                      )}
                     </div>
                     <div style={{display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap"}}>
                       {["What can you help me with?","Check my GHL contacts","Show system health","What tasks are pending?"].map((s,i)=>(
@@ -2434,26 +2461,29 @@ export default function App() {
                         );
                       })}
                       {loading&&(
-                        <div style={{display:"flex",justifyContent:"flex-start",marginBottom:14}}>
-                          <div style={{marginRight:8,marginTop:2}}><Face sz={28} agent={agent}/></div>
-                          {workingStatus?(
-                            <div style={{padding:"14px 18px",borderRadius:"6px 18px 18px 18px",background:c.cd,border:"1px solid "+c.ln,minWidth:200}}>
-                              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
-                                <span style={{width:8,height:8,borderRadius:"50%",background:c.ac,animation:"pulse 1.2s ease infinite"}}/>
-                                <span style={{fontSize:13,fontWeight:600,color:c.tx}}>Working on it...</span>
-                              </div>
-                              <div style={{fontSize:11,color:c.so,lineHeight:1.5}}>
-                                <div style={{display:"flex",alignItems:"center",gap:6}}>
-                                  <span style={{animation:"spin 1.5s linear infinite",display:"inline-block"}}>⚙️</span>
-                                  <span>{workingStatus}</span>
+                        <div style={{display:"flex",justifyContent:"flex-start",marginBottom:14,alignItems:"flex-end",gap:8}}>
+                          <div style={{marginRight:0,marginTop:2}}><Face sz={28} agent={agent}/></div>
+                          <div style={{flex:1}}>
+                            {workingStatus?(
+                              <div style={{padding:"14px 18px",borderRadius:"6px 18px 18px 18px",background:c.cd,border:"1px solid "+c.ln,minWidth:200}}>
+                                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                                  <span style={{width:8,height:8,borderRadius:"50%",background:c.ac,animation:"pulse 1.2s ease infinite"}}/>
+                                  <span style={{fontSize:13,fontWeight:600,color:c.tx}}>Sarah is working</span>
+                                </div>
+                                <div style={{fontSize:11,color:c.so,lineHeight:1.5}}>
+                                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                                    <span style={{animation:"spin 1.5s linear infinite",display:"inline-block"}}>⚙️</span>
+                                    <span>{workingStatus}</span>
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          ):(
-                            <div style={{padding:"12px 16px",borderRadius:"6px 18px 18px 18px",background:c.cd,border:"1px solid "+c.ln,display:"flex",gap:4,alignItems:"center"}}>
-                              {[0,1,2].map(i=><span key={i} style={{width:6,height:6,borderRadius:"50%",background:c.ac,animation:`pulse 1.2s ease ${i*0.2}s infinite`}}/>)}
-                            </div>
-                          )}
+                            ):(
+                              <div style={{padding:"12px 16px",borderRadius:"6px 18px 18px 18px",background:c.cd,border:"1px solid "+c.ln,display:"flex",gap:4,alignItems:"center"}}>
+                                {[0,1,2].map(i=><span key={i} style={{width:6,height:6,borderRadius:"50%",background:c.ac,animation:`pulse 1.2s ease ${i*0.2}s infinite`}}/>)}
+                              </div>
+                            )}
+                          </div>
+                          <button onClick={stopSarah} title="Stop Sarah" style={{width:32,height:32,borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:14,color:"#ea4335",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"background .15s"}} onMouseEnter={e=>e.currentTarget.style.background="rgba(234,67,53,0.1)"} onMouseLeave={e=>e.currentTarget.style.background=c.cd}>■</button>
                         </div>
                       )}
                       <div ref={btm}/>
