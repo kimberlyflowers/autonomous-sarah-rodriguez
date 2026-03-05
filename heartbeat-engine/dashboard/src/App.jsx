@@ -1378,6 +1378,95 @@ function SkillsPage({c,mob}){
   );
 }
 
+// ── BUSINESS PROFILE PAGE — Synced from GHL ─────────────────────────────────
+function BusinessProfilePage({c,mob,userImg,setUserImg}){
+  const [biz,setBiz]=useState(null);
+  const [loading,setLoading]=useState(true);
+
+  useEffect(()=>{
+    fetch('/api/dashboard/business-profile').then(r=>r.json()).then(d=>{
+      setBiz(d.profile);setLoading(false);
+    }).catch(()=>setLoading(false));
+  },[]);
+
+  if(loading) return <div style={{textAlign:"center",padding:60,color:c.so}}>Loading business profile...</div>;
+
+  return(
+    <div style={{overflowY:"auto",height:"calc(100vh - 52px)",padding:mob?"16px 12px 40px":"20px 20px 40px",maxWidth:700,margin:"0 auto"}}>
+      <h1 style={{fontSize:mob?20:24,fontWeight:700,color:c.tx,marginBottom:6}}>🏢 Business Profile</h1>
+      <p style={{fontSize:13,color:c.so,marginBottom:24}}>Synced from your GoHighLevel account</p>
+
+      {/* Owner Photo */}
+      <div style={{background:c.cd,borderRadius:16,border:"1px solid "+c.ln,padding:24,marginBottom:16,display:"flex",alignItems:"center",gap:20}}>
+        <label style={{width:80,height:80,borderRadius:16,background:userImg?"transparent":"linear-gradient(135deg,#F4A261,#E76F8B)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,fontWeight:700,color:"#fff",cursor:"pointer",overflow:"hidden",flexShrink:0,border:"3px solid "+c.ln}}>
+          {userImg?<img src={userImg} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>:"K"}
+          <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{
+            const f=e.target.files[0]; if(!f) return;
+            const r=new FileReader();
+            r.onload=ev=>{
+              setUserImg(ev.target.result);
+              fetch('/api/dashboard/user-avatar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({avatar:ev.target.result})}).catch(()=>{});
+            };
+            r.readAsDataURL(f);
+          }}/>
+        </label>
+        <div>
+          <div style={{fontSize:18,fontWeight:700,color:c.tx}}>Your Photo</div>
+          <div style={{fontSize:12,color:c.so,marginTop:2}}>Click to upload — visible across all your Bloomie dashboards</div>
+          {userImg&&<button onClick={()=>{setUserImg(null);fetch('/api/dashboard/user-avatar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({avatar:null})}).catch(()=>{});}} style={{marginTop:8,padding:"4px 12px",borderRadius:6,border:"1px solid rgba(234,67,53,0.3)",background:"transparent",cursor:"pointer",fontSize:11,color:"#ea4335",fontFamily:"inherit"}}>Remove photo</button>}
+        </div>
+      </div>
+
+      {/* Business Info from GHL */}
+      {biz?(
+        <div style={{background:c.cd,borderRadius:16,border:"1px solid "+c.ln,overflow:"hidden"}}>
+          {/* Logo + Name header */}
+          <div style={{padding:24,display:"flex",alignItems:"center",gap:16,borderBottom:"1px solid "+c.ln,background:"linear-gradient(135deg, rgba(244,162,97,0.06), rgba(231,111,139,0.06))"}}>
+            {biz.logoUrl?(
+              <img src={biz.logoUrl} style={{width:64,height:64,borderRadius:12,objectFit:"contain",background:"#fff",border:"1px solid "+c.ln}} alt=""/>
+            ):(
+              <div style={{width:64,height:64,borderRadius:12,background:"linear-gradient(135deg,#F4A261,#E76F8B)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,fontWeight:700,color:"#fff"}}>{(biz.name||"B")[0]}</div>
+            )}
+            <div>
+              <div style={{fontSize:20,fontWeight:700,color:c.tx}}>{biz.name||"Unnamed Business"}</div>
+              <div style={{fontSize:12,color:c.so,marginTop:2}}>Location ID: {biz.locationId}</div>
+            </div>
+          </div>
+
+          {/* Info rows */}
+          <div style={{padding:"16px 24px"}}>
+            {[
+              {label:"Phone",value:biz.phone,icon:"📞"},
+              {label:"Email",value:biz.email,icon:"✉️"},
+              {label:"Website",value:biz.website,icon:"🌐"},
+              {label:"Address",value:[biz.address,biz.city,biz.state,biz.postalCode].filter(Boolean).join(", "),icon:"📍"},
+              {label:"Timezone",value:biz.timezone,icon:"🕐"},
+            ].filter(r=>r.value).map((r,i)=>(
+              <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:i<4?"1px solid "+c.ln:"none"}}>
+                <span style={{fontSize:16,width:24,textAlign:"center"}}>{r.icon}</span>
+                <div>
+                  <div style={{fontSize:11,fontWeight:600,color:c.so,textTransform:"uppercase",letterSpacing:"0.5px"}}>{r.label}</div>
+                  <div style={{fontSize:14,color:c.tx,marginTop:1}}>{r.value}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{padding:"12px 24px",borderTop:"1px solid "+c.ln,background:c.sf}}>
+            <div style={{fontSize:11,color:c.so}}>This information is pulled from your GoHighLevel sub-account. To update it, edit your Business Profile in GHL Settings.</div>
+          </div>
+        </div>
+      ):(
+        <div style={{background:c.cd,borderRadius:16,border:"1px solid "+c.ln,padding:40,textAlign:"center"}}>
+          <div style={{fontSize:32,marginBottom:12}}>🔗</div>
+          <div style={{fontSize:15,fontWeight:600,color:c.tx,marginBottom:6}}>Connect GoHighLevel</div>
+          <div style={{fontSize:13,color:c.so}}>Set GHL_API_KEY and GHL_LOCATION_ID in your environment variables to sync your business profile.</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function BillingPage({c,mob}){
   const [showEstimate,setShowEstimate]=useState(false);
   const currentPlan="enterprise";
@@ -1737,9 +1826,11 @@ export default function App() {
       <div style={{padding:mob?"8px 12px":"10px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",background:c.cd,borderBottom:"1px solid "+c.ln,position:"sticky",top:0,zIndex:60,gap:8}}>
         <div style={{display:"flex",alignItems:"center",gap:mob?6:10}}>
           {pg==="chat"&&<button onClick={()=>setSbO(sbO==="full"?"mini":sbO==="mini"?"closed":"full")} style={{width:32,height:32,borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,color:c.so,flexShrink:0}}>☰</button>}
-          <Bloom sz={mob?28:32} glow/>
-          {!mob&&<span style={{fontSize:16,fontWeight:700,color:c.tx}}>Bloomie</span>}
-          {!mob&&<span style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:6,background:"#E76F8B20",color:"#E76F8B",letterSpacing:0.5}}>BETA</span>}
+          <div style={{cursor:"pointer",display:"flex",alignItems:"center",gap:mob?4:8}} onClick={()=>setPg("chat")}>
+            <Bloom sz={mob?28:32} glow/>
+            {!mob&&<span style={{fontSize:16,fontWeight:700,color:c.tx}}>Bloomie</span>}
+            {!mob&&<span style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:6,background:"#E76F8B20",color:"#E76F8B",letterSpacing:0.5}}>BETA</span>}
+          </div>
         </div>
 
         <div style={{display:"flex",alignItems:"center",gap:mob?6:12,flexWrap:"nowrap"}}>
@@ -1922,6 +2013,7 @@ export default function App() {
                     {umO&&(
                       <div style={{position:"absolute",bottom:"100%",left:14,right:14,background:c.cd,border:"1px solid "+c.ln,borderRadius:12,boxShadow:"0 -8px 24px rgba(0,0,0,.15)",overflow:"hidden",marginBottom:4,zIndex:70}}>
                         {[
+                          {ic:"🏢",l:"Business Profile",fn:()=>{setPg("business");setUmO(false);}},
                           {ic:"💳",l:"Billing",fn:()=>{setPg("billing");setUmO(false);}},
                           {ic:"🧠",l:"Skills",fn:()=>{setPg("skills");setUmO(false);}},
                           {ic:"⚙️",l:"Settings",fn:()=>{setPg("settings");setUmO(false);}},
@@ -2683,6 +2775,7 @@ export default function App() {
 
           {/* ══ BILLING ══ */}
           {pg==="billing"&&(<BillingPage c={c} mob={mob}/>)}
+          {pg==="business"&&(<BusinessProfilePage c={c} mob={mob} userImg={userImg} setUserImg={setUserImg}/>)}
           {pg==="skills"&&(<SkillsPage c={c} mob={mob}/>)}
         </div>
       </div>

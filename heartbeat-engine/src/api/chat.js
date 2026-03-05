@@ -1566,7 +1566,7 @@ router.post('/ingest-call', async (req, res) => {
     });
 
     // Store call metadata in database
-    const pool = (await import('../database/pool.js')).default;
+    const { getSharedPool } = await import('../database/pool.js'); const pool = getSharedPool();
     await pool.query(`
       CREATE TABLE IF NOT EXISTS call_transcripts (
         id SERIAL PRIMARY KEY,
@@ -1642,7 +1642,7 @@ router.post('/ingest-call', async (req, res) => {
 // GET /api/chat/calls — list recent calls for dashboard
 router.get('/calls', async (req, res) => {
   try {
-    const pool = (await import('../database/pool.js')).default;
+    const { getSharedPool } = await import('../database/pool.js'); const pool = getSharedPool();
     const result = await pool.query(
       `SELECT * FROM call_transcripts ORDER BY created_at DESC LIMIT 50`
     );
