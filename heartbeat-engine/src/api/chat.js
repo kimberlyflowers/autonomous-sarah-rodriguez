@@ -1193,7 +1193,10 @@ async function chatWithSarah(userMessage, history, agentConfig, sessionId = null
       if (bk.brandVoice) brandLines.push(`Brand voice: ${bk.brandVoice}`);
       if (bk.logo) brandLines.push(`Brand logo is uploaded — reference it in designs when appropriate`);
       if (brandLines.length > 0) {
-        systemPrompt += `\n\nBRAND KIT (use these in all designs, websites, emails, and marketing materials):\n${brandLines.join('\n')}`;
+        systemPrompt += `\n\nBRAND KIT — MANDATORY FOR ALL CREATIVE OUTPUT:
+You MUST use these brand assets in every design, website, email, document, social post, and any visual or written content you create. Do not use generic colors or fonts when brand kit colors and fonts are specified.
+${brandLines.join('\n')}
+If the brand kit specifies colors, use them as your CSS variables. If it specifies fonts, load them from Google Fonts. If it specifies brand voice, match that tone in all copy.`;
       }
     }
   } catch(e) { /* brand kit not available — proceed without */ }

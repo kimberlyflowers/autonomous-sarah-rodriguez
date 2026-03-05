@@ -81,3 +81,10 @@ Final slide: Summary + CTA ("Follow for more" / "Save this")
 - Ask people to "like and share" (algorithms punish this)
 - Use corporate/formal language on social (it's social, be human)
 - Forget the CTA (even "What do you think?" counts)
+
+### Brand Kit Integration
+- If a Brand Kit is in the system prompt, use those colors for any generated graphics or carousel slides
+- Match the Brand Kit voice/tone in all captions and copy
+- Use Brand Kit tagline when appropriate (e.g. in carousel final slides)
+- When generating images with image_generate, reference brand colors in the prompt
+- If no Brand Kit is available, use the social media defaults above

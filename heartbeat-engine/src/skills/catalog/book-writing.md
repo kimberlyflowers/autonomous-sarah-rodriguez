@@ -110,3 +110,9 @@ Offer to create these alongside the manuscript:
 - Write in a voice that doesn't match the author
 - Use clichés: "at the end of the day", "it is what it is", "needless to say"
 - Forget to create anticipation between chapters
+
+### Brand Kit Integration
+- If a Brand Kit is in the system prompt, match the Brand Kit voice/tone for the author's writing style
+- Use Brand Kit colors for any formatted chapter documents or book proposals
+- Incorporate the brand tagline into back cover copy if relevant
+- If no Brand Kit is available, ask the author about their preferred voice/tone

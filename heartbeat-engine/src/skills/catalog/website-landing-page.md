@@ -47,7 +47,13 @@ Commit to a BOLD aesthetic:
 - **Font-weight contrast**: Headlines 700-800, body 400
 
 ### Color System
-- Use Brand Kit if available. Otherwise create 5-color palette: Primary, Accent, Dark, Light, Subtle
+- **FIRST: Check if Brand Kit is in the system prompt.** If yes, use those EXACT colors as your CSS variables:
+  ```css
+  :root { --primary: [brand kit color 1]; --accent: [brand kit color 2]; --dark: [brand kit color 3]; --light: [brand kit color 4]; }
+  ```
+- **If Brand Kit fonts are specified**, load those from Google Fonts instead of picking your own.
+- **If Brand Kit voice is specified**, write all page copy in that tone.
+- **If NO Brand Kit**, create a cohesive 5-color palette: Primary, Accent, Dark, Light, Subtle
 - **Gradients**: `linear-gradient(135deg, ...)` on hero backgrounds and CTAs
 - **Never pure black** for text → use `#111827` or `#0f172a`
 - **Never pure white** for backgrounds → use `#fafafa` or `#f8f9fa`
