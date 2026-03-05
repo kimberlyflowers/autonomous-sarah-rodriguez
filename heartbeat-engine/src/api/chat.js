@@ -1522,23 +1522,23 @@ export function getAnthropicClient() {
   return anthropic;
 }
 
-export default router;
 // ═══════════════════════════════════════════════════════════════════════════
 // PHONE CALL TRANSCRIPT INGESTION
 // GHL transcribes calls → webhook sends transcript here → Sarah processes it
+// CRITICAL: Uses Sarah's REAL chat pipeline with full memory/context
 // ═══════════════════════════════════════════════════════════════════════════
 
-chatRouter.post('/ingest-call', async (req, res) => {
+router.post('/ingest-call', async (req, res) => {
   try {
     const { 
       transcript, 
       contactId, 
       contactName, 
       contactPhone,
-      callDirection,   // 'inbound' or 'outbound'
+      callDirection,
       callDuration,
       callId,
-      summary,         // GHL AI summary if available
+      summary,
     } = req.body;
 
     if (!transcript) {
@@ -1548,13 +1548,10 @@ chatRouter.post('/ingest-call', async (req, res) => {
     logger.info('📞 Call transcript received', { 
       contactName, contactId, callDirection, 
       transcriptLength: transcript.length,
-      duration: callDuration 
     });
 
-    // Store the call in the database
+    // Store call metadata in database
     const pool = (await import('../database/pool.js')).default;
-    
-    // Ensure calls table exists
     await pool.query(`
       CREATE TABLE IF NOT EXISTS call_transcripts (
         id SERIAL PRIMARY KEY,
@@ -1566,69 +1563,59 @@ chatRouter.post('/ingest-call', async (req, res) => {
         duration INTEGER,
         transcript TEXT,
         summary TEXT,
-        sarah_response TEXT,
+        session_id VARCHAR(64),
         status VARCHAR(32) DEFAULT 'received',
         created_at TIMESTAMPTZ DEFAULT NOW()
       )
     `);
 
-    // Save the call
+    // Find or create a persistent session for this contact's phone conversations
+    // This means all calls from the same person share context — Sarah remembers
+    const phoneSessionId = `phone-${contactId || contactPhone || 'unknown'}`;
+
     const insertResult = await pool.query(
-      `INSERT INTO call_transcripts(call_id, contact_id, contact_name, contact_phone, direction, duration, transcript, summary)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
-      [callId, contactId, contactName, contactPhone, callDirection, callDuration, transcript, summary]
+      `INSERT INTO call_transcripts(call_id, contact_id, contact_name, contact_phone, direction, duration, transcript, summary, session_id)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+      [callId, contactId, contactName, contactPhone, callDirection, callDuration, transcript, summary, phoneSessionId]
     );
-    const callDbId = insertResult.rows[0]?.id;
 
-    // Now have Sarah process the transcript as instructions
-    // She reads it, extracts action items, and gets to work
-    const processPrompt = `You just received a phone call transcript from ${contactName || 'a client'}${contactPhone ? ' ('+contactPhone+')' : ''}.
-The call was ${callDirection || 'inbound'} and lasted ${callDuration ? Math.round(callDuration/60)+' minutes' : 'unknown duration'}.
+    // Format the transcript as a message FROM the caller
+    // This goes through Sarah's normal chat pipeline — same memory, same tools, same context
+    const mins = callDuration ? Math.round(callDuration / 60) : null;
+    const callerMessage = `[📞 Phone call from ${contactName || contactPhone || 'unknown caller'}${mins ? ' (' + mins + ' min)' : ''}]\n\n${transcript}`;
 
-Here is the full transcript:
----
-${transcript}
----
-${summary ? '\nGHL Summary: ' + summary : ''}
+    // Route through the SAME /message endpoint logic
+    // This gives Sarah full access to: conversation history, Letta memory, tools, skills
+    const messageEndpoint = `http://localhost:${process.env.PORT || 3000}/api/chat/message`;
+    const messageRes = await fetch(messageEndpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: callerMessage,
+        sessionId: phoneSessionId,
+      }),
+    });
+    const messageData = await messageRes.json();
 
-Your job:
-1. Read the transcript carefully and identify what the caller wants/needs
-2. Extract any action items or tasks mentioned
-3. Take action on anything you can handle immediately (CRM updates, creating content, scheduling, etc.)
-4. If you need clarification on anything, note it — you can text them back
-5. Summarize what you understood and what actions you're taking
+    // Update call record with status
+    await pool.query(
+      `UPDATE call_transcripts SET status='processed' WHERE id=$1`,
+      [insertResult.rows[0]?.id]
+    );
 
-Respond with your analysis and actions.`;
-
-    // Process through Sarah's normal chat pipeline
-    const Anthropic = (await import('@anthropic-ai/sdk')).default;
-    const client = new Anthropic();
-    const systemPrompt = buildSystemPrompt({});
-    
-    const response = await client.messages.create({
-      model: process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001',
-      max_tokens: 2048,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: processPrompt }],
+    logger.info('📞 Call processed through Sarah pipeline', { 
+      contactName, sessionId: phoneSessionId,
+      responseLength: messageData.response?.length 
     });
 
-    const sarahResponse = response.content
-      .filter(b => b.type === 'text')
-      .map(b => b.text)
-      .join('\n');
-
-    // Update the call record with Sarah's response
-    await pool.query(
-      `UPDATE call_transcripts SET sarah_response=$1, status='processed' WHERE id=$2`,
-      [sarahResponse, callDbId]
-    );
-
-    logger.info('📞 Call processed by Sarah', { callDbId, contactName });
+    // If Sarah needs to text back (has action items or questions), 
+    // she'll use her GHL tools within the normal pipeline
 
     res.json({ 
       success: true, 
-      callId: callDbId,
-      response: sarahResponse,
+      callId: insertResult.rows[0]?.id,
+      sessionId: phoneSessionId,
+      response: messageData.response,
     });
 
   } catch (error) {
@@ -1638,7 +1625,7 @@ Respond with your analysis and actions.`;
 });
 
 // GET /api/chat/calls — list recent calls for dashboard
-chatRouter.get('/calls', async (req, res) => {
+router.get('/calls', async (req, res) => {
   try {
     const pool = (await import('../database/pool.js')).default;
     const result = await pool.query(
@@ -1649,4 +1636,6 @@ chatRouter.get('/calls', async (req, res) => {
     res.json({ calls: [] });
   }
 });
+
+export default router;
 
