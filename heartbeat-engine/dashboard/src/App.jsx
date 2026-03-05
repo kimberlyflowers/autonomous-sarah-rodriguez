@@ -1452,28 +1452,55 @@ function SkillsPage({c,mob}){
 function BusinessProfilePage({c,mob,userImg,setUserImg}){
   const [biz,setBiz]=useState(null);
   const [loading,setLoading]=useState(true);
-  const [brand,setBrand]=useState({logo:null,colors:['#F4A261','#E76F8B','#2D3436','#FFFFFF','#F5F5F5'],fonts:{heading:'',body:''},tagline:'',brandVoice:''});
+  const emptyKit={kitName:'',logo:null,colors:['#F4A261','#E76F8B','#2D3436','#FFFFFF','#F5F5F5'],fonts:{heading:'',body:''},tagline:'',brandVoice:'',active:false};
+  const [kits,setKits]=useState([{...emptyKit,kitName:'Primary Brand',active:true}]);
+  const [activeIdx,setActiveIdx]=useState(0);
   const [saving,setSaving]=useState(false);
   const [saved,setSaved]=useState(false);
+
+  const brand=kits[activeIdx]||kits[0]||emptyKit;
+  const setBrand=(fn)=>setKits(prev=>{const next=[...prev];next[activeIdx]=typeof fn==='function'?fn(next[activeIdx]):{...next[activeIdx],...fn};return next;});
 
   useEffect(()=>{
     Promise.all([
       fetch('/api/dashboard/business-profile').then(r=>r.json()),
-      fetch('/api/dashboard/brand-kit').then(r=>r.json()).catch(()=>({brand:null}))
+      fetch('/api/dashboard/brand-kit').then(r=>r.json()).catch(()=>({kits:[],brand:null}))
     ]).then(([bizD,brandD])=>{
       setBiz(bizD.profile);
-      if(brandD.brand) setBrand(prev=>({...prev,...brandD.brand}));
+      if(brandD.kits?.length>0){
+        setKits(brandD.kits);
+        const ai=brandD.kits.findIndex(k=>k.active);
+        if(ai>=0)setActiveIdx(ai);
+      } else if(brandD.brand){
+        setKits([{...emptyKit,...brandD.brand,kitName:brandD.brand.kitName||'Primary Brand',active:true}]);
+      }
       setLoading(false);
     }).catch(()=>setLoading(false));
   },[]);
 
   const saveBrand=async()=>{
     setSaving(true);setSaved(false);
+    // Mark active
+    const toSave=kits.map((k,i)=>({...k,active:i===activeIdx}));
     try{
-      await fetch('/api/dashboard/brand-kit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({brand})});
+      await fetch('/api/dashboard/brand-kit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kits:toSave})});
+      setKits(toSave);
       setSaved(true);setTimeout(()=>setSaved(false),2000);
     }catch{}
     setSaving(false);
+  };
+
+  const addKit=()=>{
+    if(kits.length>=3)return;
+    const names=['Primary Brand','Secondary Brand','Sub-Brand'];
+    const name=names[kits.length]||`Brand Kit ${kits.length+1}`;
+    setKits(p=>[...p,{...emptyKit,kitName:name}]);
+    setActiveIdx(kits.length);
+  };
+  const removeKit=(i)=>{
+    if(kits.length<=1)return;
+    setKits(p=>p.filter((_,j)=>j!==i));
+    setActiveIdx(prev=>prev>=i?Math.max(0,prev-1):prev);
   };
 
   const handleLogoUpload=(e)=>{
@@ -1536,14 +1563,40 @@ function BusinessProfilePage({c,mob,userImg,setUserImg}){
         </div>
       </div>
 
-      {/* ═══ BRAND KIT ═══ */}
+      {/* ═══ BRAND KITS ═══ */}
       <div style={{background:c.cd,borderRadius:16,border:"1px solid "+c.ln,overflow:"hidden",marginBottom:16}}>
         <div style={{padding:"18px 24px",borderBottom:"1px solid "+c.ln,background:"linear-gradient(135deg, rgba(244,162,97,0.06), rgba(231,111,139,0.06))"}}>
-          <div style={{fontSize:16,fontWeight:700,color:c.tx}}>🎨 Brand Kit</div>
-          <div style={{fontSize:12,color:c.so,marginTop:2}}>Your Bloomie uses these when creating designs, websites, and marketing materials</div>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <div>
+              <div style={{fontSize:16,fontWeight:700,color:c.tx}}>🎨 Brand Kits</div>
+              <div style={{fontSize:12,color:c.so,marginTop:2}}>Up to 3 kits for different brands or projects. Active kit is used in all designs.</div>
+            </div>
+            {kits.length<3&&<button onClick={addKit} style={{padding:"6px 14px",borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:12,fontWeight:600,color:c.tx,fontFamily:"inherit"}}>+ Add Kit</button>}
+          </div>
+          {/* Kit tabs */}
+          {kits.length>1&&(
+            <div style={{display:"flex",gap:4,marginTop:12}}>
+              {kits.map((k,i)=>(
+                <button key={i} onClick={()=>setActiveIdx(i)} style={{padding:"7px 14px",borderRadius:8,border:i===activeIdx?"2px solid "+c.ac:"1px solid "+c.ln,background:i===activeIdx?c.ac+"12":c.cd,cursor:"pointer",fontSize:12,fontWeight:i===activeIdx?700:500,color:i===activeIdx?c.ac:c.tx,fontFamily:"inherit",display:"flex",alignItems:"center",gap:6}}>
+                  {k.logo&&<img src={k.logo} style={{width:14,height:14,borderRadius:3,objectFit:"contain"}} alt=""/>}
+                  {k.kitName||`Kit ${i+1}`}
+                  {k.active&&<span style={{width:6,height:6,borderRadius:"50%",background:c.gr,flexShrink:0}}/>}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <div style={{padding:24}}>
+          {/* Kit Name */}
+          <div style={{marginBottom:16,display:"flex",gap:10,alignItems:"center"}}>
+            <div style={{flex:1}}>
+              <div style={{fontSize:12,fontWeight:700,color:c.so,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:6}}>Kit Name</div>
+              <input value={brand.kitName||''} onChange={e=>setBrand(p=>({...p,kitName:e.target.value}))} placeholder="e.g. Petal Core Beauty, Youth Empowerment School" style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid "+c.ln,fontSize:13,fontFamily:"inherit",background:c.inp,color:c.tx,boxSizing:"border-box"}}/>
+            </div>
+            {kits.length>1&&<button onClick={()=>{if(confirm(`Remove "${brand.kitName||'this kit'}"?`))removeKit(activeIdx);}} style={{marginTop:20,padding:"6px 10px",borderRadius:6,border:"1px solid rgba(234,67,53,0.3)",background:"transparent",cursor:"pointer",fontSize:11,color:"#ea4335",fontFamily:"inherit"}}>Remove</button>}
+          </div>
+
           {/* Logo */}
           <div style={{marginBottom:24}}>
             <div style={{fontSize:12,fontWeight:700,color:c.so,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:10}}>Logo</div>
@@ -1614,9 +1667,17 @@ function BusinessProfilePage({c,mob,userImg,setUserImg}){
           </div>
 
           {/* Save */}
-          <button onClick={saveBrand} disabled={saving} style={{padding:"10px 24px",borderRadius:10,border:"none",background:saved?"#34a853":"linear-gradient(135deg,#F4A261,#E76F8B)",cursor:saving?"not-allowed":"pointer",fontSize:13,fontWeight:700,color:"#fff",transition:"background .2s"}}>
-            {saving?"Saving...":saved?"✓ Saved!":"Save Brand Kit"}
-          </button>
+          <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+            <button onClick={saveBrand} disabled={saving} style={{padding:"10px 24px",borderRadius:10,border:"none",background:saved?"#34a853":c.gradient,cursor:saving?"not-allowed":"pointer",fontSize:13,fontWeight:700,color:"#fff",transition:"background .2s"}}>
+              {saving?"Saving all kits...":saved?"✓ Saved!":"Save All Kits"}
+            </button>
+            {kits.length>1&&!brand.active&&(
+              <button onClick={()=>{setKits(p=>p.map((k,i)=>({...k,active:i===activeIdx})));}} style={{padding:"10px 16px",borderRadius:10,border:"1px solid "+c.ac,background:c.ac+"10",cursor:"pointer",fontSize:13,fontWeight:600,color:c.ac,fontFamily:"inherit"}}>
+                Set as Active Kit
+              </button>
+            )}
+            {brand.active&&<span style={{fontSize:11,color:c.gr,fontWeight:600}}>✓ Active — Sarah uses this kit</span>}
+          </div>
         </div>
       </div>
 

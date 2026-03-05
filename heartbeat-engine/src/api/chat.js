@@ -1104,10 +1104,20 @@ async function chatWithSarah(userMessage, history, agentConfig, sessionId = null
   try {
     const { getSharedPool } = await import('../database/pool.js');
     const pool = getSharedPool();
-    const bkRes = await pool.query(`SELECT value FROM user_settings WHERE key='brand_kit'`).catch(()=>({rows:[]}));
+    const bkRes = await pool.query(`SELECT value FROM user_settings WHERE key='brand_kits'`).catch(()=>({rows:[]}));
+    let bk = null;
     if (bkRes.rows[0]?.value) {
-      const bk = JSON.parse(bkRes.rows[0].value);
+      const kits = JSON.parse(bkRes.rows[0].value);
+      bk = kits.find(k => k.active) || kits[0];
+    }
+    // Fallback to old single kit format
+    if (!bk) {
+      const oldRes = await pool.query(`SELECT value FROM user_settings WHERE key='brand_kit'`).catch(()=>({rows:[]}));
+      if (oldRes.rows[0]?.value) bk = JSON.parse(oldRes.rows[0].value);
+    }
+    if (bk) {
       const brandLines = [];
+      if (bk.kitName) brandLines.push(`Brand: ${bk.kitName}`);
       if (bk.colors?.length) brandLines.push(`Brand colors: ${bk.colors.join(', ')} (first = primary, second = accent)`);
       if (bk.fonts?.heading) brandLines.push(`Heading font: ${bk.fonts.heading}`);
       if (bk.fonts?.body) brandLines.push(`Body font: ${bk.fonts.body}`);

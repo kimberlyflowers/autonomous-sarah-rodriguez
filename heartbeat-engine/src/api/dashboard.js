@@ -436,30 +436,46 @@ router.get('/business-profile', async (req, res) => {
   }
 });
 
-// Brand Kit — save/load brand assets (logo, colors, fonts, voice)
+// Brand Kits — up to 3 kits, each with name, logo, colors, fonts, voice
+// Stored as JSON array in user_settings key='brand_kits'
 router.get('/brand-kit', async (req, res) => {
   try {
     const { getSharedPool } = await import('../database/pool.js');
     const pool = getSharedPool();
     await pool.query(`CREATE TABLE IF NOT EXISTS user_settings (key VARCHAR(64) PRIMARY KEY, value TEXT, updated_at TIMESTAMPTZ DEFAULT NOW())`);
-    const r = await pool.query(`SELECT value FROM user_settings WHERE key='brand_kit'`);
-    const brand = r.rows[0]?.value ? JSON.parse(r.rows[0].value) : null;
-    res.json({ brand });
+    const r = await pool.query(`SELECT value FROM user_settings WHERE key='brand_kits'`);
+    let kits = r.rows[0]?.value ? JSON.parse(r.rows[0].value) : null;
+    
+    // Migrate old single brand_kit to new array format
+    if (!kits) {
+      const old = await pool.query(`SELECT value FROM user_settings WHERE key='brand_kit'`);
+      if (old.rows[0]?.value) {
+        const oldKit = JSON.parse(old.rows[0].value);
+        kits = [{ ...oldKit, kitName: oldKit.kitName || 'Primary Brand', active: true }];
+        await pool.query(
+          `INSERT INTO user_settings(key, value, updated_at) VALUES('brand_kits', $1, NOW()) ON CONFLICT(key) DO UPDATE SET value=$1, updated_at=NOW()`,
+          [JSON.stringify(kits)]
+        );
+      }
+    }
+    
+    res.json({ kits: kits || [], brand: kits?.find(k => k.active) || kits?.[0] || null });
   } catch (e) {
-    res.json({ brand: null, error: e.message });
+    res.json({ kits: [], brand: null, error: e.message });
   }
 });
 
 router.post('/brand-kit', async (req, res) => {
   try {
-    const { brand } = req.body;
-    if (!brand) return res.status(400).json({ error: 'brand object required' });
+    const { kits } = req.body;
+    if (!kits || !Array.isArray(kits)) return res.status(400).json({ error: 'kits array required' });
+    if (kits.length > 3) return res.status(400).json({ error: 'Maximum 3 brand kits' });
     const { getSharedPool } = await import('../database/pool.js');
     const pool = getSharedPool();
     await pool.query(`CREATE TABLE IF NOT EXISTS user_settings (key VARCHAR(64) PRIMARY KEY, value TEXT, updated_at TIMESTAMPTZ DEFAULT NOW())`);
     await pool.query(
-      `INSERT INTO user_settings(key, value, updated_at) VALUES('brand_kit', $1, NOW()) ON CONFLICT(key) DO UPDATE SET value=$1, updated_at=NOW()`,
-      [JSON.stringify(brand)]
+      `INSERT INTO user_settings(key, value, updated_at) VALUES('brand_kits', $1, NOW()) ON CONFLICT(key) DO UPDATE SET value=$1, updated_at=NOW()`,
+      [JSON.stringify(kits)]
     );
     res.json({ success: true });
   } catch (e) {
