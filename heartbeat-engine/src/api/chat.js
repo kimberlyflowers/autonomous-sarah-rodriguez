@@ -922,23 +922,47 @@ function checkToolReadiness(toolName) {
   return { ready: true };
 }
 
-// Build capability notes for system prompt based on what's unavailable
+// Build capability notes for system prompt — tell Sarah what's available and what's not
 function getCapabilityNotes() {
-  const { unavailable } = getAvailableTools();
-  if (unavailable.length === 0) return '';
+  const { tools: available, unavailable } = getAvailableTools();
+  const notes = [];
   
-  const notes = ['\nCURRENT TOOL LIMITATIONS (work around these — never abandon a task):'];
-  for (const t of unavailable) {
-    if (t.name === 'image_generate' || t.name === 'image_edit') {
-      notes.push('- Image generation is NOT available. Use CSS gradients, patterns, background colors, emoji, and SVG icons instead. Build beautiful designs with pure CSS and typography.');
-    } else if (t.name.startsWith('ghl_')) {
-      // Only note GHL once
-      if (!notes.some(n => n.includes('CRM/GHL'))) {
-        notes.push('- CRM/GHL tools are NOT available. If client asks about contacts or CRM, let them know the integration needs to be configured.');
+  // Tell Sarah what she CAN do
+  const capabilities = [];
+  if (available.some(t => t.name === 'image_generate')) {
+    capabilities.push('Image generation is AVAILABLE — use image_generate to create visuals for websites, social posts, flyers, etc.');
+  }
+  if (available.some(t => t.name === 'web_search')) {
+    capabilities.push('Web search is AVAILABLE — use web_search for any research, finding information, or looking up current data.');
+  }
+  if (available.some(t => t.name === 'create_artifact')) {
+    capabilities.push('File creation is AVAILABLE — use create_artifact to save HTML, markdown, code, and any deliverables.');
+  }
+  if (available.some(t => t.name.startsWith('ghl_'))) {
+    capabilities.push('CRM tools are AVAILABLE — use ghl_ tools for contacts, emails, SMS, calendars, and pipelines.');
+  }
+  
+  if (capabilities.length > 0) {
+    notes.push('\nAVAILABLE CAPABILITIES:');
+    capabilities.forEach(c => notes.push('- ' + c));
+  }
+  
+  // Tell Sarah what she CAN'T do
+  if (unavailable.length > 0) {
+    notes.push('\nCURRENT LIMITATIONS (work around these):');
+    for (const t of unavailable) {
+      if (t.name === 'image_generate' || t.name === 'image_edit') {
+        notes.push('- Image generation is NOT available. Use CSS gradients, patterns, and SVG icons instead.');
+      } else if (t.name.startsWith('ghl_')) {
+        if (!notes.some(n => n.includes('CRM/GHL'))) {
+          notes.push('- CRM/GHL tools are NOT available. Let the client know the integration needs configuration.');
+        }
       }
     }
   }
-  notes.push('- When ANY tool fails at runtime, adapt and deliver with what you have. Never stall, never abandon, never retry more than once.');
+  
+  if (notes.length === 0) return '';
+  notes.push('- When ANY tool fails at runtime, adapt and deliver. Never stall, never abandon.');
   return notes.join('\n');
 }
 
