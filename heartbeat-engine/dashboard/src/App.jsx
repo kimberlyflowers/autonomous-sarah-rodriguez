@@ -119,47 +119,40 @@ function useAgentOnline() {
 function generateAck(text) {
   const lower = text.toLowerCase();
   
-  // Website/landing page
-  if (/website|landing page|web page|sales page/i.test(lower)) {
-    const nameMatch = text.match(/called\s+[""']?(.+?)[""']?(?:\s*[\.\!\,\-]|\s+its|\s+it'?s|\s+about|\s+for|$)/i);
-    const name = nameMatch ? nameMatch[1].trim() : null;
-    return name 
-      ? `On it! I'll design a landing page for "${name}" — let me make it irresistible. 🔥`
-      : "Love it — let me design something that converts. Give me a moment to build this out. 🔥";
+  // Research/analysis — match FIRST because it can contain any other keyword
+  if (/research|find out|look up|analyze|dig into|investigate/i.test(lower)) {
+    return "Let me dig into that for you. 🔍";
+  }
+  // CRM/contacts
+  if (/contact|lead|crm|ghl|pipeline/i.test(lower)) {
+    return "Pulling that up now. 📋";
+  }
+  // Browser/navigation
+  if (/go to|navigate|visit|check.*website|browse|\.com|\.org/i.test(lower)) {
+    return "On my way there now. 🌐";
+  }
+  // Website/landing page — only if they're asking to BUILD one
+  if (/(?:build|create|make|design|draft).*(?:website|landing page|web page|site|funnel)/i.test(lower)) {
+    return "On it — designing now. 🔥";
   }
   // Blog/article
-  if (/blog|article|post|content/i.test(lower) && /write|create|draft/i.test(lower)) {
-    const topicMatch = text.match(/(?:about|on|for|regarding)\s+(.{10,60}?)(?:\.|$|,|\!)/i);
-    return topicMatch 
-      ? `Great topic! Let me draft a post about ${topicMatch[1].trim().toLowerCase()} — I'll make sure it hooks the reader from the first line.`
-      : "On it! Let me craft something that'll actually make people stop scrolling. ✍️";
+  if (/(?:write|create|draft).*(?:blog|article|post)/i.test(lower)) {
+    return "Drafting that now. ✍️";
   }
-  // Email/sequence
-  if (/email|sequence|newsletter|campaign|subject line/i.test(lower)) {
-    return "Love this — let me write something that feels personal, not salesy. Drafting now. 📧";
+  // Email
+  if (/email|sequence|newsletter|campaign/i.test(lower)) {
+    return "Writing that up now. 📧";
   }
   // Social media
   if (/social|instagram|tiktok|facebook|linkedin|caption/i.test(lower)) {
-    return "On it! Let me create content that actually stops the scroll. 📱";
-  }
-  // CRM/contacts
-  if (/contact|lead|crm|ghl|pipeline|check.*contact/i.test(lower)) {
-    return "Pulling that up for you now — one sec. 📋";
-  }
-  // Research
-  if (/research|search|find|look up|analyze/i.test(lower)) {
-    return "Let me dig into that for you. I'll pull together what I find. 🔍";
+    return "Creating that now. 📱";
   }
   // Document/report
-  if (/report|document|proposal|memo|letter/i.test(lower)) {
-    return "I'll put together something polished for you. Give me a moment. 📄";
-  }
-  // Browser/navigation
-  if (/go to|navigate|visit|check.*website|browse/i.test(lower)) {
-    return "On my way there now — I'll show you what I find. 🌐";
+  if (/report|document|proposal|memo|letter|sop/i.test(lower)) {
+    return "Putting that together now. 📄";
   }
   // Generic work task
-  return "Got it — working on this for you now! 💪";
+  return "On it. 💪";
 }
 
 function useSarahChat() {
