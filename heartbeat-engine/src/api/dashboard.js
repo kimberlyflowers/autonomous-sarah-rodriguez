@@ -340,7 +340,8 @@ router.get('/metrics', async (req, res) => {
 router.post('/user-avatar', async (req, res) => {
   try {
     const { avatar } = req.body;
-    const pool = (await import('../database/pool.js')).default;
+    const { getSharedPool } = await import('../database/pool.js');
+    const pool = getSharedPool();
     await pool.query(`
       CREATE TABLE IF NOT EXISTS user_settings (
         key VARCHAR(64) PRIMARY KEY,
@@ -361,11 +362,58 @@ router.post('/user-avatar', async (req, res) => {
 
 router.get('/user-avatar', async (req, res) => {
   try {
-    const pool = (await import('../database/pool.js')).default;
+    const { getSharedPool } = await import('../database/pool.js');
+    const pool = getSharedPool();
+    await pool.query(`CREATE TABLE IF NOT EXISTS user_settings (key VARCHAR(64) PRIMARY KEY, value TEXT, updated_at TIMESTAMPTZ DEFAULT NOW())`);
     const r = await pool.query(`SELECT value FROM user_settings WHERE key='user_avatar'`);
     res.json({ avatar: r.rows[0]?.value || null });
   } catch {
     res.json({ avatar: null });
+  }
+});
+
+// GHL Business Profile Sync — pulls location data from GoHighLevel
+router.get('/business-profile', async (req, res) => {
+  try {
+    const apiKey = process.env.GHL_API_KEY;
+    const locationId = process.env.GHL_LOCATION_ID;
+    if (!apiKey || !locationId) {
+      return res.json({ profile: null, error: 'GHL not configured' });
+    }
+
+    const ghlRes = await fetch(`https://services.leadconnectorhq.com/locations/${locationId}`, {
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Version': '2021-07-28',
+        'Accept': 'application/json'
+      }
+    });
+    
+    if (!ghlRes.ok) {
+      return res.json({ profile: null, error: `GHL API ${ghlRes.status}` });
+    }
+    
+    const data = await ghlRes.json();
+    const loc = data.location || data;
+    
+    res.json({
+      profile: {
+        name: loc.name || '',
+        phone: loc.phone || '',
+        email: loc.email || '',
+        address: loc.address || '',
+        city: loc.city || '',
+        state: loc.state || '',
+        postalCode: loc.postalCode || loc.postal_code || '',
+        country: loc.country || '',
+        website: loc.website || '',
+        logoUrl: loc.logoUrl || loc.logo || '',
+        timezone: loc.timezone || '',
+        locationId: locationId,
+      }
+    });
+  } catch (e) {
+    res.json({ profile: null, error: e.message });
   }
 });
 
