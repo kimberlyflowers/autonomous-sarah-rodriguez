@@ -1450,26 +1450,65 @@ function SkillsPage({c,mob}){
 function BusinessProfilePage({c,mob,userImg,setUserImg}){
   const [biz,setBiz]=useState(null);
   const [loading,setLoading]=useState(true);
+  const [brand,setBrand]=useState({logo:null,colors:['#F4A261','#E76F8B','#2D3436','#FFFFFF','#F5F5F5'],fonts:{heading:'',body:''},tagline:'',brandVoice:''});
+  const [saving,setSaving]=useState(false);
+  const [saved,setSaved]=useState(false);
 
   useEffect(()=>{
-    fetch('/api/dashboard/business-profile').then(r=>r.json()).then(d=>{
-      setBiz(d.profile);setLoading(false);
+    Promise.all([
+      fetch('/api/dashboard/business-profile').then(r=>r.json()),
+      fetch('/api/dashboard/brand-kit').then(r=>r.json()).catch(()=>({brand:null}))
+    ]).then(([bizD,brandD])=>{
+      setBiz(bizD.profile);
+      if(brandD.brand) setBrand(prev=>({...prev,...brandD.brand}));
+      setLoading(false);
     }).catch(()=>setLoading(false));
   },[]);
+
+  const saveBrand=async()=>{
+    setSaving(true);setSaved(false);
+    try{
+      await fetch('/api/dashboard/brand-kit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({brand})});
+      setSaved(true);setTimeout(()=>setSaved(false),2000);
+    }catch{}
+    setSaving(false);
+  };
+
+  const handleLogoUpload=(e)=>{
+    const f=e.target.files[0];if(!f)return;
+    const reader=new FileReader();
+    reader.onload=async(ev)=>{
+      try{
+        const img=new Image();
+        await new Promise((res,rej)=>{img.onload=res;img.onerror=rej;img.src=ev.target.result;});
+        const max=400,scale=Math.min(max/img.width,max/img.height,1);
+        const cv=document.createElement('canvas');cv.width=Math.round(img.width*scale);cv.height=Math.round(img.height*scale);
+        cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
+        const d=cv.toDataURL('image/png',0.9);
+        setBrand(p=>({...p,logo:d}));
+      }catch{setBrand(p=>({...p,logo:ev.target.result}));}
+    };reader.readAsDataURL(f);
+  };
+
+  const updateColor=(i,val)=>{
+    setBrand(p=>{const cols=[...p.colors];cols[i]=val;return{...p,colors:cols};});
+  };
+  const addColor=()=>setBrand(p=>({...p,colors:[...p.colors,'#CCCCCC']}));
+  const removeColor=(i)=>setBrand(p=>({...p,colors:p.colors.filter((_,j)=>j!==i)}));
 
   if(loading) return <div style={{textAlign:"center",padding:60,color:c.so}}>Loading business profile...</div>;
 
   return(
     <div style={{padding:mob?"16px 12px 40px":"20px 20px 40px",maxWidth:700,margin:"0 auto"}}>
       <h1 style={{fontSize:mob?20:24,fontWeight:700,color:c.tx,marginBottom:6}}>🏢 Business Profile</h1>
-      <p style={{fontSize:13,color:c.so,marginBottom:24}}>Synced from your GoHighLevel account</p>
+      <p style={{fontSize:13,color:c.so,marginBottom:24}}>Synced from GoHighLevel + your brand settings</p>
 
       {/* Owner Photo */}
       <div style={{background:c.cd,borderRadius:16,border:"1px solid "+c.ln,padding:24,marginBottom:16,display:"flex",alignItems:"center",gap:20}}>
         <label style={{width:80,height:80,borderRadius:16,background:userImg?"transparent":"linear-gradient(135deg,#F4A261,#E76F8B)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,fontWeight:700,color:"#fff",cursor:"pointer",overflow:"hidden",flexShrink:0,border:"3px solid "+c.ln}}>
           {userImg?<img src={userImg} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>:"K"}
           <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{
-            const f=e.target.files[0]; if(!f) return;
+            const f=e.target.files[0];if(!f)return;
             const reader=new FileReader();
             reader.onload=async(ev)=>{
               try{
@@ -1485,24 +1524,106 @@ function BusinessProfilePage({c,mob,userImg,setUserImg}){
                 setUserImg(ev.target.result);
                 fetch('/api/dashboard/user-avatar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({avatar:ev.target.result})}).catch(()=>{});
               }
-            };
-            reader.readAsDataURL(f);
+            };reader.readAsDataURL(f);
           }}/>
         </label>
         <div>
           <div style={{fontSize:18,fontWeight:700,color:c.tx}}>Your Photo</div>
-          <div style={{fontSize:12,color:c.so,marginTop:2}}>Click to upload — visible across all your Bloomie dashboards</div>
+          <div style={{fontSize:12,color:c.so,marginTop:2}}>Visible across all your Bloomie dashboards</div>
           {userImg&&<button onClick={()=>{setUserImg(null);fetch('/api/dashboard/user-avatar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({avatar:null})}).catch(()=>{});}} style={{marginTop:8,padding:"4px 12px",borderRadius:6,border:"1px solid rgba(234,67,53,0.3)",background:"transparent",cursor:"pointer",fontSize:11,color:"#ea4335",fontFamily:"inherit"}}>Remove photo</button>}
         </div>
       </div>
 
-      {/* Business Info from GHL */}
+      {/* ═══ BRAND KIT ═══ */}
+      <div style={{background:c.cd,borderRadius:16,border:"1px solid "+c.ln,overflow:"hidden",marginBottom:16}}>
+        <div style={{padding:"18px 24px",borderBottom:"1px solid "+c.ln,background:"linear-gradient(135deg, rgba(244,162,97,0.06), rgba(231,111,139,0.06))"}}>
+          <div style={{fontSize:16,fontWeight:700,color:c.tx}}>🎨 Brand Kit</div>
+          <div style={{fontSize:12,color:c.so,marginTop:2}}>Your Bloomie uses these when creating designs, websites, and marketing materials</div>
+        </div>
+
+        <div style={{padding:24}}>
+          {/* Logo */}
+          <div style={{marginBottom:24}}>
+            <div style={{fontSize:12,fontWeight:700,color:c.so,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:10}}>Logo</div>
+            <div style={{display:"flex",alignItems:"center",gap:16}}>
+              <label style={{width:100,height:100,borderRadius:12,border:"2px dashed "+c.ln,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",overflow:"hidden",background:c.sf,flexShrink:0,transition:"border-color .15s"}}
+                onMouseEnter={e=>e.currentTarget.style.borderColor=c.ac}
+                onMouseLeave={e=>e.currentTarget.style.borderColor=c.ln}>
+                {brand.logo?<img src={brand.logo} style={{width:"100%",height:"100%",objectFit:"contain",padding:4}} alt="Logo"/>:
+                  <div style={{textAlign:"center",color:c.so}}><div style={{fontSize:24,marginBottom:4}}>+</div><div style={{fontSize:10}}>Upload</div></div>
+                }
+                <input type="file" accept="image/*" style={{display:"none"}} onChange={handleLogoUpload}/>
+              </label>
+              <div style={{fontSize:12,color:c.so,lineHeight:1.6}}>
+                {brand.logo?"Click to replace":"Upload your logo (PNG, SVG, or JPG)"}
+                <br/>Used in websites, emails, social posts, and documents
+                {brand.logo&&<><br/><button onClick={()=>setBrand(p=>({...p,logo:null}))} style={{marginTop:4,padding:"2px 8px",borderRadius:4,border:"1px solid rgba(234,67,53,0.3)",background:"transparent",cursor:"pointer",fontSize:10,color:"#ea4335",fontFamily:"inherit"}}>Remove</button></>}
+              </div>
+            </div>
+          </div>
+
+          {/* Brand Colors */}
+          <div style={{marginBottom:24}}>
+            <div style={{fontSize:12,fontWeight:700,color:c.so,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:10}}>Brand Colors</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:10,alignItems:"center"}}>
+              {brand.colors.map((col,i)=>(
+                <div key={i} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+                  <label style={{width:48,height:48,borderRadius:10,background:col,border:"2px solid "+c.ln,cursor:"pointer",position:"relative",boxShadow:"0 2px 8px rgba(0,0,0,.1)"}}>
+                    <input type="color" value={col} onChange={e=>updateColor(i,e.target.value)} style={{position:"absolute",inset:0,opacity:0,cursor:"pointer",width:"100%",height:"100%"}}/>
+                  </label>
+                  <div style={{fontSize:9,fontFamily:"monospace",color:c.so}}>{col}</div>
+                  {brand.colors.length>2&&<button onClick={()=>removeColor(i)} style={{fontSize:9,color:"#ea4335",background:"transparent",border:"none",cursor:"pointer",padding:0}}>×</button>}
+                </div>
+              ))}
+              {brand.colors.length<8&&(
+                <button onClick={addColor} style={{width:48,height:48,borderRadius:10,border:"2px dashed "+c.ln,background:"transparent",cursor:"pointer",fontSize:20,color:c.so,display:"flex",alignItems:"center",justifyContent:"center"}}
+                  onMouseEnter={e=>e.currentTarget.style.borderColor=c.ac}
+                  onMouseLeave={e=>e.currentTarget.style.borderColor=c.ln}>+</button>
+              )}
+            </div>
+            <div style={{fontSize:11,color:c.so,marginTop:8}}>Click a swatch to change, + to add. First color = primary, second = accent.</div>
+          </div>
+
+          {/* Fonts */}
+          <div style={{marginBottom:24}}>
+            <div style={{fontSize:12,fontWeight:700,color:c.so,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:10}}>Fonts</div>
+            <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+              <div style={{flex:1,minWidth:mob?"100%":200}}>
+                <div style={{fontSize:11,color:c.so,marginBottom:4}}>Heading font</div>
+                <input value={brand.fonts.heading} onChange={e=>setBrand(p=>({...p,fonts:{...p.fonts,heading:e.target.value}}))} placeholder="e.g. Playfair Display, Montserrat" style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid "+c.ln,fontSize:13,fontFamily:"inherit",background:c.inp,color:c.tx,boxSizing:"border-box"}}/>
+              </div>
+              <div style={{flex:1,minWidth:mob?"100%":200}}>
+                <div style={{fontSize:11,color:c.so,marginBottom:4}}>Body font</div>
+                <input value={brand.fonts.body} onChange={e=>setBrand(p=>({...p,fonts:{...p.fonts,body:e.target.value}}))} placeholder="e.g. Inter, Open Sans, Lora" style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid "+c.ln,fontSize:13,fontFamily:"inherit",background:c.inp,color:c.tx,boxSizing:"border-box"}}/>
+              </div>
+            </div>
+          </div>
+
+          {/* Tagline */}
+          <div style={{marginBottom:24}}>
+            <div style={{fontSize:12,fontWeight:700,color:c.so,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:10}}>Tagline / Slogan</div>
+            <input value={brand.tagline} onChange={e=>setBrand(p=>({...p,tagline:e.target.value}))} placeholder="e.g. Empowering the next generation through classical education" style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid "+c.ln,fontSize:13,fontFamily:"inherit",background:c.inp,color:c.tx,boxSizing:"border-box"}}/>
+          </div>
+
+          {/* Brand Voice */}
+          <div style={{marginBottom:16}}>
+            <div style={{fontSize:12,fontWeight:700,color:c.so,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:10}}>Brand Voice</div>
+            <textarea value={brand.brandVoice} onChange={e=>setBrand(p=>({...p,brandVoice:e.target.value}))} placeholder="Describe how your brand speaks — warm and nurturing? Bold and direct? Professional but approachable? Your Bloomie will match this tone in everything it creates." rows={3} style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid "+c.ln,fontSize:13,fontFamily:"inherit",background:c.inp,color:c.tx,resize:"vertical",boxSizing:"border-box"}}/>
+          </div>
+
+          {/* Save */}
+          <button onClick={saveBrand} disabled={saving} style={{padding:"10px 24px",borderRadius:10,border:"none",background:saved?"#34a853":"linear-gradient(135deg,#F4A261,#E76F8B)",cursor:saving?"not-allowed":"pointer",fontSize:13,fontWeight:700,color:"#fff",transition:"background .2s"}}>
+            {saving?"Saving...":saved?"✓ Saved!":"Save Brand Kit"}
+          </button>
+        </div>
+      </div>
+
+      {/* ═══ GHL BUSINESS INFO ═══ */}
       {biz?(
         <div style={{background:c.cd,borderRadius:16,border:"1px solid "+c.ln,overflow:"hidden"}}>
-          {/* Logo + Name header */}
           <div style={{padding:24,display:"flex",alignItems:"center",gap:16,borderBottom:"1px solid "+c.ln,background:"linear-gradient(135deg, rgba(244,162,97,0.06), rgba(231,111,139,0.06))"}}>
-            {biz.logoUrl?(
-              <img src={biz.logoUrl} style={{width:64,height:64,borderRadius:12,objectFit:"contain",background:"#fff",border:"1px solid "+c.ln}} alt=""/>
+            {(brand.logo||biz.logoUrl)?(
+              <img src={brand.logo||biz.logoUrl} style={{width:64,height:64,borderRadius:12,objectFit:"contain",background:"#fff",border:"1px solid "+c.ln}} alt=""/>
             ):(
               <div style={{width:64,height:64,borderRadius:12,background:"linear-gradient(135deg,#F4A261,#E76F8B)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,fontWeight:700,color:"#fff"}}>{(biz.name||"B")[0]}</div>
             )}
@@ -1511,8 +1632,6 @@ function BusinessProfilePage({c,mob,userImg,setUserImg}){
               <div style={{fontSize:12,color:c.so,marginTop:2}}>Location ID: {biz.locationId}</div>
             </div>
           </div>
-
-          {/* Info rows */}
           <div style={{padding:"16px 24px"}}>
             {[
               {label:"Phone",value:biz.phone,icon:"📞"},
@@ -1530,16 +1649,15 @@ function BusinessProfilePage({c,mob,userImg,setUserImg}){
               </div>
             ))}
           </div>
-
           <div style={{padding:"12px 24px",borderTop:"1px solid "+c.ln,background:c.sf}}>
-            <div style={{fontSize:11,color:c.so}}>This information is pulled from your GoHighLevel sub-account. To update it, edit your Business Profile in GHL Settings.</div>
+            <div style={{fontSize:11,color:c.so}}>Business info synced from GoHighLevel. Edit in GHL Settings → Business Profile.</div>
           </div>
         </div>
       ):(
         <div style={{background:c.cd,borderRadius:16,border:"1px solid "+c.ln,padding:40,textAlign:"center"}}>
           <div style={{fontSize:32,marginBottom:12}}>🔗</div>
           <div style={{fontSize:15,fontWeight:600,color:c.tx,marginBottom:6}}>Connect GoHighLevel</div>
-          <div style={{fontSize:13,color:c.so}}>Set GHL_API_KEY and GHL_LOCATION_ID in your environment variables to sync your business profile.</div>
+          <div style={{fontSize:13,color:c.so}}>Set GHL_API_KEY and GHL_LOCATION_ID to sync your business profile.</div>
         </div>
       )}
     </div>

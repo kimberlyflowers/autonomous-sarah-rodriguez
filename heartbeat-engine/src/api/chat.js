@@ -1098,7 +1098,27 @@ async function callAnthropicWithRetry(params, maxRetries = 3) {
 }
 
 async function chatWithSarah(userMessage, history, agentConfig, sessionId = null) {
-  const systemPrompt = buildSystemPrompt(agentConfig);
+  let systemPrompt = buildSystemPrompt(agentConfig);
+  
+  // Inject brand kit if available
+  try {
+    const { getSharedPool } = await import('../database/pool.js');
+    const pool = getSharedPool();
+    const bkRes = await pool.query(`SELECT value FROM user_settings WHERE key='brand_kit'`).catch(()=>({rows:[]}));
+    if (bkRes.rows[0]?.value) {
+      const bk = JSON.parse(bkRes.rows[0].value);
+      const brandLines = [];
+      if (bk.colors?.length) brandLines.push(`Brand colors: ${bk.colors.join(', ')} (first = primary, second = accent)`);
+      if (bk.fonts?.heading) brandLines.push(`Heading font: ${bk.fonts.heading}`);
+      if (bk.fonts?.body) brandLines.push(`Body font: ${bk.fonts.body}`);
+      if (bk.tagline) brandLines.push(`Tagline: "${bk.tagline}"`);
+      if (bk.brandVoice) brandLines.push(`Brand voice: ${bk.brandVoice}`);
+      if (bk.logo) brandLines.push(`Brand logo is uploaded — reference it in designs when appropriate`);
+      if (brandLines.length > 0) {
+        systemPrompt += `\n\nBRAND KIT (use these in all designs, websites, emails, and marketing materials):\n${brandLines.join('\n')}`;
+      }
+    }
+  } catch(e) { /* brand kit not available — proceed without */ }
   const messages = [...history, { role: 'user', content: userMessage }];
   let currentMessages = [...messages];
 

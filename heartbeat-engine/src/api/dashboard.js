@@ -436,4 +436,35 @@ router.get('/business-profile', async (req, res) => {
   }
 });
 
+// Brand Kit — save/load brand assets (logo, colors, fonts, voice)
+router.get('/brand-kit', async (req, res) => {
+  try {
+    const { getSharedPool } = await import('../database/pool.js');
+    const pool = getSharedPool();
+    await pool.query(`CREATE TABLE IF NOT EXISTS user_settings (key VARCHAR(64) PRIMARY KEY, value TEXT, updated_at TIMESTAMPTZ DEFAULT NOW())`);
+    const r = await pool.query(`SELECT value FROM user_settings WHERE key='brand_kit'`);
+    const brand = r.rows[0]?.value ? JSON.parse(r.rows[0].value) : null;
+    res.json({ brand });
+  } catch (e) {
+    res.json({ brand: null, error: e.message });
+  }
+});
+
+router.post('/brand-kit', async (req, res) => {
+  try {
+    const { brand } = req.body;
+    if (!brand) return res.status(400).json({ error: 'brand object required' });
+    const { getSharedPool } = await import('../database/pool.js');
+    const pool = getSharedPool();
+    await pool.query(`CREATE TABLE IF NOT EXISTS user_settings (key VARCHAR(64) PRIMARY KEY, value TEXT, updated_at TIMESTAMPTZ DEFAULT NOW())`);
+    await pool.query(
+      `INSERT INTO user_settings(key, value, updated_at) VALUES('brand_kit', $1, NOW()) ON CONFLICT(key) DO UPDATE SET value=$1, updated_at=NOW()`,
+      [JSON.stringify(brand)]
+    );
+    res.json({ success: true });
+  } catch (e) {
+    res.json({ success: false, error: e.message });
+  }
+});
+
 export default router;
