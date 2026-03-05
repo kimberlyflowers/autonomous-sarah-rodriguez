@@ -231,7 +231,7 @@ const DAILY_LIMITS = {
 - ⏰ **Jobs** — cron/automation schedule management
 
 #### Left Sidebar
-- Project/Business switcher (Petal Core Beauty / Youth Empowerment School / BLOOM Internal)
+- Project/Business switcher (Client projects loaded from GHL)
 - Session list with AI-generated titles, timestamps
 - Agent identity card (Sarah Rodriguez — Online indicator)
 - Autopilot status pill (green pulse + All OK)
@@ -535,7 +535,7 @@ Workflow: edit source → `cd heartbeat-engine/dashboard && rm -rf dist && npm r
 ### Completed Features ✅
 - Dark/light mode toggle
 - Chat with Sarah (persistent sessions, DB-backed, AI-generated titles polling every 8s)
-- Project/Business switcher — sidebar + header (Petal Core Beauty / Youth Empowerment School / BLOOM Internal)
+- Project/Business switcher — sidebar + header (Client projects loaded from GHL)
 - Files & Deliverables tab — pulls from `/api/dashboard/action-log`
 - ProgressRing component (SVG circular %)
 - ActiveTaskTracker — step list with checkmarks + "Working now" pulse, shown in right panel below browser
