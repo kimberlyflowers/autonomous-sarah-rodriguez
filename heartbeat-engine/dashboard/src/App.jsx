@@ -2026,6 +2026,7 @@ export default function App() {
   const [editMode,setEditMode]=useState(false);
   const [editContent,setEditContent]=useState('');
   const [editSaving,setEditSaving]=useState(false);
+  const [editorFullscreen,setEditorFullscreen]=useState(false);
   const [heartbeatInterval,setHeartbeatInterval]=useState("0 */6 * * *");
   const [heartbeatEnabled,setHeartbeatEnabled]=useState(true);
   const [cronJobs,setCronJobs]=useState([
@@ -3543,8 +3544,8 @@ export default function App() {
 
       {/* ══ FILE PREVIEW MODAL ══ */}
       {previewFile&&(
-        <div onClick={()=>{setPreviewFile(null);setEditMode(false);}} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:mob?8:20}}>
-          <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:previewFile.name?.endsWith('.html')?1100:800,height:"90vh",background:c.cd,borderRadius:16,border:"1px solid "+c.ln,display:"flex",flexDirection:"column",overflow:"hidden",boxShadow:"0 20px 60px rgba(0,0,0,.4)"}}>
+        <div onClick={()=>{setPreviewFile(null);setEditMode(false);setEditorFullscreen(false);}} style={{position:"fixed",inset:0,background:editorFullscreen?"transparent":"rgba(0,0,0,0.6)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:editorFullscreen?0:mob?8:20}}>
+          <div onClick={e=>e.stopPropagation()} style={{width:editorFullscreen?"100%":"100%",maxWidth:editorFullscreen?"100%":previewFile.name?.endsWith('.html')?1100:800,height:editorFullscreen?"100vh":"90vh",background:c.cd,borderRadius:editorFullscreen?0:16,border:editorFullscreen?"none":"1px solid "+c.ln,display:"flex",flexDirection:"column",overflow:"hidden",boxShadow:editorFullscreen?"none":"0 20px 60px rgba(0,0,0,.4)",margin:editorFullscreen?0:"auto"}}>
             {/* Header */}
             <div style={{padding:"12px 20px",borderBottom:"1px solid "+c.ln,display:"flex",alignItems:"center",gap:8,background:c.sf,flexShrink:0}}>
               <span style={{fontSize:18}}>{editMode?"✏️":"📄"}</span>
@@ -3556,9 +3557,13 @@ export default function App() {
                 <button onClick={()=>setEditMode(false)} style={{padding:"5px 12px",borderRadius:6,border:"none",fontSize:11,fontWeight:600,cursor:"pointer",background:!editMode?c.ac+"20":"transparent",color:!editMode?c.ac:c.so,fontFamily:"inherit"}}>View</button>
                 <button onClick={()=>{setEditMode(true);setEditContent(previewFile.content||'');}} style={{padding:"5px 12px",borderRadius:6,border:"none",fontSize:11,fontWeight:600,cursor:"pointer",background:editMode?c.ac+"20":"transparent",color:editMode?c.ac:c.so,fontFamily:"inherit"}}>Edit</button>
               </div>
-              <a href={`/api/files/publish/${previewFile.fileId}`} target="_blank" rel="noopener noreferrer" style={{padding:"5px 12px",borderRadius:8,border:"none",background:c.gradient,fontSize:11,fontWeight:700,color:"#fff",textDecoration:"none"}}>↗ Full Screen</a>
+              {editMode?(
+                <button onClick={()=>setEditorFullscreen(!editorFullscreen)} style={{padding:"5px 12px",borderRadius:8,border:"none",background:c.gradient,fontSize:11,fontWeight:700,color:"#fff",cursor:"pointer",fontFamily:"inherit"}}>{editorFullscreen?"↙ Exit Full Screen":"↗ Full Screen"}</button>
+              ):(
+                <a href={`/api/files/publish/${previewFile.fileId}`} target="_blank" rel="noopener noreferrer" style={{padding:"5px 12px",borderRadius:8,border:"none",background:c.gradient,fontSize:11,fontWeight:700,color:"#fff",textDecoration:"none"}}>↗ Full Screen</a>
+              )}
               <a href={`/api/files/download/${previewFile.fileId}`} download style={{padding:"5px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.cd,fontSize:11,fontWeight:600,color:c.ac,textDecoration:"none"}}>↓</a>
-              <button onClick={()=>{setPreviewFile(null);setEditMode(false);}} style={{width:30,height:30,borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:14,color:c.so,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+              <button onClick={()=>{setPreviewFile(null);setEditMode(false);setEditorFullscreen(false);}} style={{width:30,height:30,borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:14,color:c.so,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
             </div>
 
             {/* Content area */}
@@ -3587,65 +3592,53 @@ export default function App() {
                     </div>
                     <iframe
                       id="bloom-html-editor"
-                      srcDoc={(editContent||previewFile.content||'').replace('</body>',`
-<style>
-*:hover{outline:2px dashed rgba(244,162,97,0.3)!important;outline-offset:2px}
-[contenteditable]:focus{outline:2px solid #F4A261!important;outline-offset:2px}
-.bloom-drag-over{border-top:3px solid #F4A261!important}
-.bloom-dragging{opacity:0.4!important}
-.bloom-drag-handle{position:absolute;left:-32px;top:50%;transform:translateY(-50%);width:24px;height:24px;background:#F4A261;border-radius:6px;cursor:grab;display:none;align-items:center;justify-content:center;font-size:12px;color:#fff;z-index:999;box-shadow:0 2px 8px rgba(0,0,0,.2)}
-.bloom-section:hover .bloom-drag-handle{display:flex}
-.bloom-section{position:relative;transition:transform .15s}
-</style>
-<script>
-document.body.contentEditable='true';
-document.designMode='on';
-
-// Make top-level sections draggable
-function initDrag(){
-  const sections=document.body.children;
-  for(let i=0;i<sections.length;i++){
-    const el=sections[i];
-    if(el.tagName==='STYLE'||el.tagName==='SCRIPT'||el.tagName==='LINK')continue;
-    el.classList.add('bloom-section');
-    el.setAttribute('draggable','true');
-    
-    // Add drag handle
-    const handle=document.createElement('div');
-    handle.className='bloom-drag-handle';
-    handle.innerHTML='⠿';
-    handle.setAttribute('contenteditable','false');
-    handle.addEventListener('mousedown',function(e){el.draggable=true;});
-    el.style.position=el.style.position||'relative';
-    el.appendChild(handle);
-    
-    el.addEventListener('dragstart',function(e){
-      e.dataTransfer.effectAllowed='move';
-      e.dataTransfer.setData('text/plain',i.toString());
-      setTimeout(()=>el.classList.add('bloom-dragging'),0);
-    });
-    el.addEventListener('dragend',function(){el.classList.remove('bloom-dragging');});
-    el.addEventListener('dragover',function(e){
-      e.preventDefault();e.dataTransfer.dropEffect='move';
-      el.classList.add('bloom-drag-over');
-    });
-    el.addEventListener('dragleave',function(){el.classList.remove('bloom-drag-over');});
-    el.addEventListener('drop',function(e){
-      e.preventDefault();
-      el.classList.remove('bloom-drag-over');
-      const fromIdx=parseInt(e.dataTransfer.getData('text/plain'));
-      const fromEl=document.body.children[fromIdx];
-      if(fromEl&&fromEl!==el){
-        const rect=el.getBoundingClientRect();
-        const mid=rect.top+rect.height/2;
-        if(e.clientY<mid){el.parentNode.insertBefore(fromEl,el);}
-        else{el.parentNode.insertBefore(fromEl,el.nextSibling);}
-      }
-    });
-  }
-}
-setTimeout(initDrag,100);
-</script></body>`)}
+                      srcDoc={editContent||previewFile.content||''}
+                      onLoad={()=>{
+                        try{
+                          const iframe=document.getElementById('bloom-html-editor');
+                          if(!iframe?.contentDocument)return;
+                          const doc=iframe.contentDocument;
+                          // Enable editing
+                          doc.designMode='on';
+                          doc.body.contentEditable='true';
+                          // Inject editor styles
+                          const style=doc.createElement('style');
+                          style.id='bloom-editor-css';
+                          style.textContent=`
+                            *:hover{outline:2px dashed rgba(244,162,97,0.3)!important;outline-offset:2px}
+                            [contenteditable]:focus{outline:2px solid #F4A261!important;outline-offset:2px}
+                            .bloom-drag-over{border-top:3px solid #F4A261!important}
+                            .bloom-dragging{opacity:0.4!important}
+                            .bloom-drag-handle{position:absolute;left:4px;top:4px;width:22px;height:22px;background:#F4A261;border-radius:6px;cursor:grab;display:none;align-items:center;justify-content:center;font-size:11px;color:#fff;z-index:999;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+                            .bloom-section:hover>.bloom-drag-handle{display:flex}
+                            .bloom-section{position:relative}
+                          `;
+                          doc.head.appendChild(style);
+                          // Make sections draggable
+                          const sections=Array.from(doc.body.children).filter(el=>!['STYLE','SCRIPT','LINK','BR'].includes(el.tagName));
+                          let dragSrc=null;
+                          sections.forEach((el,i)=>{
+                            el.classList.add('bloom-section');
+                            el.setAttribute('draggable','true');
+                            if(!el.style.position||el.style.position==='static')el.style.position='relative';
+                            const h=doc.createElement('div');
+                            h.className='bloom-drag-handle';h.textContent='⠿';h.contentEditable='false';
+                            h.onmousedown=()=>{el.draggable=true;};
+                            el.insertBefore(h,el.firstChild);
+                            el.ondragstart=(e)=>{dragSrc=el;e.dataTransfer.effectAllowed='move';setTimeout(()=>el.classList.add('bloom-dragging'),0);};
+                            el.ondragend=()=>{el.classList.remove('bloom-dragging');dragSrc=null;};
+                            el.ondragover=(e)=>{e.preventDefault();el.classList.add('bloom-drag-over');};
+                            el.ondragleave=()=>el.classList.remove('bloom-drag-over');
+                            el.ondrop=(e)=>{e.preventDefault();el.classList.remove('bloom-drag-over');
+                              if(dragSrc&&dragSrc!==el){const r=el.getBoundingClientRect();e.clientY<r.top+r.height/2?el.parentNode.insertBefore(dragSrc,el):el.parentNode.insertBefore(dragSrc,el.nextSibling);}
+                            };
+                          });
+                        }catch(e){console.error('Editor init failed:',e);}
+                      }}
+                      style={{flex:1,width:"100%",border:"none",background:"#fff"}}
+                      sandbox="allow-scripts allow-same-origin"
+                      title="Visual Editor"
+                    />
                       style={{flex:1,width:"100%",border:"none",background:"#fff"}}
                       sandbox="allow-scripts allow-same-origin"
                       title="Visual Editor"
