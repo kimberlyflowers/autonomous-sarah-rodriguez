@@ -1,7 +1,15 @@
 // Skills API — CRUD for company-specific skills + list BLOOM built-in skills
 import express from 'express';
 import { createLogger } from '../logging/logger.js';
-import { getAllSkills } from '../skills/skill-loader.js';
+
+// Safe skill import
+let getAllSkills = () => [];
+try {
+  const skillMod = await import('../skills/skill-loader.js');
+  getAllSkills = skillMod.getAllSkills;
+} catch (e) {
+  console.warn('Skills loader failed (non-critical):', e.message);
+}
 
 const router = express.Router();
 const logger = createLogger('skills-api');

@@ -3,7 +3,15 @@ import express from 'express';
 import mammoth from 'mammoth';
 import Anthropic from '@anthropic-ai/sdk';
 import { createLogger } from '../logging/logger.js';
-import { getSkillCatalogSummary } from '../skills/skill-loader.js';
+
+// Safe skill import — don't crash the whole chat if skills fail to load
+let getSkillCatalogSummary = () => '';
+try {
+  const skillMod = await import('../skills/skill-loader.js');
+  getSkillCatalogSummary = skillMod.getSkillCatalogSummary;
+} catch (e) {
+  console.warn('Skills failed to load (non-critical):', e.message);
+}
 import { loadAgentConfig } from '../config/agent-profile.js';
 
 const router = express.Router();

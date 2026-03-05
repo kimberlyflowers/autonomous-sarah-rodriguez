@@ -25,27 +25,40 @@ const CATALOG_DIR = path.join(__dirname, 'catalog');
 let _skills = null;
 
 function parseSkillFile(filePath) {
-  const raw = fs.readFileSync(filePath, 'utf-8');
-  
-  // Parse YAML frontmatter
-  const fmMatch = raw.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
-  if (!fmMatch) return null;
-  
-  const frontmatter = fmMatch[1];
-  const body = fmMatch[2].trim();
-  
-  // Simple YAML parsing (name and description)
-  const nameMatch = frontmatter.match(/name:\s*(.+)/);
-  const descMatch = frontmatter.match(/description:\s*["']?([\s\S]*?)["']?\s*$/m);
-  
-  if (!nameMatch) return null;
-  
-  return {
-    name: nameMatch[1].trim(),
-    description: (descMatch ? descMatch[1].trim() : '').replace(/^["']|["']$/g, ''),
-    body,
-    filePath,
-  };
+  try {
+    const raw = fs.readFileSync(filePath, 'utf-8');
+    
+    // Parse YAML frontmatter
+    const fmMatch = raw.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+    if (!fmMatch) return null;
+    
+    const frontmatter = fmMatch[1];
+    const body = fmMatch[2].trim();
+    
+    // Simple YAML parsing
+    const nameMatch = frontmatter.match(/name:\s*(.+)/);
+    if (!nameMatch) return null;
+    
+    // Handle quoted descriptions (single or double quotes)
+    let description = '';
+    const descQuotedMatch = frontmatter.match(/description:\s*"([\s\S]*?)"/);
+    const descSingleMatch = frontmatter.match(/description:\s*'([\s\S]*?)'/);
+    const descPlainMatch = frontmatter.match(/description:\s*([^\n"']+)/);
+    
+    if (descQuotedMatch) description = descQuotedMatch[1];
+    else if (descSingleMatch) description = descSingleMatch[1];
+    else if (descPlainMatch) description = descPlainMatch[1];
+    
+    return {
+      name: nameMatch[1].trim(),
+      description: description.trim(),
+      body,
+      filePath,
+    };
+  } catch (e) {
+    logger.warn(`Failed to parse skill file ${filePath}: ${e.message}`);
+    return null;
+  }
 }
 
 function loadSkillCatalog() {
