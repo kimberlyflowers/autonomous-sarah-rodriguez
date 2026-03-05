@@ -1,117 +1,137 @@
 ---
 name: email-marketing
-description: "Write email campaigns, sequences, subject lines, and SMS that feel like they came from a human who cares. Use when the task involves email marketing, drip campaigns, newsletters, follow-up sequences, cold outreach, welcome sequences, re-engagement, or SMS messaging. Also use for A/B subject lines and email templates."
+description: "Write email campaigns, sequences, subject lines, and SMS that feel human and actually convert. Use when the task involves email marketing, drip campaigns, newsletters, follow-up sequences, cold outreach, welcome sequences, re-engagement, or SMS messaging. Also use for A/B subject lines and email templates."
 ---
 
 # Email Marketing
 
 ## How to Think About This
 
-Every email lands in an inbox next to messages from the reader's mom, their boss, and Amazon. Your email has to earn the right to exist there.
+Every email lands next to messages from the reader's mom, their boss, and Amazon. Your email has to earn the right to exist there. The best marketing emails don't feel like marketing — they feel like a message from someone who understands you.
 
-The secret: the best marketing emails don't feel like marketing. They feel like a message from someone who understands you. Someone who noticed you, remembered your name, and actually gives a damn.
-
-Before writing any email, check memory and Company Skills for the client's brand voice, their audience, their sign-off style, and any specific email guidelines they've set. A real estate agent's emails sound nothing like a church's emails.
+Check memory and Company Skills for brand voice, audience, sign-off style, and email guidelines before writing.
 
 ## The Subject Line Is a Promise
 
-The subject line's ONLY job is to get the email opened. It makes a promise that the body must deliver on.
+Only job: get the email opened. It promises something the body delivers.
 
-What works:
-- **Personal and specific.** Makes the reader feel it was written for them, not blasted to a list.
-- **Curiosity without clickbait.** Opens a loop that the email body closes.
-- **Direct address.** {firstName} + something that signals "I know your situation."
+What works: personal and specific, curiosity without clickbait, direct address with {firstName}.
+What dies: "Newsletter #14", "Exciting news!", "Don't miss out!", ALL CAPS.
 
-What dies in the inbox:
-- "Newsletter #14 — March Update" (nobody asked for this)
-- "Exciting news from [Company]!" (exciting for who?)
-- "Don't miss out!" (miss out on what? you haven't told me anything)
-- ALL CAPS or excessive punctuation
+Always write 2 A/B variants. The winner teaches you about the audience.
 
-Always write 2 A/B variant subject lines. Test them. The winner teaches you something about the audience.
+## Email 1 Is NEVER About You
 
-## Email 1 of Any Sequence Is NEVER About You
+First email validates THEIR decision, not your product. They gave you their email — honor that trust.
 
-The first email someone receives should validate THEIR decision, not pitch YOUR product. They just gave you their email address. That's an act of trust. Honor it.
+Bad: "Welcome! Here's what we offer: [features]"
+Good: "The fact that you're here means you're already a step ahead."
 
-Bad Email 1: "Welcome to [Company]! Here's what we offer: [features list]"
-Good Email 1: "The fact that you're here means you're already a step ahead. Most people just wonder. You actually took action."
+Trust first. Story second. Invitation third. This order matters.
 
-The first email builds trust. The second email tells a story. The third email extends an invitation. This order matters.
+## Story Beats Statistics
 
-## Story Beats Statistics Every Time
+One specific person's experience → people forward it.
+"95% satisfaction rate" → nobody feels anything.
 
-"Our satisfaction rate is 95%" → nobody feels anything.
-A specific story about one real person's experience → people forward this to their spouse.
-
-Every email in a nurture sequence should contain at least one SPECIFIC detail that a generic template could never produce. A name. A moment. A quote. Something that makes the reader think "this is real." Pull these from client memory and CRM data when available.
+Every nurture email needs at least one SPECIFIC detail a template could never produce.
 
 ## CTA Rules
 
-- One CTA per email. ONE. Not three buttons and a P.S. link.
-- Make the CTA conversational: "Reply [KEYWORD]" beats "Click here to schedule."
-- "Reply [KEYWORD]" converts 3-5x better than link clicks because it starts a conversation in the CRM.
-- Put the CTA after the emotional peak, not at the very end.
-- The P.S. line is the second-most-read part of any email. Use it for a personal, warm touch — not another CTA.
+- ONE CTA per email. One.
+- "Reply [KEYWORD]" converts 3-5x better than link clicks (starts a CRM conversation)
+- Put CTA after the emotional peak, not the very end
+- P.S. line = second-most-read part. Use for warmth, not another CTA.
 
 ## Sequence Architecture
 
-### Welcome Sequence (3-5 emails)
-1. **Validation** (immediate) — Honor their signup. Set expectations. No selling.
-2. **Story** (Day 2) — A real person's experience. Make the reader feel something.
-3. **Invitation** (Day 5) — One clear ask. Low friction. "Reply [KEYWORD]."
-4. **Social proof** (Day 8, optional) — Another story, different angle.
-5. **Gentle close** (Day 12, optional) — "No pressure. We're here when you're ready."
+### Welcome (3-5 emails)
+1. **Validation** (immediate) — Honor signup. No selling.
+2. **Story** (Day 2) — Real person's experience.
+3. **Invitation** (Day 5) — One clear ask. "Reply [KEYWORD]."
+4. **Social proof** (Day 8) — Different angle.
+5. **Gentle close** (Day 12) — "No pressure."
 
-### Re-engagement (for cold leads)
-- Acknowledge the silence honestly
-- Offer value, not guilt
-- Single, easy CTA
-- If no response after 2 attempts, move to monthly newsletter only
+### Re-engagement: Acknowledge silence, offer value not guilt, single easy CTA.
+### No response: Day 2 resend, Day 4 SMS, Day 10 value email, then stop.
 
-### Follow-Up After No Response
-- Day 2: Resend with alternate subject line (only if unopened)
-- Day 4: Switch to SMS — short, personal, conversational
-- Day 10: "No pressure" email with a piece of value (video, resource, story)
-- After that: stop. Respect > persistence.
+## Technical: HTML Email Best Practices
+
+### Structure
+```html
+<!-- Email skeleton — table-based for compatibility -->
+<table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;font-family:Arial,Helvetica,sans-serif;">
+  <tr><td style="padding:30px 20px;">
+    <!-- Content here -->
+  </td></tr>
+</table>
+```
+
+### Critical Rules
+- **Max width: 600px.** Every email client renders differently. 600px is the safe zone.
+- **Table-based layout.** Flexbox and grid break in Outlook. Use nested tables.
+- **Inline CSS only.** Most email clients strip `<style>` tags. Every style must be inline.
+- **System fonts only.** Arial, Helvetica, Georgia, Times New Roman. Custom fonts fail in 40% of clients.
+- **Images: always include alt text.** Many clients block images by default. Alt text = your fallback.
+- **Button as table cell**, not `<button>` tag:
+```html
+<table cellpadding="0" cellspacing="0"><tr>
+  <td style="background:#E76F8B;border-radius:8px;padding:14px 28px;">
+    <a href="LINK" style="color:#ffffff;font-weight:bold;text-decoration:none;font-size:16px;">Book My Free Demo</a>
+  </td>
+</tr></table>
+```
+- **Preview text**: Use a hidden span after the subject to control the preview line:
+```html
+<span style="display:none;max-height:0;overflow:hidden;">Your preview text here</span>
+```
+- **Unsubscribe link**: Required by law. Always include at bottom.
+- **Plain text version**: Always provide. Some clients only show plain text.
+
+### Mobile Responsive
+```html
+<style>
+@media screen and (max-width: 600px) {
+  .content { width: 100% !important; padding: 15px !important; }
+  .headline { font-size: 24px !important; }
+}
+</style>
+```
+Note: `@media` queries work in Apple Mail, Gmail app, but NOT Outlook. Design mobile-first at 600px to be safe everywhere.
+
+### Testing Checklist
+- Does it render in a single column under 600px?
+- Does it look right with images blocked?
+- Is the CTA visible without scrolling on mobile?
+- Is the plain text version readable?
+- Does the preview text show correctly?
 
 ## SMS Best Practices
 
-- 160 characters or less. Treat character count like poetry.
-- Lead with their name.
-- Send between 10am-7pm local time only.
-- Max 4 SMS per month unless they've opted into more.
-- SMS is for quick nudges, not long pitches. If it needs more than 2 sentences, send an email.
+- 160 characters max (1 segment). More = higher cost + split delivery.
+- Lead with their name. Send 10am-7pm local only.
+- Max 4/month. Include opt-out.
 
-## The Follow-Up Logic
+## Follow-Up Logic
 
-Don't just write emails — think about what happens when someone RESPONDS:
-
-- They reply with the keyword → Auto-tag, create pipeline deal, notify the team, send next step
-- They reply with a question → Answer personally within 2 hours, add to CRM notes
-- They don't open → Resend with new subject, then try SMS
-- They open but don't click → CTA wasn't compelling enough. Revise.
-- They unsubscribe → Respect it completely. Never re-add.
+Always define what happens AFTER:
+- Reply with keyword → auto-tag, create deal, notify team
+- Reply with question → personal answer within 2 hours
+- No open → resend with new subject, then SMS
+- Unsubscribe → respect completely, never re-add
 
 ## Output Format
 
-Every email delivery includes:
-- Subject line + 2 A/B variants
-- Preview text
-- Full email body (use {firstName} and other merge fields)
-- Plain text version
-- Suggested send time and day
-- Follow-up logic: what happens if they respond, don't respond, or take the CTA
-- Segment recommendation: who should receive this
+Every email includes: subject + 2 A/B variants, preview text, full HTML body, plain text version, send time, follow-up logic, segment recommendation.
 
-## Common Mistakes to Avoid
+## Common Mistakes
 
-- Pitching in the first email of a sequence
-- Generic subject lines that could be from any company
-- Multiple CTAs competing for attention
-- No story, no specificity — just features and benefits
-- "Dear Valued Customer" or any non-personalized greeting
-- Follow-ups that are just "Just following up!" with no new value
-- Not thinking about what happens AFTER the email (the CRM workflow)
-- Writing for desktop when 80%+ of opens are mobile
-- Ignoring the client's sign-off style and brand voice
+- Pitching in email 1
+- Multiple CTAs competing
+- No story or specificity
+- "Dear Valued Customer"
+- Follow-ups that just say "Following up!"
+- Not thinking about what happens AFTER
+- Designing for desktop when 80%+ opens are mobile
+- Using `<button>` tags (break in Outlook)
+- Forgetting plain text version
