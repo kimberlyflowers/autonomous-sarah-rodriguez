@@ -1885,10 +1885,13 @@ export default function App() {
   const [editTitle,setEditTitle]=useState('');
   const [editDesc,setEditDesc]=useState('');
   const [newTask,setNewTask]=useState({name:'',instruction:'',taskType:'content',frequency:'daily',runTime:'09:00'});
-  const [actTab,setActTab]=useState("scheduled"); // scheduled | history
+  const [actTab,setActTab]=useState("scheduled"); // scheduled | history | calendar
   const [taskRuns,setTaskRuns]=useState([]);
   const [expandedRun,setExpandedRun]=useState(null);
   const [previewFileIdx,setPreviewFileIdx]=useState(null);
+  const [bulkImportOpen,setBulkImportOpen]=useState(false);
+  const [bulkText,setBulkText]=useState('');
+  const [calMonth,setCalMonth]=useState(new Date());
   const [agentImgUrl,setAgentImgUrl]=useState(null);
 
   const loadProfile = async () => {
@@ -2532,7 +2535,7 @@ export default function App() {
                     </div>
                   </div>
                   <div style={{display:"flex",gap:4}}>
-                    {[{key:"scheduled",label:"Scheduled Tasks",badge:scheduledTasks.filter(t=>t.enabled).length},{key:"history",label:"Task History"}].map(tab=>(
+                    {[{key:"scheduled",label:"Scheduled Tasks",badge:scheduledTasks.filter(t=>t.enabled).length},{key:"calendar",label:"Calendar"},{key:"history",label:"Task History"}].map(tab=>(
                       <button key={tab.key} onClick={()=>setActTab(tab.key)} style={{
                         padding:"9px 18px",fontSize:13,fontWeight:600,border:"none",
                         borderBottom:actTab===tab.key?"2px solid "+c.ac:"2px solid transparent",
@@ -2554,9 +2557,14 @@ export default function App() {
                       <span style={{fontSize:13,color:c.so}}>
                         {scheduledTasks.filter(t=>t.enabled).length} active · {scheduledTasks.filter(t=>!t.enabled).length} paused
                       </span>
-                      <button onClick={()=>setTaskFormOpen(!taskFormOpen)} style={{padding:"8px 18px",borderRadius:8,border:"none",background:c.gradient,cursor:"pointer",fontSize:13,fontWeight:700,color:"#fff",fontFamily:"inherit"}}>
-                        {taskFormOpen?"Cancel":"+ New Task"}
-                      </button>
+                      <div style={{display:"flex",gap:6}}>
+                        <button onClick={()=>{setBulkImportOpen(!bulkImportOpen);setTaskFormOpen(false);}} style={{padding:"8px 14px",borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:13,fontWeight:600,color:c.tx,fontFamily:"inherit"}}>
+                          {bulkImportOpen?"Cancel":"📋 Bulk Import"}
+                        </button>
+                        <button onClick={()=>{setTaskFormOpen(!taskFormOpen);setBulkImportOpen(false);}} style={{padding:"8px 18px",borderRadius:8,border:"none",background:c.gradient,cursor:"pointer",fontSize:13,fontWeight:700,color:"#fff",fontFamily:"inherit"}}>
+                          {taskFormOpen?"Cancel":"+ New Task"}
+                        </button>
+                      </div>
                     </div>
 
                     {/* New task form */}
@@ -2580,6 +2588,47 @@ export default function App() {
                           setTaskFormOpen(false);
                           loadActivity();
                         }} disabled={!newTask.name||!newTask.instruction} style={{width:"100%",padding:"10px 0",borderRadius:8,border:"none",background:newTask.name&&newTask.instruction?c.gradient:"#444",cursor:newTask.name&&newTask.instruction?"pointer":"not-allowed",fontSize:13,fontWeight:700,color:"#fff",fontFamily:"inherit"}}>Create Task</button>
+                      </div>
+                    )}
+
+                    {/* Bulk Import */}
+                    {bulkImportOpen&&(
+                      <div style={{padding:16,borderRadius:12,border:"1px solid "+c.ln,background:c.sf,marginBottom:14}}>
+                        <div style={{fontSize:13,fontWeight:600,color:c.tx,marginBottom:6}}>Paste your task list</div>
+                        <div style={{fontSize:11,color:c.so,marginBottom:10,lineHeight:1.5}}>
+                          One task per line. Format: <code style={{background:c.cd,padding:"1px 4px",borderRadius:3,fontSize:10}}>task name | instruction | frequency | time</code><br/>
+                          Frequency: daily, weekdays, weekly, monthly. Time: HH:MM (24h). Both optional — defaults to daily at 9:00.<br/>
+                          <span style={{color:c.tx}}>Examples:</span><br/>
+                          <code style={{background:c.cd,padding:"1px 4px",borderRadius:3,fontSize:10}}>Morning blog post | Write a 500-word blog about today's trending topic | weekdays | 08:00</code><br/>
+                          <code style={{background:c.cd,padding:"1px 4px",borderRadius:3,fontSize:10}}>Weekly newsletter | Draft the weekly email newsletter summarizing this week | weekly | 14:00</code><br/>
+                          <code style={{background:c.cd,padding:"1px 4px",borderRadius:3,fontSize:10}}>Check new leads | Review all new CRM contacts and send welcome emails</code>
+                        </div>
+                        <textarea value={bulkText} onChange={e=>setBulkText(e.target.value)} placeholder={"Morning blog post | Write a blog about trending topics | weekdays | 08:00\nWeekly newsletter | Draft the weekly email | weekly | 14:00\nCheck new leads | Review CRM contacts and send welcome emails"} rows={6} style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,fontSize:12,color:c.tx,fontFamily:"monospace",resize:"vertical",boxSizing:"border-box",marginBottom:10}}/>
+                        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                          <button onClick={async()=>{
+                            const lines=bulkText.split('\n').map(l=>l.trim()).filter(Boolean);
+                            let created=0;
+                            for(const line of lines){
+                              const parts=line.split('|').map(p=>p.trim());
+                              const name=parts[0];
+                              const instruction=parts[1]||parts[0];
+                              const frequency=parts[2]||'daily';
+                              const runTime=parts[3]||'09:00';
+                              const taskType=instruction.match(/blog|post|write|content/i)?'content':instruction.match(/email|newsletter|campaign/i)?'email':instruction.match(/crm|contact|lead/i)?'crm':instruction.match(/research|search|find/i)?'research':'custom';
+                              if(name){
+                                try{
+                                  await fetch('/api/agent/tasks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,instruction,taskType,frequency:frequency.toLowerCase(),runTime})});
+                                  created++;
+                                }catch{}
+                              }
+                            }
+                            setBulkText('');setBulkImportOpen(false);loadActivity();
+                            alert(`Created ${created} task${created!==1?'s':''}`);
+                          }} disabled={!bulkText.trim()} style={{padding:"10px 24px",borderRadius:8,border:"none",background:bulkText.trim()?c.gradient:"#444",cursor:bulkText.trim()?"pointer":"not-allowed",fontSize:13,fontWeight:700,color:"#fff",fontFamily:"inherit"}}>
+                            Import {bulkText.split('\n').filter(l=>l.trim()).length} task{bulkText.split('\n').filter(l=>l.trim()).length!==1?'s':''}
+                          </button>
+                          <span style={{fontSize:11,color:c.so}}>{bulkText.split('\n').filter(l=>l.trim()).length} line{bulkText.split('\n').filter(l=>l.trim()).length!==1?'s':''} detected</span>
+                        </div>
                       </div>
                     )}
 
@@ -2616,6 +2665,101 @@ export default function App() {
                         <div style={{fontSize:13,marginBottom:16}}>Add one here or tell Sarah in chat</div>
                       </div>
                     )}
+                  </div>
+                )}
+
+                {/* ── Calendar View ── */}
+                {actTab==="calendar"&&(
+                  <div style={{paddingTop:20}}>
+                    {(()=>{
+                      const y=calMonth.getFullYear(),m=calMonth.getMonth();
+                      const firstDay=new Date(y,m,1).getDay();
+                      const daysInMonth=new Date(y,m+1,0).getDate();
+                      const today=new Date();
+                      const isToday=(d)=>d===today.getDate()&&m===today.getMonth()&&y===today.getFullYear();
+                      const monthName=calMonth.toLocaleString('default',{month:'long',year:'numeric'});
+
+                      // Map task runs to dates
+                      const runsByDate={};
+                      taskRuns.forEach(r=>{
+                        if(!r.completedAt&&!r.createdAt) return;
+                        const d=new Date(r.completedAt||r.createdAt);
+                        if(d.getMonth()===m&&d.getFullYear()===y){
+                          const day=d.getDate();
+                          if(!runsByDate[day]) runsByDate[day]=[];
+                          runsByDate[day].push(r);
+                        }
+                      });
+
+                      // Map scheduled tasks to recurring days
+                      const scheduledByDay={};
+                      scheduledTasks.filter(t=>t.enabled).forEach(t=>{
+                        for(let d=1;d<=daysInMonth;d++){
+                          const dow=new Date(y,m,d).getDay();
+                          const shouldRun=t.frequency==='daily'||(t.frequency==='weekdays'&&dow>=1&&dow<=5)||(t.frequency==='weekly'&&dow===1)||(t.frequency==='monthly'&&d===1);
+                          if(shouldRun){
+                            if(!scheduledByDay[d]) scheduledByDay[d]=[];
+                            scheduledByDay[d].push(t);
+                          }
+                        }
+                      });
+
+                      const cells=[];
+                      for(let i=0;i<firstDay;i++) cells.push(null);
+                      for(let d=1;d<=daysInMonth;d++) cells.push(d);
+
+                      return(
+                        <>
+                          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+                            <button onClick={()=>setCalMonth(new Date(y,m-1,1))} style={{width:32,height:32,borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:14,color:c.so,display:"flex",alignItems:"center",justifyContent:"center"}}>←</button>
+                            <span style={{fontSize:16,fontWeight:700,color:c.tx}}>{monthName}</span>
+                            <button onClick={()=>setCalMonth(new Date(y,m+1,1))} style={{width:32,height:32,borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:14,color:c.so,display:"flex",alignItems:"center",justifyContent:"center"}}>→</button>
+                          </div>
+                          <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:4}}>
+                            {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d=>(
+                              <div key={d} style={{textAlign:"center",fontSize:11,fontWeight:700,color:c.so,padding:"6px 0",textTransform:"uppercase",letterSpacing:"0.5px"}}>{d}</div>
+                            ))}
+                          </div>
+                          <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2}}>
+                            {cells.map((d,i)=>{
+                              if(!d) return <div key={`e${i}`} style={{minHeight:mob?60:80}}/>;
+                              const runs=runsByDate[d]||[];
+                              const scheduled=scheduledByDay[d]||[];
+                              const isPast=new Date(y,m,d)<new Date(today.getFullYear(),today.getMonth(),today.getDate());
+                              const hasCompleted=runs.some(r=>r.status==="completed");
+                              const hasFailed=runs.some(r=>r.status==="failed");
+                              const hasPending=runs.some(r=>r.status==="pending");
+                              return(
+                                <div key={d} style={{minHeight:mob?60:80,borderRadius:8,border:isToday(d)?"2px solid "+c.ac:"1px solid "+c.ln,background:isToday(d)?c.ac+"08":c.sf,padding:"4px 6px",overflow:"hidden"}}>
+                                  <div style={{fontSize:12,fontWeight:isToday(d)?700:500,color:isToday(d)?c.ac:isPast?c.fa:c.tx,marginBottom:3}}>{d}</div>
+                                  {runs.map((r,ri)=>{
+                                    const ic={content:"📝",email:"✉️",research:"🔍",crm:"📊",custom:"⚡"}[r.taskType]||"⚡";
+                                    const bg=r.status==="completed"?c.gr+"20":r.status==="failed"?c.err+"20":c.ac+"20";
+                                    const tc=r.status==="completed"?c.gr:r.status==="failed"?c.err:c.ac;
+                                    return ri<3?<div key={ri} style={{fontSize:10,padding:"2px 4px",borderRadius:4,background:bg,color:tc,marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ic} {r.taskName}</div>:null;
+                                  })}
+                                  {runs.length>3&&<div style={{fontSize:9,color:c.so,textAlign:"center"}}>+{runs.length-3}</div>}
+                                  {runs.length===0&&scheduled.length>0&&(
+                                    <>
+                                      {scheduled.slice(0,2).map((t,ti)=>{
+                                        const ic={content:"📝",email:"✉️",research:"🔍",crm:"📊",custom:"⚡"}[t.taskType]||"⚡";
+                                        return <div key={ti} style={{fontSize:10,padding:"2px 4px",borderRadius:4,background:c.cd,color:isPast?c.fa:c.so,marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",opacity:isPast?0.4:0.7}}>{ic} {t.name}</div>;
+                                      })}
+                                      {scheduled.length>2&&<div style={{fontSize:9,color:c.so}}>+{scheduled.length-2}</div>}
+                                    </>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <div style={{display:"flex",gap:16,marginTop:12,justifyContent:"center"}}>
+                            <span style={{fontSize:11,color:c.so,display:"flex",alignItems:"center",gap:4}}><span style={{width:8,height:8,borderRadius:2,background:c.gr+"40"}}/> Completed</span>
+                            <span style={{fontSize:11,color:c.so,display:"flex",alignItems:"center",gap:4}}><span style={{width:8,height:8,borderRadius:2,background:c.err+"40"}}/> Failed</span>
+                            <span style={{fontSize:11,color:c.so,display:"flex",alignItems:"center",gap:4}}><span style={{width:8,height:8,borderRadius:2,background:c.cd,border:"1px solid "+c.ln}}/> Scheduled</span>
+                          </div>
+                        </>
+                      );
+                    })()}
                   </div>
                 )}
 
