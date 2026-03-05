@@ -21,7 +21,7 @@ Answer before writing any code:
 2. **What's the ONE action?** Book, buy, sign up, download. ONE.
 3. **What's their biggest objection?** Cost? Trust? Time? Address it head-on.
 
-Use Brand Kit for colors/fonts/voice. Use Company Skills for audience/industry context.
+If a Brand Kit is in your system prompt, you ALREADY have colors, fonts, and voice — DO NOT ask the user about these. Only ask about content: what the page is for, who the audience is, and what action visitors should take. If NO Brand Kit exists, then ask about visual preferences.
 
 ### Design Direction
 Commit to a BOLD aesthetic:

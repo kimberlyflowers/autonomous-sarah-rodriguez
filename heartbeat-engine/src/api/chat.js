@@ -141,7 +141,7 @@ ${getSkillCatalogSummary()}`;
 }
 
 // TOOL DEFINITIONS — Full suite available to Sarah
-const SARAH_TOOLS = [
+const _ALL_TOOLS = [
   // ── CONTACTS ──────────────────────────────────────────────────────────────
   {
     name: "ghl_search_contacts",
@@ -880,6 +880,68 @@ Do NOT use this for simple questions, conversation, or tasks you can handle your
   }
 ];
 
+// Dynamic tool availability — checked per request, not at boot
+function getAvailableTools() {
+  const available = [];
+  const unavailable = [];
+  
+  for (const tool of _ALL_TOOLS) {
+    const readiness = checkToolReadiness(tool.name);
+    if (readiness.ready) {
+      available.push(tool);
+    } else {
+      unavailable.push({ name: tool.name, reason: readiness.reason });
+    }
+  }
+  
+  return { tools: available, unavailable };
+}
+
+function checkToolReadiness(toolName) {
+  // Image tools need an API key
+  if (toolName === 'image_generate' || toolName === 'image_edit') {
+    if (!process.env.OPENAI_API_KEY && !process.env.GEMINI_API_KEY) {
+      return { ready: false, reason: 'No image API key (OPENAI_API_KEY or GEMINI_API_KEY)' };
+    }
+  }
+  // Specialist dispatch needs at least one model key
+  if (toolName === 'dispatch_to_specialist') {
+    // Always available — falls back to Anthropic
+  }
+  // GHL tools need API key
+  if (toolName.startsWith('ghl_')) {
+    if (!process.env.GHL_API_KEY) {
+      return { ready: false, reason: 'No GHL API key' };
+    }
+  }
+  // Browser tools need chromium
+  if (toolName === 'web_browse' || toolName === 'web_screenshot') {
+    // These fail gracefully at runtime, keep available
+  }
+  // Add more checks here as connectors are added
+  return { ready: true };
+}
+
+// Build capability notes for system prompt based on what's unavailable
+function getCapabilityNotes() {
+  const { unavailable } = getAvailableTools();
+  if (unavailable.length === 0) return '';
+  
+  const notes = ['\nCURRENT TOOL LIMITATIONS (work around these — never abandon a task):'];
+  for (const t of unavailable) {
+    if (t.name === 'image_generate' || t.name === 'image_edit') {
+      notes.push('- Image generation is NOT available. Use CSS gradients, patterns, background colors, emoji, and SVG icons instead. Build beautiful designs with pure CSS and typography.');
+    } else if (t.name.startsWith('ghl_')) {
+      // Only note GHL once
+      if (!notes.some(n => n.includes('CRM/GHL'))) {
+        notes.push('- CRM/GHL tools are NOT available. If client asks about contacts or CRM, let them know the integration needs to be configured.');
+      }
+    }
+  }
+  notes.push('- When ANY tool fails at runtime, adapt and deliver with what you have. Never stall, never abandon, never retry more than once.');
+  return notes.join('\n');
+}
+
 // TOOL EXECUTION — routes all tool calls to the appropriate executor
 async function executeTool(toolName, toolInput, sessionId = null) {
   logger.info(`Executing tool: ${toolName}`, { input: toolInput });
@@ -1190,7 +1252,8 @@ async function chatWithSarah(userMessage, history, agentConfig, sessionId = null
 The client has ${allKits.length} brand kits configured:
 ${kitSummaries}
 When creating ANY design, website, email, document, or content, you MUST ask which brand this is for BEFORE starting work (unless the conversation already makes it clear). Say something like "Which brand is this for — [kit names]?" Keep it brief.
-Once confirmed, use that brand's exact colors as CSS variables, load their fonts from Google Fonts, and match their voice in all copy.`;
+Once confirmed, use that brand's exact colors as CSS variables, load their fonts from Google Fonts, and match their voice in all copy.
+IMPORTANT: Since brand kits are configured, DO NOT ask about colors, fonts, or visual style. You already have everything you need from the brand kit. Only ask about content — what the page is about, who the audience is, and what action they should take.`;
       
       // Also inject the active kit details as the default
       const bk = allKits.find(k => k.active) || allKits[0];
@@ -1219,7 +1282,8 @@ Once confirmed, use that brand's exact colors as CSS variables, load their fonts
         systemPrompt += `\n\nBRAND KIT — MANDATORY FOR ALL CREATIVE OUTPUT:
 You MUST use these brand assets in every design, website, email, document, social post, and any visual or written content you create.
 ${brandLines.join('\n')}
-Use these colors as CSS variables. Load these fonts from Google Fonts. Match this voice in all copy.`;
+Use these colors as CSS variables. Load these fonts from Google Fonts. Match this voice in all copy.
+IMPORTANT: Since a brand kit is configured, DO NOT ask the user about colors, fonts, or visual style. You already have everything you need. Only ask about content — what the page is about, who the audience is, and what action they should take.`;
       }
     }
   } catch(e) { /* brand kit not available — proceed without */ }
@@ -1251,12 +1315,19 @@ Use these colors as CSS variables. Load these fonts from Google Fonts. Match thi
   const toolsUsed = [];
   const toolResults = []; // Track what tools returned for history
   for (let round = 0; round < 15; round++) {
+    // Dynamic tool availability — checked fresh each request
+    const { tools: availableTools, unavailable } = getAvailableTools();
+    
+    // Inject capability notes into system prompt so Sarah knows what's available
+    const capabilityNotes = getCapabilityNotes();
+    if (capabilityNotes) systemPrompt += capabilityNotes;
+    
     const response = await callAnthropicWithRetry({
       model: process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001',
       max_tokens: 4096,
       system: systemPrompt,
       messages: currentMessages,
-      tools: SARAH_TOOLS
+      tools: availableTools
     });
 
     if (response.stop_reason === 'end_turn') {

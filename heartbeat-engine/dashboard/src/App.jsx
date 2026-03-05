@@ -289,7 +289,7 @@ function useSarahChat() {
     const controller = new AbortController();
     abortRef.current = controller;
     // Auto-timeout after 2 minutes
-    const timeoutId = setTimeout(()=>controller.abort(), 120000);
+    const timeoutId = setTimeout(()=>controller.abort(), 120000); // 2 min timeout
     
     try {
       const res = await fetch("/api/chat/message",{
