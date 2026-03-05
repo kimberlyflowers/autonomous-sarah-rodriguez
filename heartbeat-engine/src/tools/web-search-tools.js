@@ -67,7 +67,14 @@ export const webSearchToolExecutors = {
       return await braveSearch(query, count);
     }
 
-    // Fallback: use browser_task to search Google
+    // Fallback: DuckDuckGo HTML lite (no API key needed, no browser needed)
+    try {
+      return await duckDuckGoSearch(query, count);
+    } catch(e) {
+      logger.warn('DuckDuckGo fallback failed, trying browser', { error: e.message });
+    }
+
+    // Last resort: use browser_task to search Google
     return await browserFallbackSearch(query, count);
   },
 
@@ -188,6 +195,49 @@ async function directFetch(url) {
 /**
  * Fallback: use browser_task to search Google
  */
+/**
+ * DuckDuckGo HTML lite search — no API key needed, no browser needed
+ */
+async function duckDuckGoSearch(query, count) {
+  logger.info('DuckDuckGo search (no API key fallback)', { query });
+  
+  const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+  const response = await fetch(url, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (compatible; BLOOM-Agent/1.0)',
+    },
+    signal: AbortSignal.timeout(10000), // 10 second timeout
+  });
+
+  if (!response.ok) throw new Error(`DuckDuckGo error: ${response.status}`);
+
+  const html = await response.text();
+  
+  // Parse results from DDG HTML lite
+  const results = [];
+  const resultRegex = /<a rel="nofollow" class="result__a" href="([^"]+)"[^>]*>([^<]*(?:<b>[^<]*<\/b>[^<]*)*)<\/a>[\s\S]*?<a class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
+  let match;
+  while ((match = resultRegex.exec(html)) !== null && results.length < count) {
+    const resultUrl = match[1].startsWith('//') ? 'https:' + match[1] : match[1];
+    // Extract actual URL from DDG redirect
+    const actualUrl = resultUrl.includes('uddg=') 
+      ? decodeURIComponent(resultUrl.split('uddg=')[1]?.split('&')[0] || resultUrl)
+      : resultUrl;
+    results.push({
+      title: match[2].replace(/<\/?b>/g, '').trim(),
+      url: actualUrl,
+      description: match[3].replace(/<\/?b>/g, '').replace(/<[^>]+>/g, '').trim(),
+    });
+  }
+
+  if (results.length === 0) {
+    throw new Error('No results parsed from DuckDuckGo');
+  }
+
+  logger.info('DuckDuckGo search completed', { query, resultCount: results.length });
+  return { success: true, query, results };
+}
+
 async function browserFallbackSearch(query, count) {
   try {
     const BROWSER_AGENT_URL = process.env.BROWSER_AGENT_URL;
