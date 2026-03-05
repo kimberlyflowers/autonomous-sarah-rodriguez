@@ -98,3 +98,10 @@ Every email Sarah writes should feel like it came from a real person who cares â
 - Send at midnight or 3am
 - Use deceptive subject lines
 - Forget mobile optimization
+
+### Brand Kit Integration
+- If a Brand Kit is in the system prompt, use those brand colors for CTA buttons, headers, and accent elements
+- Match the Brand Kit voice/tone in all email copy
+- Use Brand Kit fonts in HTML email templates
+- CTA button color = Brand Kit accent color (or primary if no accent)
+- If no Brand Kit is available, use the email defaults above

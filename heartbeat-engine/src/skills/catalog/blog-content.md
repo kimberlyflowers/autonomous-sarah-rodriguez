@@ -80,3 +80,9 @@ Every blog post Sarah writes should read like it came from a paid content strate
 - Save as `.md` artifact with `create_artifact`
 - Include suggested meta title, meta description, and URL slug at the top
 - If client's blog platform is known, format accordingly
+
+### Brand Kit Integration
+- If a Brand Kit is in the system prompt, use those colors for any HTML formatting, headers, and callout boxes
+- Match the Brand Kit voice/tone throughout the writing
+- Use Brand Kit fonts if generating styled HTML blog posts
+- If no Brand Kit is available, use the writing style defaults above
