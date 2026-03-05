@@ -1112,6 +1112,79 @@ function BillingUsageBar({icon,label,used,limit,rate,unit,c}){
 }
 
 // ── SKILLS PAGE — Train your Bloomie ────────────────────────────────────────
+// ── CALLS PAGE — Phone transcript viewer ────────────────────────────────────
+function CallsPage({c,mob}){
+  const [calls,setCalls]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [expanded,setExpanded]=useState(null);
+
+  useEffect(()=>{
+    fetch('/api/chat/calls').then(r=>r.json()).then(d=>{setCalls(d.calls||[]);setLoading(false);}).catch(()=>setLoading(false));
+  },[]);
+
+  if(loading) return <div style={{textAlign:"center",padding:40,color:c.so}}>Loading calls...</div>;
+
+  if(calls.length===0) return(
+    <div style={{textAlign:"center",padding:60,background:c.cd,borderRadius:16,border:"1px solid "+c.ln}}>
+      <div style={{fontSize:40,marginBottom:12}}>📞</div>
+      <div style={{fontSize:15,fontWeight:600,color:c.tx,marginBottom:6}}>No calls yet</div>
+      <div style={{fontSize:13,color:c.so,maxWidth:400,margin:"0 auto",lineHeight:1.6}}>When clients call or leave voicemails on your GHL number, Sarah will read the transcript, extract action items, and get to work. Call transcripts and Sarah's actions will appear here.</div>
+    </div>
+  );
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      {calls.map(call=>{
+        const isExpanded=expanded===call.id;
+        const mins=call.duration?Math.round(call.duration/60):null;
+        const date=call.created_at?new Date(call.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'';
+        const statusColor=call.status==='processed'?c.gr:call.status==='received'?'#F59E0B':'#EF4444';
+        return(
+          <div key={call.id} style={{background:c.cd,borderRadius:14,border:"1px solid "+c.ln,overflow:"hidden"}}>
+            <div onClick={()=>setExpanded(isExpanded?null:call.id)} style={{padding:"14px 18px",cursor:"pointer",display:"flex",alignItems:"center",gap:12}}
+              onMouseEnter={e=>e.currentTarget.style.background=c.hv||c.sf} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+              <div style={{width:36,height:36,borderRadius:10,background:call.direction==='inbound'?'rgba(52,168,83,0.1)':'rgba(96,165,250,0.1)',display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>
+                {call.direction==='inbound'?'📲':'📱'}
+              </div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{fontSize:14,fontWeight:600,color:c.tx}}>{call.contact_name||'Unknown Caller'}</span>
+                  <span style={{fontSize:10,fontWeight:600,padding:"2px 6px",borderRadius:4,background:statusColor+"20",color:statusColor}}>{call.status==='processed'?'PROCESSED':'PENDING'}</span>
+                </div>
+                <div style={{fontSize:11,color:c.so,marginTop:2}}>
+                  {call.contact_phone||''}{call.contact_phone&&' · '}{call.direction||'inbound'}{mins?' · '+mins+' min':''}{date?' · '+date:''}
+                </div>
+              </div>
+              <span style={{fontSize:14,color:c.so,transform:isExpanded?"rotate(180deg)":"rotate(0deg)",transition:"transform .2s"}}>▾</span>
+            </div>
+
+            {isExpanded&&(
+              <div style={{borderTop:"1px solid "+c.ln}}>
+                {call.summary&&(
+                  <div style={{padding:"12px 18px",background:c.sf}}>
+                    <div style={{fontSize:11,fontWeight:700,color:c.so,marginBottom:4,textTransform:"uppercase",letterSpacing:"0.5px"}}>Summary</div>
+                    <div style={{fontSize:13,color:c.tx,lineHeight:1.5}}>{call.summary}</div>
+                  </div>
+                )}
+                <div style={{padding:"12px 18px"}}>
+                  <div style={{fontSize:11,fontWeight:700,color:c.so,marginBottom:4,textTransform:"uppercase",letterSpacing:"0.5px"}}>Transcript</div>
+                  <div style={{fontSize:13,color:c.tx,lineHeight:1.6,whiteSpace:"pre-wrap",maxHeight:200,overflowY:"auto",background:c.sf,padding:12,borderRadius:8}}>{call.transcript||'No transcript available'}</div>
+                </div>
+                {call.sarah_response&&(
+                  <div style={{padding:"12px 18px",borderTop:"1px solid "+c.ln}}>
+                    <div style={{fontSize:11,fontWeight:700,color:c.ac,marginBottom:4,textTransform:"uppercase",letterSpacing:"0.5px"}}>🌸 Sarah's Actions</div>
+                    <div style={{fontSize:13,color:c.tx,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{call.sarah_response}</div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function SkillsPage({c,mob}){
   const [skills,setSkills]=useState([]);
   const [bloomSkills,setBloomSkills]=useState([]);
@@ -1633,6 +1706,7 @@ export default function App() {
     {k:"monitor",l:mob?"📊":"📊 Status"},
     {k:"artifacts",l:mob?"📁":"📁 Files"},
     {k:"activity",l:mob?"⚡":"⚡ Activity"},
+    {k:"calls",l:mob?"📞":"📞 Calls"},
   ];
 
   return(
@@ -2319,6 +2393,17 @@ export default function App() {
                   </div>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* ══ CALLS — Phone call transcripts + Sarah's actions ══ */}
+          {pg==="calls"&&(
+            <div style={{overflowY:"auto",height:"calc(100vh - 52px)",padding:mob?"16px 12px 40px":"20px 20px 40px",maxWidth:900,margin:"0 auto"}}>
+              <div style={{marginBottom:24}}>
+                <h1 style={{fontSize:mob?20:24,fontWeight:700,color:c.tx,marginBottom:6}}>📞 Calls</h1>
+                <p style={{fontSize:13,color:c.so}}>Phone calls and voicemails — Sarah reads transcripts and takes action</p>
+              </div>
+              <CallsPage c={c} mob={mob}/>
             </div>
           )}
 
