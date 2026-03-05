@@ -177,21 +177,8 @@ function useSarahChat() {
       const d = await r.json();
       const list = d.sessions || [];
       setSessions(list);
-      // Auto-load the most recent session if none is selected
-      if (!sid.current && list.length > 0) {
-        const latest = list[0]; // sessions come sorted by updated_at DESC
-        sid.current = latest.id;
-        setCurrentSessionId(latest.id);
-        try {
-          const mr = await fetch("/api/chat/sessions/"+latest.id);
-          const md = await mr.json();
-          setMessages((md.messages||[]).map((m,i)=>({
-            id:i, b:m.role==="assistant", t:(m.content||'').replace(/\s*\[Session context[\s\S]*$/,'').replace(/\s*\[Tool:.*?\]\s*/g,'').trim(),
-            tm:m.created_at?new Date(m.created_at).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"}):"",
-            files:m.files?(typeof m.files==="string"?JSON.parse(m.files):m.files):undefined
-          })));
-        } catch {}
-      }
+      // Don't auto-load last session — start on welcome screen
+      // User clicks a session to load it, or types to start a new one
     } catch {}
   };
 
@@ -2320,11 +2307,11 @@ export default function App() {
                             </div>
                           </button>
                           <button
-                            onClick={e=>{e.stopPropagation();deleteSession(s.id);}}
+                            onClick={e=>{e.stopPropagation();if(confirm('Delete this conversation?'))deleteSession(s.id);}}
                             title="Delete"
-                            style={{position:"absolute",right:4,top:"50%",transform:"translateY(-50%)",width:22,height:22,borderRadius:6,border:"none",background:"transparent",cursor:"pointer",fontSize:12,color:c.fa,opacity:0,transition:"opacity .15s",display:"flex",alignItems:"center",justifyContent:"center"}}
+                            style={{position:"absolute",right:4,top:"50%",transform:"translateY(-50%)",width:22,height:22,borderRadius:6,border:"none",background:"transparent",cursor:"pointer",fontSize:12,color:c.fa,opacity:0.35,transition:"all .15s",display:"flex",alignItems:"center",justifyContent:"center"}}
                             onMouseEnter={e=>{e.currentTarget.style.opacity="1";e.currentTarget.style.background=c.sf;e.currentTarget.style.color="#ef4444";}}
-                            onMouseLeave={e=>{e.currentTarget.style.opacity="0";e.currentTarget.style.background="transparent";e.currentTarget.style.color=c.fa;}}
+                            onMouseLeave={e=>{e.currentTarget.style.opacity="0.35";e.currentTarget.style.background="transparent";e.currentTarget.style.color=c.fa;}}
                           >✕</button>
                         </div>
                       );
