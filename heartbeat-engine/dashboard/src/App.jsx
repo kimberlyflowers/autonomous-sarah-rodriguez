@@ -1630,7 +1630,7 @@ function BusinessProfilePage({c,mob,userImg,setUserImg}){
           <div style={{marginBottom:16,display:"flex",gap:10,alignItems:"center"}}>
             <div style={{flex:1}}>
               <div style={{fontSize:12,fontWeight:700,color:c.so,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:6}}>Kit Name</div>
-              <input value={brand.kitName||''} onChange={e=>setBrand(p=>({...p,kitName:e.target.value}))} placeholder="e.g. Petal Core Beauty, Youth Empowerment School" style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid "+c.ln,fontSize:13,fontFamily:"inherit",background:c.inp,color:c.tx,boxSizing:"border-box"}}/>
+              <input value={brand.kitName||''} onChange={e=>setBrand(p=>({...p,kitName:e.target.value}))} placeholder="e.g. My Business, Client Name" style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid "+c.ln,fontSize:13,fontFamily:"inherit",background:c.inp,color:c.tx,boxSizing:"border-box"}}/>
             </div>
             {kits.length>1&&<button onClick={()=>{if(confirm(`Remove "${brand.kitName||'this kit'}"?`))removeKit(activeIdx);}} style={{marginTop:20,padding:"6px 10px",borderRadius:6,border:"1px solid rgba(234,67,53,0.3)",background:"transparent",cursor:"pointer",fontSize:11,color:"#ea4335",fontFamily:"inherit"}}>Remove</button>}
           </div>
@@ -2044,10 +2044,10 @@ export default function App() {
     fetch('/api/agent/profile').then(r=>r.json()).then(d=>{if(d.profile?.avatarUrl)setAgentImgUrl(d.profile.avatarUrl);}).catch(()=>{});
   },[]);
   const [projO,setProjO]=useState(false);
-  const [activeProj,setActiveProj]=useState("Petal Core Beauty");
+  const [activeProj,setActiveProj]=useState("My Business");
   const [bizLogo,setBizLogo]=useState(null);
   const [bizName,setBizName]=useState(null);
-  const projects=["Petal Core Beauty","Youth Empowerment School","BLOOM Internal"];
+  const projects=[];
 
   // Load business profile for logo
   useEffect(()=>{
