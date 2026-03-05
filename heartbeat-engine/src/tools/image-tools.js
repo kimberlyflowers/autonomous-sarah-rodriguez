@@ -203,7 +203,7 @@ async function generateWithGPTImage(prompt, size, quality, background) {
       quality,
       revised_prompt: imageData.revised_prompt || null,
       usage: data.usage || null,
-      message: `Image generated successfully with GPT Image 1.5 (${size}, ${quality} quality)`,
+      message: `Image generated with GPT Image 1.5 (${size}, ${quality} quality)`,
     };
 
     logger.info('GPT Image generated', { filename, size });
@@ -529,6 +529,35 @@ export async function executeImageTool(toolName, parameters) {
     const result = await imageToolExecutors[toolName](parameters);
     const duration = Date.now() - startTime;
     logger.info(`Image tool completed: ${toolName} (${duration}ms)`, { engine: result.engine });
+
+    // Auto-save any generated image as an artifact → return serving URL
+    // This way HTML can reference images via URL instead of bloating with base64
+    if (result.success && result.image_base64) {
+      try {
+        const port = process.env.PORT || 3000;
+        const fname = `bloom-img-${Date.now()}.png`;
+        const saveRes = await fetch(`http://localhost:${port}/api/files/artifacts`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: fname,
+            description: `Generated: ${(parameters.prompt || '').slice(0, 100)}`,
+            fileType: 'image',
+            mimeType: 'image/png',
+            content: result.image_base64,
+          })
+        });
+        const saveData = await saveRes.json();
+        if (saveData.success && saveData.artifact?.fileId) {
+          result.image_url = `/api/files/preview/${saveData.artifact.fileId}`;
+          result.message = `Image generated! Use this URL in HTML: ${result.image_url}`;
+          logger.info('Image auto-saved as artifact', { fileId: saveData.artifact.fileId });
+        }
+      } catch (e) {
+        logger.warn('Image auto-save failed (non-critical):', e.message);
+      }
+    }
+
     return { ...result, executionTime: duration, tool: toolName };
   } catch (error) {
     const duration = Date.now() - startTime;
