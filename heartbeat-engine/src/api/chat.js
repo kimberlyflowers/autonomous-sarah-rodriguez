@@ -1173,17 +1173,40 @@ async function chatWithSarah(userMessage, history, agentConfig, sessionId = null
     const { getSharedPool } = await import('../database/pool.js');
     const pool = getSharedPool();
     const bkRes = await pool.query(`SELECT value FROM user_settings WHERE key='brand_kits'`).catch(()=>({rows:[]}));
-    let bk = null;
+    let allKits = [];
     if (bkRes.rows[0]?.value) {
-      const kits = JSON.parse(bkRes.rows[0].value);
-      bk = kits.find(k => k.active) || kits[0];
+      allKits = JSON.parse(bkRes.rows[0].value);
     }
     // Fallback to old single kit format
-    if (!bk) {
+    if (allKits.length === 0) {
       const oldRes = await pool.query(`SELECT value FROM user_settings WHERE key='brand_kit'`).catch(()=>({rows:[]}));
-      if (oldRes.rows[0]?.value) bk = JSON.parse(oldRes.rows[0].value);
+      if (oldRes.rows[0]?.value) allKits = [JSON.parse(oldRes.rows[0].value)];
     }
-    if (bk) {
+    
+    if (allKits.length > 1) {
+      // Multiple kits — tell Sarah about all of them, she should ask which brand
+      const kitSummaries = allKits.map((k,i) => `${i+1}. "${k.kitName||'Unnamed Kit'}"${k.active?' (currently active)':''} — colors: ${(k.colors||[]).slice(0,3).join(', ')}`).join('\n');
+      systemPrompt += `\n\nBRAND KITS — MULTIPLE BRANDS AVAILABLE:
+The client has ${allKits.length} brand kits configured:
+${kitSummaries}
+When creating ANY design, website, email, document, or content, you MUST ask which brand this is for BEFORE starting work (unless the conversation already makes it clear). Say something like "Which brand is this for — [kit names]?" Keep it brief.
+Once confirmed, use that brand's exact colors as CSS variables, load their fonts from Google Fonts, and match their voice in all copy.`;
+      
+      // Also inject the active kit details as the default
+      const bk = allKits.find(k => k.active) || allKits[0];
+      if (bk) {
+        const brandLines = [];
+        if (bk.kitName) brandLines.push(`Active brand: ${bk.kitName}`);
+        if (bk.colors?.length) brandLines.push(`Colors: ${bk.colors.join(', ')}`);
+        if (bk.fonts?.heading) brandLines.push(`Heading font: ${bk.fonts.heading}`);
+        if (bk.fonts?.body) brandLines.push(`Body font: ${bk.fonts.body}`);
+        if (bk.tagline) brandLines.push(`Tagline: "${bk.tagline}"`);
+        if (bk.brandVoice) brandLines.push(`Voice: ${bk.brandVoice}`);
+        systemPrompt += `\nDefault (active) kit:\n${brandLines.join('\n')}`;
+      }
+    } else if (allKits.length === 1) {
+      // Single kit — use it directly, no need to ask
+      const bk = allKits[0];
       const brandLines = [];
       if (bk.kitName) brandLines.push(`Brand: ${bk.kitName}`);
       if (bk.colors?.length) brandLines.push(`Brand colors: ${bk.colors.join(', ')} (first = primary, second = accent)`);
@@ -1194,9 +1217,11 @@ async function chatWithSarah(userMessage, history, agentConfig, sessionId = null
       if (bk.logo) brandLines.push(`Brand logo is uploaded — reference it in designs when appropriate`);
       if (brandLines.length > 0) {
         systemPrompt += `\n\nBRAND KIT — MANDATORY FOR ALL CREATIVE OUTPUT:
-You MUST use these brand assets in every design, website, email, document, social post, and any visual or written content you create. Do not use generic colors or fonts when brand kit colors and fonts are specified.
+You MUST use these brand assets in every design, website, email, document, social post, and any visual or written content you create.
 ${brandLines.join('\n')}
-If the brand kit specifies colors, use them as your CSS variables. If it specifies fonts, load them from Google Fonts. If it specifies brand voice, match that tone in all copy.`;
+Use these colors as CSS variables. Load these fonts from Google Fonts. Match this voice in all copy.`;
+      }
+    }
       }
     }
   } catch(e) { /* brand kit not available — proceed without */ }

@@ -2461,7 +2461,35 @@ export default function App() {
                                   ))}
                                 </div>
                               )}
-                              {m.t&&<div>{m.t}</div>}
+                              {m.t&&(m.b?(
+                                <div style={{fontSize:14,lineHeight:1.65,color:c.tx}} dangerouslySetInnerHTML={{__html:
+                                  (m.t||'')
+                                    // Code blocks (``` ```)
+                                    .replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => 
+                                      `<pre style="background:${c.bg};border:1px solid ${c.ln};border-radius:8px;padding:12px 16px;margin:10px 0;overflow-x:auto;font-size:12.5px;line-height:1.5;font-family:ui-monospace,SFMono-Regular,Menlo,monospace"><code>${code.replace(/</g,'&lt;').replace(/>/g,'&gt;').trim()}</code></pre>`)
+                                    // Inline code
+                                    .replace(/`([^`]+)`/g, `<code style="background:${c.bg};border:1px solid ${c.ln};padding:1px 6px;border-radius:4px;font-size:12.5px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace">$1</code>`)
+                                    // Bold
+                                    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                                    // Italic
+                                    .replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<em>$1</em>')
+                                    // Headers
+                                    .replace(/^### (.+)$/gm, `<div style="font-size:14px;font-weight:700;margin:14px 0 6px;color:${c.tx}">$1</div>`)
+                                    .replace(/^## (.+)$/gm, `<div style="font-size:15px;font-weight:700;margin:16px 0 6px;color:${c.tx}">$1</div>`)
+                                    .replace(/^# (.+)$/gm, `<div style="font-size:17px;font-weight:700;margin:18px 0 8px;color:${c.tx}">$1</div>`)
+                                    // Numbered lists
+                                    .replace(/^(\d+)\.\s+(.+)$/gm, `<div style="display:flex;gap:8px;margin:3px 0;padding-left:4px"><span style="color:${c.so};font-weight:600;flex-shrink:0">$1.</span><span>$2</span></div>`)
+                                    // Bullet lists
+                                    .replace(/^[-•]\s+(.+)$/gm, `<div style="display:flex;gap:8px;margin:3px 0;padding-left:4px"><span style="color:${c.ac};flex-shrink:0">•</span><span>$1</span></div>`)
+                                    // Horizontal rule
+                                    .replace(/^---$/gm, `<hr style="border:none;border-top:1px solid ${c.ln};margin:16px 0"/>`)
+                                    // Line breaks — double newline = paragraph break, single = line break
+                                    .replace(/\n\n/g, '<div style="margin:12px 0"></div>')
+                                    .replace(/\n/g, '<br/>')
+                                }}/>
+                              ):(
+                                <div style={{fontSize:14,lineHeight:1.65}}>{m.t}</div>
+                              ))}
                               <div style={{fontSize:10,opacity:0.45,marginTop:5,textAlign:m.b?"left":"right"}}>{m.tm}</div>
                             </div>
                           </div>
