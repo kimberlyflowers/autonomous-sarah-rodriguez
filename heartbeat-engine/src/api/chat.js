@@ -1222,8 +1222,6 @@ ${brandLines.join('\n')}
 Use these colors as CSS variables. Load these fonts from Google Fonts. Match this voice in all copy.`;
       }
     }
-      }
-    }
   } catch(e) { /* brand kit not available — proceed without */ }
 
   // Inject matching skill body into system prompt based on user's message
