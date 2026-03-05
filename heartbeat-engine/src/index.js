@@ -23,6 +23,7 @@ import eventRoutes from './api/events.js';
 import executeRoutes from './api/execute.js';
 import browserRoutes from './api/browser.js';
 import skillsRoutes from './api/skills.js';
+import voiceRoutes from './api/voice.js';
 
 // Get the current directory for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -179,6 +180,7 @@ app.use('/api/events', eventRoutes);
 app.use('/api/execute', executeRoutes);
 app.use('/api/browser', browserRoutes);
 app.use('/api/skills', skillsRoutes);
+app.use('/api/voice', voiceRoutes);
 
 // Serve React static files
 app.use(express.static(path.join(__dirname, '../dashboard/dist')));
