@@ -202,7 +202,8 @@ function useSarahChat() {
       const data = await res.json();
       timers.forEach(clearTimeout);
       const ts2 = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
-      setMessages(p=>[...p,{id:Date.now(),b:true,t:(data.response||data.message||"Done.").replace(/\s*\[Session context[\s\S]*$/,'').replace(/\s*\[Tool:.*?\]\s*/g,'').trim(),tm:ts2,skill:data.skillUsed||null}]);
+      const responseText = (data.response||data.message||"Done.").replace(/\s*\[Session context[\s\S]*$/,'').replace(/\s*\[Tool:.*?\]\s*/g,'').trim();
+      setMessages(p=>[...p,{id:Date.now(),b:true,t:responseText,tm:ts2,skill:data.skillUsed||null,hasArtifact:!!responseText.match(/Created "|I've created|I created|saved as|saved it to|in your Files tab|saved to.*Files/i)}]);
       fetchSessions();
       setTimeout(fetchSessions, 3000);
       return true;
@@ -1434,6 +1435,15 @@ export default function App() {
   const [scrM,setScrM]=useState("docked");
   const [rightTab,setRightTab]=useState("browser"); // "browser" | "artifact"
   const [activeArtifact,setActiveArtifact]=useState(null); // {name, content, fileId}
+
+  // Auto-open Files panel when Sarah creates an artifact
+  useEffect(()=>{
+    if(!messages.length) return;
+    const last = messages[messages.length-1];
+    if(last?.b && last?.hasArtifact && scrM==="docked"){
+      setTimeout(()=>setRightTab("artifact"),600);
+    }
+  },[messages]);
   const [sbO,setSbO]=useState(!mob?"full":"closed");
   const [stab,setStab]=useState("General");
   const [hlpO,setHlpO]=useState(false);
@@ -1618,7 +1628,9 @@ export default function App() {
         </div>
 
         <div style={{display:"flex",alignItems:"center",gap:8,position:"relative"}}>
-          {scrM==="hidden"&&<button onClick={()=>setScrM("docked")} style={{width:32,height:32,borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:14,color:c.so,display:"flex",alignItems:"center",justifyContent:"center"}}>🖥️</button>}
+          {scrM==="hidden"&&<button onClick={()=>setScrM("docked")} style={{width:32,height:32,borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:14,color:c.so,display:"flex",alignItems:"center",justifyContent:"center"}} title="Show side panel">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke={c.so} strokeWidth="2"><path d="M10 3l-5 5 5 5"/></svg>
+          </button>}
           <div style={{width:36,height:36,borderRadius:"50%",background:"linear-gradient(135deg,#F4A261,#E76F8B)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,color:"#fff"}}>K</div>
         </div>
       </div>
@@ -1886,6 +1898,9 @@ export default function App() {
                             <button onClick={()=>setRightTab("artifact")} style={{flex:1,padding:"8px 0",fontSize:11,fontWeight:700,border:"none",borderBottom:rightTab==="artifact"?"2px solid "+c.ac:"2px solid transparent",background:"transparent",color:rightTab==="artifact"?c.tx:c.so,cursor:"pointer",letterSpacing:"0.5px",position:"relative"}}>
                               📄 Files
                               {activeArtifact&&<span style={{position:"absolute",top:4,right:"20%",width:6,height:6,borderRadius:"50%",background:c.ac}}/>}
+                            </button>
+                            <button onClick={()=>setScrM("hidden")} title="Collapse panel" style={{width:36,padding:"8px 0",fontSize:13,border:"none",borderBottom:"2px solid transparent",background:"transparent",color:c.so,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke={c.so} strokeWidth="2"><path d="M6 3l5 5-5 5"/></svg>
                             </button>
                           </div>
 
