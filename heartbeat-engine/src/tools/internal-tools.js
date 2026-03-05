@@ -8,8 +8,8 @@ const logger = createLogger('internal-tools');
 
 // Get database pool
 async function getPool() {
-  const { createPool } = await import('../../database/setup.js');
-  return createPool();
+  const { getSharedPool } = await import('../../database/pool.js');
+  return getSharedPool();
 }
 
 /**
@@ -314,7 +314,6 @@ export const internalToolExecutors = {
         params.relatedOpportunityId || null
       ]);
 
-      await pool.end();
 
       const task = result.rows[0];
       logger.info('Task created', { taskId: task.id, title: task.title });
@@ -384,7 +383,6 @@ export const internalToolExecutors = {
       queryParams.push(params.limit || 20);
 
       const result = await pool.query(query, queryParams);
-      await pool.end();
 
       return {
         success: true,
@@ -445,7 +443,6 @@ export const internalToolExecutors = {
       `;
 
       const result = await pool.query(query, values);
-      await pool.end();
 
       if (result.rows.length === 0) {
         return {
@@ -493,7 +490,6 @@ export const internalToolExecutors = {
         params.relatedData ? JSON.stringify(params.relatedData) : null
       ]);
 
-      await pool.end();
 
       const decision = result.rows[0];
       logger.info('Decision logged', {
@@ -536,7 +532,6 @@ export const internalToolExecutors = {
         params.dataPoints ? JSON.stringify(params.dataPoints) : null
       ]);
 
-      await pool.end();
 
       const observation = result.rows[0];
       logger.info('Observation logged', {
@@ -580,7 +575,6 @@ export const internalToolExecutors = {
         params.expiresAt ? new Date(params.expiresAt) : null
       ]);
 
-      await pool.end();
 
       const context = result.rows[0];
       logger.info('Context stored', {
@@ -646,7 +640,6 @@ export const internalToolExecutors = {
       queryParams.push(params.limit || 10);
 
       const result = await pool.query(query, queryParams);
-      await pool.end();
 
       return {
         success: true,
@@ -916,7 +909,6 @@ export const internalToolExecutors = {
         RETURNING task_id, title, steps, updated_at
       `, [taskId, params.title, JSON.stringify(params.steps)]);
 
-      await pool.end();
 
       const plan = upsertResult.rows[0];
 

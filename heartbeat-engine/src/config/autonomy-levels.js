@@ -199,8 +199,8 @@ export async function checkDailyActionLimit(agentId, currentLevel) {
 
   try {
     // Get today's action count
-    const { createPool } = await import('../../database/setup.js');
-    const pool = createPool();
+    const { getSharedPool } = await import('../../database/pool.js');
+    const pool = getSharedPool();
 
     const result = await pool.query(`
       SELECT COUNT(*) as action_count
@@ -210,7 +210,6 @@ export async function checkDailyActionLimit(agentId, currentLevel) {
         AND timestamp < CURRENT_DATE + INTERVAL '1 day'
     `, [agentId]);
 
-    await pool.end();
 
     const todayActions = parseInt(result.rows[0].action_count);
     const limitReached = todayActions >= level.maxDailyActions;
@@ -293,8 +292,8 @@ export async function checkGraduationEligibility(agentId, currentLevel) {
 
 // Calculate metrics for graduation assessment
 async function calculateGraduationMetrics(agentId, timeInLevelStr) {
-  const { createPool } = await import('../../database/setup.js');
-  const pool = createPool();
+  const { getSharedPool } = await import('../../database/pool.js');
+  const pool = getSharedPool();
 
   const timeInLevelDays = parseDurationDays(timeInLevelStr);
   const sinceDate = new Date(Date.now() - timeInLevelDays * 24 * 60 * 60 * 1000);
@@ -325,7 +324,6 @@ async function calculateGraduationMetrics(agentId, timeInLevelStr) {
     WHERE agent_id = $1 AND timestamp >= $2
   `, [agentId, sinceDate]);
 
-  await pool.end();
 
   const cycles = cycleResult.rows[0];
   const actions = actionResult.rows[0];

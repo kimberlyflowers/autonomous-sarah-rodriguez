@@ -47,8 +47,8 @@ async function loadConfigFromDatabase(agentId) {
   while (retries > 0) {
     let pool = null;
     try {
-      const { createPool } = await import('../../database/setup.js');
-      pool = createPool();
+      const { getSharedPool } = await import('../../database/pool.js');
+      pool = getSharedPool();
 
       const result = await pool.query(`
         SELECT
@@ -85,7 +85,6 @@ async function loadConfigFromDatabase(agentId) {
 
     } catch (error) {
       if (pool) {
-        await pool.end().catch(() => {}); // Ensure pool is closed
       }
 
       // Retry only for table not found errors and if we have retries left
@@ -257,8 +256,8 @@ export async function updateAgentConfig(agentId, updates) {
     updates: Object.keys(updates)
   });
 
-  const { createPool } = await import('../../database/setup.js');
-  const pool = createPool();
+  const { getSharedPool } = await import('../../database/pool.js');
+  const pool = getSharedPool();
 
   try {
     // Build dynamic update query
@@ -320,7 +319,6 @@ export async function updateAgentConfig(agentId, updates) {
     return result.rows[0];
 
   } finally {
-    await pool.end();
   }
 }
 

@@ -33,8 +33,20 @@ const logger = createLogger('heartbeat-engine');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Security middleware
-app.use(helmet());
+// Security middleware — allow external images (GHL logos, Supabase CDN, etc)
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://fonts.googleapis.com", "https://cdnjs.cloudflare.com"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      imgSrc: ["'self'", "data:", "blob:", "https:", "http:"],
+      connectSrc: ["'self'", "https:", "wss:"],
+      frameSrc: ["'self'", "blob:", "data:"],
+    }
+  }
+}));
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
