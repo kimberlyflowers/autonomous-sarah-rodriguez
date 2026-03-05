@@ -970,8 +970,10 @@ function parseMessageCards(text) {
 
   // Detect artifact creation — Sarah used create_artifact tool
   const artifactMatch = text.match(/Created "(.+?)".*?(?:waiting for (?:your )?approval|ready for (?:your )?review)/i)
-    || text.match(/(?:I've created|I created|Here's the|I've saved|saved as|saved it to) (?:a |an |the )?(?:deliverable|artifact|file).*?"(.+?)"/i)
-    || text.match(/(?:in your Files tab|saved to (?:your )?Files|it's in (?:your )?Files|ready for you to review|ready for you to (?:edit|post)|you can review it|approve it)/i);
+    || text.match(/(?:I've created|I created|Here's the|I've saved|saved as|saved it to|I've built|I built|Here is|I've designed|I designed) (?:a |an |the )?(?:deliverable|artifact|file|page|website|landing page|blog|post|document|report|email|draft).*?"(.+?)"/i)
+    || text.match(/"([^"]+\.(?:html|md|docx|pdf|txt|js|css))".*?(?:saved|created|ready|built|designed)/i)
+    || text.match(/(?:saved|created|built|designed).*?"([^"]+\.(?:html|md|docx|pdf|txt|js|css))"/i)
+    || text.match(/(?:in your Files tab|saved to (?:your )?Files|it's in (?:your )?Files|ready for you to review|ready for you to (?:edit|post)|you can review it|approve it|check it out in Files|view it in Files)/i);
   if (artifactMatch) {
     const name = (artifactMatch[1] || artifactMatch[2] || "").trim();
     if (name) {
@@ -1557,6 +1559,13 @@ export default function App() {
     } catch(e){ console.error('Failed to load activity',e); }
   };
   const [umO,setUmO]=useState(false);
+  const [userImg,setUserImg]=useState(null);
+  const userImgRef=useRef(null);
+
+  // Load user avatar on mount
+  useEffect(()=>{
+    fetch('/api/dashboard/user-avatar').then(r=>r.json()).then(d=>{if(d.avatar)setUserImg(d.avatar);}).catch(()=>{});
+  },[]);
   const [projO,setProjO]=useState(false);
   const [activeProj,setActiveProj]=useState("Petal Core Beauty");
   const projects=["Petal Core Beauty","Youth Empowerment School","BLOOM Internal"];
@@ -1700,7 +1709,7 @@ export default function App() {
           {scrM==="hidden"&&<button onClick={()=>setScrM("docked")} style={{width:32,height:32,borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:14,color:c.so,display:"flex",alignItems:"center",justifyContent:"center"}} title="Show side panel">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke={c.so} strokeWidth="2"><path d="M10 3l-5 5 5 5"/></svg>
           </button>}
-          <div style={{width:36,height:36,borderRadius:"50%",background:"linear-gradient(135deg,#F4A261,#E76F8B)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,color:"#fff"}}>K</div>
+          <div style={{width:36,height:36,borderRadius:"50%",background:userImg?"transparent":"linear-gradient(135deg,#F4A261,#E76F8B)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,color:"#fff",overflow:"hidden"}}>{userImg?<img src={userImg} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>:"K"}</div>
         </div>
       </div>
 
@@ -1822,7 +1831,17 @@ export default function App() {
                       <span style={{fontSize:11,color:c.so,marginLeft:"auto"}}>✓ All OK</span>
                     </div>
                     <button onClick={()=>setUmO(!umO)} style={{width:"100%",padding:"8px 10px",borderRadius:10,border:"none",cursor:"pointer",background:umO?c.sf:"transparent",display:"flex",alignItems:"center",gap:10}} onMouseEnter={e=>e.currentTarget.style.background=c.hv} onMouseLeave={e=>e.currentTarget.style.background=umO?c.sf:"transparent"}>
-                      <div style={{width:30,height:30,borderRadius:8,background:"linear-gradient(135deg,#F4A261,#E76F8B)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"#fff",flexShrink:0}}>K</div>
+                      <label style={{width:30,height:30,borderRadius:8,background:userImg?"transparent":"linear-gradient(135deg,#F4A261,#E76F8B)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"#fff",flexShrink:0,cursor:"pointer",overflow:"hidden",position:"relative"}}>
+                        {userImg?<img src={userImg} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>:"K"}
+                        <input ref={userImgRef} type="file" accept="image/*" style={{display:"none"}} onChange={e=>{
+                          const f=e.target.files[0]; if(!f) return;
+                          const r=new FileReader();
+                          r.onload=ev=>{setUserImg(ev.target.result);
+                            fetch('/api/dashboard/user-avatar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({avatar:ev.target.result})}).catch(()=>{});
+                          };
+                          r.readAsDataURL(f);
+                        }}/>
+                      </label>
                       <div style={{flex:1,textAlign:"left"}}><div style={{fontSize:13,fontWeight:600,color:c.tx}}>Kimberly</div><div style={{fontSize:11,color:c.so}}>Owner</div></div>
                       <span style={{fontSize:12,color:c.so,transform:umO?"rotate(180deg)":"rotate(0deg)",transition:"transform .2s"}}>▾</span>
                     </button>
@@ -2732,9 +2751,9 @@ export default function App() {
 
       {/* ══ FILE PREVIEW MODAL ══ */}
       {previewFile&&(
-        <div onClick={()=>setPreviewFile(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:mob?8:40}}>
-          <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:800,maxHeight:"90vh",background:c.cd,borderRadius:16,border:"1px solid "+c.ln,display:"flex",flexDirection:"column",overflow:"hidden",boxShadow:"0 20px 60px rgba(0,0,0,.4)"}}>
-            <div style={{padding:"14px 20px",borderBottom:"1px solid "+c.ln,display:"flex",alignItems:"center",gap:10,background:c.sf}}>
+        <div onClick={()=>setPreviewFile(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:mob?8:20}}>
+          <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:previewFile.name?.endsWith('.html')?1100:800,height:previewFile.name?.endsWith('.html')?"90vh":"auto",maxHeight:"90vh",background:c.cd,borderRadius:16,border:"1px solid "+c.ln,display:"flex",flexDirection:"column",overflow:"hidden",boxShadow:"0 20px 60px rgba(0,0,0,.4)"}}>
+            <div style={{padding:"14px 20px",borderBottom:"1px solid "+c.ln,display:"flex",alignItems:"center",gap:10,background:c.sf,flexShrink:0}}>
               <span style={{fontSize:18}}>📄</span>
               <div style={{flex:1}}>
                 <div style={{fontSize:15,fontWeight:700,color:c.tx}}>{previewFile.name}</div>
@@ -2745,7 +2764,7 @@ export default function App() {
             {previewFile.name?.endsWith('.html')?(
               <iframe
                 srcDoc={previewFile.content||''}
-                style={{flex:1,width:"100%",border:"none",background:"#fff"}}
+                style={{flex:1,width:"100%",minHeight:500,border:"none",background:"#fff"}}
                 sandbox="allow-scripts allow-same-origin"
                 title={previewFile.name}
               />

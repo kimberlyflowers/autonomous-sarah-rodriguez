@@ -336,4 +336,37 @@ router.get('/metrics', async (req, res) => {
   }
 });
 
+// User avatar — persist across sessions
+router.post('/user-avatar', async (req, res) => {
+  try {
+    const { avatar } = req.body;
+    const pool = (await import('../database/pool.js')).default;
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_settings (
+        key VARCHAR(64) PRIMARY KEY,
+        value TEXT,
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(
+      `INSERT INTO user_settings(key, value, updated_at) VALUES('user_avatar', $1, NOW()) 
+       ON CONFLICT(key) DO UPDATE SET value=$1, updated_at=NOW()`,
+      [avatar]
+    );
+    res.json({ success: true });
+  } catch (e) {
+    res.json({ success: false, error: e.message });
+  }
+});
+
+router.get('/user-avatar', async (req, res) => {
+  try {
+    const pool = (await import('../database/pool.js')).default;
+    const r = await pool.query(`SELECT value FROM user_settings WHERE key='user_avatar'`);
+    res.json({ avatar: r.rows[0]?.value || null });
+  } catch {
+    res.json({ avatar: null });
+  }
+});
+
 export default router;
