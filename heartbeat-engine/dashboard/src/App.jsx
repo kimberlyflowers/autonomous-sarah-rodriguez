@@ -3053,6 +3053,7 @@ export default function App() {
               <div style={{flex:1}}>
                 <div style={{fontSize:15,fontWeight:700,color:c.tx}}>{previewFile.name}</div>
               </div>
+              <a href={`/api/files/publish/${previewFile.fileId}`} target="_blank" rel="noopener noreferrer" style={{padding:"6px 14px",borderRadius:8,border:"none",background:"linear-gradient(135deg,#F4A261,#E76F8B)",fontSize:12,fontWeight:700,color:"#fff",textDecoration:"none",marginRight:4}}>↗ Open Full Screen</a>
               <a href={`/api/files/download/${previewFile.fileId}`} download style={{padding:"6px 14px",borderRadius:8,border:"1px solid "+c.ln,background:c.cd,fontSize:12,fontWeight:600,color:c.ac,textDecoration:"none",marginRight:8}}>↓ Download</a>
               <button onClick={()=>setPreviewFile(null)} style={{width:32,height:32,borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:16,color:c.so,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
             </div>
