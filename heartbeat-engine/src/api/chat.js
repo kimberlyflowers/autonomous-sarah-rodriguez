@@ -1205,7 +1205,7 @@ async function callAnthropicWithRetry(params, maxRetries = 3) {
     try {
       // 90 second timeout per attempt
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Anthropic API timeout (90s)')), 90000)
+        setTimeout(() => reject(new Error('Anthropic API timeout (150s)')), 150000)
       );
       return await Promise.race([
         anthropic.messages.create(params),
@@ -1324,7 +1324,7 @@ IMPORTANT: Since a brand kit is configured, DO NOT ask the user about colors, fo
     
     const response = await callAnthropicWithRetry({
       model: process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001',
-      max_tokens: 4096,
+      max_tokens: 8192,
       system: systemPrompt,
       messages: currentMessages,
       tools: availableTools
