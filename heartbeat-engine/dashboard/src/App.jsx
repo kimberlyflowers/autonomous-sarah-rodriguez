@@ -1470,16 +1470,23 @@ function BusinessProfilePage({c,mob,userImg,setUserImg}){
           {userImg?<img src={userImg} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>:"K"}
           <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{
             const f=e.target.files[0]; if(!f) return;
-            const img=new Image();
-            img.onload=()=>{
-              const max=200;const scale=Math.min(max/img.width,max/img.height,1);
-              const cv=document.createElement('canvas');cv.width=img.width*scale;cv.height=img.height*scale;
-              cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
-              const d=cv.toDataURL('image/jpeg',0.8);
-              setUserImg(d);
-              fetch('/api/dashboard/user-avatar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({avatar:d})}).catch(()=>{});
+            const reader=new FileReader();
+            reader.onload=async(ev)=>{
+              try{
+                const img=new Image();
+                await new Promise((res,rej)=>{img.onload=res;img.onerror=rej;img.src=ev.target.result;});
+                const max=200,scale=Math.min(max/img.width,max/img.height,1);
+                const cv=document.createElement('canvas');cv.width=Math.round(img.width*scale);cv.height=Math.round(img.height*scale);
+                cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
+                const d=cv.toDataURL('image/jpeg',0.8);
+                setUserImg(d);
+                fetch('/api/dashboard/user-avatar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({avatar:d})}).catch(()=>{});
+              }catch{
+                setUserImg(ev.target.result);
+                fetch('/api/dashboard/user-avatar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({avatar:ev.target.result})}).catch(()=>{});
+              }
             };
-            img.src=URL.createObjectURL(f);
+            reader.readAsDataURL(f);
           }}/>
         </label>
         <div>
@@ -2084,16 +2091,23 @@ export default function App() {
                         {userImg?<img src={userImg} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>:"K"}
                         <input ref={userImgRef} type="file" accept="image/*" style={{display:"none"}} onChange={e=>{
                           const f=e.target.files[0]; if(!f) return;
-                          const img=new Image();
-                          img.onload=()=>{
-                            const max=200;const scale=Math.min(max/img.width,max/img.height,1);
-                            const cv=document.createElement('canvas');cv.width=img.width*scale;cv.height=img.height*scale;
-                            cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
-                            const d=cv.toDataURL('image/jpeg',0.8);
-                            setUserImg(d);
-                            fetch('/api/dashboard/user-avatar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({avatar:d})}).catch(()=>{});
+                          const reader=new FileReader();
+                          reader.onload=async(ev)=>{
+                            try{
+                              const img=new Image();
+                              await new Promise((res,rej)=>{img.onload=res;img.onerror=rej;img.src=ev.target.result;});
+                              const max=200,scale=Math.min(max/img.width,max/img.height,1);
+                              const cv=document.createElement('canvas');cv.width=Math.round(img.width*scale);cv.height=Math.round(img.height*scale);
+                              cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
+                              const d=cv.toDataURL('image/jpeg',0.8);
+                              setUserImg(d);
+                              fetch('/api/dashboard/user-avatar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({avatar:d})}).catch(()=>{});
+                            }catch{
+                              setUserImg(ev.target.result);
+                              fetch('/api/dashboard/user-avatar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({avatar:ev.target.result})}).catch(()=>{});
+                            }
                           };
-                          img.src=URL.createObjectURL(f);
+                          reader.readAsDataURL(f);
                         }}/>
                       </label>
                       <div style={{flex:1,textAlign:"left"}}><div style={{fontSize:13,fontWeight:600,color:c.tx}}>Kimberly</div><div style={{fontSize:11,color:c.so}}>Owner</div></div>
@@ -2595,24 +2609,29 @@ export default function App() {
                       📷
                       <input type="file" accept="image/*" style={{display:"none"}} onChange={async(e)=>{
                         const file=e.target.files[0]; if(!file) return;
-                        // Resize to max 200px to keep DB payload small
-                        const img=new Image();
-                        img.onload=async()=>{
-                          const max=200;
-                          const scale=Math.min(max/img.width,max/img.height,1);
-                          const canvas=document.createElement('canvas');
-                          canvas.width=img.width*scale;
-                          canvas.height=img.height*scale;
-                          canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);
-                          const dataUrl=canvas.toDataURL('image/jpeg',0.8);
-                          setAgentImgUrl(dataUrl);
+                        const reader=new FileReader();
+                        reader.onload=async(ev)=>{
                           try{
+                            // Resize image to keep payload small
+                            const img=new Image();
+                            await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=reject;img.src=ev.target.result;});
+                            const max=200,scale=Math.min(max/img.width,max/img.height,1);
+                            const cv=document.createElement('canvas');
+                            cv.width=Math.round(img.width*scale);cv.height=Math.round(img.height*scale);
+                            cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
+                            const dataUrl=cv.toDataURL('image/jpeg',0.8);
+                            setAgentImgUrl(dataUrl);
                             const r=await fetch('/api/agent/profile',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({avatarUrl:dataUrl})});
                             const d=await r.json();
-                            if(!d.success) console.error('Agent avatar save failed:',d);
-                          }catch(err){console.error('Agent avatar upload error:',err);}
+                            console.log('Agent avatar save:',d);
+                          }catch(err){
+                            // Fallback — save original if resize fails
+                            console.error('Resize failed, saving original:',err);
+                            setAgentImgUrl(ev.target.result);
+                            fetch('/api/agent/profile',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({avatarUrl:ev.target.result})}).catch(()=>{});
+                          }
                         };
-                        img.src=URL.createObjectURL(file);
+                        reader.readAsDataURL(file);
                       }}/>
                     </label>
                   </div>
