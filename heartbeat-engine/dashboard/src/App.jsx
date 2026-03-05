@@ -286,6 +286,8 @@ function useSarahChat() {
     // Abortable fetch
     const controller = new AbortController();
     abortRef.current = controller;
+    // Auto-timeout after 2 minutes
+    const timeoutId = setTimeout(()=>controller.abort(), 120000);
     
     try {
       const res = await fetch("/api/chat/message",{
@@ -294,6 +296,7 @@ function useSarahChat() {
         body:JSON.stringify({message:text,sessionId:sid.current}),
         signal: controller.signal
       });
+      clearTimeout(timeoutId);
       if(progressInterval)clearInterval(progressInterval);
       abortRef.current = null;
       const data = await res.json();
@@ -309,13 +312,17 @@ function useSarahChat() {
       setTimeout(fetchSessions, 3000);
       return true;
     } catch(err) {
+      clearTimeout(timeoutId);
       if(progressInterval)clearInterval(progressInterval);
       abortRef.current = null;
       if(err.name === 'AbortError'){
-        // User cancelled
         const ts2 = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
         if(ackId) setMessages(p=>p.filter(m=>m.id!==ackId));
-        setMessages(p=>[...p,{id:Date.now(),b:true,t:"Stopped. What would you like me to do instead?",tm:ts2,isSystem:true}]);
+        const elapsed = Math.round((Date.now()-startTime)/1000);
+        const msg = elapsed >= 115 
+          ? "Sarah took too long to respond (timed out after 2 minutes). Try again or simplify the request."
+          : "Stopped. What would you like me to do instead?";
+        setMessages(p=>[...p,{id:Date.now(),b:true,t:msg,tm:ts2,isSystem:true}]);
         return false;
       }
       const ts2 = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});

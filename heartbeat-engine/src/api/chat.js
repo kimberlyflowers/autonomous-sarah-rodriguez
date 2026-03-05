@@ -1087,7 +1087,14 @@ async function executeTool(toolName, toolInput, sessionId = null) {
 async function callAnthropicWithRetry(params, maxRetries = 3) {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      return await anthropic.messages.create(params);
+      // 90 second timeout per attempt
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Anthropic API timeout (90s)')), 90000)
+      );
+      return await Promise.race([
+        anthropic.messages.create(params),
+        timeoutPromise
+      ]);
     } catch (err) {
       const status = err?.status || err?.error?.status;
       const isOverloaded = status === 529 || status === 529 ||
