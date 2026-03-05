@@ -484,3 +484,7 @@ router.post('/brand-kit', async (req, res) => {
 });
 
 export default router;
+// Stub for agentic-executions — endpoint polled by dashboard
+router.get('/agentic-executions', (req, res) => {
+  res.json({ executions: [] });
+});

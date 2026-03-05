@@ -1312,16 +1312,14 @@ IMPORTANT: Since a brand kit is configured, DO NOT ask the user about colors, fo
   const messages = [...history, { role: 'user', content: userMessage }];
   let currentMessages = [...messages];
 
+  // Dynamic tool availability + capability notes (ONCE, before the loop)
+  const { tools: availableTools } = getAvailableTools();
+  const capabilityNotes = getCapabilityNotes();
+  if (capabilityNotes) systemPrompt += capabilityNotes;
+
   const toolsUsed = [];
   const toolResults = []; // Track what tools returned for history
   for (let round = 0; round < 15; round++) {
-    // Dynamic tool availability — checked fresh each request
-    const { tools: availableTools, unavailable } = getAvailableTools();
-    
-    // Inject capability notes into system prompt so Sarah knows what's available
-    const capabilityNotes = getCapabilityNotes();
-    if (capabilityNotes) systemPrompt += capabilityNotes;
-    
     const response = await callAnthropicWithRetry({
       model: process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001',
       max_tokens: 8192,
