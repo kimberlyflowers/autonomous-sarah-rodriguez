@@ -986,6 +986,74 @@ function parseMessageCards(text) {
   return cards;
 }
 
+// ── SESSION FILES PANEL — right panel shows files from current chat ──────────
+function SessionFilesPanel({c, sessionId, setActiveArtifact}){
+  const [files,setFiles]=useState([]);
+  const [loading,setLoading]=useState(true);
+
+  useEffect(()=>{
+    if(!sessionId){setLoading(false);return;}
+    fetch(`/api/files/artifacts?sessionId=${sessionId}&limit=20`)
+      .then(r=>r.json())
+      .then(d=>{setFiles(d.artifacts||[]);setLoading(false);})
+      .catch(()=>setLoading(false));
+  },[sessionId]);
+
+  // Refetch when session changes or new artifact might be created
+  useEffect(()=>{
+    const interval=setInterval(()=>{
+      if(!sessionId)return;
+      fetch(`/api/files/artifacts?sessionId=${sessionId}&limit=20`)
+        .then(r=>r.json())
+        .then(d=>{if(d.artifacts?.length!==files.length)setFiles(d.artifacts||[]);})
+        .catch(()=>{});
+    },5000);
+    return()=>clearInterval(interval);
+  },[sessionId,files.length]);
+
+  if(loading) return <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",color:c.so,fontSize:12}}>Loading...</div>;
+
+  if(files.length===0) return(
+    <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",textAlign:"center",padding:30}}>
+      <div>
+        <div style={{fontSize:36,marginBottom:10,opacity:0.3}}>📄</div>
+        <div style={{fontSize:13,color:c.so,marginBottom:4}}>No files in this chat</div>
+        <div style={{fontSize:11,color:c.fa}}>Ask Sarah to create content — blogs, websites, emails, docs — and they'll appear here</div>
+      </div>
+    </div>
+  );
+
+  return(
+    <div style={{flex:1,overflowY:"auto",padding:12}}>
+      <div style={{fontSize:11,fontWeight:700,color:c.so,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8,padding:"0 4px"}}>Files in this chat ({files.length})</div>
+      {files.map(f=>{
+        const ext=(f.name||'').split('.').pop()?.toLowerCase()||'';
+        const icon=ext==='html'?'🌐':ext==='md'?'📝':ext==='js'||ext==='py'?'💻':'📄';
+        return(
+          <div key={f.fileId} onClick={async()=>{
+            try{
+              const pr=await fetch(`/api/files/preview/${f.fileId}`);
+              if(pr.headers.get('content-type')?.includes('json')){
+                const pd=await pr.json();
+                setActiveArtifact({name:f.name,content:pd.content||'',fileId:f.fileId});
+              }
+            }catch{}
+          }} style={{padding:"10px 12px",borderRadius:10,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",marginBottom:8,display:"flex",alignItems:"center",gap:10,transition:"border-color .15s"}}
+            onMouseEnter={e=>e.currentTarget.style.borderColor=c.ac}
+            onMouseLeave={e=>e.currentTarget.style.borderColor=c.ln}>
+            <span style={{fontSize:18}}>{icon}</span>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:12,fontWeight:600,color:c.tx,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</div>
+              {f.description&&<div style={{fontSize:10,color:c.so,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginTop:1}}>{f.description}</div>}
+            </div>
+            {ext==='html'&&<a href={`/api/files/publish/${f.fileId}`} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} style={{fontSize:10,color:c.ac,textDecoration:"none",fontWeight:600}}>↗</a>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function ArtifactCard({ name, c, onOpenSide, mob }) {
   const [artData, setArtData] = useState(null);
 
@@ -1733,6 +1801,7 @@ export default function App() {
   const projects=["Petal Core Beauty","Youth Empowerment School","BLOOM Internal"];
   const [files,setFiles]=useState([]);
   const [filesLoading,setFilesLoading]=useState(false);
+  const [filesSearch,setFilesSearch]=useState('');
   const [filesRefresh,setFilesRefresh]=useState(0);
   const [previewFile,setPreviewFile]=useState(null); // {name, content, fileId}
   const [heartbeatInterval,setHeartbeatInterval]=useState("0 */6 * * *");
@@ -2183,10 +2252,11 @@ export default function App() {
                             activeArtifact?(
                               <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
                                 <div style={{padding:"12px 16px",borderBottom:"1px solid "+c.ln,background:c.cd,display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
-                                  <span style={{fontSize:18}}>📝</span>
+                                  <button onClick={()=>setActiveArtifact(null)} style={{width:24,height:24,borderRadius:6,border:"1px solid "+c.ln,background:"transparent",cursor:"pointer",fontSize:11,color:c.so,display:"flex",alignItems:"center",justifyContent:"center"}}>←</button>
                                   <div style={{flex:1,minWidth:0}}>
                                     <div style={{fontSize:13,fontWeight:700,color:c.tx,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{activeArtifact.name}</div>
                                   </div>
+                                  {activeArtifact.fileId&&activeArtifact.name?.endsWith('.html')&&<a href={`/api/files/publish/${activeArtifact.fileId}`} target="_blank" rel="noopener noreferrer" style={{padding:"4px 10px",borderRadius:6,border:"1px solid "+c.ac,background:c.ac+"12",fontSize:11,fontWeight:600,color:c.ac,textDecoration:"none"}}>↗ Full Screen</a>}
                                   {activeArtifact.fileId&&<a href={`/api/files/download/${activeArtifact.fileId}`} download style={{padding:"4px 10px",borderRadius:6,border:"1px solid "+c.ln,background:c.cd,fontSize:11,fontWeight:600,color:c.ac,textDecoration:"none"}}>↓</a>}
                                   <button onClick={()=>setActiveArtifact(null)} style={{width:26,height:26,borderRadius:6,border:"1px solid "+c.ln,background:"transparent",cursor:"pointer",fontSize:13,color:c.so,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
                                 </div>
@@ -2213,20 +2283,13 @@ export default function App() {
                                       }}/>
                                   )}
                                 </div>
-                                {/* Action buttons */}
                                 <div style={{padding:"12px 16px",borderTop:"1px solid "+c.ln,background:c.cd,display:"flex",gap:8,flexShrink:0}}>
                                   <button onClick={()=>{setRightTab("browser");setTx("I want to make some changes to "+activeArtifact.name);}} style={{flex:1,padding:"10px 0",borderRadius:10,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:13,fontWeight:600,color:c.tx}}>✏️ Request Changes</button>
                                   <a href={activeArtifact.fileId?`/api/files/download/${activeArtifact.fileId}`:"#"} download style={{flex:1,padding:"10px 0",borderRadius:10,border:"none",background:"linear-gradient(135deg,#34a853,#2d9248)",cursor:"pointer",fontSize:13,fontWeight:700,color:"#fff",textDecoration:"none",textAlign:"center",display:"block"}}>↓ Download</a>
                                 </div>
                               </div>
                             ):(
-                              <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",textAlign:"center",padding:30}}>
-                                <div>
-                                  <div style={{fontSize:36,marginBottom:10,opacity:0.3}}>📄</div>
-                                  <div style={{fontSize:13,color:"#666",marginBottom:4}}>No file open</div>
-                                  <div style={{fontSize:11,color:"#555"}}>Ask Sarah to create content — it'll appear here</div>
-                                </div>
-                              </div>
+                              <SessionFilesPanel c={c} sessionId={sid} setActiveArtifact={setActiveArtifact}/>
                             )
                           )}
                         </div>
@@ -2616,9 +2679,12 @@ export default function App() {
           {/* ══ FILES — Approved deliverables library ══ */}
           {pg==="artifacts"&&(
             <div style={{overflowY:"auto",height:"calc(100vh - 52px)",padding:mob?"16px 12px 40px":"20px 20px 40px",maxWidth:1000,margin:"0 auto"}}>
-              <div style={{marginBottom:24}}>
-                <h1 style={{fontSize:mob?20:24,fontWeight:700,color:c.tx,marginBottom:6}}>📁 Files & Deliverables</h1>
-                <p style={{fontSize:13,color:c.so}}>All approved content Sarah has created for you</p>
+              <div style={{marginBottom:16,display:"flex",alignItems:mob?"column":"row",gap:12,alignItems:mob?"stretch":"center",justifyContent:"space-between"}}>
+                <div>
+                  <h1 style={{fontSize:mob?20:24,fontWeight:700,color:c.tx,marginBottom:4}}>📁 Files & Deliverables</h1>
+                  <p style={{fontSize:13,color:c.so}}>All content Sarah has created for you</p>
+                </div>
+                <input value={filesSearch||''} onChange={e=>setFilesSearch(e.target.value)} placeholder="Search files..." style={{padding:"8px 14px",borderRadius:10,border:"1.5px solid "+c.ln,fontSize:13,fontFamily:"inherit",background:c.inp,color:c.tx,width:mob?"100%":240}}/>
               </div>
               {filesLoading ? (
                 <div style={{textAlign:"center",padding:40,color:c.so}}>Loading files...</div>
@@ -2626,11 +2692,11 @@ export default function App() {
                 <div style={{textAlign:"center",padding:60,color:c.so,background:c.cd,borderRadius:16,border:"1px solid "+c.ln}}>
                   <div style={{fontSize:40,marginBottom:12}}>📂</div>
                   <div style={{fontSize:15,fontWeight:600,color:c.tx,marginBottom:6}}>No files yet</div>
-                  <div style={{fontSize:13}}>Ask Sarah to create content — blog posts, email campaigns, SOPs, reports — and approved items will appear here.</div>
+                  <div style={{fontSize:13}}>Ask Sarah to create content — blog posts, email campaigns, SOPs, reports — and they'll appear here.</div>
                 </div>
               ) : (
                 <div style={{display:"grid",gridTemplateColumns:mob?"1fr":"repeat(auto-fill, minmax(280px, 1fr))",gap:14}}>
-                  {files.map((f)=>{
+                  {files.filter(f=>!filesSearch||f.name?.toLowerCase().includes(filesSearch.toLowerCase())||f.description?.toLowerCase().includes(filesSearch.toLowerCase())).map((f)=>{
                     const ext=(f.name||'').split('.').pop()?.toLowerCase()||'';
                     const icon=f.fileType==='image'?'🖼️':ext==='html'?'🌐':ext==='md'?'📝':ext==='js'||ext==='py'?'💻':ext==='pdf'?'📄':'📎';
                     const sizeStr=f.fileSize>1048576?`${(f.fileSize/1048576).toFixed(1)}MB`:f.fileSize>1024?`${(f.fileSize/1024).toFixed(1)}KB`:`${f.fileSize||0}B`;
@@ -2673,6 +2739,7 @@ export default function App() {
                                 await fetch(`/api/files/artifacts/${f.fileId}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'approved'})});
                                 setFiles(p=>p.map(x=>x.fileId===f.fileId?{...x,status:'approved'}:x));
                               }} style={{padding:"4px 10px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#34a853,#2d9248)",cursor:"pointer",fontSize:11,fontWeight:700,color:"#fff"}}>✓ Approve</button>}
+                              {ext==='html'&&<a href={`/api/files/publish/${f.fileId}`} target="_blank" rel="noopener noreferrer" style={{padding:"4px 10px",borderRadius:6,border:"1px solid "+c.ac,background:c.ac+"12",cursor:"pointer",fontSize:11,fontWeight:700,color:c.ac,textDecoration:"none"}}>↗ Publish</a>}
                               <a href={`/api/files/download/${f.fileId}`} download style={{padding:"4px 10px",borderRadius:6,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:11,fontWeight:600,color:c.ac,textDecoration:"none"}}>↓ Download</a>
                               <button onClick={async()=>{
                                 if(confirm('Remove this file?')){

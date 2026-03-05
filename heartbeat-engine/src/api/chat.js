@@ -864,7 +864,7 @@ Do NOT use this for simple questions, conversation, or tasks you can handle your
 ];
 
 // TOOL EXECUTION — routes all tool calls to the appropriate executor
-async function executeTool(toolName, toolInput) {
+async function executeTool(toolName, toolInput, sessionId = null) {
   logger.info(`Executing tool: ${toolName}`, { input: toolInput });
   try {
     // bloom_log goes to database
@@ -908,7 +908,7 @@ async function executeTool(toolName, toolInput) {
           fileType: toolInput.fileType || 'markdown',
           mimeType: mimeMap[toolInput.fileType] || 'text/markdown',
           content: toolInput.content,
-          sessionId: null // Will be set by the caller if needed
+          sessionId: sessionId
         })
       });
       const data = await resp.json();
@@ -1087,7 +1087,7 @@ async function callAnthropicWithRetry(params, maxRetries = 3) {
   }
 }
 
-async function chatWithSarah(userMessage, history, agentConfig) {
+async function chatWithSarah(userMessage, history, agentConfig, sessionId = null) {
   const systemPrompt = buildSystemPrompt(agentConfig);
   const messages = [...history, { role: 'user', content: userMessage }];
   let currentMessages = [...messages];
@@ -1127,7 +1127,7 @@ async function chatWithSarah(userMessage, history, agentConfig) {
           toolsUsed.push({ name: block.name, input: block.input });
           let result;
           try {
-            result = await executeTool(block.name, block.input);
+            result = await executeTool(block.name, block.input, sessionId);
           } catch (toolError) {
             logger.error(`Tool ${block.name} threw error:`, toolError.message);
             result = { success: false, error: `Tool error: ${toolError.message}` };
@@ -1379,7 +1379,7 @@ router.post('/message', async (req, res) => {
       }
     }
 
-    const response = await chatWithSarah(enrichedMessage, history, agentConfig);
+    const response = await chatWithSarah(enrichedMessage, history, agentConfig, sessionId);
     logger.info(`💬 Chat [${sessionId}] User: ${message.slice(0, 100)}${message.length > 100 ? '...' : ''}`);
     logger.info(`💬 Chat [${sessionId}] Sarah: ${response.replace(/\[Session context[\s\S]*$/, '').slice(0, 100)}${response.length > 100 ? '...' : ''}`);
     await saveMessages(pool, sessionId, message, response);
@@ -1458,7 +1458,7 @@ router.post('/upload', async (req, res) => {
     if (textMsg) userContent.push({ type: 'text', text: textMsg });
 
     const content = userContent.length === 1 && userContent[0].type === 'text' ? userContent[0].text : userContent;
-    const response = await chatWithSarah(content, history, agentConfig);
+    const response = await chatWithSarah(content, history, agentConfig, sessionId);
 
     const historyLabel = files.length
       ? `[Files: ${files.map(f => f.name).join(', ')}]${textMsg ? ' ' + textMsg : ''}`
