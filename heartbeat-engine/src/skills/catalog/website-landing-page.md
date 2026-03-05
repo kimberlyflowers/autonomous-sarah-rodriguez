@@ -116,14 +116,16 @@ Before building the HTML, generate real images for the page:
 2. **Section images**: Generate square (1024x1024) images for feature sections, testimonials, or product shots.
 3. **Background textures**: If the design needs textured/gradient backgrounds, generate them too.
 
-Each image comes back as `image_base64`. Embed directly in HTML:
+Each image is auto-saved and the tool returns an `image_url` path. Use it directly in HTML:
 ```html
-<img src="data:image/png;base64,{image_base64}" alt="Hero banner" style="width:100%"/>
+<img src="/api/files/preview/art_xxxxx" alt="Hero banner" style="width:100%"/>
 ```
 
-This makes the HTML completely self-contained — no broken image links. The client sees the real website with real images when they preview it.
+This keeps the HTML clean and small — images load from their own URLs instead of bloating the file with base64 data.
 
-NEVER use placeholder images (via.placeholder.com, placehold.it, etc.) or unsplash URLs. ALWAYS generate real images with image_generate.
+NEVER use base64 inline images (breaks layouts, bloats HTML files).
+NEVER use placeholder images (via.placeholder.com, placehold.it, etc.) or random unsplash URLs.
+ALWAYS generate real images with image_generate and use the returned image_url.
 
 ## Phase 5: Technical Output
 
