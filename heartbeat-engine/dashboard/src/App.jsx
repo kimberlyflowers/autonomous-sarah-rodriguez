@@ -244,8 +244,16 @@ function useSarahChat() {
     setLoading(true);
     
     // Detect if this is a WORK task or just casual chat
-    const isWorkTask = /\b(write|create|build|make|draft|design|generate|research|check|find|search|send|schedule|update|look up|go to|navigate|analyze|summarize|review|edit|fix|compile|prepare|pull|set up|book|cancel)\b/i.test(text)
-      || /\b(blog|email|post|website|landing page|report|document|contact|lead|campaign|sequence|flyer|graphic|proposal|invoice|spreadsheet|calendar|appointment)\b/i.test(text);
+    // Direct work keywords
+    const hasWorkVerbs = /\b(write|create|build|make|draft|design|generate|research|check|find|search|send|schedule|update|look up|go to|navigate|analyze|summarize|review|edit|fix|compile|prepare|pull|set up|book|cancel|redo|retry|try again|do it|do that|go ahead|start|finish|continue|proceed|run|execute|launch|publish)\b/i.test(text);
+    const hasWorkNouns = /\b(blog|email|post|website|landing page|report|document|contact|lead|campaign|sequence|flyer|graphic|proposal|invoice|spreadsheet|calendar|appointment|site|page|sop|newsletter|funnel|book|chapter)\b/i.test(text);
+    // Continuation signals — short messages that reference ongoing work
+    const isContinuation = /^(ok|yes|yeah|yep|sure|do it|go|go ahead|try again|retry|redo|proceed|continue|start|finish it|yes please|ok do it|go for it|let's go|make it|ship it)\b/i.test(text.trim());
+    // Check if recent messages suggest we're in a work context
+    const recentMsgs = messages.slice(-6);
+    const hasRecentWork = recentMsgs.some(m => m.b && (m.isAck || m.skill || m.hasArtifact || /working on|deliverable|created|building|generating/i.test(m.t)));
+    
+    const isWorkTask = hasWorkVerbs || hasWorkNouns || (isContinuation && hasRecentWork);
     
     // For work tasks: show instant acknowledgment
     let ackId = null;
@@ -255,7 +263,9 @@ function useSarahChat() {
       setMessages(p=>[...p,{id:ackId,b:true,t:ackText,tm:ts,isAck:true}]);
     }
     
-    // Progress indicator — only for work tasks, casual chat gets simple dots
+    // Progress indicator
+    // Work tasks: "Sarah is working" with elapsed time
+    // Casual chat: "Thinking..." with dots (NOT bare dots)
     const startTime = Date.now();
     let progressInterval = null;
     if(isWorkTask){
@@ -270,7 +280,7 @@ function useSarahChat() {
         else setWorkingStatus(`Complex task in progress... (${Math.round(elapsed/60)}m ${elapsed%60}s)`);
       }, 1000);
     } else {
-      setWorkingStatus(""); // empty = shows simple dots for casual chat
+      setWorkingStatus("Thinking..."); // casual chat gets gentle "Thinking..." label
     }
     
     // Abortable fetch
@@ -2469,24 +2479,29 @@ export default function App() {
                         <div style={{display:"flex",justifyContent:"flex-start",marginBottom:14,alignItems:"flex-end",gap:8}}>
                           <div style={{marginRight:0,marginTop:2}}><Face sz={28} agent={agent}/></div>
                           <div style={{flex:1}}>
-                            {workingStatus?(
-                              <div style={{padding:"14px 18px",borderRadius:"6px 18px 18px 18px",background:c.cd,border:"1px solid "+c.ln,minWidth:200}}>
-                                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
-                                  <span style={{width:8,height:8,borderRadius:"50%",background:c.ac,animation:"pulse 1.2s ease infinite"}}/>
-                                  <span style={{fontSize:13,fontWeight:600,color:c.tx}}>Sarah is working</span>
+                            <div style={{padding:"14px 18px",borderRadius:"6px 18px 18px 18px",background:c.cd,border:"1px solid "+c.ln,minWidth:160}}>
+                              {workingStatus==="Thinking..."?(
+                                /* Casual chat — gentle thinking indicator */
+                                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                                  {[0,1,2].map(i=><span key={i} style={{width:6,height:6,borderRadius:"50%",background:c.ac,animation:`pulse 1.2s ease ${i*0.2}s infinite`}}/>)}
+                                  <span style={{fontSize:12,color:c.so,marginLeft:4}}>Thinking...</span>
                                 </div>
-                                <div style={{fontSize:11,color:c.so,lineHeight:1.5}}>
-                                  <div style={{display:"flex",alignItems:"center",gap:6}}>
-                                    <span style={{animation:"spin 1.5s linear infinite",display:"inline-block"}}>⚙️</span>
-                                    <span>{workingStatus}</span>
+                              ):(
+                                /* Work task — full working status */
+                                <>
+                                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                                    <span style={{width:8,height:8,borderRadius:"50%",background:c.ac,animation:"pulse 1.2s ease infinite"}}/>
+                                    <span style={{fontSize:13,fontWeight:600,color:c.tx}}>Sarah is working</span>
                                   </div>
-                                </div>
-                              </div>
-                            ):(
-                              <div style={{padding:"12px 16px",borderRadius:"6px 18px 18px 18px",background:c.cd,border:"1px solid "+c.ln,display:"flex",gap:4,alignItems:"center"}}>
-                                {[0,1,2].map(i=><span key={i} style={{width:6,height:6,borderRadius:"50%",background:c.ac,animation:`pulse 1.2s ease ${i*0.2}s infinite`}}/>)}
-                              </div>
-                            )}
+                                  <div style={{fontSize:11,color:c.so,lineHeight:1.5}}>
+                                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                                      <span style={{animation:"spin 1.5s linear infinite",display:"inline-block"}}>⚙️</span>
+                                      <span>{workingStatus||"Processing..."}</span>
+                                    </div>
+                                  </div>
+                                </>
+                              )}
+                            </div>
                           </div>
                           <button onClick={stopSarah} title="Stop Sarah" style={{width:32,height:32,borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:14,color:"#ea4335",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"background .15s"}} onMouseEnter={e=>e.currentTarget.style.background="rgba(234,67,53,0.1)"} onMouseLeave={e=>e.currentTarget.style.background=c.cd}>■</button>
                         </div>
