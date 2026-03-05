@@ -283,6 +283,39 @@ router.get('/preview/:fileId', async (req, res) => {
   }
 });
 
+// ── FULL-SCREEN PUBLISH PREVIEW ─────────────────────────────────────────────
+// GET /api/files/publish/:fileId — serves HTML directly for full-screen viewing
+router.get('/publish/:fileId', async (req, res) => {
+  const pool = await getPool();
+  try {
+    await ensureTable(pool);
+    const result = await pool.query(
+      'SELECT name, file_type, content_text, file_path FROM artifacts WHERE file_id = $1', [req.params.fileId]
+    );
+    if (!result.rows.length) return res.status(404).send('File not found');
+    const file = result.rows[0];
+
+    if (file.file_type === 'html' && file.content_text) {
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      return res.send(file.content_text);
+    }
+    if (file.file_type === 'markdown' && file.content_text) {
+      const md = file.content_text
+        .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+        .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+        .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        .replace(/^- (.+)$/gm, '<li>$1</li>')
+        .replace(/\n\n/g, '<br/><br/>')
+        .replace(/\n/g, '<br/>');
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      return res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${file.name}</title><style>body{max-width:800px;margin:40px auto;padding:0 20px;font-family:Georgia,serif;line-height:1.8;color:#1a1a1a}h1,h2,h3{font-family:system-ui,sans-serif}h1{font-size:2em;border-bottom:2px solid #eee;padding-bottom:8px}</style></head><body>${md}</body></html>`);
+    }
+    return res.redirect(`/api/files/download/${req.params.fileId}`);
+  } catch { return res.status(500).send('Preview failed'); }
+});
+
 // ── DELETE ARTIFACT ─────────────────────────────────────────────────────────
 // DELETE /api/files/artifacts/:fileId
 router.delete('/artifacts/:fileId', async (req, res) => {
