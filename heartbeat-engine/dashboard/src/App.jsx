@@ -2762,37 +2762,113 @@ export default function App() {
                           </div>
 
                           {/* Add task from calendar */}
-                          {calSelDay&&(
-                            <div style={{marginTop:16,padding:16,borderRadius:12,border:"2px solid "+c.ac+"40",background:c.sf}}>
-                              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-                                <div style={{fontSize:13,fontWeight:700,color:c.tx}}>
-                                  Add task — {new Date(y,m,calSelDay).toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'})}
-                                </div>
-                                <button onClick={()=>setCalSelDay(null)} style={{width:24,height:24,borderRadius:6,border:"1px solid "+c.ln,background:"transparent",cursor:"pointer",fontSize:12,color:c.so,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
-                              </div>
-                              <input value={calTask.name} onChange={e=>setCalTask(p=>({...p,name:e.target.value}))} placeholder="Task name..." style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,fontSize:13,color:c.tx,marginBottom:6,fontFamily:"inherit",boxSizing:"border-box"}}/>
-                              <textarea value={calTask.instruction} onChange={e=>setCalTask(p=>({...p,instruction:e.target.value}))} placeholder="What should Sarah do?" rows={2} style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,fontSize:13,color:c.tx,marginBottom:6,fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
-                              <div style={{display:"flex",gap:6,marginBottom:10}}>
-                                <select value={calTask.frequency} onChange={e=>setCalTask(p=>({...p,frequency:e.target.value}))} style={{flex:1,padding:"8px 10px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,fontSize:12,color:c.tx,fontFamily:"inherit"}}>
-                                  <option value="daily">Daily</option><option value="weekdays">Weekdays</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option>
-                                </select>
-                                <input type="time" value={calTask.runTime} onChange={e=>setCalTask(p=>({...p,runTime:e.target.value}))} style={{width:110,padding:"8px 10px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,fontSize:12,color:c.tx,fontFamily:"inherit"}}/>
-                              </div>
-                              <button onClick={async()=>{
-                                if(!calTask.name||!calTask.instruction) return;
-                                const taskType=calTask.instruction.match(/blog|post|write|content/i)?'content':calTask.instruction.match(/email|newsletter/i)?'email':calTask.instruction.match(/crm|contact|lead/i)?'crm':'custom';
-                                await fetch('/api/agent/tasks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...calTask,taskType})});
-                                setCalTask({name:'',instruction:'',frequency:'daily',runTime:'09:00'});
-                                setCalSelDay(null);
-                                loadActivity();
-                              }} disabled={!calTask.name||!calTask.instruction} style={{width:"100%",padding:"10px 0",borderRadius:8,border:"none",background:calTask.name&&calTask.instruction?c.gradient:"#444",cursor:calTask.name&&calTask.instruction?"pointer":"not-allowed",fontSize:13,fontWeight:700,color:"#fff",fontFamily:"inherit"}}>
-                                Add to Schedule
-                              </button>
-                            </div>
-                          )}
                         </>
                       );
                     })()}
+                  </div>
+                )}
+
+                {/* ── Calendar Day Modal ── */}
+                {calSelDay&&actTab==="calendar"&&(
+                  <div onClick={()=>setCalSelDay(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+                    <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:480,maxHeight:"85vh",background:c.cd,borderRadius:16,border:"1px solid "+c.ln,display:"flex",flexDirection:"column",overflow:"hidden",boxShadow:"0 20px 60px rgba(0,0,0,.4)"}}>
+                      {/* Header */}
+                      <div style={{padding:"16px 20px",borderBottom:"1px solid "+c.ln,display:"flex",alignItems:"center",justifyContent:"space-between",background:"linear-gradient(135deg, rgba(244,162,97,0.08), rgba(231,111,139,0.08))",flexShrink:0}}>
+                        <div>
+                          <div style={{fontSize:18,fontWeight:700,color:c.tx}}>{new Date(calMonth.getFullYear(),calMonth.getMonth(),calSelDay).toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}</div>
+                          <div style={{fontSize:12,color:c.so,marginTop:2}}>
+                            {(()=>{
+                              const y=calMonth.getFullYear(),m=calMonth.getMonth();
+                              const dayRuns=(taskRuns||[]).filter(r=>{const d=new Date(r.completedAt||r.createdAt);return d.getDate()===calSelDay&&d.getMonth()===m&&d.getFullYear()===y;});
+                              const dow=new Date(y,m,calSelDay).getDay();
+                              const dayScheduled=scheduledTasks.filter(t=>t.enabled).filter(t=>t.frequency==='daily'||(t.frequency==='weekdays'&&dow>=1&&dow<=5)||(t.frequency==='weekly'&&dow===1)||(t.frequency==='monthly'&&calSelDay===1));
+                              return `${dayRuns.length} completed · ${dayScheduled.length} scheduled`;
+                            })()}
+                          </div>
+                        </div>
+                        <button onClick={()=>setCalSelDay(null)} style={{width:32,height:32,borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:16,color:c.so,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+                      </div>
+
+                      {/* Scrollable content */}
+                      <div style={{flex:1,overflowY:"auto",padding:"16px 20px"}}>
+                        {/* Completed runs this day */}
+                        {(()=>{
+                          const y=calMonth.getFullYear(),m=calMonth.getMonth();
+                          const dayRuns=(taskRuns||[]).filter(r=>{const d=new Date(r.completedAt||r.createdAt);return d.getDate()===calSelDay&&d.getMonth()===m&&d.getFullYear()===y;});
+                          if(dayRuns.length>0) return(
+                            <div style={{marginBottom:16}}>
+                              <div style={{fontSize:11,fontWeight:700,color:c.so,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>Activity</div>
+                              {dayRuns.map((r,i)=>{
+                                const ic={content:"📝",email:"✉️",research:"🔍",crm:"📊",custom:"⚡"}[r.taskType]||"⚡";
+                                const sc={completed:c.gr,failed:c.err,pending:c.ac}[r.status]||c.so;
+                                return(
+                                  <div key={i} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"10px 12px",borderRadius:8,background:c.sf,border:"1px solid "+c.ln,marginBottom:4}}>
+                                    <span style={{fontSize:16}}>{ic}</span>
+                                    <div style={{flex:1,minWidth:0}}>
+                                      <div style={{display:"flex",alignItems:"center",gap:6}}>
+                                        <span style={{fontSize:13,fontWeight:600,color:c.tx}}>{r.taskName}</span>
+                                        <span style={{fontSize:10,fontWeight:600,color:sc,textTransform:"capitalize"}}>{r.status}</span>
+                                      </div>
+                                      {r.result&&<div style={{fontSize:12,color:c.so,marginTop:3,lineHeight:1.5}}>{r.result.slice(0,200)}{r.result.length>200?'...':''}</div>}
+                                      {r.duration&&<div style={{fontSize:10,color:c.fa,marginTop:2}}>{r.duration} · {r.time||''}</div>}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          );
+                          return null;
+                        })()}
+
+                        {/* Scheduled tasks for this day */}
+                        {(()=>{
+                          const y=calMonth.getFullYear(),m=calMonth.getMonth();
+                          const dow=new Date(y,m,calSelDay).getDay();
+                          const dayScheduled=scheduledTasks.filter(t=>t.enabled).filter(t=>t.frequency==='daily'||(t.frequency==='weekdays'&&dow>=1&&dow<=5)||(t.frequency==='weekly'&&dow===1)||(t.frequency==='monthly'&&calSelDay===1));
+                          if(dayScheduled.length>0) return(
+                            <div style={{marginBottom:16}}>
+                              <div style={{fontSize:11,fontWeight:700,color:c.so,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>Scheduled</div>
+                              {dayScheduled.map((t,i)=>{
+                                const ic={content:"📝",email:"✉️",research:"🔍",crm:"📊",custom:"⚡"}[t.taskType]||"⚡";
+                                return(
+                                  <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",borderRadius:8,background:c.sf,border:"1px solid "+c.ln,marginBottom:4}}>
+                                    <span style={{fontSize:16}}>{ic}</span>
+                                    <div style={{flex:1}}>
+                                      <div style={{fontSize:13,fontWeight:600,color:c.tx}}>{t.name}</div>
+                                      <div style={{fontSize:11,color:c.so,marginTop:1}}>{t.frequency} · {t.runTime||'9:00'}</div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          );
+                          return null;
+                        })()}
+
+                        {/* Add new task */}
+                        <div style={{borderTop:"1px solid "+c.ln,paddingTop:16}}>
+                          <div style={{fontSize:11,fontWeight:700,color:c.so,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:10}}>Add New Task</div>
+                          <input value={calTask.name} onChange={e=>setCalTask(p=>({...p,name:e.target.value}))} placeholder="Task name..." style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,fontSize:13,color:c.tx,marginBottom:6,fontFamily:"inherit",boxSizing:"border-box"}}/>
+                          <textarea value={calTask.instruction} onChange={e=>setCalTask(p=>({...p,instruction:e.target.value}))} placeholder="What should Sarah do?" rows={2} style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,fontSize:13,color:c.tx,marginBottom:6,fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
+                          <div style={{display:"flex",gap:6,marginBottom:10}}>
+                            <select value={calTask.frequency} onChange={e=>setCalTask(p=>({...p,frequency:e.target.value}))} style={{flex:1,padding:"8px 10px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,fontSize:12,color:c.tx,fontFamily:"inherit"}}>
+                              <option value="daily">Daily</option><option value="weekdays">Weekdays</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option>
+                            </select>
+                            <input type="time" value={calTask.runTime} onChange={e=>setCalTask(p=>({...p,runTime:e.target.value}))} style={{width:110,padding:"8px 10px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,fontSize:12,color:c.tx,fontFamily:"inherit"}}/>
+                          </div>
+                          <button onClick={async()=>{
+                            if(!calTask.name||!calTask.instruction) return;
+                            const taskType=calTask.instruction.match(/blog|post|write|content/i)?'content':calTask.instruction.match(/email|newsletter/i)?'email':calTask.instruction.match(/crm|contact|lead/i)?'crm':'custom';
+                            await fetch('/api/agent/tasks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...calTask,taskType})});
+                            setCalTask({name:'',instruction:'',frequency:'daily',runTime:'09:00'});
+                            setCalSelDay(null);
+                            loadActivity();
+                          }} disabled={!calTask.name||!calTask.instruction} style={{width:"100%",padding:"10px 0",borderRadius:8,border:"none",background:calTask.name&&calTask.instruction?c.gradient:"#444",cursor:calTask.name&&calTask.instruction?"pointer":"not-allowed",fontSize:13,fontWeight:700,color:"#fff",fontFamily:"inherit"}}>
+                            Add to Schedule
+                          </button>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 )}
 
