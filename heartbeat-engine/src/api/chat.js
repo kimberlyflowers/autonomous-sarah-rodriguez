@@ -1143,6 +1143,28 @@ async function chatWithSarah(userMessage, history, agentConfig, sessionId = null
       }
     }
   } catch(e) { /* brand kit not available — proceed without */ }
+
+  // Inject matching skill body into system prompt based on user's message
+  try {
+    const { getSkillContext } = await import('../skills/skill-loader.js');
+    // Try to match based on the user's message content
+    const msgLower = userMessage.toLowerCase();
+    let matchedType = null;
+    if (/website|landing page|web page|site|funnel|html|web design/i.test(msgLower)) matchedType = 'coding';
+    else if (/blog|article|post|content|seo/i.test(msgLower)) matchedType = 'writing';
+    else if (/email|newsletter|campaign|drip|sequence|subject line/i.test(msgLower)) matchedType = 'email';
+    else if (/social|instagram|linkedin|facebook|twitter|tiktok|caption|hashtag/i.test(msgLower)) matchedType = 'writing';
+    else if (/sop|report|proposal|document|contract|handbook|one-pager/i.test(msgLower)) matchedType = 'writing';
+    else if (/book|chapter|manuscript|memoir|devotional/i.test(msgLower)) matchedType = 'writing';
+    if (matchedType) {
+      const skillBody = getSkillContext(matchedType, userMessage);
+      if (skillBody) {
+        systemPrompt += skillBody;
+        logger.info('Skill injected into main prompt', { matchedType, skillLength: skillBody.length });
+      }
+    }
+  } catch(e) { /* skills not critical */ }
+
   const messages = [...history, { role: 'user', content: userMessage }];
   let currentMessages = [...messages];
 
