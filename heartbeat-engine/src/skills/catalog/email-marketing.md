@@ -1,137 +1,100 @@
 ---
 name: email-marketing
-description: "Write email campaigns, sequences, subject lines, and SMS that feel human and actually convert. Use when the task involves email marketing, drip campaigns, newsletters, follow-up sequences, cold outreach, welcome sequences, re-engagement, or SMS messaging. Also use for A/B subject lines and email templates."
+description: "Write high-converting email campaigns, newsletters, drip sequences, and automated email flows. Use this skill whenever the task involves writing an email, email campaign, newsletter, welcome sequence, nurture sequence, re-engagement email, promotional email, announcement, or any email marketing content. Also triggers for subject line writing, email templates, cold outreach, follow-up emails, and any request mentioning 'email', 'newsletter', 'campaign', 'drip', 'sequence', or 'send to list'. Every email should feel personally written — not mass-blasted. Data shows personalized subject lines increase opens by 26%."
 ---
 
-# Email Marketing
+# Email Marketing — Campaigns That Get Opened, Read, and Clicked
 
-## How to Think About This
+Every email Sarah writes should feel like it came from a real person who cares — not a marketing automation. The standard: would YOU open this email and read to the end?
 
-Every email lands next to messages from the reader's mom, their boss, and Amazon. Your email has to earn the right to exist there. The best marketing emails don't feel like marketing — they feel like a message from someone who understands you.
+## Encoded Preferences (data-backed defaults)
 
-Check memory and Company Skills for brand voice, audience, sign-off style, and email guidelines before writing.
+### Subject Lines (the gatekeepers)
+- **6-10 words** = highest open rate (Mailchimp data across billions of sends)
+- **Personalize** when possible — first name in subject = 26% more opens
+- **Curiosity > Clickbait** — create information gaps, don't deceive
+- **Front-load value** — mobile truncates after ~35 chars, put the hook first
+- **Power formulas**:
+  - Question: "Still struggling with [pain point]?"
+  - Number: "3 things your [audience] needs this week"
+  - Urgency: "Last chance: [offer] ends tonight"
+  - Personal: "[Name], quick question about [topic]"
+  - Story: "I almost gave up on [thing]... then this happened"
+- **NEVER**: ALL CAPS, excessive punctuation!!!, "FREE" as first word, misleading subjects
 
-## The Subject Line Is a Promise
+### Preview Text (the secret weapon)
+- **First 90 characters after subject** drive 24% of open decisions
+- **Don't waste on "View in browser"** — that's the default if you don't set preview text
+- **Complement the subject** — expand curiosity, don't repeat the subject line
+- Example: Subject: "3 mistakes killing your enrollment" | Preview: "Number 2 surprised even us."
 
-Only job: get the email opened. It promises something the body delivers.
+### Email Structure
+- **Above-the-fold CTA** — 70% don't scroll past first screen
+- **Single column layout** — outperforms multi-column 2x on mobile (60%+ read on phones)
+- **One email = one goal** — don't ask them to buy AND follow AND share AND reply
+- **Inverted pyramid**: Hook → Value → CTA. Widest attention at top, narrowing to action.
+- **Short paragraphs**: 1-3 sentences. One idea per paragraph. White space between.
+- **P.S. line** — 2nd most-read part of any email (after headline). Use for urgency, bonus, or personal touch.
 
-What works: personal and specific, curiosity without clickbait, direct address with {firstName}.
-What dies: "Newsletter #14", "Exciting news!", "Don't miss out!", ALL CAPS.
+### Copy Style
+- **Conversational first person** — "I wanted to share..." not "We are pleased to announce..."
+- **Write like you talk** — read it aloud. If it sounds stiff, rewrite.
+- **Benefits over features** — "Save 3 hours every week" not "Automated scheduling tool"
+- **Specific numbers** — "47 families enrolled last month" not "many families"
+- **One clear CTA** — button style, action verb, high contrast color
+  Good: "Reserve Your Spot" "Get the Free Guide" "Book a Tour"
+  Bad: "Click Here" "Submit" "Learn More"
+- **CTA button styling**: 44px+ height, 200px+ width, rounded, brand accent color, white text
 
-Always write 2 A/B variants. The winner teaches you about the audience.
+### Email Types & Templates
 
-## Email 1 Is NEVER About You
+**Welcome Email** (most opened email you'll ever send — 50-60% open rate):
+- Send immediately after signup
+- Warm, personal tone. "Welcome to [brand]! I'm [name] and I..."
+- Set expectations: what they'll receive, how often
+- Quick win: link to best content or exclusive resource
+- Soft CTA: "Hit reply and tell me..."
 
-First email validates THEIR decision, not your product. They gave you their email — honor that trust.
+**Newsletter** (weekly/monthly):
+- Consistent format readers recognize
+- 3-5 value items with brief commentary + links
+- Personal intro paragraph (what happened this week, what's on your mind)
+- Feature one main piece of content with a deeper dive
+- End with a personal note or question
 
-Bad: "Welcome! Here's what we offer: [features]"
-Good: "The fact that you're here means you're already a step ahead."
+**Promotional/Sales**:
+- Lead with the problem, not the product
+- Agitate the pain: what happens if they don't act?
+- Present the solution with social proof
+- Clear offer with deadline/scarcity (real, not fake)
+- Risk reversal: guarantee, free trial, easy cancel
+- P.S. with urgency reminder
 
-Trust first. Story second. Invitation third. This order matters.
+**Re-engagement** (for dormant lists):
+- Subject acknowledging absence: "It's been a while, [name]"
+- Brief, human, no guilt
+- Remind them why they signed up
+- Offer something new/valuable
+- Easy unsubscribe option (builds trust)
 
-## Story Beats Statistics
+### Send Timing
+- **Tuesday-Thursday, 10am-2pm** local time = highest engagement
+- **Monday morning**: people clearing inboxes, high delete rate
+- **Friday afternoon**: checked out for the weekend
+- **Sunday evening**: surprisingly good for B2C (planning the week)
 
-One specific person's experience → people forward it.
-"95% satisfaction rate" → nobody feels anything.
+### Delivery
+- Save as `.html` artifact for rich emails, `.md` for plain text
+- Include subject line and preview text at the top of the artifact
+- If part of a sequence, number them: "Email 1 of 5: Welcome"
+- Note recommended send time and audience segment
 
-Every nurture email needs at least one SPECIFIC detail a template could never produce.
-
-## CTA Rules
-
-- ONE CTA per email. One.
-- "Reply [KEYWORD]" converts 3-5x better than link clicks (starts a CRM conversation)
-- Put CTA after the emotional peak, not the very end
-- P.S. line = second-most-read part. Use for warmth, not another CTA.
-
-## Sequence Architecture
-
-### Welcome (3-5 emails)
-1. **Validation** (immediate) — Honor signup. No selling.
-2. **Story** (Day 2) — Real person's experience.
-3. **Invitation** (Day 5) — One clear ask. "Reply [KEYWORD]."
-4. **Social proof** (Day 8) — Different angle.
-5. **Gentle close** (Day 12) — "No pressure."
-
-### Re-engagement: Acknowledge silence, offer value not guilt, single easy CTA.
-### No response: Day 2 resend, Day 4 SMS, Day 10 value email, then stop.
-
-## Technical: HTML Email Best Practices
-
-### Structure
-```html
-<!-- Email skeleton — table-based for compatibility -->
-<table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;font-family:Arial,Helvetica,sans-serif;">
-  <tr><td style="padding:30px 20px;">
-    <!-- Content here -->
-  </td></tr>
-</table>
-```
-
-### Critical Rules
-- **Max width: 600px.** Every email client renders differently. 600px is the safe zone.
-- **Table-based layout.** Flexbox and grid break in Outlook. Use nested tables.
-- **Inline CSS only.** Most email clients strip `<style>` tags. Every style must be inline.
-- **System fonts only.** Arial, Helvetica, Georgia, Times New Roman. Custom fonts fail in 40% of clients.
-- **Images: always include alt text.** Many clients block images by default. Alt text = your fallback.
-- **Button as table cell**, not `<button>` tag:
-```html
-<table cellpadding="0" cellspacing="0"><tr>
-  <td style="background:#E76F8B;border-radius:8px;padding:14px 28px;">
-    <a href="LINK" style="color:#ffffff;font-weight:bold;text-decoration:none;font-size:16px;">Book My Free Demo</a>
-  </td>
-</tr></table>
-```
-- **Preview text**: Use a hidden span after the subject to control the preview line:
-```html
-<span style="display:none;max-height:0;overflow:hidden;">Your preview text here</span>
-```
-- **Unsubscribe link**: Required by law. Always include at bottom.
-- **Plain text version**: Always provide. Some clients only show plain text.
-
-### Mobile Responsive
-```html
-<style>
-@media screen and (max-width: 600px) {
-  .content { width: 100% !important; padding: 15px !important; }
-  .headline { font-size: 24px !important; }
-}
-</style>
-```
-Note: `@media` queries work in Apple Mail, Gmail app, but NOT Outlook. Design mobile-first at 600px to be safe everywhere.
-
-### Testing Checklist
-- Does it render in a single column under 600px?
-- Does it look right with images blocked?
-- Is the CTA visible without scrolling on mobile?
-- Is the plain text version readable?
-- Does the preview text show correctly?
-
-## SMS Best Practices
-
-- 160 characters max (1 segment). More = higher cost + split delivery.
-- Lead with their name. Send 10am-7pm local only.
-- Max 4/month. Include opt-out.
-
-## Follow-Up Logic
-
-Always define what happens AFTER:
-- Reply with keyword → auto-tag, create deal, notify team
-- Reply with question → personal answer within 2 hours
-- No open → resend with new subject, then SMS
-- Unsubscribe → respect completely, never re-add
-
-## Output Format
-
-Every email includes: subject + 2 A/B variants, preview text, full HTML body, plain text version, send time, follow-up logic, segment recommendation.
-
-## Common Mistakes
-
-- Pitching in email 1
-- Multiple CTAs competing
-- No story or specificity
-- "Dear Valued Customer"
-- Follow-ups that just say "Following up!"
-- Not thinking about what happens AFTER
-- Designing for desktop when 80%+ opens are mobile
-- Using `<button>` tags (break in Outlook)
-- Forgetting plain text version
+### NEVER do these
+- Send without a subject line strategy
+- Use "Dear Sir/Madam" or overly formal greetings
+- Write emails longer than 500 words (for promotional — newsletters can be longer)
+- Bury the CTA below the fold
+- Use multiple competing CTAs
+- Send at midnight or 3am
+- Use deceptive subject lines
+- Forget mobile optimization
