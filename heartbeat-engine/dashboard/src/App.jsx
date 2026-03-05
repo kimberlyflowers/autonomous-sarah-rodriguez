@@ -185,17 +185,26 @@ function useSarahChat() {
     const ts = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
     setMessages(p=>[...p,{id:Date.now(),b:false,t:text,tm:ts}]);
     setLoading(true);
-    setWorkingStatus("Understanding your request...");
     
-    // Simulate progress stages while waiting for response
-    const progressStages = [
-      {delay:1500, msg:"Analyzing task type..."},
-      {delay:3500, msg:"Loading relevant skills..."},
-      {delay:6000, msg:"Drafting response..."},
-      {delay:12000, msg:"Refining output..."},
-      {delay:20000, msg:"Almost done..."},
-    ];
-    const timers = progressStages.map(s=>setTimeout(()=>setWorkingStatus(s.msg),s.delay));
+    // Detect if this is a WORK task or just casual chat
+    const isWorkTask = /\b(write|create|build|make|draft|design|generate|research|check|find|search|send|schedule|update|look up|go to|navigate|analyze|summarize|review|edit|fix|compile|prepare|pull|set up|book|cancel)\b/i.test(text)
+      || /\b(blog|email|post|website|landing page|report|document|contact|lead|campaign|sequence|flyer|graphic|proposal|invoice|spreadsheet|calendar|appointment)\b/i.test(text);
+    
+    // Only show progress steps for actual work
+    let timers = [];
+    if(isWorkTask){
+      setWorkingStatus("Understanding your request...");
+      const progressStages = [
+        {delay:1500, msg:"Analyzing task type..."},
+        {delay:3500, msg:"Loading relevant skills..."},
+        {delay:6000, msg:"Drafting response..."},
+        {delay:12000, msg:"Refining output..."},
+        {delay:20000, msg:"Almost done..."},
+      ];
+      timers = progressStages.map(s=>setTimeout(()=>setWorkingStatus(s.msg),s.delay));
+    } else {
+      setWorkingStatus("");
+    }
     
     try {
       const res = await fetch("/api/chat/message",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:text,sessionId:sid.current})});
@@ -1873,18 +1882,24 @@ export default function App() {
                       {loading&&(
                         <div style={{display:"flex",justifyContent:"flex-start",marginBottom:14}}>
                           <div style={{marginRight:8,marginTop:2}}><Face sz={28} agent={agent}/></div>
-                          <div style={{padding:"14px 18px",borderRadius:"6px 18px 18px 18px",background:c.cd,border:"1px solid "+c.ln,minWidth:200}}>
-                            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
-                              <span style={{width:8,height:8,borderRadius:"50%",background:c.ac,animation:"pulse 1.2s ease infinite"}}/>
-                              <span style={{fontSize:13,fontWeight:600,color:c.tx}}>Working on it...</span>
-                            </div>
-                            <div style={{fontSize:11,color:c.so,lineHeight:1.5}}>
-                              <div style={{display:"flex",alignItems:"center",gap:6}}>
-                                <span style={{animation:"spin 1.5s linear infinite",display:"inline-block"}}>⚙️</span>
-                                <span>{workingStatus||"Understanding your request..."}</span>
+                          {workingStatus?(
+                            <div style={{padding:"14px 18px",borderRadius:"6px 18px 18px 18px",background:c.cd,border:"1px solid "+c.ln,minWidth:200}}>
+                              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                                <span style={{width:8,height:8,borderRadius:"50%",background:c.ac,animation:"pulse 1.2s ease infinite"}}/>
+                                <span style={{fontSize:13,fontWeight:600,color:c.tx}}>Working on it...</span>
+                              </div>
+                              <div style={{fontSize:11,color:c.so,lineHeight:1.5}}>
+                                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                                  <span style={{animation:"spin 1.5s linear infinite",display:"inline-block"}}>⚙️</span>
+                                  <span>{workingStatus}</span>
+                                </div>
                               </div>
                             </div>
-                          </div>
+                          ):(
+                            <div style={{padding:"12px 16px",borderRadius:"6px 18px 18px 18px",background:c.cd,border:"1px solid "+c.ln,display:"flex",gap:4,alignItems:"center"}}>
+                              {[0,1,2].map(i=><span key={i} style={{width:6,height:6,borderRadius:"50%",background:c.ac,animation:`pulse 1.2s ease ${i*0.2}s infinite`}}/>)}
+                            </div>
+                          )}
                         </div>
                       )}
                       <div ref={btm}/>
