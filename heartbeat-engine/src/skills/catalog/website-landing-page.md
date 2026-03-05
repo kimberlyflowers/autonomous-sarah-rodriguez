@@ -1,123 +1,155 @@
 ---
 name: website-landing-page
-description: "Design and build websites, landing pages, sales pages, and web mockups that convert visitors into leads. Use when the task involves creating a website, landing page, sales page, opt-in page, booking page, webinar registration page, or any web presence. Also triggers for website redesigns, page mockups, and conversion optimization."
+description: "Design and build beautiful, conversion-optimized websites, landing pages, sales pages, and web mockups. Use when the task involves creating a website, landing page, sales page, opt-in page, booking page, or any web presence. Also triggers for website redesigns, page mockups, and 'build me a site' requests. ALWAYS use this skill for any website or web page creation task."
 ---
 
-# Website & Landing Page Design
+# Website & Landing Page Creation
 
 ## How to Think About This
 
-A landing page has ONE job: get the visitor to take ONE action. Every word, every image, every section either moves them toward that action or distracts them from it. If you can't name the single action in one sentence, the page will fail.
+A landing page has ONE job: get the visitor to take ONE action. Every word, every image, every section either moves them toward that action or distracts them from it.
 
-Before writing a single line of code, answer these three questions:
-1. Who is landing on this page? (Where did they come from? What do they already know?)
-2. What is the ONE thing we want them to do? (Book a call, sign up, buy, download)
-3. What is their biggest objection? (Cost? Trust? Time? "Is this legit?")
+Before building, answer:
+1. Who is landing on this page?
+2. What is the ONE action we want them to take?
+3. What is their biggest objection?
 
-Pull from the client's memory and Company Skills for brand colors, voice, audience details, and industry context.
+Pull from memory and Company Skills for brand details, audience, and industry context.
 
-## The Above-the-Fold Section (Hero)
+## CRITICAL: Technical Execution Rules
 
-This is the only section guaranteed to be seen. It must do three things in under 5 seconds:
+You MUST follow these rules when creating any website or landing page:
 
-1. **Headline:** State the transformation, not the product. "Stop losing clients to missed follow-ups" beats "AI-Powered CRM Assistant." The headline should make the visitor think "that's exactly my problem."
+### Output Format
+- Create a SINGLE HTML file with ALL CSS inline in a `<style>` tag in the `<head>`
+- Include ALL content — real headlines, real body copy, real CTAs. NEVER just section names or placeholder links.
+- The file must look like a COMPLETE, PROFESSIONAL website when opened in a browser
+- Use `create_artifact` with a `.html` extension to deliver it
+- The output should be 200-500+ lines minimum. A real landing page is substantial.
 
-2. **Subheadline:** One sentence that explains HOW. "Your AI employee handles every lead, every follow-up, every appointment — so nothing falls through the cracks."
+### Required Structure (NEVER skip these)
+```
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>[Page Title]</title>
+  <link href="https://fonts.googleapis.com/css2?family=[Font]&display=swap" rel="stylesheet">
+  <style>
+    /* ALL styles go here — inline, not external */
+  </style>
+</head>
+<body>
+  <!-- Hero Section -->
+  <!-- Problem/Pain Section -->
+  <!-- Solution/How It Works Section -->
+  <!-- Social Proof Section -->
+  <!-- Features/Benefits Section -->
+  <!-- FAQ/Objection Section -->
+  <!-- Final CTA Section -->
+  <!-- Footer -->
+</body>
+</html>
+```
 
-3. **CTA Button:** Action-oriented, specific, low-friction. "See It In Action" beats "Submit." "Book My Free Demo" beats "Contact Us." The button text should complete the sentence "I want to ___."
+### Design Standards (MINIMUM quality bar)
+- Load a Google Font — NEVER use just Arial, Times, or system defaults. Choose something distinctive: Poppins, DM Sans, Sora, Outfit, Plus Jakarta Sans, Manrope, or similar modern fonts.
+- Set a cohesive color palette using CSS variables at the top of your styles:
+  ```css
+  :root {
+    --primary: #1a1a2e;     /* Dark base */
+    --accent: #e94560;       /* Bold accent for CTAs */
+    --light: #f8f9fa;        /* Light backgrounds */
+    --text: #2d2d2d;         /* Body text */
+    --subtle: #6c757d;       /* Secondary text */
+  }
+  ```
+- CTA buttons must be large, high-contrast, and impossible to miss: minimum 48px height, bold text, rounded corners, hover effects
+- Generous spacing between sections: 80-120px padding
+- Mobile responsive: use `max-width` containers, flexible grids, and at least one `@media` query for screens under 768px
+- Smooth scroll: `html { scroll-behavior: smooth; }`
+- NO navigation menu on landing pages (every link is an exit). Only a sticky CTA or minimal top bar with the logo and one CTA button.
 
-NEVER put a navigation menu with 8 links on a landing page. Every link is an exit. Landing pages have ONE path: down the page to the CTA.
+### Content Rules
+- The hero headline states the TRANSFORMATION, not the product name. "Stop Losing Clients to Missed Follow-Ups" not "Welcome to Our Service"
+- Write REAL copy for every section — at least 2-3 sentences per section. Never just a heading with no body text.
+- Include at least 3 testimonial-style quotes (can be placeholder names but real-sounding copy)
+- The FAQ section should address 3-4 real objections
+- Every section has a purpose. If you can't explain why a section exists, delete it.
 
-## Page Structure That Converts
+### Visual Design
+- Use background color changes between sections to create visual rhythm (alternate between white and light grey, or use the brand's colors)
+- Add subtle CSS effects: `box-shadow` on cards, `transition` on buttons, gradient backgrounds for the hero
+- Use emoji or Unicode symbols as visual accents if no images are available (✓ for checkmarks, → for CTAs, ★ for ratings)
+- Create visual hierarchy: hero headline should be 48-64px, section headings 32-40px, body text 16-18px
+- Add a gradient or image background to the hero section — never a plain white hero
 
-### Section 1: Hero (above the fold)
-- Headline (transformation-focused)
-- Subheadline (how it works, one sentence)
-- CTA button (primary action)
-- Optional: hero image, product screenshot, or short video
+### What NEVER to Create
+- A page with just bullet-point links (About, Benefits, Author, Contact)
+- A page with no styling
+- A page with placeholder text like "Lorem ipsum" or "[Add content here]"
+- A page under 100 lines of code
+- A page that looks like a Word document
+- A page with no CTA buttons
+- A page with no color, no font choices, no visual design
 
-### Section 2: Problem Agitation
-- Name the pain the visitor is experiencing
-- Be specific — use their language, their frustrations
-- "You know the feeling: it's 10pm and you realize you forgot to follow up with that hot lead from Tuesday."
-- This section exists to make them nod and think "yes, that's me"
+## Page Architecture
 
-### Section 3: Solution / How It Works
-- 3 steps max. Simple. Visual.
-- Step 1: "Tell Sarah what you need"
-- Step 2: "She handles it autonomously"
-- Step 3: "You review the results"
-- Icons or illustrations for each step. Never a wall of text.
+### Hero Section (above the fold — MOST IMPORTANT)
+- Large headline: transformation-focused (48-64px)
+- Subheadline: explains the how in one sentence (18-22px)
+- CTA button: action-oriented text ("See It In Action", "Get Your Copy", "Book a Free Demo")
+- Optional: background gradient, image, or video placeholder
+- This section alone should make someone understand what the page is about
 
-### Section 4: Social Proof
-- Testimonials with NAMES and PHOTOS (or at minimum, first name + role)
-- Specific results: "Sarah saved me 15 hours a week" > "Great product!"
-- If no testimonials yet, use: metrics, case study preview, "trusted by X companies", or logos
+### Problem Agitation
+- Name the specific pain the visitor experiences
+- Use their language, their frustrations
+- 2-3 short paragraphs that make them nod
 
-### Section 5: Features/Benefits
-- Benefits, not features. "Never miss a follow-up" not "Automated email sequences"
-- 3-6 items max. Each one is a mini pain→solution
-- Icon + short headline + one sentence
+### Solution (How It Works)
+- 3 steps maximum, with icons or numbers
+- Each step: icon + short title + one sentence
+- Visual: use a flex/grid layout, not a list
 
-### Section 6: Objection Handling
-- FAQ section or direct objection addressing
-- "But what about..." for the top 3-4 concerns
-- Cost, security, complexity, "will it actually work for MY business"
-- Answer honestly and specifically
+### Social Proof
+- 2-3 testimonial cards with name, role, and quote
+- Use a card layout with subtle shadows
+- If real testimonials aren't available, write realistic-sounding ones
 
-### Section 7: Final CTA
+### Features/Benefits
+- 3-6 items in a grid layout
+- Each: icon/emoji + headline + one sentence
+- Benefits not features: "Never miss a follow-up" not "Automated sequences"
+
+### FAQ / Objection Handling
+- 3-4 common questions with answers
+- Accordion style or simple Q&A format
+- Address: cost, complexity, trust, "will it work for me"
+
+### Final CTA
 - Repeat the primary CTA
-- Add urgency only if it's REAL (limited spots, launch pricing, deadline)
-- Restate the transformation: "Ready to stop losing leads?"
+- Restate the transformation
+- Large button, high contrast
 
-## Design Principles
+### Footer
+- Company name, year
+- Minimal links (privacy, terms)
+- Contact info if appropriate
 
-### Typography
-- One font family max (with weight variations for hierarchy)
-- Headlines: bold, large (36-48px), high contrast
-- Body: regular weight, comfortable reading size (16-18px)
-- Line height: 1.5-1.7 for body text
+## Example: What Good Looks Like
 
-### Color
-- Use the client's brand colors as primary
-- One accent color for CTAs (high contrast against the background)
-- CTA buttons should be the MOST visually prominent element on the page
-- Dark text on light background for readability (or vice versa for dark themes)
-- If no brand colors given: default to clean whites, deep navy text, and a warm accent (coral, amber, or green) for CTAs
-
-### Spacing
-- Generous whitespace between sections (80-120px)
-- Don't cram content. Breathing room signals quality.
-- Mobile-first: everything must work on a phone screen
-
-### Images
-- Real photos > stock photos > illustrations > no images
-- If using stock: avoid the generic "business people shaking hands" look
-- Screenshots of the actual product are the highest-converting image type
-- Optimize for fast loading — a slow page kills conversions
-
-## Technical Output
-
-When creating a website mockup or landing page, output as a single HTML file with:
-- Inline CSS (no external stylesheets)
-- Mobile-responsive (use media queries or flexible units)
-- Google Fonts loaded via CDN if custom fonts needed
+A 400-line HTML file with:
+- Google Font loaded (e.g., 'Plus Jakarta Sans')
+- CSS variables for consistent colors
+- Gradient hero with 56px bold headline
+- Three "how it works" steps in a flex row
+- Testimonial cards with box shadows
+- Alternating section backgrounds
+- Large coral/amber CTA buttons with hover effects
+- Mobile-responsive media queries
 - Smooth scroll behavior
-- CTA buttons that stand out visually
-- Clean, semantic HTML
+- Real, compelling copy throughout
 
-Use `create_artifact` to deliver the HTML file so the client can preview it immediately.
-
-## Common Mistakes to Avoid
-
-- Navigation menus on landing pages (every link is an exit)
-- Multiple CTAs competing for attention (pick ONE action)
-- Headlines about the company instead of the visitor's problem
-- No social proof section
-- CTA buttons that say "Submit" or "Click Here"
-- Walls of text with no visual breaks
-- Forgetting mobile responsiveness
-- Generic stock photos that don't match the brand
-- Not addressing the main objection directly
-- Putting the CTA only at the bottom (repeat it at least twice)
-- Using the client's internal jargon instead of the visitor's language
+This is the MINIMUM quality bar. Every website you create should be something the client would be proud to show someone.
