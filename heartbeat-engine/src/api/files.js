@@ -141,7 +141,7 @@ router.get('/artifacts', async (req, res) => {
   try {
     await ensureTable(pool);
     const { status, limit = 50, sessionId } = req.query;
-    let query = 'SELECT id, file_id, session_id, name, description, file_type, mime_type, file_size, status, created_by, created_at, approved_at, metadata FROM artifacts';
+    let query = 'SELECT id, file_id, session_id, name, description, file_type, mime_type, file_size, status, created_by, created_at, approved_at, metadata, slug, published FROM artifacts';
     const conditions = [];
     const params = [];
 
@@ -166,8 +166,11 @@ router.get('/artifacts', async (req, res) => {
       createdAt: r.created_at,
       approvedAt: r.approved_at,
       metadata: r.metadata,
+      slug: r.slug || null,
+      published: r.published || false,
       downloadUrl: `/api/files/download/${r.file_id}`,
-      previewUrl: `/api/files/preview/${r.file_id}`
+      previewUrl: `/api/files/preview/${r.file_id}`,
+      publishUrl: r.slug ? `/p/${r.slug}` : null
     }));
 
     return res.json({ artifacts, total: artifacts.length });
@@ -422,6 +425,60 @@ router.delete('/publish-site/:fileId', async (req, res) => {
   try {
     await ensureTable(pool);
     await pool.query('UPDATE artifacts SET slug = NULL, published = false WHERE file_id = $1', [req.params.fileId]);
+    return res.json({ success: true });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+// ── PUBLISH WITH SLUG ───────────────────────────────────────────────────────
+// POST /api/files/artifacts/:fileId/publish — set slug and make live at /p/:slug
+router.post('/artifacts/:fileId/publish', async (req, res) => {
+  try {
+    const pool = await getPool();
+    await ensureTable(pool);
+    const { fileId } = req.params;
+    let { slug } = req.body;
+
+    if (!slug) return res.status(400).json({ error: 'slug is required' });
+
+    // Sanitize slug: lowercase, alphanumeric + hyphens only
+    slug = slug.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').slice(0, 100);
+    if (!slug) return res.status(400).json({ error: 'Invalid slug' });
+
+    // Check slug uniqueness (excluding this file)
+    const existing = await pool.query('SELECT file_id FROM artifacts WHERE slug = $1 AND file_id != $2', [slug, fileId]);
+    if (existing.rows.length > 0) {
+      return res.status(409).json({ error: `Slug "${slug}" is already taken`, taken: true });
+    }
+
+    const result = await pool.query(
+      `UPDATE artifacts SET slug = $1, published = true WHERE file_id = $2 RETURNING file_id, name, slug`,
+      [slug, fileId]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Artifact not found' });
+
+    logger.info('Artifact published', { fileId, slug });
+    return res.json({
+      success: true,
+      slug,
+      url: `/p/${slug}`,
+      artifact: result.rows[0]
+    });
+  } catch (error) {
+    return res.status(500).json({ error: 'Publish failed: ' + error.message });
+  }
+});
+
+// POST /api/files/artifacts/:fileId/unpublish
+router.post('/artifacts/:fileId/unpublish', async (req, res) => {
+  try {
+    const pool = await getPool();
+    const result = await pool.query(
+      `UPDATE artifacts SET published = false WHERE file_id = $1 RETURNING file_id, name, slug`,
+      [req.params.fileId]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Artifact not found' });
     return res.json({ success: true });
   } catch (error) {
     return res.status(500).json({ error: error.message });

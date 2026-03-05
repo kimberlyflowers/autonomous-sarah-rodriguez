@@ -2029,6 +2029,10 @@ export default function App() {
   const [editorFullscreen,setEditorFullscreen]=useState(false);
   const [publishOpen,setPublishOpen]=useState(false);
   const [publishSlug,setPublishSlug]=useState('');
+  const [publishError,setPublishError]=useState('');
+  const [publishedUrl,setPublishedUrl]=useState(null);
+  const [publishOpen,setPublishOpen]=useState(false);
+  const [publishSlug,setPublishSlug]=useState('');
   const [publishUrl,setPublishUrl]=useState(null);
   const [publishError,setPublishError]=useState(null);
   const [heartbeatInterval,setHeartbeatInterval]=useState("0 */6 * * *");
@@ -3264,7 +3268,7 @@ export default function App() {
                               const pr=await fetch(`/api/files/preview/${f.fileId}`);
                               if(pr.headers.get('content-type')?.includes('json')){
                                 const pd=await pr.json();
-                                setPreviewFile({name:f.name,content:pd.content||'No content',fileId:f.fileId,fileType:f.fileType});
+                                setPreviewFile({name:f.name,content:pd.content||'No content',fileId:f.fileId,fileType:f.fileType,slug:f.slug||null});
                               } else {
                                 setPreviewFile({name:f.name,content:'Binary file — use Download button',fileId:f.fileId,fileType:f.fileType});
                               }
@@ -3291,7 +3295,11 @@ export default function App() {
                                 await fetch(`/api/files/artifacts/${f.fileId}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'approved'})});
                                 setFiles(p=>p.map(x=>x.fileId===f.fileId?{...x,status:'approved'}:x));
                               }} style={{padding:"4px 10px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#34a853,#2d9248)",cursor:"pointer",fontSize:11,fontWeight:700,color:"#fff"}}>✓ Approve</button>}
-                              {ext==='html'&&<a href={`/api/files/publish/${f.fileId}`} target="_blank" rel="noopener noreferrer" style={{padding:"4px 10px",borderRadius:6,border:"1px solid "+c.ac,background:c.ac+"12",cursor:"pointer",fontSize:11,fontWeight:700,color:c.ac,textDecoration:"none"}}>↗ Publish</a>}
+                              {ext==='html'&&(f.slug?
+                                <a href={`/p/${f.slug}`} target="_blank" rel="noopener noreferrer" style={{padding:"4px 10px",borderRadius:6,border:"1px solid "+c.gr,background:c.gr+"12",cursor:"pointer",fontSize:11,fontWeight:700,color:c.gr,textDecoration:"none"}}>✓ Live</a>
+                              :
+                                <button onClick={async(e)=>{e.stopPropagation();const slug=prompt('Choose a URL slug for this page:\n\nyoursite.com/p/___',f.name?.replace(/\.[^.]+$/,'').toLowerCase().replace(/[^a-z0-9]+/g,'-'));if(!slug)return;const r=await fetch(`/api/files/artifacts/${f.fileId}/publish`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({slug})});const d=await r.json();if(d.success){setFiles(p=>p.map(x=>x.fileId===f.fileId?{...x,slug:d.slug,published:true}:x));window.open(`/p/${d.slug}`,'_blank');}else{alert(d.error||'Failed');}}} style={{padding:"4px 10px",borderRadius:6,border:"1px solid "+c.ac,background:c.ac+"12",cursor:"pointer",fontSize:11,fontWeight:700,color:c.ac,fontFamily:"inherit"}}>🚀 Publish</button>
+                              )}
                               <a href={`/api/files/download/${f.fileId}`} download style={{padding:"4px 10px",borderRadius:6,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:11,fontWeight:600,color:c.ac,textDecoration:"none"}}>↓ Download</a>
                               <button onClick={async()=>{
                                 if(confirm('Remove this file?')){
@@ -3564,8 +3572,11 @@ export default function App() {
               {editMode?(
                 <button onClick={()=>setEditorFullscreen(!editorFullscreen)} style={{padding:"5px 12px",borderRadius:8,border:"none",background:c.gradient,fontSize:11,fontWeight:700,color:"#fff",cursor:"pointer",fontFamily:"inherit"}}>{editorFullscreen?"↙ Exit Full Screen":"↗ Full Screen"}</button>
               ):(
-                <a href={`/api/files/publish/${previewFile.fileId}`} target="_blank" rel="noopener noreferrer" style={{padding:"5px 12px",borderRadius:8,border:"none",background:c.gradient,fontSize:11,fontWeight:700,color:"#fff",textDecoration:"none"}}>↗ Full Screen</a>
+                <a href={previewFile.slug?`/p/${previewFile.slug}`:`/api/files/publish/${previewFile.fileId}`} target="_blank" rel="noopener noreferrer" style={{padding:"5px 12px",borderRadius:8,border:"none",background:c.gradient,fontSize:11,fontWeight:700,color:"#fff",textDecoration:"none"}}>↗ {previewFile.slug?"View Live":"Full Screen"}</a>
               )}
+              <button onClick={()=>{setPublishOpen(true);setPublishSlug(previewFile.slug||previewFile.name?.replace(/\.[^.]+$/,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'');setPublishError('');setPublishedUrl(previewFile.slug?`${window.location.origin}/p/${previewFile.slug}`:null);}} style={{padding:"5px 12px",borderRadius:8,border:previewFile.slug?"1px solid "+c.gr:"1px solid "+c.ac,background:previewFile.slug?c.gr+"15":c.ac+"15",fontSize:11,fontWeight:700,color:previewFile.slug?c.gr:c.ac,cursor:"pointer",fontFamily:"inherit"}}>
+                {previewFile.slug?"✓ Published":"🚀 Publish"}
+              </button>
               <a href={`/api/files/download/${previewFile.fileId}`} download style={{padding:"5px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.cd,fontSize:11,fontWeight:600,color:c.ac,textDecoration:"none"}}>↓</a>
               <button onClick={()=>{setPreviewFile(null);setEditMode(false);setEditorFullscreen(false);}} style={{width:30,height:30,borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:14,color:c.so,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
             </div>
@@ -3762,6 +3773,64 @@ export default function App() {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Publish Dialog ── */}
+      {publishOpen&&previewFile&&(
+        <div onClick={()=>setPublishOpen(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:250,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:480,background:c.cd,borderRadius:16,border:"1px solid "+c.ln,overflow:"hidden",boxShadow:"0 20px 60px rgba(0,0,0,.4)"}}>
+            <div style={{padding:"20px 24px",borderBottom:"1px solid "+c.ln,background:"linear-gradient(135deg, rgba(244,162,97,0.08), rgba(231,111,139,0.08))"}}>
+              <div style={{fontSize:18,fontWeight:700,color:c.tx}}>🚀 Publish Page</div>
+              <div style={{fontSize:12,color:c.so,marginTop:4}}>Give your page a clean URL that anyone can visit</div>
+            </div>
+            <div style={{padding:24}}>
+              <div style={{fontSize:12,fontWeight:700,color:c.so,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>Page URL</div>
+              <div style={{display:"flex",alignItems:"center",gap:0,marginBottom:6}}>
+                <div style={{padding:"10px 12px",borderRadius:"8px 0 0 8px",border:"1px solid "+c.ln,borderRight:"none",background:c.sf,fontSize:12,color:c.so,whiteSpace:"nowrap",flexShrink:0}}>{window.location.origin}/p/</div>
+                <input value={publishSlug} onChange={e=>{setPublishSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g,'-'));setPublishError('');setPublishedUrl(null);}} placeholder="summer-camp-landing" style={{flex:1,padding:"10px 12px",borderRadius:"0 8px 8px 0",border:"1px solid "+c.ln,fontSize:13,fontFamily:"monospace",background:c.inp,color:c.tx,boxSizing:"border-box",minWidth:0}}/>
+              </div>
+              {publishError&&<div style={{fontSize:11,color:"#ea4335",marginBottom:8}}>{publishError}</div>}
+              {publishedUrl&&(
+                <div style={{padding:12,borderRadius:8,background:c.gr+"12",border:"1px solid "+c.gr+"30",marginBottom:12}}>
+                  <div style={{fontSize:11,fontWeight:600,color:c.gr,marginBottom:4}}>✓ Published! Share this link:</div>
+                  <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                    <input value={publishedUrl} readOnly style={{flex:1,padding:"6px 10px",borderRadius:6,border:"1px solid "+c.ln,fontSize:12,fontFamily:"monospace",background:c.inp,color:c.tx,boxSizing:"border-box"}} onClick={e=>e.target.select()}/>
+                    <button onClick={()=>{navigator.clipboard?.writeText(publishedUrl);}} style={{padding:"6px 12px",borderRadius:6,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:11,fontWeight:600,color:c.tx,fontFamily:"inherit",flexShrink:0}}>Copy</button>
+                    <a href={publishedUrl} target="_blank" rel="noopener noreferrer" style={{padding:"6px 12px",borderRadius:6,border:"none",background:c.gradient,fontSize:11,fontWeight:600,color:"#fff",textDecoration:"none",flexShrink:0}}>Open</a>
+                  </div>
+                  <div style={{fontSize:10,color:c.so,marginTop:6}}>Anyone with this link can view the page. Forward your custom domain here for branded URLs.</div>
+                </div>
+              )}
+              <div style={{display:"flex",gap:8,marginTop:publishedUrl?0:12}}>
+                <button onClick={async()=>{
+                  if(!publishSlug.trim())return setPublishError('Enter a URL slug');
+                  try{
+                    const r=await fetch(`/api/files/artifacts/${previewFile.fileId}/publish`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({slug:publishSlug.trim()})});
+                    const d=await r.json();
+                    if(d.success){
+                      const url=`${window.location.origin}/p/${d.slug}`;
+                      setPublishedUrl(url);setPublishError('');
+                      setPreviewFile(p=>({...p,slug:d.slug}));
+                    } else {
+                      setPublishError(d.error||'Publish failed');
+                    }
+                  }catch(e){setPublishError('Network error');}
+                }} style={{flex:1,padding:"12px 0",borderRadius:10,border:"none",background:c.gradient,cursor:"pointer",fontSize:14,fontWeight:700,color:"#fff",fontFamily:"inherit"}}>
+                  {publishedUrl?"Update URL":"🚀 Publish"}
+                </button>
+                {previewFile.slug&&(
+                  <button onClick={async()=>{
+                    await fetch(`/api/files/artifacts/${previewFile.fileId}/unpublish`,{method:'POST'});
+                    setPublishedUrl(null);setPublishOpen(false);
+                    setPreviewFile(p=>({...p,slug:null}));
+                  }} style={{padding:"12px 16px",borderRadius:10,border:"1px solid rgba(234,67,53,0.3)",background:"transparent",cursor:"pointer",fontSize:13,fontWeight:600,color:"#ea4335",fontFamily:"inherit"}}>
+                    Unpublish
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}

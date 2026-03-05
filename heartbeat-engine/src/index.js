@@ -182,8 +182,8 @@ app.use('/api/browser', browserRoutes);
 app.use('/api/skills', skillsRoutes);
 app.use('/api/voice', voiceRoutes);
 
-// ── PUBLIC SITES — clean URLs for published pages (/s/summer-camp) ──────────
-app.get('/s/:slug', async (req, res) => {
+// ── PUBLIC SITES — clean URLs for published pages (/p/summer-camp) ──────────
+const servePublishedPage = async (req, res) => {
   try {
     const { getSharedPool } = await import('./database/pool.js');
     const pool = getSharedPool();
@@ -216,7 +216,9 @@ app.get('/s/:slug', async (req, res) => {
   } catch (e) {
     return res.status(500).send('Server error');
   }
-});
+};
+app.get('/p/:slug', servePublishedPage);
+app.get('/s/:slug', servePublishedPage);
 
 // Serve React static files
 app.use(express.static(path.join(__dirname, '../dashboard/dist')));
