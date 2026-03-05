@@ -1470,12 +1470,16 @@ function BusinessProfilePage({c,mob,userImg,setUserImg}){
           {userImg?<img src={userImg} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>:"K"}
           <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{
             const f=e.target.files[0]; if(!f) return;
-            const r=new FileReader();
-            r.onload=ev=>{
-              setUserImg(ev.target.result);
-              fetch('/api/dashboard/user-avatar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({avatar:ev.target.result})}).catch(()=>{});
+            const img=new Image();
+            img.onload=()=>{
+              const max=200;const scale=Math.min(max/img.width,max/img.height,1);
+              const cv=document.createElement('canvas');cv.width=img.width*scale;cv.height=img.height*scale;
+              cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
+              const d=cv.toDataURL('image/jpeg',0.8);
+              setUserImg(d);
+              fetch('/api/dashboard/user-avatar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({avatar:d})}).catch(()=>{});
             };
-            r.readAsDataURL(f);
+            img.src=URL.createObjectURL(f);
           }}/>
         </label>
         <div>
@@ -1792,13 +1796,24 @@ export default function App() {
   const [userImg,setUserImg]=useState(null);
   const userImgRef=useRef(null);
 
-  // Load user avatar on mount
+  // Load user avatar + agent avatar on mount
   useEffect(()=>{
     fetch('/api/dashboard/user-avatar').then(r=>r.json()).then(d=>{if(d.avatar)setUserImg(d.avatar);}).catch(()=>{});
+    fetch('/api/agent/profile').then(r=>r.json()).then(d=>{if(d.profile?.avatarUrl)setAgentImgUrl(d.profile.avatarUrl);}).catch(()=>{});
   },[]);
   const [projO,setProjO]=useState(false);
   const [activeProj,setActiveProj]=useState("Petal Core Beauty");
+  const [bizLogo,setBizLogo]=useState(null);
+  const [bizName,setBizName]=useState(null);
   const projects=["Petal Core Beauty","Youth Empowerment School","BLOOM Internal"];
+
+  // Load business profile for logo
+  useEffect(()=>{
+    fetch('/api/dashboard/business-profile').then(r=>r.json()).then(d=>{
+      if(d.profile?.logoUrl)setBizLogo(d.profile.logoUrl);
+      if(d.profile?.name){setBizName(d.profile.name);setActiveProj(d.profile.name);}
+    }).catch(()=>{});
+  },[]);
   const [files,setFiles]=useState([]);
   const [filesLoading,setFilesLoading]=useState(false);
   const [filesSearch,setFilesSearch]=useState('');
@@ -1975,7 +1990,7 @@ export default function App() {
                   {/* Project switcher */}
                   <div style={{padding:"10px 14px 0",flexShrink:0,position:"relative"}}>
                     <button onClick={()=>setProjO(!projO)} style={{width:"100%",padding:"8px 10px",borderRadius:10,border:"1px solid "+c.ln,background:c.sf,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between",fontSize:11,fontWeight:600,color:c.so}}>
-                      <span style={{display:"flex",alignItems:"center",gap:6}}><span style={{fontSize:14}}>🏢</span><span style={{color:c.tx,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:140}}>{activeProj}</span></span>
+                      <span style={{display:"flex",alignItems:"center",gap:6}}>{bizLogo?<img src={bizLogo} style={{width:18,height:18,borderRadius:4,objectFit:"contain"}} alt=""/>:<span style={{fontSize:14}}>🏢</span>}<span style={{color:c.tx,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:140}}>{activeProj}</span></span>
                       <span style={{fontSize:10,transition:"transform .2s",display:"inline-block",transform:projO?"rotate(180deg)":"rotate(0deg)"}}>▾</span>
                     </button>
                     {projO&&(
@@ -2069,11 +2084,16 @@ export default function App() {
                         {userImg?<img src={userImg} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>:"K"}
                         <input ref={userImgRef} type="file" accept="image/*" style={{display:"none"}} onChange={e=>{
                           const f=e.target.files[0]; if(!f) return;
-                          const r=new FileReader();
-                          r.onload=ev=>{setUserImg(ev.target.result);
-                            fetch('/api/dashboard/user-avatar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({avatar:ev.target.result})}).catch(()=>{});
+                          const img=new Image();
+                          img.onload=()=>{
+                            const max=200;const scale=Math.min(max/img.width,max/img.height,1);
+                            const cv=document.createElement('canvas');cv.width=img.width*scale;cv.height=img.height*scale;
+                            cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
+                            const d=cv.toDataURL('image/jpeg',0.8);
+                            setUserImg(d);
+                            fetch('/api/dashboard/user-avatar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({avatar:d})}).catch(()=>{});
                           };
-                          r.readAsDataURL(f);
+                          img.src=URL.createObjectURL(f);
                         }}/>
                       </label>
                       <div style={{flex:1,textAlign:"left"}}><div style={{fontSize:13,fontWeight:600,color:c.tx}}>Kimberly</div><div style={{fontSize:11,color:c.so}}>Owner</div></div>
@@ -2575,13 +2595,24 @@ export default function App() {
                       📷
                       <input type="file" accept="image/*" style={{display:"none"}} onChange={async(e)=>{
                         const file=e.target.files[0]; if(!file) return;
-                        const reader=new FileReader();
-                        reader.onload=async(ev)=>{
-                          const dataUrl=ev.target.result;
+                        // Resize to max 200px to keep DB payload small
+                        const img=new Image();
+                        img.onload=async()=>{
+                          const max=200;
+                          const scale=Math.min(max/img.width,max/img.height,1);
+                          const canvas=document.createElement('canvas');
+                          canvas.width=img.width*scale;
+                          canvas.height=img.height*scale;
+                          canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);
+                          const dataUrl=canvas.toDataURL('image/jpeg',0.8);
                           setAgentImgUrl(dataUrl);
-                          try{await fetch('/api/agent/profile',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({avatarUrl:dataUrl})});}catch(err){console.error(err);}
+                          try{
+                            const r=await fetch('/api/agent/profile',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({avatarUrl:dataUrl})});
+                            const d=await r.json();
+                            if(!d.success) console.error('Agent avatar save failed:',d);
+                          }catch(err){console.error('Agent avatar upload error:',err);}
                         };
-                        reader.readAsDataURL(file);
+                        img.src=URL.createObjectURL(file);
                       }}/>
                     </label>
                   </div>
