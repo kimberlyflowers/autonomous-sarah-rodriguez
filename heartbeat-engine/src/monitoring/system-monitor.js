@@ -32,8 +32,8 @@ export class SystemMonitor {
     this.healthStatus = HEALTH_STATUS.HEALTHY;
 
     // Monitoring intervals
-    this.healthCheckInterval = 30000; // 30 seconds
-    this.metricsInterval = 60000; // 1 minute
+    this.healthCheckInterval = 300000; // 5 minutes (was 30s — way too aggressive)
+    this.metricsInterval = 600000; // 10 minutes (was 1 min)
     this.cleanupInterval = 3600000; // 1 hour
 
     // Thresholds
