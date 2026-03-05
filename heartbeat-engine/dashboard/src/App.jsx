@@ -1892,6 +1892,8 @@ export default function App() {
   const [bulkImportOpen,setBulkImportOpen]=useState(false);
   const [bulkText,setBulkText]=useState('');
   const [calMonth,setCalMonth]=useState(new Date());
+  const [calSelDay,setCalSelDay]=useState(null);
+  const [calTask,setCalTask]=useState({name:'',instruction:'',frequency:'daily',runTime:'09:00'});
   const [agentImgUrl,setAgentImgUrl]=useState(null);
 
   const loadProfile = async () => {
@@ -2730,7 +2732,7 @@ export default function App() {
                               const hasFailed=runs.some(r=>r.status==="failed");
                               const hasPending=runs.some(r=>r.status==="pending");
                               return(
-                                <div key={d} style={{minHeight:mob?60:80,borderRadius:8,border:isToday(d)?"2px solid "+c.ac:"1px solid "+c.ln,background:isToday(d)?c.ac+"08":c.sf,padding:"4px 6px",overflow:"hidden"}}>
+                                <div key={d} onClick={()=>setCalSelDay(calSelDay===d?null:d)} style={{minHeight:mob?60:80,borderRadius:8,border:calSelDay===d?"2px solid "+c.ac:isToday(d)?"2px solid "+c.ac+"80":"1px solid "+c.ln,background:calSelDay===d?c.ac+"12":isToday(d)?c.ac+"08":c.sf,padding:"4px 6px",overflow:"hidden",cursor:"pointer",transition:"border-color .15s, background .15s"}}>
                                   <div style={{fontSize:12,fontWeight:isToday(d)?700:500,color:isToday(d)?c.ac:isPast?c.fa:c.tx,marginBottom:3}}>{d}</div>
                                   {runs.map((r,ri)=>{
                                     const ic={content:"📝",email:"✉️",research:"🔍",crm:"📊",custom:"⚡"}[r.taskType]||"⚡";
@@ -2756,7 +2758,38 @@ export default function App() {
                             <span style={{fontSize:11,color:c.so,display:"flex",alignItems:"center",gap:4}}><span style={{width:8,height:8,borderRadius:2,background:c.gr+"40"}}/> Completed</span>
                             <span style={{fontSize:11,color:c.so,display:"flex",alignItems:"center",gap:4}}><span style={{width:8,height:8,borderRadius:2,background:c.err+"40"}}/> Failed</span>
                             <span style={{fontSize:11,color:c.so,display:"flex",alignItems:"center",gap:4}}><span style={{width:8,height:8,borderRadius:2,background:c.cd,border:"1px solid "+c.ln}}/> Scheduled</span>
+                            <span style={{fontSize:11,color:c.fa}}>Click a day to add a task</span>
                           </div>
+
+                          {/* Add task from calendar */}
+                          {calSelDay&&(
+                            <div style={{marginTop:16,padding:16,borderRadius:12,border:"2px solid "+c.ac+"40",background:c.sf}}>
+                              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+                                <div style={{fontSize:13,fontWeight:700,color:c.tx}}>
+                                  Add task — {new Date(y,m,calSelDay).toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'})}
+                                </div>
+                                <button onClick={()=>setCalSelDay(null)} style={{width:24,height:24,borderRadius:6,border:"1px solid "+c.ln,background:"transparent",cursor:"pointer",fontSize:12,color:c.so,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+                              </div>
+                              <input value={calTask.name} onChange={e=>setCalTask(p=>({...p,name:e.target.value}))} placeholder="Task name..." style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,fontSize:13,color:c.tx,marginBottom:6,fontFamily:"inherit",boxSizing:"border-box"}}/>
+                              <textarea value={calTask.instruction} onChange={e=>setCalTask(p=>({...p,instruction:e.target.value}))} placeholder="What should Sarah do?" rows={2} style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,fontSize:13,color:c.tx,marginBottom:6,fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
+                              <div style={{display:"flex",gap:6,marginBottom:10}}>
+                                <select value={calTask.frequency} onChange={e=>setCalTask(p=>({...p,frequency:e.target.value}))} style={{flex:1,padding:"8px 10px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,fontSize:12,color:c.tx,fontFamily:"inherit"}}>
+                                  <option value="daily">Daily</option><option value="weekdays">Weekdays</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option>
+                                </select>
+                                <input type="time" value={calTask.runTime} onChange={e=>setCalTask(p=>({...p,runTime:e.target.value}))} style={{width:110,padding:"8px 10px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,fontSize:12,color:c.tx,fontFamily:"inherit"}}/>
+                              </div>
+                              <button onClick={async()=>{
+                                if(!calTask.name||!calTask.instruction) return;
+                                const taskType=calTask.instruction.match(/blog|post|write|content/i)?'content':calTask.instruction.match(/email|newsletter/i)?'email':calTask.instruction.match(/crm|contact|lead/i)?'crm':'custom';
+                                await fetch('/api/agent/tasks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...calTask,taskType})});
+                                setCalTask({name:'',instruction:'',frequency:'daily',runTime:'09:00'});
+                                setCalSelDay(null);
+                                loadActivity();
+                              }} disabled={!calTask.name||!calTask.instruction} style={{width:"100%",padding:"10px 0",borderRadius:8,border:"none",background:calTask.name&&calTask.instruction?c.gradient:"#444",cursor:calTask.name&&calTask.instruction?"pointer":"not-allowed",fontSize:13,fontWeight:700,color:"#fff",fontFamily:"inherit"}}>
+                                Add to Schedule
+                              </button>
+                            </div>
+                          )}
                         </>
                       );
                     })()}
