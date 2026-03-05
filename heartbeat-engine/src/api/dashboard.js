@@ -10,8 +10,8 @@ const logger = createLogger('dashboard-api');
 
 // Get database pool - using the same pattern as existing code
 async function getPool() {
-  const { createPool } = await import('../../database/setup.js');
-  return createPool();
+  const { getSharedPool } = await import('../database/pool.js');
+  return getSharedPool();
 }
 
 // GET /api/dashboard/status - Agent status and configuration
@@ -57,7 +57,7 @@ router.get('/cycles', async (req, res) => {
       WHERE agent_id = $1
     `, [agentId]);
 
-    await pool.end();
+    
 
     res.json({
       cycles: result.rows.map(row => ({
@@ -114,7 +114,7 @@ router.get('/actions', async (req, res) => {
       LIMIT $2 OFFSET $3
     `, [agentId, limit, offset]);
 
-    await pool.end();
+    
 
     res.json({
       actions: result.rows.map(row => ({
@@ -164,7 +164,7 @@ router.get('/rejections', async (req, res) => {
       LIMIT $2 OFFSET $3
     `, [agentId, limit, offset]);
 
-    await pool.end();
+    
 
     res.json({
       rejections: result.rows.map(row => ({
@@ -217,7 +217,7 @@ router.get('/handoffs', async (req, res) => {
       LIMIT $2 OFFSET $3
     `, [agentId, limit, offset]);
 
-    await pool.end();
+    
 
     res.json({
       handoffs: result.rows.map(row => ({
@@ -288,7 +288,7 @@ router.get('/metrics', async (req, res) => {
       logger.warn('Could not check graduation eligibility:', error.message);
     }
 
-    await pool.end();
+    
 
     const metrics = metricsResult.rows[0];
     const trust = trustResult.rows[0] || {};

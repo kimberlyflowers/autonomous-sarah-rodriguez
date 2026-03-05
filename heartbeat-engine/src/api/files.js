@@ -11,13 +11,13 @@ import fs from 'fs';
 const logger = createLogger('files-api');
 const router = Router();
 
-// File storage directory (persistent across deploys via Railway volume or /tmp for now)
-const FILE_STORAGE = process.env.FILE_STORAGE_PATH || '/tmp/bloom-files';
+// File storage — use Railway volume if available, fallback to app directory (survives within deploy)
+const FILE_STORAGE = process.env.FILE_STORAGE_PATH || path.join(process.cwd(), 'bloom-files');
 if (!fs.existsSync(FILE_STORAGE)) fs.mkdirSync(FILE_STORAGE, { recursive: true });
 
 async function getPool() {
-  const { createPool } = await import('../../database/setup.js');
-  return createPool();
+  const { getSharedPool } = await import('../database/pool.js');
+  return getSharedPool();
 }
 
 // Auto-create artifacts table
@@ -125,7 +125,7 @@ router.post('/artifacts', async (req, res) => {
   } catch (error) {
     logger.error('Create artifact error', { error: error.message });
     return res.status(500).json({ error: 'Failed to create artifact' });
-  } finally { await pool.end(); }
+  }
 });
 
 // ── LIST ARTIFACTS ──────────────────────────────────────────────────────────
@@ -168,7 +168,7 @@ router.get('/artifacts', async (req, res) => {
   } catch (error) {
     logger.error('List artifacts error', { error: error.message });
     return res.status(500).json({ error: 'Failed to list artifacts' });
-  } finally { await pool.end(); }
+  }
 });
 
 // ── APPROVE / REJECT ARTIFACT ───────────────────────────────────────────────
@@ -208,7 +208,7 @@ router.patch('/artifacts/:fileId', async (req, res) => {
   } catch (error) {
     logger.error('Update artifact error', { error: error.message, stack: error.stack });
     return res.status(500).json({ error: 'Failed to update artifact: ' + error.message });
-  } finally { if (pool) await pool.end().catch(()=>{}); }
+  }
 });
 
 // ── DOWNLOAD FILE ───────────────────────────────────────────────────────────
@@ -242,7 +242,7 @@ router.get('/download/:fileId', async (req, res) => {
   } catch (error) {
     logger.error('Download error', { error: error.message });
     return res.status(500).json({ error: 'Download failed' });
-  } finally { await pool.end(); }
+  }
 });
 
 // ── PREVIEW FILE ────────────────────────────────────────────────────────────
@@ -280,7 +280,7 @@ router.get('/preview/:fileId', async (req, res) => {
   } catch (error) {
     logger.error('Preview error', { error: error.message });
     return res.status(500).json({ error: 'Preview failed' });
-  } finally { await pool.end(); }
+  }
 });
 
 // ── DELETE ARTIFACT ─────────────────────────────────────────────────────────
@@ -303,7 +303,7 @@ router.delete('/artifacts/:fileId', async (req, res) => {
   } catch (error) {
     logger.error('Delete artifact error', { error: error.message });
     return res.status(500).json({ error: 'Delete failed' });
-  } finally { await pool.end(); }
+  }
 });
 
 export default router;

@@ -20,8 +20,8 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // Get database pool - using the same pattern as existing code
 async function getPool() {
-  const { createPool } = await import('../database/auto-setup.js');
-  return createPool();
+  const { getSharedPool } = await import('../database/pool.js');
+  return getSharedPool();
 }
 
 // SYSTEM PROMPT — goes directly into API "system" parameter
@@ -874,7 +874,6 @@ async function executeTool(toolName, toolInput) {
         'INSERT INTO action_log (action_type, description, input_data) VALUES ($1, $2, $3) RETURNING *',
         [toolInput.type, toolInput.message, JSON.stringify(toolInput)]
       );
-      await pool.end();
       return { logged: result.rows[0] };
     }
 
@@ -1126,7 +1125,13 @@ async function chatWithSarah(userMessage, history, agentConfig) {
       for (const block of response.content) {
         if (block.type === 'tool_use') {
           toolsUsed.push({ name: block.name, input: block.input });
-          const result = await executeTool(block.name, block.input);
+          let result;
+          try {
+            result = await executeTool(block.name, block.input);
+          } catch (toolError) {
+            logger.error(`Tool ${block.name} threw error:`, toolError.message);
+            result = { success: false, error: `Tool error: ${toolError.message}` };
+          }
           toolResults.push(result);
           toolResultBlocks.push({
             type: 'tool_result',
@@ -1137,6 +1142,16 @@ async function chatWithSarah(userMessage, history, agentConfig) {
       }
       currentMessages.push({ role: 'user', content: toolResultBlocks });
     }
+  }
+  // If we got here, Sarah used all 10 rounds. Include what she did.
+  if (toolsUsed.length > 0) {
+    const toolSummary = toolsUsed.map(t => t.name).join(', ');
+    const lastResult = toolResults[toolResults.length - 1];
+    const successfulArtifact = toolResults.find(r => r?.artifact?.name);
+    if (successfulArtifact) {
+      return `Done! I created "${successfulArtifact.artifact.name}" — you can find it in your Files tab. Let me know if you want any changes!`;
+    }
+    return `I worked on this using ${toolSummary}. The task was more complex than expected — want me to try a different approach?`;
   }
   return "I got a bit carried away. Let me know if you need me to try a simpler approach.";
 }
@@ -1278,7 +1293,7 @@ router.get('/sessions', async (req, res) => {
   } catch (e) {
     logger.error('Sessions fetch error', { error: e.message });
     res.json({ sessions: [] });
-  } finally { await pool.end(); }
+  }
 });
 
 // GET /api/chat/sessions/:id — load full history
@@ -1293,7 +1308,7 @@ router.get('/sessions/:id', async (req, res) => {
   } catch (e) {
     logger.error('Session load error', { error: e.message });
     res.json({ messages: [] });
-  } finally { await pool.end(); }
+  }
 });
 
 // DELETE /api/chat/sessions/:id
@@ -1304,7 +1319,7 @@ router.delete('/sessions/:id', async (req, res) => {
     res.json({ success: true });
   } catch (e) {
     res.json({ success: false });
-  } finally { await pool.end(); }
+  }
 });
 
 // PATCH /api/chat/sessions/:id/title
@@ -1315,7 +1330,7 @@ router.patch('/sessions/:id/title', async (req, res) => {
     res.json({ success: true });
   } catch (e) {
     res.json({ success: false });
-  } finally { await pool.end(); }
+  }
 });
 
 router.post('/message', async (req, res) => {
@@ -1381,7 +1396,7 @@ router.post('/message', async (req, res) => {
       error: 'Failed to process message',
       response: "Sorry, I'm having a technical issue. Please try again."
     });
-  } finally { await pool.end(); }
+  }
 });
 
 // POST /api/chat/upload — accept files + optional message, send to Sarah as multipart content
@@ -1455,7 +1470,7 @@ router.post('/upload', async (req, res) => {
   } catch (error) {
     logger.error('Upload chat error', { error: error.message });
     return res.status(500).json({ error: 'Failed to process upload', response: "Sorry, I had trouble with that file. Please try again." });
-  } finally { await pool.end(); }
+  }
 });
 
 
