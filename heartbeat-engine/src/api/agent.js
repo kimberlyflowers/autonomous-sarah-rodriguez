@@ -6,8 +6,8 @@ const logger = createLogger('agent-api');
 const router = Router();
 
 async function getPool() {
-  const { createPool } = await import('../../database/setup.js');
-  return createPool();
+  const { getSharedPool } = await import('../database/pool.js');
+  return getSharedPool();
 }
 
 async function ensureTables(pool) {
@@ -140,7 +140,7 @@ router.get('/profile', async (req, res) => {
   } catch (error) {
     logger.error('Get profile error', { error: error.message });
     return res.status(500).json({ error: 'Failed to load profile' });
-  } finally { if (pool) await pool.end().catch(()=>{}); }
+  }
 });
 
 // PATCH /api/agent/profile
@@ -166,7 +166,7 @@ router.patch('/profile', async (req, res) => {
   } catch (error) {
     logger.error('Update profile error', { error: error.message });
     return res.status(500).json({ error: 'Failed to update profile' });
-  } finally { if (pool) await pool.end().catch(()=>{}); }
+  }
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -193,7 +193,7 @@ router.get('/tasks/runs', async (req, res) => {
     }
   } catch (error) {
     return res.json({ runs: [] });
-  } finally { if (pool) await pool.end().catch(()=>{}); }
+  }
 });
 
 // GET /api/agent/tasks
@@ -231,7 +231,7 @@ router.get('/tasks', async (req, res) => {
   } catch (error) {
     logger.error('List tasks error', { error: error.message });
     return res.status(500).json({ error: 'Failed to list tasks' });
-  } finally { if (pool) await pool.end().catch(()=>{}); }
+  }
 });
 
 // POST /api/agent/tasks
@@ -261,7 +261,7 @@ router.post('/tasks', async (req, res) => {
   } catch (error) {
     logger.error('Create task error', { error: error.message });
     return res.status(500).json({ error: 'Failed to create task' });
-  } finally { if (pool) await pool.end().catch(()=>{}); }
+  }
 });
 
 // PATCH /api/agent/tasks/:taskId — toggle enabled, update fields
@@ -298,7 +298,7 @@ router.patch('/tasks/:taskId', async (req, res) => {
   } catch (error) {
     logger.error('Update task error', { error: error.message });
     return res.status(500).json({ error: 'Failed to update task' });
-  } finally { if (pool) await pool.end().catch(()=>{}); }
+  }
 });
 
 // DELETE /api/agent/tasks/:taskId
@@ -314,7 +314,7 @@ router.delete('/tasks/:taskId', async (req, res) => {
   } catch (error) {
     logger.error('Delete task error', { error: error.message });
     return res.status(500).json({ error: 'Failed to delete task' });
-  } finally { if (pool) await pool.end().catch(()=>{}); }
+  }
 });
 
 // ═══════════════════════════════════════════════════════════════
