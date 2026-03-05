@@ -96,9 +96,9 @@ function loadSkillCatalog() {
 const TASK_TO_SKILL_MAP = {
   writing:  ['blog-content'],
   email:    ['email-marketing'],
-  coding:   ['frontend-design'],
+  coding:   ['website-landing-page'],
   crm:      ['ghl-crm'],
-  design:   ['frontend-design'],
+  design:   ['website-landing-page'],
   research: [],  // No specific skill needed
   data:     [],
   chat:     [],
