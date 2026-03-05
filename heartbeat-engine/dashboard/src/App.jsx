@@ -2031,10 +2031,7 @@ export default function App() {
   const [publishSlug,setPublishSlug]=useState('');
   const [publishError,setPublishError]=useState('');
   const [publishedUrl,setPublishedUrl]=useState(null);
-  const [publishOpen,setPublishOpen]=useState(false);
-  const [publishSlug,setPublishSlug]=useState('');
   const [publishUrl,setPublishUrl]=useState(null);
-  const [publishError,setPublishError]=useState(null);
   const [heartbeatInterval,setHeartbeatInterval]=useState("0 */6 * * *");
   const [heartbeatEnabled,setHeartbeatEnabled]=useState(true);
   const [cronJobs,setCronJobs]=useState([
