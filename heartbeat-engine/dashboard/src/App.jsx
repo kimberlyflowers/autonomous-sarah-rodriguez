@@ -276,7 +276,7 @@ function useSarahChat() {
     const controller = new AbortController();
     abortRef.current = controller;
     // Auto-timeout after 2 minutes
-    const timeoutId = setTimeout(()=>controller.abort(), 120000); // 2 min timeout
+    const timeoutId = setTimeout(()=>controller.abort(), 180000); // 3 min timeout
     
     try {
       const res = await fetch("/api/chat/message",{
@@ -308,8 +308,8 @@ function useSarahChat() {
         const ts2 = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
         if(ackId) setMessages(p=>p.filter(m=>m.id!==ackId));
         const elapsed = Math.round((Date.now()-startTime)/1000);
-        const msg = elapsed >= 115 
-          ? "Sarah took too long to respond (timed out after 2 minutes). Try again or simplify the request."
+        const msg = elapsed >= 175 
+          ? "Sarah took too long to respond (timed out after 3 minutes). Try again or simplify the request."
           : "Stopped. What would you like me to do instead?";
         setMessages(p=>[...p,{id:Date.now(),b:true,t:msg,tm:ts2,isSystem:true}]);
         return false;
