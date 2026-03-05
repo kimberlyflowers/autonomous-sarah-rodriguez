@@ -7,10 +7,12 @@ function mk(d) {
   return d
     ? { bg:"#1a1a1a",sf:"#212121",cd:"#262626",ac:"#F4A261",a2:"#E76F8B",
         gr:"#34A853",gf:"#1a2b1a",tx:"#ececec",so:"#a0a0a0",fa:"#5c5c5c",
-        ln:"#353535",bl:"#5B8FF9",pu:"#A78BFA",inp:"#212121",hv:"#2f2f2f" }
+        ln:"#353535",bl:"#5B8FF9",pu:"#A78BFA",inp:"#212121",hv:"#2f2f2f",
+        gradient:"linear-gradient(135deg,#F4A261,#E76F8B)",err:"#ea4335",warn:"#FBBC04" }
     : { bg:"#F7F8FA",sf:"#EDEEF2",cd:"#FFFFFF",ac:"#F4A261",a2:"#E76F8B",
         gr:"#34A853",gf:"#F0FAF0",tx:"#111827",so:"#6B7280",fa:"#D1D5DB",
-        ln:"#E5E7EB",bl:"#3B6FD4",pu:"#7C3AED",inp:"#F4F5F7",hv:"#F0F1F3" };
+        ln:"#E5E7EB",bl:"#3B6FD4",pu:"#7C3AED",inp:"#F4F5F7",hv:"#F0F1F3",
+        gradient:"linear-gradient(135deg,#F4A261,#E76F8B)",err:"#ea4335",warn:"#FBBC04" };
 }
 
 function useW() {
@@ -1894,6 +1896,17 @@ export default function App() {
   const [calMonth,setCalMonth]=useState(new Date());
   const [calSelDay,setCalSelDay]=useState(null);
   const [calTask,setCalTask]=useState({name:'',instruction:'',frequency:'daily',runTime:'09:00'});
+
+  const handleCSVFile=(file)=>{
+    const reader=new FileReader();
+    reader.onload=(e)=>{
+      const text=e.target.result;
+      // Skip header row if it starts with "Task Name"
+      const lines=text.split('\n').filter(l=>l.trim()&&!l.match(/^task name/i));
+      setBulkText(lines.join('\n'));
+    };
+    reader.readAsText(file);
+  };
   const [agentImgUrl,setAgentImgUrl]=useState(null);
 
   const loadProfile = async () => {
@@ -2596,41 +2609,90 @@ export default function App() {
                     {/* Bulk Import */}
                     {bulkImportOpen&&(
                       <div style={{padding:16,borderRadius:12,border:"1px solid "+c.ln,background:c.sf,marginBottom:14}}>
-                        <div style={{fontSize:13,fontWeight:600,color:c.tx,marginBottom:6}}>Paste your task list</div>
-                        <div style={{fontSize:11,color:c.so,marginBottom:10,lineHeight:1.5}}>
-                          One task per line. Format: <code style={{background:c.cd,padding:"1px 4px",borderRadius:3,fontSize:10}}>task name | instruction | frequency | time</code><br/>
-                          Frequency: daily, weekdays, weekly, monthly. Time: HH:MM (24h). Both optional — defaults to daily at 9:00.<br/>
-                          <span style={{color:c.tx}}>Examples:</span><br/>
-                          <code style={{background:c.cd,padding:"1px 4px",borderRadius:3,fontSize:10}}>Morning blog post | Write a 500-word blog about today's trending topic | weekdays | 08:00</code><br/>
-                          <code style={{background:c.cd,padding:"1px 4px",borderRadius:3,fontSize:10}}>Weekly newsletter | Draft the weekly email newsletter summarizing this week | weekly | 14:00</code><br/>
-                          <code style={{background:c.cd,padding:"1px 4px",borderRadius:3,fontSize:10}}>Check new leads | Review all new CRM contacts and send welcome emails</code>
+                        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+                          <div style={{fontSize:14,fontWeight:700,color:c.tx}}>📋 Import Tasks</div>
+                          <button onClick={()=>{
+                            const csv="Task Name,Instruction,Frequency,Time\nMorning blog post,\"Write a 500-word blog about today's trending topic in our industry\",weekdays,08:00\nWeekly newsletter,\"Draft the weekly email newsletter summarizing this week's content and wins\",weekly,14:00\nCheck new leads,\"Review all new CRM contacts from the past 24 hours and send welcome emails\",daily,09:00\nSocial media post,\"Create and schedule an engaging social media post with a relevant image\",daily,10:00\nMonthly report,\"Generate a monthly performance report covering email opens and website traffic\",monthly,09:00";
+                            const blob=new Blob([csv],{type:'text/csv'});
+                            const url=URL.createObjectURL(blob);
+                            const a=document.createElement('a');a.href=url;a.download='bloom-task-template.csv';a.click();
+                            URL.revokeObjectURL(url);
+                          }} style={{padding:"6px 12px",borderRadius:6,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:11,fontWeight:600,color:c.ac,fontFamily:"inherit"}}>
+                            ↓ Download CSV Template
+                          </button>
                         </div>
-                        <textarea value={bulkText} onChange={e=>setBulkText(e.target.value)} placeholder={"Morning blog post | Write a blog about trending topics | weekdays | 08:00\nWeekly newsletter | Draft the weekly email | weekly | 14:00\nCheck new leads | Review CRM contacts and send welcome emails"} rows={6} style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,fontSize:12,color:c.tx,fontFamily:"monospace",resize:"vertical",boxSizing:"border-box",marginBottom:10}}/>
-                        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+
+                        {/* Upload CSV */}
+                        <label style={{display:"block",padding:20,borderRadius:10,border:"2px dashed "+c.ln,background:c.cd,textAlign:"center",cursor:"pointer",marginBottom:12,transition:"border-color .15s"}}
+                          onMouseEnter={e=>e.currentTarget.style.borderColor=c.ac}
+                          onMouseLeave={e=>e.currentTarget.style.borderColor=c.ln}
+                          onDragOver={e=>{e.preventDefault();e.currentTarget.style.borderColor=c.ac;}}
+                          onDragLeave={e=>e.currentTarget.style.borderColor=c.ln}
+                          onDrop={e=>{e.preventDefault();e.currentTarget.style.borderColor=c.ln;const f=e.dataTransfer.files[0];if(f)handleCSVFile(f);}}>
+                          <div style={{fontSize:24,marginBottom:6,opacity:0.4}}>📄</div>
+                          <div style={{fontSize:13,fontWeight:600,color:c.tx}}>Drop CSV file here or click to upload</div>
+                          <div style={{fontSize:11,color:c.so,marginTop:4}}>Format: Task Name, Instruction, Frequency, Time</div>
+                          <input type="file" accept=".csv,.txt" style={{display:"none"}} onChange={e=>{const f=e.target.files[0];if(f)handleCSVFile(f);}}/>
+                        </label>
+
+                        {/* Or paste raw */}
+                        <details style={{marginBottom:12}}>
+                          <summary style={{fontSize:12,fontWeight:600,color:c.so,cursor:"pointer",marginBottom:8}}>Or paste raw text (one task per line)</summary>
+                          <textarea value={bulkText} onChange={e=>setBulkText(e.target.value)} placeholder={"Task Name, Instruction, Frequency, Time\nMorning blog post, Write a blog about trending topics, weekdays, 08:00\nWeekly newsletter, Draft the weekly email, weekly, 14:00"} rows={5} style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,fontSize:12,color:c.tx,fontFamily:"monospace",resize:"vertical",boxSizing:"border-box"}}/>
+                        </details>
+
+                        {/* Preview parsed tasks */}
+                        {bulkText.trim()&&(
+                          <div style={{marginBottom:12}}>
+                            <div style={{fontSize:11,fontWeight:700,color:c.so,marginBottom:6}}>PREVIEW ({bulkText.split('\n').filter(l=>l.trim()&&!l.match(/^task name/i)).length} tasks)</div>
+                            <div style={{maxHeight:150,overflowY:"auto",borderRadius:8,border:"1px solid "+c.ln}}>
+                              {bulkText.split('\n').filter(l=>l.trim()&&!l.match(/^task name/i)).map((line,i)=>{
+                                const parts=line.split(/[,|]/).map(p=>p.trim().replace(/^"|"$/g,''));
+                                return <div key={i} style={{padding:"6px 10px",fontSize:11,borderBottom:"1px solid "+c.ln+"60",display:"flex",gap:8,color:c.tx}}>
+                                  <span style={{fontWeight:600,minWidth:0,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{parts[0]}</span>
+                                  <span style={{color:c.so,fontSize:10,flexShrink:0}}>{parts[2]||'daily'} · {parts[3]||'9:00'}</span>
+                                </div>;
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                           <button onClick={async()=>{
-                            const lines=bulkText.split('\n').map(l=>l.trim()).filter(Boolean);
+                            const lines=bulkText.split('\n').map(l=>l.trim()).filter(l=>l&&!l.match(/^task name/i));
                             let created=0;
                             for(const line of lines){
-                              const parts=line.split('|').map(p=>p.trim());
-                              const name=parts[0];
-                              const instruction=parts[1]||parts[0];
-                              const frequency=parts[2]||'daily';
-                              const runTime=parts[3]||'09:00';
+                              const parts=line.split(/[,|]/).map(p=>p.trim().replace(/^"|"$/g,''));
+                              const name=parts[0];const instruction=parts[1]||parts[0];
+                              const frequency=(parts[2]||'daily').toLowerCase();const runTime=parts[3]||'09:00';
                               const taskType=instruction.match(/blog|post|write|content/i)?'content':instruction.match(/email|newsletter|campaign/i)?'email':instruction.match(/crm|contact|lead/i)?'crm':instruction.match(/research|search|find/i)?'research':'custom';
-                              if(name){
-                                try{
-                                  await fetch('/api/agent/tasks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,instruction,taskType,frequency:frequency.toLowerCase(),runTime})});
-                                  created++;
-                                }catch{}
-                              }
+                              if(name){try{await fetch('/api/agent/tasks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,instruction,taskType,frequency,runTime})});created++;}catch{}}
                             }
                             setBulkText('');setBulkImportOpen(false);loadActivity();
-                            alert(`Created ${created} task${created!==1?'s':''}`);
                           }} disabled={!bulkText.trim()} style={{padding:"10px 24px",borderRadius:8,border:"none",background:bulkText.trim()?c.gradient:"#444",cursor:bulkText.trim()?"pointer":"not-allowed",fontSize:13,fontWeight:700,color:"#fff",fontFamily:"inherit"}}>
-                            Import {bulkText.split('\n').filter(l=>l.trim()).length} task{bulkText.split('\n').filter(l=>l.trim()).length!==1?'s':''}
+                            Import Tasks
                           </button>
-                          <span style={{fontSize:11,color:c.so}}>{bulkText.split('\n').filter(l=>l.trim()).length} line{bulkText.split('\n').filter(l=>l.trim()).length!==1?'s':''} detected</span>
+
+                          {/* AI Decompose — for visionary task descriptions */}
+                          <button onClick={async()=>{
+                            const vision=prompt("Describe what you want your AI employee to do — be as big-picture as you want:\n\nExample: 'I want Sarah to handle all my marketing. Blog posts, emails, social media, lead follow-up, and keep the CRM clean.'");
+                            if(!vision) return;
+                            try{
+                              const r=await fetch('/api/chat/message',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+                                message:`SYSTEM TASK — Do NOT respond conversationally. Break this vision into specific recurring tasks. Return ONLY a CSV with no extra text, no markdown, no explanation. Format: Task Name,Instruction,Frequency,Time\n\nVision: "${vision}"\n\nRules:\n- Each task must be specific and actionable (not vague)\n- Include the exact instruction Sarah should follow each time\n- Default to daily unless it makes sense otherwise\n- Time should be spread across the day (not all at 9am)\n- 5-10 tasks max\n- Output ONLY the CSV rows, no headers, no backticks`,
+                                sessionId:'system-decompose-'+Date.now()
+                              })});
+                              const d=await r.json();
+                              if(d.response){
+                                const cleaned=d.response.replace(/```csv?/g,'').replace(/```/g,'').replace(/^Task Name.*\n/i,'').trim();
+                                setBulkText(cleaned);
+                              }
+                            }catch(e){alert('Failed to decompose: '+e.message);}
+                          }} style={{padding:"10px 18px",borderRadius:8,border:"1px solid "+c.ac,background:c.ac+"10",cursor:"pointer",fontSize:13,fontWeight:600,color:c.ac,fontFamily:"inherit"}}>
+                            ✨ AI Break Down a Vision
+                          </button>
                         </div>
+                        <div style={{fontSize:11,color:c.so,marginTop:8}}>Tip: Describe your big picture and let AI break it into specific daily/weekly tasks</div>
                       </div>
                     )}
 
