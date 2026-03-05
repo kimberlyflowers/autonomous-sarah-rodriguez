@@ -111,6 +111,53 @@ function useAgentOnline() {
 /* ═══════════════════════════════════════════════════════════════
    CHAT — Sarah's API
    ═══════════════════════════════════════════════════════════════ */
+// Generate instant acknowledgment based on user's request
+function generateAck(text) {
+  const lower = text.toLowerCase();
+  
+  // Website/landing page
+  if (/website|landing page|web page|sales page/i.test(lower)) {
+    const nameMatch = text.match(/called\s+[""']?(.+?)[""']?(?:\s*[\.\!\,\-]|\s+its|\s+it'?s|\s+about|\s+for|$)/i);
+    const name = nameMatch ? nameMatch[1].trim() : null;
+    return name 
+      ? `On it! I'll design a landing page for "${name}" — let me make it irresistible. 🔥`
+      : "Love it — let me design something that converts. Give me a moment to build this out. 🔥";
+  }
+  // Blog/article
+  if (/blog|article|post|content/i.test(lower) && /write|create|draft/i.test(lower)) {
+    const topicMatch = text.match(/(?:about|on|for|regarding)\s+(.{10,60}?)(?:\.|$|,|\!)/i);
+    return topicMatch 
+      ? `Great topic! Let me draft a post about ${topicMatch[1].trim().toLowerCase()} — I'll make sure it hooks the reader from the first line.`
+      : "On it! Let me craft something that'll actually make people stop scrolling. ✍️";
+  }
+  // Email/sequence
+  if (/email|sequence|newsletter|campaign|subject line/i.test(lower)) {
+    return "Love this — let me write something that feels personal, not salesy. Drafting now. 📧";
+  }
+  // Social media
+  if (/social|instagram|tiktok|facebook|linkedin|caption/i.test(lower)) {
+    return "On it! Let me create content that actually stops the scroll. 📱";
+  }
+  // CRM/contacts
+  if (/contact|lead|crm|ghl|pipeline|check.*contact/i.test(lower)) {
+    return "Pulling that up for you now — one sec. 📋";
+  }
+  // Research
+  if (/research|search|find|look up|analyze/i.test(lower)) {
+    return "Let me dig into that for you. I'll pull together what I find. 🔍";
+  }
+  // Document/report
+  if (/report|document|proposal|memo|letter/i.test(lower)) {
+    return "I'll put together something polished for you. Give me a moment. 📄";
+  }
+  // Browser/navigation
+  if (/go to|navigate|visit|check.*website|browse/i.test(lower)) {
+    return "On my way there now — I'll show you what I find. 🌐";
+  }
+  // Generic work task
+  return "Got it — working on this for you now! 💪";
+}
+
 function useSarahChat() {
   const [messages,setMessages] = useState([]);
   const [loading,setLoading] = useState(false);
@@ -190,16 +237,23 @@ function useSarahChat() {
     const isWorkTask = /\b(write|create|build|make|draft|design|generate|research|check|find|search|send|schedule|update|look up|go to|navigate|analyze|summarize|review|edit|fix|compile|prepare|pull|set up|book|cancel)\b/i.test(text)
       || /\b(blog|email|post|website|landing page|report|document|contact|lead|campaign|sequence|flyer|graphic|proposal|invoice|spreadsheet|calendar|appointment)\b/i.test(text);
     
-    // Only show progress steps for actual work
+    // For work tasks: show instant acknowledgment, then working indicator
+    let ackId = null;
     let timers = [];
     if(isWorkTask){
-      setWorkingStatus("Understanding your request...");
+      // Generate a quick acknowledgment based on what they asked
+      const ackText = generateAck(text);
+      ackId = Date.now();
+      setMessages(p=>[...p,{id:ackId,b:true,t:ackText,tm:ts,isAck:true}]);
+      
+      // Show working indicator after brief pause
+      setTimeout(()=>setWorkingStatus("Understanding your request..."),800);
       const progressStages = [
-        {delay:1500, msg:"Analyzing task type..."},
-        {delay:3500, msg:"Loading relevant skills..."},
-        {delay:6000, msg:"Drafting response..."},
-        {delay:12000, msg:"Refining output..."},
-        {delay:20000, msg:"Almost done..."},
+        {delay:2500, msg:"Analyzing task type..."},
+        {delay:4500, msg:"Loading relevant skills..."},
+        {delay:7000, msg:"Building your deliverable..."},
+        {delay:13000, msg:"Refining output..."},
+        {delay:22000, msg:"Almost done..."},
       ];
       timers = progressStages.map(s=>setTimeout(()=>setWorkingStatus(s.msg),s.delay));
     } else {
@@ -212,7 +266,13 @@ function useSarahChat() {
       timers.forEach(clearTimeout);
       const ts2 = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
       const responseText = (data.response||data.message||"Done.").replace(/\s*\[Session context[\s\S]*$/,'').replace(/\s*\[Tool:.*?\]\s*/g,'').trim();
-      setMessages(p=>[...p,{id:Date.now(),b:true,t:responseText,tm:ts2,skill:data.skillUsed||null,hasArtifact:!!responseText.match(/Created "|I've created|I created|saved as|saved it to|in your Files tab|saved to.*Files/i)}]);
+      
+      // Replace the acknowledgment message with the real response (or just add if no ack)
+      if(ackId){
+        setMessages(p=>p.filter(m=>m.id!==ackId).concat([{id:Date.now(),b:true,t:responseText,tm:ts2,skill:data.skillUsed||null,hasArtifact:!!responseText.match(/Created "|I've created|I created|saved as|saved it to|in your Files tab|saved to.*Files/i)}]));
+      } else {
+        setMessages(p=>[...p,{id:Date.now(),b:true,t:responseText,tm:ts2,skill:data.skillUsed||null,hasArtifact:!!responseText.match(/Created "|I've created|I created|saved as|saved it to|in your Files tab|saved to.*Files/i)}]);
+      }
       fetchSessions();
       setTimeout(fetchSessions, 3000);
       return true;
