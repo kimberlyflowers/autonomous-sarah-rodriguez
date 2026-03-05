@@ -3572,15 +3572,80 @@ export default function App() {
                       <button onClick={()=>{
                         const iframe=document.getElementById('bloom-html-editor');
                         if(iframe?.contentDocument){
-                          const html=iframe.contentDocument.documentElement.outerHTML;
-                          setEditContent('<!DOCTYPE html><html>'+html.slice(html.indexOf('<html')+6)+'</html>');
+                          // Remove editor artifacts before capturing
+                          const doc=iframe.contentDocument;
+                          doc.querySelectorAll('.bloom-drag-handle').forEach(el=>el.remove());
+                          doc.querySelectorAll('.bloom-section').forEach(el=>{el.classList.remove('bloom-section','bloom-dragging','bloom-drag-over');el.removeAttribute('draggable');});
+                          // Remove injected style/script
+                          doc.querySelectorAll('style').forEach(s=>{if(s.textContent.includes('bloom-drag'))s.remove();});
+                          doc.querySelectorAll('script').forEach(s=>{if(s.textContent.includes('designMode'))s.remove();});
+                          const html='<!DOCTYPE html>'+doc.documentElement.outerHTML;
+                          setEditContent(html);
                         }
                       }} style={{padding:"4px 10px",borderRadius:6,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:10,fontWeight:600,color:c.tx,fontFamily:"inherit"}}>Sync from visual</button>
                       <button onClick={()=>{setEditMode('code');setEditContent(previewFile.content||'');}} style={{padding:"4px 10px",borderRadius:6,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:10,fontWeight:600,color:c.so,fontFamily:"inherit"}}>Switch to Code</button>
                     </div>
                     <iframe
                       id="bloom-html-editor"
-                      srcDoc={(editContent||previewFile.content||'').replace('</body>',`<style>*:hover{outline:2px dashed rgba(244,162,97,0.4)!important;outline-offset:2px}[contenteditable]:focus{outline:2px solid #F4A261!important;outline-offset:2px}</style><script>document.body.contentEditable='true';document.designMode='on';</script></body>`)}
+                      srcDoc={(editContent||previewFile.content||'').replace('</body>',`
+<style>
+*:hover{outline:2px dashed rgba(244,162,97,0.3)!important;outline-offset:2px}
+[contenteditable]:focus{outline:2px solid #F4A261!important;outline-offset:2px}
+.bloom-drag-over{border-top:3px solid #F4A261!important}
+.bloom-dragging{opacity:0.4!important}
+.bloom-drag-handle{position:absolute;left:-32px;top:50%;transform:translateY(-50%);width:24px;height:24px;background:#F4A261;border-radius:6px;cursor:grab;display:none;align-items:center;justify-content:center;font-size:12px;color:#fff;z-index:999;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+.bloom-section:hover .bloom-drag-handle{display:flex}
+.bloom-section{position:relative;transition:transform .15s}
+</style>
+<script>
+document.body.contentEditable='true';
+document.designMode='on';
+
+// Make top-level sections draggable
+function initDrag(){
+  const sections=document.body.children;
+  for(let i=0;i<sections.length;i++){
+    const el=sections[i];
+    if(el.tagName==='STYLE'||el.tagName==='SCRIPT'||el.tagName==='LINK')continue;
+    el.classList.add('bloom-section');
+    el.setAttribute('draggable','true');
+    
+    // Add drag handle
+    const handle=document.createElement('div');
+    handle.className='bloom-drag-handle';
+    handle.innerHTML='⠿';
+    handle.setAttribute('contenteditable','false');
+    handle.addEventListener('mousedown',function(e){el.draggable=true;});
+    el.style.position=el.style.position||'relative';
+    el.appendChild(handle);
+    
+    el.addEventListener('dragstart',function(e){
+      e.dataTransfer.effectAllowed='move';
+      e.dataTransfer.setData('text/plain',i.toString());
+      setTimeout(()=>el.classList.add('bloom-dragging'),0);
+    });
+    el.addEventListener('dragend',function(){el.classList.remove('bloom-dragging');});
+    el.addEventListener('dragover',function(e){
+      e.preventDefault();e.dataTransfer.dropEffect='move';
+      el.classList.add('bloom-drag-over');
+    });
+    el.addEventListener('dragleave',function(){el.classList.remove('bloom-drag-over');});
+    el.addEventListener('drop',function(e){
+      e.preventDefault();
+      el.classList.remove('bloom-drag-over');
+      const fromIdx=parseInt(e.dataTransfer.getData('text/plain'));
+      const fromEl=document.body.children[fromIdx];
+      if(fromEl&&fromEl!==el){
+        const rect=el.getBoundingClientRect();
+        const mid=rect.top+rect.height/2;
+        if(e.clientY<mid){el.parentNode.insertBefore(fromEl,el);}
+        else{el.parentNode.insertBefore(fromEl,el.nextSibling);}
+      }
+    });
+  }
+}
+setTimeout(initDrag,100);
+</script></body>`)}
                       style={{flex:1,width:"100%",border:"none",background:"#fff"}}
                       sandbox="allow-scripts allow-same-origin"
                       title="Visual Editor"
@@ -3595,13 +3660,16 @@ export default function App() {
                 <div style={{padding:"10px 16px",borderTop:"1px solid "+c.ln,background:c.sf,display:"flex",gap:8,alignItems:"center",flexShrink:0,flexWrap:"wrap"}}>
                   <button onClick={async()=>{
                     setEditSaving(true);
-                    // If visual editor, sync content first
                     let content=editContent;
                     if(previewFile.name?.endsWith('.html')&&editMode!=='code'){
                       const iframe=document.getElementById('bloom-html-editor');
                       if(iframe?.contentDocument){
-                        const html=iframe.contentDocument.documentElement.outerHTML;
-                        content='<!DOCTYPE html><html>'+html.slice(html.indexOf('<html')+6)+'</html>';
+                        const doc=iframe.contentDocument;
+                        doc.querySelectorAll('.bloom-drag-handle').forEach(el=>el.remove());
+                        doc.querySelectorAll('.bloom-section').forEach(el=>{el.classList.remove('bloom-section','bloom-dragging','bloom-drag-over');el.removeAttribute('draggable');});
+                        doc.querySelectorAll('style').forEach(s=>{if(s.textContent.includes('bloom-drag'))s.remove();});
+                        doc.querySelectorAll('script').forEach(s=>{if(s.textContent.includes('designMode'))s.remove();});
+                        content='<!DOCTYPE html>'+doc.documentElement.outerHTML;
                       }
                     }
                     try{
