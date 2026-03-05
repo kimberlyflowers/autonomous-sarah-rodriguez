@@ -3654,10 +3654,6 @@ export default function App() {
                       sandbox="allow-scripts allow-same-origin"
                       title="Visual Editor"
                     />
-                      style={{flex:1,width:"100%",border:"none",background:"#fff"}}
-                      sandbox="allow-scripts allow-same-origin"
-                      title="Visual Editor"
-                    />
                   </div>
                 ):editMode==='code'||!previewFile.name?.endsWith('.html')?(
                   /* Code/Text Editor */
