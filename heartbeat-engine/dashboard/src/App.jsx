@@ -2027,6 +2027,10 @@ export default function App() {
   const [editContent,setEditContent]=useState('');
   const [editSaving,setEditSaving]=useState(false);
   const [editorFullscreen,setEditorFullscreen]=useState(false);
+  const [publishOpen,setPublishOpen]=useState(false);
+  const [publishSlug,setPublishSlug]=useState('');
+  const [publishUrl,setPublishUrl]=useState(null);
+  const [publishError,setPublishError]=useState(null);
   const [heartbeatInterval,setHeartbeatInterval]=useState("0 */6 * * *");
   const [heartbeatEnabled,setHeartbeatEnabled]=useState(true);
   const [cronJobs,setCronJobs]=useState([
@@ -3714,6 +3718,48 @@ export default function App() {
                       .replace(/\n/g, '<br/>')
                     }}/>
                 )}
+
+                {/* Publish bar */}
+                <div style={{padding:"10px 16px",borderTop:"1px solid "+c.ln,background:c.sf,display:"flex",gap:8,alignItems:"center",flexShrink:0,flexWrap:"wrap"}}>
+                  {publishUrl?(
+                    <>
+                      <span style={{fontSize:11,color:c.gr,fontWeight:600}}>✓ Published</span>
+                      <a href={publishUrl} target="_blank" rel="noopener noreferrer" style={{fontSize:12,color:c.ac,fontWeight:600,textDecoration:"none",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{publishUrl}</a>
+                      <button onClick={()=>{navigator.clipboard?.writeText(publishUrl);}} style={{padding:"5px 12px",borderRadius:6,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:11,fontWeight:600,color:c.tx,fontFamily:"inherit"}}>Copy Link</button>
+                      <button onClick={async()=>{
+                        await fetch(`/api/files/publish-site/${previewFile.fileId}`,{method:'DELETE'});
+                        setPublishUrl(null);setPublishSlug('');
+                      }} style={{padding:"5px 12px",borderRadius:6,border:"1px solid rgba(234,67,53,0.3)",background:"transparent",cursor:"pointer",fontSize:11,color:"#ea4335",fontFamily:"inherit"}}>Unpublish</button>
+                    </>
+                  ):publishOpen?(
+                    <>
+                      <span style={{fontSize:12,color:c.so,flexShrink:0}}>{window.location.origin}/s/</span>
+                      <input value={publishSlug} onChange={e=>setPublishSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g,'-'))} placeholder="summer-camp" style={{flex:1,padding:"6px 10px",borderRadius:6,border:"1px solid "+c.ln,background:c.inp,fontSize:12,color:c.tx,fontFamily:"monospace",minWidth:100}}/>
+                      <button onClick={async()=>{
+                        if(!publishSlug.trim())return;
+                        setPublishError(null);
+                        const r=await fetch(`/api/files/publish-site/${previewFile.fileId}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({slug:publishSlug})});
+                        const d=await r.json();
+                        if(d.success){setPublishUrl(d.url);setPublishOpen(false);}
+                        else setPublishError(d.error||'Failed');
+                      }} style={{padding:"6px 16px",borderRadius:6,border:"none",background:c.gradient,cursor:"pointer",fontSize:12,fontWeight:700,color:"#fff",fontFamily:"inherit"}}>Publish</button>
+                      <button onClick={()=>setPublishOpen(false)} style={{padding:"6px 10px",borderRadius:6,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:11,color:c.so,fontFamily:"inherit"}}>Cancel</button>
+                      {publishError&&<div style={{width:"100%",fontSize:11,color:"#ea4335"}}>{publishError}</div>}
+                    </>
+                  ):(
+                    <button onClick={()=>{
+                      // Auto-suggest slug from filename
+                      const suggest=(previewFile.name||'').replace(/\.[^.]+$/,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+                      setPublishSlug(suggest);setPublishOpen(true);setPublishError(null);
+                      // Check if already published
+                      fetch(`/api/files/preview/${previewFile.fileId}`).then(r=>r.json()).then(d=>{
+                        if(d.slug){setPublishUrl(`${window.location.origin}/s/${d.slug}`);setPublishOpen(false);}
+                      }).catch(()=>{});
+                    }} style={{padding:"8px 20px",borderRadius:8,border:"none",background:c.gradient,cursor:"pointer",fontSize:12,fontWeight:700,color:"#fff",fontFamily:"inherit"}}>
+                      🌐 Publish as Site
+                    </button>
+                  )}
+                </div>
               </>
             )}
           </div>

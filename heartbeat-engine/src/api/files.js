@@ -36,6 +36,8 @@ async function ensureTable(pool) {
       file_size INTEGER DEFAULT 0,
       thumbnail_base64 TEXT,
       status VARCHAR(20) DEFAULT 'pending',
+      published BOOLEAN DEFAULT false,
+      slug VARCHAR(200) UNIQUE,
       created_by VARCHAR(100) DEFAULT 'sarah',
       created_at TIMESTAMPTZ DEFAULT NOW(),
       approved_at TIMESTAMPTZ,
@@ -45,6 +47,10 @@ async function ensureTable(pool) {
     CREATE INDEX IF NOT EXISTS idx_artifacts_session ON artifacts(session_id);
     CREATE INDEX IF NOT EXISTS idx_artifacts_file_id ON artifacts(file_id);
   `);
+  // Add columns if they don't exist (migration for existing tables)
+  try { await pool.query(`ALTER TABLE artifacts ADD COLUMN IF NOT EXISTS slug VARCHAR(200) UNIQUE`); } catch {}
+  try { await pool.query(`ALTER TABLE artifacts ADD COLUMN IF NOT EXISTS published BOOLEAN DEFAULT false`); } catch {}
+  try { await pool.query(`CREATE INDEX IF NOT EXISTS idx_artifacts_slug ON artifacts(slug)`); } catch {}
 }
 
 // ── CREATE ARTIFACT ─────────────────────────────────────────────────────────
@@ -290,7 +296,7 @@ router.get('/preview/:fileId', async (req, res) => {
     await ensureTable(pool);
     const { fileId } = req.params;
     const result = await pool.query(
-      'SELECT name, file_type, mime_type, content_text, thumbnail_base64, file_path FROM artifacts WHERE file_id = $1', [fileId]
+      'SELECT name, file_type, mime_type, content_text, thumbnail_base64, file_path, slug, published FROM artifacts WHERE file_id = $1', [fileId]
     );
     if (!result.rows.length) return res.status(404).json({ error: 'File not found' });
 
@@ -308,7 +314,9 @@ router.get('/preview/:fileId', async (req, res) => {
         name: file.name,
         fileType: file.file_type,
         mimeType: file.mime_type,
-        content: file.content_text
+        content: file.content_text,
+        slug: file.slug || null,
+        published: file.published || false
       });
     }
 
@@ -373,6 +381,50 @@ router.delete('/artifacts/:fileId', async (req, res) => {
   } catch (error) {
     logger.error('Delete artifact error', { error: error.message });
     return res.status(500).json({ error: 'Delete failed' });
+  }
+});
+
+// ── PUBLISH TO SITE — set a slug for clean public URL ───────────────────────
+// POST /api/files/publish-site/:fileId
+router.post('/publish-site/:fileId', async (req, res) => {
+  const pool = await getPool();
+  try {
+    await ensureTable(pool);
+    const { fileId } = req.params;
+    let { slug } = req.body;
+
+    if (!slug) return res.status(400).json({ error: 'slug required' });
+
+    // Sanitize slug: lowercase, alphanumeric + hyphens only
+    slug = slug.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').slice(0, 100);
+    if (!slug) return res.status(400).json({ error: 'Invalid slug' });
+
+    // Check if slug is taken by another file
+    const existing = await pool.query('SELECT file_id FROM artifacts WHERE slug = $1 AND file_id != $2', [slug, fileId]);
+    if (existing.rows.length > 0) {
+      return res.status(409).json({ error: `Slug "${slug}" is already taken`, suggestion: `${slug}-${Date.now().toString(36).slice(-4)}` });
+    }
+
+    await pool.query('UPDATE artifacts SET slug = $1, published = true WHERE file_id = $2', [slug, fileId]);
+
+    const baseUrl = process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`;
+    const siteUrl = `${baseUrl}/s/${slug}`;
+
+    return res.json({ success: true, slug, url: siteUrl });
+  } catch (error) {
+    return res.status(500).json({ error: 'Failed to publish: ' + error.message });
+  }
+});
+
+// ── UNPUBLISH — remove slug ─────────────────────────────────────────────────
+router.delete('/publish-site/:fileId', async (req, res) => {
+  const pool = await getPool();
+  try {
+    await ensureTable(pool);
+    await pool.query('UPDATE artifacts SET slug = NULL, published = false WHERE file_id = $1', [req.params.fileId]);
+    return res.json({ success: true });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
   }
 });
 
