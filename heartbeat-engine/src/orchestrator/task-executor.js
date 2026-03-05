@@ -7,8 +7,8 @@ import { createLogger } from '../logging/logger.js';
 const logger = createLogger('task-executor');
 
 async function getPool() {
-  const { createPool } = await import('../../database/setup.js');
-  return createPool();
+  const { getSharedPool } = await import('../../database/pool.js');
+  return getSharedPool();
 }
 
 // ═══ Ensure task_runs table exists ═══
@@ -50,7 +50,6 @@ async function loadMemoryContext() {
     const profileResult = await pool.query(
       `SELECT job_title, job_description FROM agent_profile WHERE agent_id = 'bloomie-sarah-rodriguez'`
     );
-    await pool.end();
 
     const profile = profileResult.rows[0] || {};
     let context = '';
@@ -107,7 +106,6 @@ export async function checkAndRunScheduledTasks() {
     logger.error('checkAndRunScheduledTasks error', { error: e.message });
     return { tasksRun: 0, error: e.message };
   } finally {
-    if (pool) await pool.end().catch(() => {});
   }
 }
 
@@ -396,6 +394,5 @@ export async function getTaskRuns(limit = 50) {
     logger.error('getTaskRuns error', { error: e.message });
     return [];
   } finally {
-    if (pool) await pool.end().catch(() => {});
   }
 }

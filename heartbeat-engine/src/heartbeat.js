@@ -246,8 +246,8 @@ export async function runHeartbeat(agentConfig, trigger = {}) {
 // Helper function to get recent actions for context
 async function getRecentActions(agentId, hours = 24) {
   try {
-    const { createPool } = await import('../database/setup.js');
-    const pool = createPool();
+    const { getSharedPool } = await import('../database/pool.js');
+    const pool = getSharedPool();
 
     const result = await pool.query(`
       SELECT
@@ -262,7 +262,6 @@ async function getRecentActions(agentId, hours = 24) {
       LIMIT 50
     `, [agentId]);
 
-    await pool.end();
     return result.rows;
   } catch (error) {
     logger.error('Failed to get recent actions:', error);

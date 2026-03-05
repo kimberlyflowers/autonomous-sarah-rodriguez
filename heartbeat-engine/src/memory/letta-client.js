@@ -393,8 +393,8 @@ class LettaClient {
   async storeFallbackMemory(memoryData) {
     try {
       // Store in memory_snapshots table
-      const { createPool } = await import('../../database/setup.js');
-      const pool = createPool();
+      const { getSharedPool } = await import('../../database/pool.js');
+      const pool = getSharedPool();
 
       await pool.query(`
         INSERT INTO memory_snapshots (agent_id, cycle_id, memory_type, content, relevance_score)
@@ -412,7 +412,6 @@ class LettaClient {
         0.8
       ]);
 
-      await pool.end();
 
       logger.info('✅ Memory stored in fallback database');
 
