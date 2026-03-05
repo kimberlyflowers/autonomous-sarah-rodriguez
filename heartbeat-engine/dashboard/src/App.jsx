@@ -255,18 +255,23 @@ function useSarahChat() {
       setMessages(p=>[...p,{id:ackId,b:true,t:ackText,tm:ts,isAck:true}]);
     }
     
-    // Honest progress — time-based but truthful about what we know
+    // Progress indicator — only for work tasks, casual chat gets simple dots
     const startTime = Date.now();
-    setWorkingStatus(isWorkTask ? "Sending to Sarah..." : "Thinking...");
-    const progressInterval = setInterval(()=>{
-      const elapsed = Math.round((Date.now()-startTime)/1000);
-      if(elapsed < 3) setWorkingStatus(isWorkTask ? "Sarah is reading your request..." : "Thinking...");
-      else if(elapsed < 8) setWorkingStatus("Sarah is working on this...");
-      else if(elapsed < 15) setWorkingStatus(`Still working... (${elapsed}s)`);
-      else if(elapsed < 30) setWorkingStatus(`This is a bigger task — hang tight... (${elapsed}s)`);
-      else if(elapsed < 60) setWorkingStatus(`Deep work in progress... (${elapsed}s)`);
-      else setWorkingStatus(`Sarah's on a complex task — still going... (${Math.round(elapsed/60)}m ${elapsed%60}s)`);
-    }, 1000);
+    let progressInterval = null;
+    if(isWorkTask){
+      setWorkingStatus("Sending to Sarah...");
+      progressInterval = setInterval(()=>{
+        const elapsed = Math.round((Date.now()-startTime)/1000);
+        if(elapsed < 3) setWorkingStatus("Sarah is reading your request...");
+        else if(elapsed < 8) setWorkingStatus("Sarah is working on this...");
+        else if(elapsed < 15) setWorkingStatus(`Still working... (${elapsed}s)`);
+        else if(elapsed < 30) setWorkingStatus(`This is a bigger task — hang tight... (${elapsed}s)`);
+        else if(elapsed < 60) setWorkingStatus(`Deep work in progress... (${elapsed}s)`);
+        else setWorkingStatus(`Complex task in progress... (${Math.round(elapsed/60)}m ${elapsed%60}s)`);
+      }, 1000);
+    } else {
+      setWorkingStatus(""); // empty = shows simple dots for casual chat
+    }
     
     // Abortable fetch
     const controller = new AbortController();
@@ -279,7 +284,7 @@ function useSarahChat() {
         body:JSON.stringify({message:text,sessionId:sid.current}),
         signal: controller.signal
       });
-      clearInterval(progressInterval);
+      if(progressInterval)clearInterval(progressInterval);
       abortRef.current = null;
       const data = await res.json();
       const ts2 = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
@@ -294,7 +299,7 @@ function useSarahChat() {
       setTimeout(fetchSessions, 3000);
       return true;
     } catch(err) {
-      clearInterval(progressInterval);
+      if(progressInterval)clearInterval(progressInterval);
       abortRef.current = null;
       if(err.name === 'AbortError'){
         // User cancelled

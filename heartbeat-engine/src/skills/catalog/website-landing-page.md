@@ -144,10 +144,20 @@ window.addEventListener('scroll', () => {
 **Footer**: Multi-column (Logo+tagline | Links | Contact | Social). Slightly darker background. Copyright + privacy links at bottom.
 
 ### Images
-- Generate with `image_generate` BEFORE building HTML
-- Use returned `image_url`: `<img src="/api/files/preview/art_xxx">`
-- NEVER base64 inline. NEVER placeholder URLs. NEVER broken links.
-- Fallback: CSS gradient backgrounds if generation unavailable
+- TRY `image_generate` BEFORE building HTML for hero/section images
+- If images generate successfully, use returned `image_url`: `<img src="/api/files/preview/art_xxx">`
+- **IF IMAGE GENERATION FAILS** (no API key, error, timeout): DO NOT ABANDON THE BUILD.
+  Instead, use beautiful CSS gradient/pattern backgrounds as visual replacements:
+  ```css
+  /* Hero without image — gradient + pattern fallback */
+  .hero { background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%); }
+  /* Feature card without image — subtle pattern */
+  .card-visual { background: linear-gradient(135deg, #f0f0f0 25%, transparent 25%, transparent 50%, #f0f0f0 50%, #f0f0f0 75%, transparent 75%); background-size: 20px 20px; }
+  ```
+- The website MUST be delivered complete and beautiful regardless of whether images generated
+- NEVER abandon a build because one tool failed. Work around it and deliver.
+- NEVER use placeholder URLs (placeholder.com, placehold.it) or broken links
+- NEVER embed base64 inline — it breaks layouts
 - Hero: 1536x1024 landscape. Features: 1024x1024 square.
 - All images: `alt` text, `object-fit:cover`, `border-radius:16px`, `loading="lazy"`
 
