@@ -1,117 +1,82 @@
 ---
 name: professional-documents
-description: "Create professional documents, reports, proposals, and letters that build trust. Use when the task involves reports, proposals, grant applications, quarterly reports, donor letters, SOPs, one-pagers, or any polished document. Also triggers for Word docs, PDFs, memos, and formatted deliverables."
+description: "Create polished professional documents: SOPs, reports, proposals, contracts, one-pagers, handbooks, onboarding docs, policy documents, and business plans. Use this skill whenever creating any formal business document, operational procedure, proposal, contract template, employee handbook, training material, grant application, or accreditation document. Also triggers for 'SOP', 'report', 'proposal', 'contract', 'handbook', 'policy', 'procedure', 'one-pager', 'pitch deck outline', 'business plan', or any formal document request. Every document should look like it came from a $300/hr consultant — not a template generator."
 ---
 
-# Professional Documents
+# Professional Documents — Consultant-Grade Output
 
-## How to Think About This
+Every document Sarah produces should look like it was prepared by a senior consultant at a top firm. The standard: would this document win a client's confidence in a boardroom?
 
-A document is a trust signal. The formatting, structure, and voice tell the reader whether this organization is serious. Data without story is a spreadsheet. Story without data is a newsletter. Together, they're compelling.
+## Encoded Preferences (data-backed defaults)
 
-Check memory and Company Skills for brand colors, logo, preferred sign-off, and formatting guidelines.
-
-## Document Types
-
-### Impact/Quarterly Report
-Lead with human impact, not numbers. Structure: Cover → TOC → Executive Summary → Key Metrics → Program sections (each a mini-story with data) → Financial overview (transparent) → Looking ahead (specific, measurable) → Personal note.
-
-### Proposal/Pitch
-Frame as THEIR opportunity. "Here's what you gain" > "Here's what we need."
-
-### Thank-You/Donor Letter
-Be specific: "$500 funded [specific thing]" > "Your generous gift supports our mission."
-
-### SOP
-Write for someone doing this for the first time. Every step so clear they can't do it wrong.
-
-## Voice
-
-- Professional but human. Not robotic, not casual.
-- Honest about challenges. Transparency > spin.
-- Specific over generic. Always.
-- Use client's sign-off from Company Skills. Default: "In service," or "With gratitude,"
-
-## Technical: Creating .docx Files
-
-Use the `create_artifact` tool to output documents. When creating formal Word documents, use the `docx` npm library with these patterns:
-
-### Page Setup
-```javascript
-// Always US Letter, not A4 (docx-js defaults to A4)
-properties: {
-  page: {
-    size: { width: 12240, height: 15840 }, // 8.5"x11" in DXA (1440 DXA = 1 inch)
-    margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 } // 1" margins
-  }
-}
-```
-
-### Styles
-```javascript
-styles: {
-  default: { document: { run: { font: "Arial", size: 22, color: "2D2D2D" } } },
-  paragraphStyles: [
-    { id: "Heading1", name: "Heading 1", basedOn: "Normal", next: "Normal", quickFormat: true,
-      run: { size: 36, bold: true, font: "Arial", color: "1B3A5C" },
-      paragraph: { spacing: { before: 360, after: 200 }, outlineLevel: 0 } },
-    { id: "Heading2", name: "Heading 2", basedOn: "Normal", next: "Normal", quickFormat: true,
-      run: { size: 28, bold: true, font: "Arial", color: "1B3A5C" },
-      paragraph: { spacing: { before: 240, after: 160 }, outlineLevel: 1 } },
-  ]
-}
-```
-
-### Tables — Critical Rules
-```javascript
-// ALWAYS set both table width AND individual cell widths
-// ALWAYS use WidthType.DXA, never PERCENTAGE (breaks Google Docs)
-// ALWAYS use ShadingType.CLEAR, never SOLID (causes black backgrounds)
-new Table({
-  width: { size: 9360, type: WidthType.DXA }, // Full content width
-  columnWidths: [4680, 2340, 2340], // Must sum to table width
-  rows: [
-    new TableRow({ children: [
-      new TableCell({
-        width: { size: 4680, type: WidthType.DXA }, // Match columnWidth
-        borders: { top: border, bottom: border, left: border, right: border },
-        margins: { top: 80, bottom: 80, left: 120, right: 120 },
-        shading: { fill: "1B3A5C", type: ShadingType.CLEAR }, // Header row
-        children: [new Paragraph({ children: [new TextRun({ text: "Header", bold: true, color: "FFFFFF" })] })]
-      })
-    ]})
-  ]
-})
-```
-
-### Lists — NEVER use unicode bullets
-```javascript
-// ❌ WRONG: new Paragraph({ children: [new TextRun("• Item")] })
-// ✅ CORRECT: Use numbering config
-numbering: { config: [{
-  reference: "bullets",
-  levels: [{ level: 0, format: LevelFormat.BULLET, text: "•", alignment: AlignmentType.LEFT,
-    style: { paragraph: { indent: { left: 720, hanging: 360 } } } }]
-}]}
-// Then: new Paragraph({ numbering: { reference: "bullets", level: 0 }, children: [...] })
-```
-
-### Other Critical Rules
-- **Never use `\n`** — use separate Paragraph elements
-- **PageBreak must be inside a Paragraph** — `new Paragraph({ children: [new PageBreak()] })`
-- **ImageRun requires `type`** — always specify: `type: "png"`
-- **TOC requires HeadingLevel** — headings must use `heading: HeadingLevel.HEADING_1`, no custom styles
-- **Include `outlineLevel`** in heading styles — required for TOC (0 for H1, 1 for H2)
-- **Never use tables as dividers** — cells have minimum height. Use paragraph borders instead.
+### Document Hierarchy
+- **Executive summary first** — 80% of executives ONLY read this. Make it count.
+- **One idea per paragraph**, 3-5 sentences max
+- **Active voice** — increases comprehension 25%. "We recommend" not "It is recommended"
+- **Specific numbers over vague claims** — "$47,000 in savings" not "significant cost reduction"
+- **Visual data preferred 4:1** over text-only data presentation
 
 ### Formatting Standards
-- Super light grey for backgrounds — never cream or eggshell
-- Never pure black text: use #2D2D2D
-- Alternating row shading on tables (very light background)
-- Header row: dark background, white text
-- Page numbers in footer, organization name in header
-- Cover page: org name (large), title, date, accent line, "Prepared by"
+- **Title page**: Document name, prepared for [client], prepared by [Sarah Rodriguez / BLOOM], date, confidentiality note if needed
+- **Table of contents** for documents >5 pages
+- **Page numbers** on all pages except title
+- **Consistent heading hierarchy**: H1 for title, H2 for sections, H3 for subsections
+- **Professional fonts**: When generating HTML — use Inter, Source Serif 4, or Merriweather. Never Comic Sans, Papyrus, or decorative fonts.
+- **Brand Kit integration**: Use client's colors for accent elements, headers, and borders
 
-## Output
+### Document Types & Templates
 
-Always deliver as a formatted file via `create_artifact`, not just markdown. The formatting IS the deliverable.
+**SOP (Standard Operating Procedure)**:
+- Purpose statement (1 sentence: why this exists)
+- Scope (who does this apply to)
+- Definitions (any jargon)
+- Step-by-step procedure (numbered, imperative voice: "Open the CRM", "Click...")
+- Decision points clearly marked (IF/THEN format)
+- Exceptions and escalation paths
+- Version history table at the bottom
+
+**Business Proposal**:
+- Executive summary (the whole pitch in 200 words)
+- Problem statement (their pain, quantified)
+- Proposed solution (what you'll do, timeline, deliverables)
+- Pricing/investment (not "cost" — frame as investment)
+- Social proof (testimonials, case studies, credentials)
+- Terms and next steps
+- Appendix for supporting data
+
+**Report/Analysis**:
+- Executive summary with key findings (3-5 bullet points)
+- Methodology (how data was gathered — builds credibility)
+- Findings organized by theme, not chronology
+- Data visualizations described in detail (Sarah can generate charts via artifacts)
+- Recommendations (actionable, numbered, with owner and timeline)
+- Appendix for raw data
+
+**One-Pager / Fact Sheet**:
+- Single page. No scrolling in print.
+- Hero statement at top (the one thing they should remember)
+- 3-4 key points with supporting stats
+- Visual elements (icons, charts, callout boxes)
+- Clear CTA at bottom
+- Brand colors and logo placement
+
+### Writing Style
+- **Professional but accessible** — no jargon unless the audience expects it
+- **Third person for formal docs**, first person for proposals and letters
+- **Strong verbs**: "implement", "achieve", "reduce", "accelerate" — not "utilize", "leverage", "synergize"
+- **Quantify everything possible**: timelines, costs, percentages, headcounts
+- **Cite sources** for external claims. Internal data can be stated as fact.
+
+### Delivery
+- Save as `.md` artifact (can be converted to PDF/DOCX by the client)
+- For HTML-formatted documents, save as `.html` with print-friendly CSS
+- Include metadata at top: Document Type, Prepared For, Date, Version
+- Flag any sections that need client input: `[CLIENT TO PROVIDE: specific data needed]`
+
+### NEVER do these
+- Start a document with "Introduction" as the first heading (it's implicit — just start)
+- Use passive voice for action items ("It should be done" → "Do this")
+- Write executive summaries longer than one page
+- Forget page numbers, date, or version number
+- Use bullet points for everything (prose for narrative, bullets for lists >3 items)
+- Submit without proofreading for consistency in tone, tense, and formatting

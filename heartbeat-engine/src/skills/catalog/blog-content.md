@@ -1,88 +1,82 @@
 ---
 name: blog-content
-description: "Write blog posts, articles, and long-form content that actually moves people and ranks on Google. Use when the task involves blog writing, article creation, content marketing, thought leadership, or any long-form written content. Also triggers for content calendars, content strategy, and SEO-focused writing."
+description: "Write high-performing blog posts, articles, and long-form content that ranks on Google and keeps readers engaged. Use this skill whenever the task involves writing a blog post, article, thought leadership piece, how-to guide, listicle, case study, industry analysis, or any SEO content. Also triggers for content calendars, topic ideation, content briefs, and any request mentioning 'blog', 'article', 'post', 'write about', 'content', or 'SEO'. Every post should read like it was written by an expert journalist — not AI slop. Data shows well-structured posts get 250% more engagement than poorly organized content."
 ---
 
-# Blog & Long-Form Content
+# Blog & Article Writing — Expert-Grade Content
 
-## How to Think About This
+Every blog post Sarah writes should read like it came from a paid content strategist, not a chatbot. The standard: would an editor at a respected publication approve this?
 
-You are not writing a blog post. You are starting a conversation with someone who has a problem, doesn't know you yet, and is one boring paragraph away from closing the tab.
+## Encoded Preferences (data-backed defaults)
 
-The post is not about the business. It's about the reader's life. The business is the answer — but it comes later.
+### Structure That Performs
+- **Word count**: 1,500-2,500 words for SEO + engagement sweet spot (Backlinko: avg page-1 result = 1,500 words)
+- **Headers every 200-300 words** — readers scan in F-pattern, headers are anchor points
+- **First paragraph must hook** — 55% of readers spend <15 seconds. Open with a bold claim, surprising stat, or provocative question. Never "In today's world..." or "Have you ever wondered..."
+- **Answer the core question in first 40-50 words** — targets featured snippets and AI overviews
+- **One H1** (title), **H2s** for major sections, **H3s** for subsections. Logical hierarchy always.
+- **Short paragraphs**: 2-4 sentences max. Single-sentence paragraphs for emphasis. Walls of text = bounce.
+- **Transition sentences** between sections — content should flow, not feel like disconnected blocks
 
-Before writing, pull from memory and Company Skills for audience, brand voice, local context, and industry. If you don't have enough context, ASK before writing.
+### SEO Encoded Preferences
+- **Title**: Under 65 characters. Primary keyword front-loaded. Include a number or power word.
+  Good: "7 Proven Strategies to Double Your Email Open Rates in 2026"
+  Bad: "Some Tips About Email Marketing That Might Help You"
+- **Meta description**: 150-160 characters. Include keyword. Promise a benefit. End with intrigue.
+- **URL slug**: Short, keyword-rich, hyphenated. `/email-open-rate-strategies` not `/7-proven-strategies-to-double-your-email-open-rates-in-2026`
+- **Primary keyword**: In H1, first paragraph, one H2, and naturally 3-5 times in body. Never stuff.
+- **Internal links**: 3-5 per post to related content
+- **External links**: 2-3 to authoritative sources (builds E-E-A-T)
+- **Images**: At least one above fold, then every 350 words. Use `image_generate` for custom visuals. Always include alt text with keywords.
+- **Featured snippet format**: Answer questions directly in 40-50 words, then expand
 
-## Structure That Converts
+### Writing Style
+- **Active voice** — increases comprehension 25%. "We increased revenue" not "Revenue was increased"
+- **Second person** — "you" and "your" create direct connection with reader
+- **Conversational but authoritative** — like a smart friend explaining something, not a textbook
+- **Data-backed claims** — "Content with data gets 300% more engagement" (Content Research Institute). Never make unsubstantiated claims.
+- **Specific over vague** — "increased conversions by 34%" not "significantly improved results"
+- **Break patterns** — use questions, bold statements, short paragraphs, and callout boxes to prevent monotony
+- **Stories and examples** — abstract advice is forgettable, concrete examples stick
 
-1. **Hook** (1-2 sentences) — Name an experience they've lived, make a bold claim, or ask a question that stings. NEVER open with "In today's fast-paced world..." or "At [Company], we believe..."
-2. **Validation** (1 paragraph) — "You're not alone." Name specific places, demographics, or situations that make the reader think "that's me."
-3. **Insight sections** (2-3 H2s) — Each self-contained with its own mini-hook. H2 headings should be interesting: "It's Not Just About X — It's About Y" beats "Our Approach to X."
-4. **Address the objection** — Name the "but..." directly. Cost? Trust? Time? Don't dodge it.
-5. **The invitation** — Not a hard sell. An open door. Low-friction next step.
+### Blog Post Template (default structure)
+```
+# [Compelling Title with Number or Power Word] (H1)
 
-## Voice Rules
+[Hook paragraph — bold claim, stat, or question. 2-3 sentences max.]
 
-- "You" appears more than "we." Second person throughout.
-- Short paragraphs: 2-3 sentences max. White space is your friend.
-- Specific details from the client's world — neighborhoods, industry terms, local references.
-- Active voice. If a sentence sounds like a brochure, delete it.
-- Match the client's brand voice from Company Skills and memory.
+[Bridge paragraph — what the reader will learn. Set expectations.]
 
-## Technical SEO (Do This, But Don't Let It Show)
+## [Section 1: Core Concept] (H2)
+[Explain the main idea. Lead with the answer, then expand.]
 
-### On-Page SEO
-- **Title tag**: Primary keyword, under 60 characters. Front-load the keyword.
-- **Meta description**: 150-160 characters. Keyword + emotional hook + implied CTA.
-- **URL slug**: Short, hyphenated, keyword-rich. `/faith-based-education-san-antonio` not `/blog-post-12`
-- **H1**: One per page. Should match or closely relate to the title tag.
-- **H2s**: Every 200-300 words. Include secondary keywords naturally.
-- **H3s**: For sub-points under H2s. Creates scannable hierarchy.
+### [Subsection if needed] (H3)
+[Supporting detail, example, or data point.]
 
-### Content Signals
-- **Word count**: 1,200-2,000 words for competitive ranking. Under 800 rarely ranks.
-- **Internal links**: 2-3 links to other client content when available.
-- **External links**: 1-2 to authoritative sources (builds trust with Google and readers).
-- **Image alt text**: Describe what's actually in the image. Include keyword if natural.
-- **First 100 words**: Must contain the primary keyword.
-- **Keyword density**: 1-2% naturally. Never stuff.
+## [Section 2: How-To / Steps / Framework] (H2)
+[Actionable content. This is where the value lives.]
 
-### Schema/Structured Data (when outputting HTML)
-```html
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "BlogPosting",
-  "headline": "Title Here",
-  "description": "Meta description here",
-  "author": {"@type": "Organization", "name": "Client Name"},
-  "datePublished": "2026-03-04"
-}
-</script>
+## [Section 3: Examples / Case Studies] (H2)
+[Real-world proof. Stories are 22x more memorable than facts alone.]
+
+## [Section 4: Common Mistakes / Pitfalls] (H2)
+[What to avoid. Readers love "don't do this" content.]
+
+## [Conclusion / Next Steps] (H2)
+[Summarize key takeaways. End with a clear CTA.]
 ```
 
-### Readability
-- Flesch reading score: aim for 60-70 (8th-9th grade level)
-- Sentence variety: mix short punchy sentences with longer explanatory ones
-- Transition words between paragraphs for flow
-- Bold key phrases sparingly (1 per section max) for scanners
+### What to NEVER do
+- Start with "In today's fast-paced world..." or any cliché opener
+- Write in passive voice for entire sections
+- Use filler phrases: "It's important to note that", "It goes without saying"
+- Produce thin content under 800 words for SEO-targeted posts
+- Skip the meta description
+- Forget internal/external links
+- Use generic stock photo descriptions for image generation
+- Write conclusions that just repeat the intro
 
-## Output Format
-
-Every blog post delivery includes:
-- Title (under 60 chars, primary keyword included)
-- Meta description (150-160 chars)
-- URL slug suggestion
-- Full blog post in clean Markdown with proper H1/H2/H3 hierarchy
-- 3 social media captions (LinkedIn, Facebook, Instagram)
-- Suggested featured image description
-
-## Common Mistakes
-
-- Opening with the company instead of the reader's problem
-- Listicles with no narrative ("7 Ways to..." with no soul)
-- Ending with "Contact us today!" instead of an emotional close
-- No local/industry context — could be for any business in any city
-- H2s that are boring keywords instead of interesting statements
-- Missing meta description or generic one
-- Too safe — if the post doesn't make you feel something, rewrite the opening
+### Delivery
+- Save as `.md` artifact with `create_artifact`
+- Include suggested meta title, meta description, and URL slug at the top
+- If client's blog platform is known, format accordingly

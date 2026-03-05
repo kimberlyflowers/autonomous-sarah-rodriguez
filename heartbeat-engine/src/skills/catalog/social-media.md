@@ -1,119 +1,83 @@
 ---
 name: social-media
-description: "Create social media content that stops the scroll. Use when the task involves social media posts, TikTok scripts, Instagram captions/reels/carousels, Facebook posts, LinkedIn content, Twitter/X posts, content calendars, hashtag strategy, or social media strategy."
+description: "Create scroll-stopping social media content, captions, content calendars, and platform-specific posts. Use this skill whenever the task involves creating social media posts, captions, hashtags, content calendars, social strategy, carousel content, stories, reels scripts, or any social media content. Also triggers for Instagram, LinkedIn, Facebook, TikTok, Twitter/X, YouTube, and any request mentioning 'social', 'post', 'caption', 'hashtag', 'content calendar', 'carousel', or 'engagement'. Every post should stop the scroll — not blend into the feed. Posts with images get 2.3x more engagement."
 ---
 
-# Social Media Content
+# Social Media Content — Scroll-Stopping Posts
 
-## How to Think About This
+Every post Sarah creates should make someone stop scrolling. The standard: would this post get saved, shared, or commented on — not just liked?
 
-You're competing with their ex, vacation photos, and a dog in sunglasses. You have 1.5 seconds. Make them feel something — curiosity, recognition, emotion, surprise. If your post could be from any brand, delete it.
+## Encoded Preferences (data-backed defaults)
 
-Check memory and Company Skills for brand voice, audience, industry, and content guidelines.
+### Platform-Specific Lengths (optimal for engagement)
+- **Instagram**: 138-150 chars for feed posts (first line is the hook). Up to 2,200 for long-form.
+- **LinkedIn**: 1,300-2,000 chars for thought leadership. First 3 lines must hook (before "see more").
+- **Twitter/X**: 71-100 chars = highest engagement. Thread for longer content.
+- **Facebook**: 40-80 chars for maximum engagement. Questions outperform statements.
+- **TikTok captions**: Under 150 chars. Hook in first 3 words.
 
-## Universal Rule: Lead With the Person, Not the Brand
+### The Hook (first line decides everything)
+- First line must create curiosity, shock, or identification
+- **Patterns that work**:
+  - Contrarian: "Stop posting motivational quotes. Here's why."
+  - Number: "I spent $50,000 on ads before learning this one thing."
+  - Question: "What if everything you know about [topic] is wrong?"
+  - Story: "Last Tuesday, a parent walked into our school and said..."
+  - List tease: "3 things every [audience] needs to hear right now:"
+- **NEVER start with**: Generic greetings, hashtags, or brand mentions
 
-Bad: "At [Company], we believe in [value]."
-Good: "[Bold statement about the audience's reality]."
+### Content Frameworks
+**The Value Post** (educate/help):
+Hook → 3-5 actionable tips → CTA to save/share
+"Save this for later 🔖"
 
-The brand is the answer. The person's reality is the hook. Always.
+**The Story Post** (connect/relate):
+Situation → Conflict → Resolution → Lesson → Question
+"Has this ever happened to you?"
 
-## Platform-Specific Specs & Strategy
+**The Authority Post** (position as expert):
+Bold claim → Supporting evidence → Unique perspective → CTA
+"Here's what nobody in [industry] is talking about..."
 
-### Instagram
-**Reels:**
-- Dimensions: 1080x1920px (9:16 vertical)
-- Length: 30-60 seconds optimal. Hook in FIRST SECOND.
-- Cover photo: 1080x1920, text overlay visible in grid crop (center 1080x1080)
-- Caption: 2200 char max. Hook ABOVE the fold (before "...more").
-- Audio: trending sounds boost reach. Original audio fine if content is strong.
-- Best times: Tue-Fri, 10am-2pm local
+**The Engagement Post** (drive comments):
+Question or poll → Options → "Drop your answer below 👇"
+Questions get 2x more comments than statements.
 
-**Carousels:**
-- Dimensions: 1080x1080px (square) or 1080x1350px (portrait, more screen real estate)
-- Max 10 slides. Sweet spot: 5-7.
-- Slide 1: hook (bold statement or quote). Slides 2-4: story/value. Last slide: CTA.
-- Each slide should standalone if screenshotted.
-- File format: JPG or PNG, under 30MB total
+**The Carousel** (Instagram/LinkedIn — 3x engagement of single images):
+Slide 1: Bold hook headline (large text, contrasting background)
+Slides 2-7: One point per slide, visual + short text
+Final slide: Summary + CTA ("Follow for more" / "Save this")
 
-**Stories:**
-- Dimensions: 1080x1920px
-- Length: up to 60 seconds video, 7 seconds photo
-- Add engagement stickers: polls, questions, quizzes (boost algorithm)
-- Post 2-3x/week minimum. Save to Highlights.
+### Hashtag Strategy
+- **Instagram**: 5-10 hashtags. Mix of: 2 broad (500K+ posts), 3 medium (50K-500K), 3 niche (<50K)
+- **LinkedIn**: 3-5 hashtags max. Industry-specific only.
+- **Twitter/X**: 1-2 hashtags. More = lower engagement.
+- **TikTok**: 3-5 trending + niche hashtags
+- **Never**: #followforfollow, #like4like, or spam hashtags
 
-**Hashtags:** 5-15 per post. Mix: 2-3 big (500K+), 3-5 medium (50K-500K), 3-5 niche (under 50K). Bottom of caption or first comment.
+### Visual Preferences
+- Generate images with `image_generate` — custom > stock every time
+- **Carousel text slides**: Bold sans-serif font, high contrast, brand colors, minimal text per slide
+- **Quote graphics**: Large quotation marks, attributed, brand-colored background
+- **Behind-the-scenes**: Authentic > polished for Stories/Reels
+- **Video hooks**: First 3 seconds determine if someone watches. Text overlay + movement.
 
-### TikTok
-- Dimensions: 1080x1920px (9:16)
-- Length: 30-60 seconds for retention. Under 30 if simple.
-- First 3 seconds: text overlay + spoken hook simultaneously. This IS the post.
-- Raw > polished. Authenticity wins.
-- Frequency: 1-3x daily. Consistency > perfection.
-- Stitch/duet trending content when relevant.
-- Best times: Tue-Thu 10am-12pm, 7pm-9pm
+### Content Calendar (when asked to plan)
+- **Minimum 3 posts/week** per platform for growth
+- **Content mix**: 40% value/educational, 30% engagement/community, 20% promotional, 10% personal/behind-scenes
+- **Never post the same content across platforms** — adapt format and length for each
+- **Best posting times** (general): Instagram 11am-1pm, LinkedIn 8-10am (Tue-Thu), Twitter 9am-12pm, TikTok 7-9pm
 
-### Facebook
-- Image: 1200x630px (landscape) for link posts, 1080x1080 for photos
-- Video: up to 240 minutes. Native upload only (buries YouTube links).
-- Caption: no character limit practically. Storytelling works — 3-5 paragraphs fine.
-- Questions drive comments, comments drive reach.
-- Groups > Pages for engagement.
-- Best times: Wed-Fri, 1pm-4pm
+### Delivery
+- Save individual posts as `.md` with platform label, caption, hashtags, and image prompt
+- Save content calendars as `.md` table: Date | Platform | Content Type | Caption | Visual | Hashtags
+- Generate images for the first 3-5 posts to show the visual direction
 
-### LinkedIn
-- Image: 1200x627px (landscape) or 1080x1350 (portrait)
-- Video: up to 10 minutes. Native only.
-- Caption: ~3000 chars. First line is everything (~150 chars before "...see more").
-- Line breaks between every 1-2 sentences. White space is the weapon.
-- Personal profile posts get 5-10x more reach than company pages.
-- Hashtags: 3-5 max. Professional.
-- Best times: Tue-Thu, 8am-10am
-
-### Twitter/X
-- Image: 1600x900px (16:9)
-- Tweet: 280 characters. Threads for longer content.
-- Video: up to 2:20 (regular), 10 min (premium)
-- Hook + opinion + thread works best for engagement
-
-## Content Types (Ranked by Impact)
-
-1. **Testimony/Story** — #1 most powerful. One real person's story outperforms ten graphics.
-2. **Behind-the-scenes** — Raw 15-second clips. Builds trust and familiarity.
-3. **Hook/challenge** — Bold statements that make people stop and share.
-4. **Engagement questions** — Algorithm fuel + market research.
-5. **Educational** — Explaining concepts, FAQs. Valuable but lower engagement.
-6. **Promotional** — CTAs, announcements. MAX 20% of all posts.
-
-## CTA Strategy
-
-- **DMs > Links.** "DM us [KEYWORD]" → 3-5x better conversion, starts CRM conversation.
-- **Soft > Hard.** Invitations > demands.
-- Every post has a CTA, most are subtle: "Tag someone", "Save for later", "DM us."
-- Urgency from emotion, not manufacture. No fake scarcity.
-
-## Content Calendar Template
-
-| Day | Platform | Type | Goal |
-|-----|----------|------|------|
-| Mon | IG Stories | Behind-scenes | Familiarity |
-| Tue | IG Reel/TikTok | Hook or testimony | Awareness, DMs |
-| Wed | Facebook | Education/story | Shares, tags |
-| Thu | Instagram | Testimony carousel | Emotional connection |
-| Fri | FB + IG | Engagement question | Comments, algorithm |
-| Tue | LinkedIn | Thought leadership | Professional network |
-
-## Output Format
-
-Every delivery includes: platform-specific versions (never copy-paste), captions with hashtags, posting time, visual/video direction, CTA strategy.
-
-## Common Mistakes
-
-- Same caption across all platforms
-- Leading with brand name
-- Polished graphics when raw video performs better
-- Posting and ghosting (no comment engagement)
-- Promo > 20% of content
-- Ignoring DMs for hours
-- Wrong dimensions for the platform
-- Not using the client's actual voice
+### NEVER do these
+- Write the same caption for all platforms
+- Start with hashtags
+- Use more than 2 emojis per sentence
+- Post without a visual (text-only posts get buried)
+- Ask people to "like and share" (algorithms punish this)
+- Use corporate/formal language on social (it's social, be human)
+- Forget the CTA (even "What do you think?" counts)
