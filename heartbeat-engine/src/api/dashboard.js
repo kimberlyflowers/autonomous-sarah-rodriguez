@@ -349,12 +349,31 @@ router.post('/user-avatar', async (req, res) => {
         updated_at TIMESTAMPTZ DEFAULT NOW()
       )
     `);
+
+    let valueToStore = avatar;
+
+    // If it's a data URL (base64), upload to Supabase Storage for a real URL
+    if (avatar && avatar.startsWith('data:image')) {
+      try {
+        const { uploadImage, isConfigured } = await import('../storage/supabase-storage.js');
+        if (isConfigured()) {
+          const base64 = avatar.split(',')[1];
+          const ext = avatar.includes('png') ? 'png' : 'jpg';
+          const fname = `avatars/user-${Date.now()}.${ext}`;
+          const upload = await uploadImage(base64, fname, `image/${ext}`);
+          if (upload.success && upload.url) {
+            valueToStore = upload.url;
+          }
+        }
+      } catch (e) { /* fallback to storing data URL */ }
+    }
+
     await pool.query(
       `INSERT INTO user_settings(key, value, updated_at) VALUES('user_avatar', $1, NOW()) 
        ON CONFLICT(key) DO UPDATE SET value=$1, updated_at=NOW()`,
-      [avatar]
+      [valueToStore]
     );
-    res.json({ success: true });
+    res.json({ success: true, url: valueToStore });
   } catch (e) {
     res.json({ success: false, error: e.message });
   }

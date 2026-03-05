@@ -149,7 +149,23 @@ router.patch('/profile', async (req, res) => {
   try {
     pool = await getPool();
     await ensureTables(pool);
-    const { jobTitle, jobDescription, avatarUrl } = req.body;
+    let { jobTitle, jobDescription, avatarUrl } = req.body;
+
+    // If avatar is a data URL, upload to Supabase Storage
+    if (avatarUrl && avatarUrl.startsWith('data:image')) {
+      try {
+        const { uploadImage, isConfigured } = await import('../storage/supabase-storage.js');
+        if (isConfigured()) {
+          const base64 = avatarUrl.split(',')[1];
+          const ext = avatarUrl.includes('png') ? 'png' : 'jpg';
+          const fname = `avatars/agent-${Date.now()}.${ext}`;
+          const upload = await uploadImage(base64, fname, `image/${ext}`);
+          if (upload.success && upload.url) {
+            avatarUrl = upload.url;
+          }
+        }
+      } catch (e) { /* fallback to storing data URL */ }
+    }
 
     const result = await pool.query(`
       UPDATE agent_profile 
