@@ -1460,7 +1460,7 @@ function BusinessProfilePage({c,mob,userImg,setUserImg}){
   if(loading) return <div style={{textAlign:"center",padding:60,color:c.so}}>Loading business profile...</div>;
 
   return(
-    <div style={{overflowY:"auto",height:"calc(100vh - 52px)",padding:mob?"16px 12px 40px":"20px 20px 40px",maxWidth:700,margin:"0 auto"}}>
+    <div style={{padding:mob?"16px 12px 40px":"20px 20px 40px",maxWidth:700,margin:"0 auto"}}>
       <h1 style={{fontSize:mob?20:24,fontWeight:700,color:c.tx,marginBottom:6}}>🏢 Business Profile</h1>
       <p style={{fontSize:13,color:c.so,marginBottom:24}}>Synced from your GoHighLevel account</p>
 
@@ -1559,7 +1559,7 @@ function BillingPage({c,mob}){
   const projTotalOver=projItems.reduce((s,i)=>s+i.projCost,0);
 
   return(
-    <div style={{overflowY:"auto",height:"calc(100vh - 52px)",padding:mob?"16px 12px 40px":"24px 28px 60px",maxWidth:860,margin:"0 auto"}}>
+    <div style={{padding:mob?"16px 12px 40px":"24px 28px 60px",maxWidth:860,margin:"0 auto"}}>
       <style>{`@keyframes bFadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}`}</style>
 
       {/* Header */}
@@ -2104,7 +2104,7 @@ export default function App() {
         )}
 
         {/* ── MAIN CONTENT ── */}
-        <div style={{flex:1,minWidth:0}}>
+        <div style={{flex:1,minWidth:0,height:"calc(100vh - 52px)",overflow:pg==="chat"?"hidden":"auto"}}>
 
           {/* ══ CHAT ══ */}
           {pg==="chat"&&(
@@ -2320,7 +2320,7 @@ export default function App() {
 
           {/* ══ MONITOR — Sarah's functional cards, Jaden's visual style ══ */}
           {pg==="monitor"&&(
-            <div style={{overflowY:"auto",height:"calc(100vh - 52px)",padding:mob?"16px 12px 40px":"20px 20px 40px"}}>
+            <div style={{padding:mob?"16px 12px 40px":"20px 20px 40px"}}>
               <div style={{marginBottom:20,display:"flex",alignItems:"flex-start",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
                 <div>
                   <h1 style={{fontSize:mob?20:24,fontWeight:700,color:c.tx,marginBottom:6}}>📊 Operations Monitor</h1>
@@ -2361,7 +2361,7 @@ export default function App() {
           {/* ══ CRON — Jaden's layout, Sarah's branding ══ */}
           {/* ══ ACTIVITY ══ */}
           {pg==="activity"&&(
-            <div style={{overflowY:"auto",height:"calc(100vh - 52px)"}}>
+            <div style={{padding:0}}>
               {/* Header */}
               <div style={{background:c.cd,borderBottom:"1px solid "+c.ln}}>
                 <div style={{maxWidth:840,margin:"0 auto",padding:mob?"16px 16px 0":"20px 28px 0"}}>
@@ -2553,7 +2553,7 @@ export default function App() {
 
           {/* ══ CALLS — Phone call transcripts + Sarah's actions ══ */}
           {pg==="calls"&&(
-            <div style={{overflowY:"auto",height:"calc(100vh - 52px)",padding:mob?"16px 12px 40px":"20px 20px 40px",maxWidth:900,margin:"0 auto"}}>
+            <div style={{padding:mob?"16px 12px 40px":"20px 20px 40px",maxWidth:900,margin:"0 auto"}}>
               <div style={{marginBottom:24}}>
                 <h1 style={{fontSize:mob?20:24,fontWeight:700,color:c.tx,marginBottom:6}}>📞 Calls</h1>
                 <p style={{fontSize:13,color:c.so}}>Phone calls and voicemails — Sarah reads transcripts and takes action</p>
@@ -2564,7 +2564,7 @@ export default function App() {
 
           {/* ══ AGENT PROFILE (full page) ══ */}
           {pg==="profile"&&(
-            <div style={{overflowY:"auto",height:"calc(100vh - 52px)"}}>
+            <div style={{padding:0}}>
               {/* Header banner */}
               <div style={{background:c.gradient,padding:mob?"24px 16px":"32px 28px"}}>
                 <div style={{maxWidth:840,margin:"0 auto",display:"flex",flexDirection:mob?"column":"row",alignItems:"center",gap:mob?16:20}}>
@@ -2678,7 +2678,7 @@ export default function App() {
 
           {/* ══ FILES — Approved deliverables library ══ */}
           {pg==="artifacts"&&(
-            <div style={{overflowY:"auto",height:"calc(100vh - 52px)",padding:mob?"16px 12px 40px":"20px 20px 40px",maxWidth:1000,margin:"0 auto"}}>
+            <div style={{padding:mob?"16px 12px 40px":"20px 20px 40px",maxWidth:1000,margin:"0 auto"}}>
               <div style={{marginBottom:16,display:"flex",alignItems:mob?"column":"row",gap:12,alignItems:mob?"stretch":"center",justifyContent:"space-between"}}>
                 <div>
                   <h1 style={{fontSize:mob?20:24,fontWeight:700,color:c.tx,marginBottom:4}}>📁 Files & Deliverables</h1>
@@ -2760,7 +2760,7 @@ export default function App() {
 
           {/* ══ SETTINGS — Jaden's layout, Sarah's details ══ */}
           {pg==="settings"&&(
-            <div style={{overflowY:"auto",height:"calc(100vh - 52px)",padding:mob?"16px 12px 40px":"20px 20px 40px",maxWidth:800,margin:"0 auto"}}>
+            <div style={{padding:mob?"16px 12px 40px":"20px 20px 40px",maxWidth:800,margin:"0 auto"}}>
               <div style={{marginBottom:24}}>
                 <h1 style={{fontSize:mob?20:24,fontWeight:700,color:c.tx,marginBottom:6}}>⚙️ Settings</h1>
                 <p style={{fontSize:13,color:c.so}}>Configure Sarah and your Bloomie experience</p>
