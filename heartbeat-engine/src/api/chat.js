@@ -1383,8 +1383,10 @@ IMPORTANT: Since a brand kit is configured, DO NOT ask the user about colors, fo
 
 // ROUTES — DB-backed persistent sessions
 
+let _tablesReady = false;
 async function ensureSession(pool, sessionId) {
-  // Create tables if missing
+  if (!_tablesReady) {
+  // Create tables if missing (only runs on first call)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS chat_sessions (
       id VARCHAR(64) PRIMARY KEY,
@@ -1447,8 +1449,10 @@ async function ensureSession(pool, sessionId) {
   for (const sql of sessionMigrations) {
     try { await pool.query(sql); } catch(e) { /* already exists */ }
   }
+  _tablesReady = true;
+  } // end if (!_tablesReady)
 
-  // Ensure session row exists
+  // Ensure session row exists (always runs)
   await pool.query(
     `INSERT INTO chat_sessions(id) VALUES($1) ON CONFLICT(id) DO NOTHING`,
     [sessionId]
