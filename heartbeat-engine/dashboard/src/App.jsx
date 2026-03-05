@@ -2023,6 +2023,9 @@ export default function App() {
   const [filesSearch,setFilesSearch]=useState('');
   const [filesRefresh,setFilesRefresh]=useState(0);
   const [previewFile,setPreviewFile]=useState(null); // {name, content, fileId}
+  const [editMode,setEditMode]=useState(false);
+  const [editContent,setEditContent]=useState('');
+  const [editSaving,setEditSaving]=useState(false);
   const [heartbeatInterval,setHeartbeatInterval]=useState("0 */6 * * *");
   const [heartbeatEnabled,setHeartbeatEnabled]=useState(true);
   const [cronJobs,setCronJobs]=useState([
@@ -3540,37 +3543,117 @@ export default function App() {
 
       {/* ══ FILE PREVIEW MODAL ══ */}
       {previewFile&&(
-        <div onClick={()=>setPreviewFile(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:mob?8:20}}>
-          <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:previewFile.name?.endsWith('.html')?1100:800,height:previewFile.name?.endsWith('.html')?"90vh":"auto",maxHeight:"90vh",background:c.cd,borderRadius:16,border:"1px solid "+c.ln,display:"flex",flexDirection:"column",overflow:"hidden",boxShadow:"0 20px 60px rgba(0,0,0,.4)"}}>
-            <div style={{padding:"14px 20px",borderBottom:"1px solid "+c.ln,display:"flex",alignItems:"center",gap:10,background:c.sf,flexShrink:0}}>
-              <span style={{fontSize:18}}>📄</span>
-              <div style={{flex:1}}>
-                <div style={{fontSize:15,fontWeight:700,color:c.tx}}>{previewFile.name}</div>
+        <div onClick={()=>{setPreviewFile(null);setEditMode(false);}} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:mob?8:20}}>
+          <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:previewFile.name?.endsWith('.html')?1100:800,height:"90vh",background:c.cd,borderRadius:16,border:"1px solid "+c.ln,display:"flex",flexDirection:"column",overflow:"hidden",boxShadow:"0 20px 60px rgba(0,0,0,.4)"}}>
+            {/* Header */}
+            <div style={{padding:"12px 20px",borderBottom:"1px solid "+c.ln,display:"flex",alignItems:"center",gap:8,background:c.sf,flexShrink:0}}>
+              <span style={{fontSize:18}}>{editMode?"✏️":"📄"}</span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:15,fontWeight:700,color:c.tx,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{previewFile.name}</div>
               </div>
-              <a href={`/api/files/publish/${previewFile.fileId}`} target="_blank" rel="noopener noreferrer" style={{padding:"6px 14px",borderRadius:8,border:"none",background:"linear-gradient(135deg,#F4A261,#E76F8B)",fontSize:12,fontWeight:700,color:"#fff",textDecoration:"none",marginRight:4}}>↗ Open Full Screen</a>
-              <a href={`/api/files/download/${previewFile.fileId}`} download style={{padding:"6px 14px",borderRadius:8,border:"1px solid "+c.ln,background:c.cd,fontSize:12,fontWeight:600,color:c.ac,textDecoration:"none",marginRight:8}}>↓ Download</a>
-              <button onClick={()=>setPreviewFile(null)} style={{width:32,height:32,borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:16,color:c.so,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+              {/* Mode toggle */}
+              <div style={{display:"flex",gap:2,background:c.cd,padding:2,borderRadius:8,border:"1px solid "+c.ln}}>
+                <button onClick={()=>setEditMode(false)} style={{padding:"5px 12px",borderRadius:6,border:"none",fontSize:11,fontWeight:600,cursor:"pointer",background:!editMode?c.ac+"20":"transparent",color:!editMode?c.ac:c.so,fontFamily:"inherit"}}>View</button>
+                <button onClick={()=>{setEditMode(true);setEditContent(previewFile.content||'');}} style={{padding:"5px 12px",borderRadius:6,border:"none",fontSize:11,fontWeight:600,cursor:"pointer",background:editMode?c.ac+"20":"transparent",color:editMode?c.ac:c.so,fontFamily:"inherit"}}>Edit</button>
+              </div>
+              <a href={`/api/files/publish/${previewFile.fileId}`} target="_blank" rel="noopener noreferrer" style={{padding:"5px 12px",borderRadius:8,border:"none",background:c.gradient,fontSize:11,fontWeight:700,color:"#fff",textDecoration:"none"}}>↗ Full Screen</a>
+              <a href={`/api/files/download/${previewFile.fileId}`} download style={{padding:"5px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.cd,fontSize:11,fontWeight:600,color:c.ac,textDecoration:"none"}}>↓</a>
+              <button onClick={()=>{setPreviewFile(null);setEditMode(false);}} style={{width:30,height:30,borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:14,color:c.so,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
             </div>
-            {previewFile.name?.endsWith('.html')?(
-              <iframe
-                srcDoc={previewFile.content||''}
-                style={{flex:1,width:"100%",minHeight:500,border:"none",background:"#fff"}}
-                sandbox="allow-scripts allow-same-origin"
-                title={previewFile.name}
-              />
+
+            {/* Content area */}
+            {editMode?(
+              <>
+                {previewFile.name?.endsWith('.html')?(
+                  /* HTML Visual Editor — contentEditable iframe */
+                  <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+                    <div style={{padding:"8px 16px",borderBottom:"1px solid "+c.ln,background:c.cd,display:"flex",gap:6,alignItems:"center",flexShrink:0,flexWrap:"wrap"}}>
+                      <span style={{fontSize:11,color:c.so,fontWeight:600}}>Visual Editor</span>
+                      <button onClick={()=>{
+                        const iframe=document.getElementById('bloom-html-editor');
+                        if(iframe?.contentDocument){
+                          const html=iframe.contentDocument.documentElement.outerHTML;
+                          setEditContent('<!DOCTYPE html><html>'+html.slice(html.indexOf('<html')+6)+'</html>');
+                        }
+                      }} style={{padding:"4px 10px",borderRadius:6,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:10,fontWeight:600,color:c.tx,fontFamily:"inherit"}}>Sync from visual</button>
+                      <button onClick={()=>{setEditMode('code');setEditContent(previewFile.content||'');}} style={{padding:"4px 10px",borderRadius:6,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:10,fontWeight:600,color:c.so,fontFamily:"inherit"}}>Switch to Code</button>
+                    </div>
+                    <iframe
+                      id="bloom-html-editor"
+                      srcDoc={(editContent||previewFile.content||'').replace('</body>',`<style>*:hover{outline:2px dashed rgba(244,162,97,0.4)!important;outline-offset:2px}[contenteditable]:focus{outline:2px solid #F4A261!important;outline-offset:2px}</style><script>document.body.contentEditable='true';document.designMode='on';</script></body>`)}
+                      style={{flex:1,width:"100%",border:"none",background:"#fff"}}
+                      sandbox="allow-scripts allow-same-origin"
+                      title="Visual Editor"
+                    />
+                  </div>
+                ):editMode==='code'||!previewFile.name?.endsWith('.html')?(
+                  /* Code/Text Editor */
+                  <textarea value={editContent} onChange={e=>setEditContent(e.target.value)} style={{flex:1,width:"100%",padding:"16px 20px",border:"none",background:c.bg,color:c.tx,fontSize:13,fontFamily:"monospace",lineHeight:1.7,resize:"none",boxSizing:"border-box",outline:"none"}}/>
+                ):null}
+
+                {/* Edit footer */}
+                <div style={{padding:"10px 16px",borderTop:"1px solid "+c.ln,background:c.sf,display:"flex",gap:8,alignItems:"center",flexShrink:0,flexWrap:"wrap"}}>
+                  <button onClick={async()=>{
+                    setEditSaving(true);
+                    // If visual editor, sync content first
+                    let content=editContent;
+                    if(previewFile.name?.endsWith('.html')&&editMode!=='code'){
+                      const iframe=document.getElementById('bloom-html-editor');
+                      if(iframe?.contentDocument){
+                        const html=iframe.contentDocument.documentElement.outerHTML;
+                        content='<!DOCTYPE html><html>'+html.slice(html.indexOf('<html')+6)+'</html>';
+                      }
+                    }
+                    try{
+                      const r=await fetch(`/api/files/artifacts/${previewFile.fileId}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({content})});
+                      const d=await r.json();
+                      if(d.success){setPreviewFile(p=>({...p,content}));setEditMode(false);}
+                    }catch{}
+                    setEditSaving(false);
+                  }} style={{padding:"8px 20px",borderRadius:8,border:"none",background:c.gradient,cursor:"pointer",fontSize:12,fontWeight:700,color:"#fff",fontFamily:"inherit"}}>
+                    {editSaving?"Saving...":"💾 Save Changes"}
+                  </button>
+                  {previewFile.name?.endsWith('.html')&&editMode!=='code'&&(
+                    <button onClick={()=>{setEditMode('code');setEditContent(editContent||previewFile.content||'');}} style={{padding:"8px 14px",borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:12,fontWeight:600,color:c.tx,fontFamily:"inherit"}}>{"</>"} Code View</button>
+                  )}
+                  {editMode==='code'&&previewFile.name?.endsWith('.html')&&(
+                    <button onClick={()=>setEditMode(true)} style={{padding:"8px 14px",borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:12,fontWeight:600,color:c.tx,fontFamily:"inherit"}}>👁 Visual View</button>
+                  )}
+                  <button onClick={()=>{
+                    const name=previewFile.name;
+                    const ask=`I want to make changes to "${name}". Here's the current content:\n\n\`\`\`\n${(editContent||previewFile.content||'').slice(0,2000)}\n\`\`\`\n\nPlease help me edit this.`;
+                    setPreviewFile(null);setEditMode(false);setPg('chat');setTx(ask);
+                  }} style={{padding:"8px 14px",borderRadius:8,border:"1px solid "+c.ac,background:c.ac+"10",cursor:"pointer",fontSize:12,fontWeight:600,color:c.ac,fontFamily:"inherit"}}>
+                    ✨ Ask Bloomie to Edit
+                  </button>
+                  <button onClick={()=>setEditMode(false)} style={{padding:"8px 14px",borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:12,fontWeight:600,color:c.so,fontFamily:"inherit",marginLeft:"auto"}}>Cancel</button>
+                </div>
+              </>
             ):(
-              <div style={{flex:1,overflowY:"auto",padding:"20px 24px",fontSize:15,lineHeight:1.8,color:c.tx}}
-                dangerouslySetInnerHTML={{__html: (previewFile.content||'')
-                  .replace(/^# (.+)$/gm, '<h1 style="font-size:24px;font-weight:700;margin:20px 0 10px">$1</h1>')
-                  .replace(/^## (.+)$/gm, '<h2 style="font-size:20px;font-weight:700;margin:16px 0 8px">$1</h2>')
-                  .replace(/^### (.+)$/gm, '<h3 style="font-size:17px;font-weight:600;margin:14px 0 6px">$1</h3>')
-                  .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-                  .replace(/\*(.+?)\*/g, '<em>$1</em>')
-                  .replace(/^- (.+)$/gm, '<li style="margin-left:20px;margin-bottom:6px">$1</li>')
-                  .replace(/^(\d+)\. (.+)$/gm, '<li style="margin-left:20px;margin-bottom:6px"><strong>$1.</strong> $2</li>')
-                  .replace(/\n\n/g, '<br/><br/>')
-                  .replace(/\n/g, '<br/>')
-                }}/>
+              /* View Mode */
+              <>
+                {previewFile.name?.endsWith('.html')?(
+                  <iframe
+                    srcDoc={previewFile.content||''}
+                    style={{flex:1,width:"100%",border:"none",background:"#fff"}}
+                    sandbox="allow-scripts allow-same-origin"
+                    title={previewFile.name}
+                  />
+                ):(
+                  <div style={{flex:1,overflowY:"auto",padding:"20px 24px",fontSize:15,lineHeight:1.8,color:c.tx}}
+                    dangerouslySetInnerHTML={{__html: (previewFile.content||'')
+                      .replace(/^# (.+)$/gm, '<h1 style="font-size:24px;font-weight:700;margin:20px 0 10px">$1</h1>')
+                      .replace(/^## (.+)$/gm, '<h2 style="font-size:20px;font-weight:700;margin:16px 0 8px">$1</h2>')
+                      .replace(/^### (.+)$/gm, '<h3 style="font-size:17px;font-weight:600;margin:14px 0 6px">$1</h3>')
+                      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+                      .replace(/^- (.+)$/gm, '<li style="margin-left:20px;margin-bottom:6px">$1</li>')
+                      .replace(/^(\d+)\. (.+)$/gm, '<li style="margin-left:20px;margin-bottom:6px"><strong>$1.</strong> $2</li>')
+                      .replace(/\n\n/g, '<br/><br/>')
+                      .replace(/\n/g, '<br/>')
+                    }}/>
+                )}
+              </>
             )}
           </div>
         </div>

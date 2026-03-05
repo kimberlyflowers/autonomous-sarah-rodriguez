@@ -172,42 +172,79 @@ router.get('/artifacts', async (req, res) => {
 });
 
 // ── APPROVE / REJECT ARTIFACT ───────────────────────────────────────────────
-// PATCH /api/files/artifacts/:fileId
+// PATCH /api/files/artifacts/:fileId — status changes (approve/reject)
 router.patch('/artifacts/:fileId', async (req, res) => {
   let pool;
   try {
     pool = await getPool();
     await ensureTable(pool);
     const { fileId } = req.params;
-    const { status } = req.body; // 'approved' or 'rejected'
-
-    logger.info('PATCH artifact request', { fileId, status });
+    const { status } = req.body;
 
     if (!['approved', 'rejected'].includes(status)) {
       return res.status(400).json({ error: 'status must be approved or rejected' });
     }
 
-    // Update status
     const result = await pool.query(
       `UPDATE artifacts SET status = $1 WHERE file_id = $2 RETURNING id, file_id, name, status`,
       [status, fileId]
     );
 
-    if (!result.rows.length) {
-      logger.warn('Artifact not found for PATCH', { fileId });
-      return res.status(404).json({ error: 'Artifact not found' });
-    }
+    if (!result.rows.length) return res.status(404).json({ error: 'Artifact not found' });
 
-    // Set approved_at separately if approved
     if (status === 'approved') {
       await pool.query(`UPDATE artifacts SET approved_at = NOW() WHERE file_id = $1`, [fileId]);
     }
 
-    logger.info(`Artifact ${status}`, { fileId, name: result.rows[0].name });
     return res.json({ success: true, artifact: result.rows[0] });
   } catch (error) {
-    logger.error('Update artifact error', { error: error.message, stack: error.stack });
     return res.status(500).json({ error: 'Failed to update artifact: ' + error.message });
+  }
+});
+
+// PUT /api/files/artifacts/:fileId — update file content (edit mode)
+router.put('/artifacts/:fileId', async (req, res) => {
+  try {
+    const pool = await getPool();
+    await ensureTable(pool);
+    const { fileId } = req.params;
+    const { content, name } = req.body;
+
+    if (!content && !name) return res.status(400).json({ error: 'content or name required' });
+
+    const updates = [];
+    const params = [];
+    if (content !== undefined) {
+      updates.push(`content_text = $${params.length + 1}`);
+      params.push(content);
+      updates.push(`file_size = $${params.length + 1}`);
+      params.push(Buffer.byteLength(content, 'utf8'));
+    }
+    if (name) {
+      updates.push(`name = $${params.length + 1}`);
+      params.push(name);
+    }
+    params.push(fileId);
+
+    const result = await pool.query(
+      `UPDATE artifacts SET ${updates.join(', ')} WHERE file_id = $${params.length} RETURNING file_id, name, file_size`,
+      params
+    );
+
+    if (!result.rows.length) return res.status(404).json({ error: 'Artifact not found' });
+
+    // Also update the file on disk if it exists
+    try {
+      const pathRes = await pool.query('SELECT file_path FROM artifacts WHERE file_id = $1', [fileId]);
+      if (pathRes.rows[0]?.file_path && content) {
+        fs.writeFileSync(pathRes.rows[0].file_path, content, 'utf8');
+      }
+    } catch {}
+
+    logger.info('Artifact content updated', { fileId, name: result.rows[0].name });
+    return res.json({ success: true, artifact: result.rows[0] });
+  } catch (error) {
+    return res.status(500).json({ error: 'Failed to update: ' + error.message });
   }
 });
 
