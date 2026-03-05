@@ -109,10 +109,27 @@ Don't default to flat solid colors. Create atmosphere:
 - Forgetting mobile responsiveness
 - Stock photos that scream "stock photo"
 
-## Phase 4: Technical Output
+## Phase 4: Generate Images First
+
+Before building the HTML, generate real images for the page:
+1. **Hero image**: Call `image_generate` with a landscape (1536x1024) prompt that matches the brand. Be specific — describe the scene, colors, mood, composition.
+2. **Section images**: Generate square (1024x1024) images for feature sections, testimonials, or product shots.
+3. **Background textures**: If the design needs textured/gradient backgrounds, generate them too.
+
+Each image comes back as `image_base64`. Embed directly in HTML:
+```html
+<img src="data:image/png;base64,{image_base64}" alt="Hero banner" style="width:100%"/>
+```
+
+This makes the HTML completely self-contained — no broken image links. The client sees the real website with real images when they preview it.
+
+NEVER use placeholder images (via.placeholder.com, placehold.it, etc.) or unsplash URLs. ALWAYS generate real images with image_generate.
+
+## Phase 5: Technical Output
 
 Output as a single HTML file with:
 - Inline CSS (no external stylesheets needed)
+- All images embedded as base64 data URIs (from image_generate)
 - Mobile-responsive (media queries or flexible units)
 - Google Fonts loaded via CDN
 - Smooth scroll, scroll-triggered animations
@@ -120,7 +137,7 @@ Output as a single HTML file with:
 - CSS variables for colors and spacing
 - CTA buttons that visually dominate
 
-Use `create_artifact` to deliver the HTML so the client can preview immediately.
+Use `create_artifact` to deliver the HTML so the client can preview immediately in full screen.
 
 For React projects: use Tailwind utility classes, lucide-react for icons, and recharts for any data visualization. Import from available libraries only.
 

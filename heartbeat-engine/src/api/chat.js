@@ -96,6 +96,16 @@ Use descriptive filenames with extensions like 'summer-camp-email-campaign.html'
 If a client asks you to "write", "create", "draft", "make", or "generate" any document or content,
 use create_artifact. This is how your deliverables get saved and downloaded.
 
+WEBSITES WITH IMAGES (important workflow):
+When creating websites or landing pages, generate real images for them:
+1. FIRST call image_generate for each image needed (hero image, background, product photo, etc.)
+2. The tool returns image_base64 — a base64-encoded image string
+3. Embed it directly in your HTML: <img src="data:image/png;base64,{image_base64}" />
+4. THEN create the HTML artifact with all images embedded inline
+This makes the website self-contained — no broken image links. The client can preview it
+immediately in full screen. Generate landscape (1536x1024) for hero banners, square (1024x1024)
+for product/feature images, and portrait (1024x1536) for tall sections.
+
 IMPORTANT — don't undersell yourself:
 Never tell Kimberly you "can't" do something that you actually can. If someone uploads an
 image, you can see it — say so and engage with it. If they need a blog post written, write it.
@@ -1094,7 +1104,7 @@ async function chatWithSarah(userMessage, history, agentConfig, sessionId = null
 
   const toolsUsed = [];
   const toolResults = []; // Track what tools returned for history
-  for (let round = 0; round < 10; round++) {
+  for (let round = 0; round < 15; round++) {
     const response = await callAnthropicWithRetry({
       model: process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001',
       max_tokens: 4096,
