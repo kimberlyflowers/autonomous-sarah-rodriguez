@@ -1513,10 +1513,20 @@ IMPORTANT: Since a brand kit is configured, DO NOT ask the user about colors, fo
             result = { success: false, error: `Tool error: ${toolError.message}` };
           }
           toolResults.push(result);
+          
+          // Strip large binary data from context (keep URLs only)
+          const contextSafeResult = {...result};
+          if (contextSafeResult.image_base64) {
+            delete contextSafeResult.image_base64; // Remove 200KB+ base64 blob
+          }
+          if (contextSafeResult.content && typeof contextSafeResult.content === 'string' && contextSafeResult.content.length > 50000) {
+            contextSafeResult.content = contextSafeResult.content.slice(0, 5000) + '... [truncated]';
+          }
+          
           toolResultBlocks.push({
             type: 'tool_result',
             tool_use_id: block.id,
-            content: JSON.stringify(result)
+            content: JSON.stringify(contextSafeResult)
           });
         }
       }
