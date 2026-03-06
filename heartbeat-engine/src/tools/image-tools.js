@@ -351,7 +351,7 @@ async function generateWithGemini(prompt, size) {
   try {
     logger.info('Generating image with Gemini');
 
-    // Try Nano Banana FIRST (free tier — gemini-2.0-flash-exp native image gen)
+    // Try Nano Banana FIRST (free tier — gemini-3.1-flash-image-preview native image gen)
     try {
       logger.info('Trying Nano Banana (free tier)');
       const result = await generateWithNanoBanana(prompt, size);
@@ -418,7 +418,7 @@ async function generateWithNanoBanana(prompt, size) {
   try {
     // Nano Banana 2 uses Gemini 3.1 Flash Image — conversational image generation
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${getGeminiKey()}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key=${getGeminiKey()}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -488,7 +488,7 @@ async function editWithGemini(prompt, imageUrl, imageBase64) {
     }
 
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${getGeminiKey()}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key=${getGeminiKey()}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
