@@ -1715,11 +1715,46 @@ async function ensureSession(pool, sessionId) {
 }
 
 async function loadHistory(pool, sessionId) {
-  const res = await pool.query(
-    `SELECT role, content FROM chat_messages WHERE session_id=$1 ORDER BY created_at ASC LIMIT 40`,
-    [sessionId]
-  );
-  return res.rows.map(r => ({ role: r.role, content: r.content }));
+  // Load chat history from SUPABASE (source of truth)
+  try {
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    
+    const { data, error } = await supabase
+      .from('messages')
+      .select('type, text, timestamp')
+      .eq('conversation_id', sessionId)
+      .order('timestamp', { ascending: true })
+      .limit(40);
+    
+    if (error) {
+      logger.warn(`Supabase history load failed, trying Railway fallback:`, error.message);
+      // Fallback to Railway if Supabase fails
+      const res = await pool.query(
+        `SELECT role, content FROM chat_messages WHERE session_id=$1 ORDER BY created_at ASC LIMIT 40`,
+        [sessionId]
+      );
+      return res.rows.map(r => ({ role: r.role, content: r.content }));
+    }
+    
+    // Map Supabase schema to expected format
+    // 'user' → 'user', 'sarah' → 'assistant', 'system' → 'system'
+    return (data || []).map(msg => ({
+      role: msg.type === 'sarah' ? 'assistant' : msg.type,
+      content: msg.text
+    }));
+    
+  } catch (err) {
+    logger.error('Failed to load history from Supabase:', err);
+    // Fallback to Railway
+    const res = await pool.query(
+      `SELECT role, content FROM chat_messages WHERE session_id=$1 ORDER BY created_at ASC LIMIT 40`,
+      [sessionId]
+    );
+    return res.rows.map(r => ({ role: r.role, content: r.content }));
+  }
 }
 
 async function generateSessionTitle(pool, sessionId, userMsg, assistantMsg) {
@@ -1764,22 +1799,71 @@ Title:`;
 
 async function saveMessages(pool, sessionId, userMsg, assistantMsg, files = null) {
   const userText = typeof userMsg === 'string' ? userMsg : JSON.stringify(userMsg);
-  await pool.query(
-    `INSERT INTO chat_messages(session_id, role, content, files) VALUES($1,'user',$2,$3)`,
-    [sessionId, userText, files ? JSON.stringify(files) : null]
-  );
-  await pool.query(
-    `INSERT INTO chat_messages(session_id, role, content) VALUES($1,'assistant',$2)`,
-    [sessionId, assistantMsg]
-  );
-  await pool.query(
-    `UPDATE chat_sessions SET
-       updated_at = NOW(),
-       message_count = message_count + 2,
-       title = CASE WHEN title IS NULL THEN LEFT(REGEXP_REPLACE($2, '\s+\S*$', ''), 60) ELSE title END
-     WHERE id = $1`,
-    [sessionId, userText]
-  );
+  
+  // Save messages to SUPABASE (source of truth for millions of users)
+  try {
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    
+    const userId = '00000000-0000-0000-0000-000000000001'; // TODO: Get from auth
+    
+    // Insert user message
+    await supabase
+      .from('messages')
+      .insert({
+        conversation_id: sessionId,
+        user_id: userId,
+        type: 'user',
+        text: userText,
+        files: files ? JSON.stringify(files) : null,
+        timestamp: new Date().toISOString()
+      });
+    
+    // Insert assistant message
+    await supabase
+      .from('messages')
+      .insert({
+        conversation_id: sessionId,
+        user_id: userId,
+        type: 'sarah', // Maps 'assistant' → 'sarah' for Sarah's identity
+        text: assistantMsg,
+        timestamp: new Date().toISOString()
+      });
+    
+    // Update session metadata in Supabase
+    await supabase
+      .from('sessions')
+      .update({ 
+        updated_at: new Date().toISOString(),
+        title: null // Will be set by generateSessionTitle
+      })
+      .eq('id', sessionId);
+    
+    logger.info(`Messages saved to Supabase for session ${sessionId}`);
+    
+  } catch (err) {
+    logger.error('Failed to save messages to Supabase:', err);
+    // Fall back to Railway as backup only if Supabase fails
+    await pool.query(
+      `INSERT INTO chat_messages(session_id, role, content, files) VALUES($1,'user',$2,$3)`,
+      [sessionId, userText, files ? JSON.stringify(files) : null]
+    );
+    await pool.query(
+      `INSERT INTO chat_messages(session_id, role, content) VALUES($1,'assistant',$2)`,
+      [sessionId, assistantMsg]
+    );
+    await pool.query(
+      `UPDATE chat_sessions SET
+         updated_at = NOW(),
+         message_count = message_count + 2,
+         title = CASE WHEN title IS NULL THEN LEFT(REGEXP_REPLACE($2, '\s+\S*$', ''), 60) ELSE title END
+       WHERE id = $1`,
+      [sessionId, userText]
+    );
+    logger.warn('Fell back to Railway Postgres for message storage');
+  }
 }
 
 // GET /api/chat/sessions
