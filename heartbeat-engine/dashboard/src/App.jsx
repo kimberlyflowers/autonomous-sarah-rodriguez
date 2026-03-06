@@ -2201,6 +2201,9 @@ function App() {
   // Projects state
   const [projects,setProjects]=useState([]);
   const [loadingProjects,setLoadingProjects]=useState(false);
+  const [showProjectModal,setShowProjectModal]=useState(false);
+  const [newProjectName,setNewProjectName]=useState('');
+  const [newProjectDesc,setNewProjectDesc]=useState('');
   
   // Fetch projects when Projects page is opened
   useEffect(()=>{
@@ -3823,27 +3826,7 @@ function App() {
             <div style={{padding:mob?"16px 12px 40px":"32px 40px 60px",maxWidth:1200,margin:"0 auto"}}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:32}}>
                 <h1 style={{fontSize:mob?24:32,fontWeight:700,color:c.tx}}>Projects</h1>
-                <button onClick={async()=>{
-                  const name=prompt('Project name:');
-                  if(!name) return;
-                  const description=prompt('Description (optional):');
-                  try {
-                    const res=await fetch('/api/projects',{
-                      method:'POST',
-                      headers:{'Content-Type':'application/json'},
-                      body:JSON.stringify({name,description:description||''})
-                    });
-                    const data=await res.json();
-                    if(data.success){
-                      setProjects([data.project,...projects]);
-                      alert('✅ Project created!');
-                    }else{
-                      alert('❌ Failed to create project: '+data.error);
-                    }
-                  }catch(err){
-                    alert('❌ Error: '+err.message);
-                  }
-                }} style={{padding:"10px 20px",borderRadius:10,border:"none",background:c.ac,color:"#fff",fontSize:13,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:8}}>
+                <button onClick={()=>setShowProjectModal(true)} style={{padding:"10px 20px",borderRadius:10,border:"none",background:c.ac,color:"#fff",fontSize:13,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:8}}>
                   <span style={{fontSize:16}}>+</span> New project
                 </button>
               </div>
@@ -3891,6 +3874,81 @@ function App() {
                 <div style={{fontSize:14,color:c.so,marginBottom:8}}>💡 Tip: Projects help you organize related conversations</div>
                 <div style={{fontSize:12,color:c.fa}}>Create a project to group chats by client, campaign, or topic</div>
               </div>
+
+              {/* Project Creation Modal */}
+              {showProjectModal&&(
+                <div onClick={()=>setShowProjectModal(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:20}}>
+                  <div onClick={(e)=>e.stopPropagation()} style={{background:c.bg,borderRadius:16,padding:32,maxWidth:500,width:"100%",border:"1px solid "+c.ln,boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
+                    <h2 style={{fontSize:24,fontWeight:700,color:c.tx,marginBottom:24}}>Create New Project</h2>
+                    
+                    <div style={{marginBottom:20}}>
+                      <label style={{display:"block",fontSize:13,fontWeight:600,color:c.tx,marginBottom:8}}>Project Name *</label>
+                      <input
+                        type="text"
+                        value={newProjectName}
+                        onChange={(e)=>setNewProjectName(e.target.value)}
+                        placeholder="e.g., Q1 Marketing Campaign"
+                        autoFocus
+                        style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.cd,color:c.tx,fontSize:14,fontFamily:"inherit",outline:"none"}}
+                        onFocus={(e)=>e.target.style.borderColor=c.ac}
+                        onBlur={(e)=>e.target.style.borderColor=c.ln}
+                      />
+                    </div>
+
+                    <div style={{marginBottom:32}}>
+                      <label style={{display:"block",fontSize:13,fontWeight:600,color:c.tx,marginBottom:8}}>Description (optional)</label>
+                      <textarea
+                        value={newProjectDesc}
+                        onChange={(e)=>setNewProjectDesc(e.target.value)}
+                        placeholder="What is this project about?"
+                        rows={3}
+                        style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.cd,color:c.tx,fontSize:14,fontFamily:"inherit",outline:"none",resize:"vertical"}}
+                        onFocus={(e)=>e.target.style.borderColor=c.ac}
+                        onBlur={(e)=>e.target.style.borderColor=c.ln}
+                      />
+                    </div>
+
+                    <div style={{display:"flex",gap:12,justifyContent:"flex-end"}}>
+                      <button
+                        onClick={()=>{setShowProjectModal(false);setNewProjectName('');setNewProjectDesc('');}}
+                        style={{padding:"10px 20px",borderRadius:8,border:"1px solid "+c.ln,background:"transparent",color:c.tx,fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={async()=>{
+                          if(!newProjectName.trim()){
+                            alert('Please enter a project name');
+                            return;
+                          }
+                          try {
+                            const res=await fetch('/api/projects',{
+                              method:'POST',
+                              headers:{'Content-Type':'application/json'},
+                              body:JSON.stringify({name:newProjectName.trim(),description:newProjectDesc.trim()||''})
+                            });
+                            const data=await res.json();
+                            if(data.success){
+                              setProjects([data.project,...projects]);
+                              setShowProjectModal(false);
+                              setNewProjectName('');
+                              setNewProjectDesc('');
+                            }else{
+                              alert('Failed to create project: '+(data.error||'Unknown error'));
+                            }
+                          }catch(err){
+                            alert('Error: '+err.message);
+                          }
+                        }}
+                        disabled={!newProjectName.trim()}
+                        style={{padding:"10px 20px",borderRadius:8,border:"none",background:newProjectName.trim()?c.ac:"#ccc",color:"#fff",fontSize:14,fontWeight:600,cursor:newProjectName.trim()?"pointer":"not-allowed",fontFamily:"inherit",opacity:newProjectName.trim()?1:0.5}}
+                      >
+                        Create Project
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
