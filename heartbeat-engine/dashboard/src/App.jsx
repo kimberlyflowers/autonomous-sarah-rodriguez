@@ -2124,9 +2124,16 @@ function App() {
   },[umO]);
 
   const doSend=async()=>{
-    if(!tx.trim()||loading) return;
+    if((!tx.trim()&&pendingFiles.length===0)||loading) return;
     const text=tx.trim(); setTx(""); setNew(false);
-    await send(text);
+    if(pendingFiles.length > 0) {
+      // Send files + message together
+      const files = pendingFiles.map(p => p.file);
+      setPendingFiles([]);
+      await sendFiles(files, text);
+    } else {
+      await send(text);
+    }
   };
 
   const toggleVoice=()=>{
@@ -2166,11 +2173,13 @@ function App() {
       <input ref={fRef} type="file" multiple accept="image/*,.pdf,.csv,.txt,.docx,.xlsx,.json,.md" style={{display:"none"}} onChange={async(e)=>{
         const files=[...e.target.files];
         if(!files.length) return;
-        setNew(false);
-        await sendFiles(files, tx.trim());
-        setTx("");
+        // Stage files — don't send yet. User types a message first, then hits Send.
+        const previews = await Promise.all(files.map(async f => {
+          const url = f.type.startsWith('image/') ? URL.createObjectURL(f) : null;
+          return { file: f, name: f.name, type: f.type, preview: url };
+        }));
+        setPendingFiles(prev => [...prev, ...previews]);
         e.target.value="";
-        setPendingFiles([]);
       }}/>
 
       {/* ── HEADER — exact Jaden layout ── */}
@@ -2427,7 +2436,7 @@ function App() {
                     <div style={{display:"flex",gap:mob?6:10,alignItems:"center",marginBottom:20}}>
                       <textarea value={tx} onChange={e=>setTx(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();doSend();}}} placeholder={vcRec?"Listening…":"Ask anything..."} rows={3} style={{flex:1,padding:mob?"12px 14px":"14px 18px",borderRadius:14,border:"1.5px solid "+(vcRec?c.ac:c.ln),fontSize:15,fontFamily:"inherit",background:c.inp,color:c.tx,transition:"border-color .2s",resize:"none",lineHeight:1.4,maxHeight:120,overflowY:"auto"}}/>
                       <button onClick={()=>fRef.current?.click()} title="Attach file" style={{width:44,height:44,borderRadius:12,border:"1.5px solid "+c.ln,cursor:"pointer",background:c.cd,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={c.so} strokeWidth="2" strokeLinecap="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+                        <span style={{fontSize:22,color:c.so,fontWeight:300,lineHeight:1}}>+</span>
                       </button>
                       <button onClick={toggleVoice} style={{width:44,height:44,borderRadius:12,border:vcRec?"2px solid "+c.ac:"1.5px solid "+c.ln,cursor:"pointer",background:vcRec?c.ac+"18":c.cd,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,position:"relative"}}>
                         {vcRec&&<span style={{position:"absolute",inset:-4,borderRadius:16,border:"2px solid "+c.ac,animation:"pulse 1.2s ease infinite",opacity:0.4}}/>}
@@ -2636,16 +2645,28 @@ function App() {
                       <span style={{width:5,height:5,borderRadius:"50%",background:connected?c.gr:c.fa}}/>
                       <span style={{fontSize:11,color:c.fa}}>{connected?"Connected to Sarah's API":"Reconnecting…"}</span>
                     </div>
+                    {/* Pending files preview */}
+                    {pendingFiles.length>0&&(
+                      <div style={{display:"flex",gap:6,padding:"8px 0",flexWrap:"wrap"}}>
+                        {pendingFiles.map((pf,i)=>(
+                          <div key={i} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 10px",borderRadius:8,background:c.sf,border:"1px solid "+c.ln,fontSize:12,color:c.tx}}>
+                            {pf.preview?<img src={pf.preview} style={{width:28,height:28,borderRadius:6,objectFit:"cover"}}/>:<span>📎</span>}
+                            <span style={{maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{pf.name}</span>
+                            <button onClick={()=>setPendingFiles(p=>p.filter((_,j)=>j!==i))} style={{background:"none",border:"none",cursor:"pointer",color:c.fa,fontSize:14,padding:0,lineHeight:1}}>✕</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     <div style={{display:"flex",gap:mob?6:8,alignItems:"center"}}>
                       <textarea value={tx} onChange={e=>setTx(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();doSend();}}} placeholder={vcRec?"Listening…":mob?"Message…":"Tell Sarah what you need…"} rows={3} style={{flex:1,padding:mob?"10px 14px":"11px 14px",borderRadius:12,border:"1.5px solid "+(vcRec?c.ac:c.ln),fontSize:14,fontFamily:"inherit",background:c.inp,color:c.tx,transition:"border-color .2s",resize:"none",lineHeight:1.4,maxHeight:120,overflowY:"auto"}}/>
                       <button onClick={()=>fRef.current?.click()} title="Attach file" style={{width:40,height:40,borderRadius:11,border:"1.5px solid "+c.ln,cursor:"pointer",background:c.cd,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={c.so} strokeWidth="2" strokeLinecap="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+                        <span style={{fontSize:20,color:c.so,fontWeight:300,lineHeight:1}}>+</span>
                       </button>
                       <button onClick={toggleVoice} style={{width:40,height:40,borderRadius:11,border:vcRec?"2px solid "+c.ac:"1.5px solid "+c.ln,cursor:"pointer",background:vcRec?c.ac+"18":c.cd,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,position:"relative"}}>
                         {vcRec&&<span style={{position:"absolute",inset:-4,borderRadius:15,border:"2px solid "+c.ac,animation:"pulse 1.2s ease infinite",opacity:0.4}}/>}
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={vcRec?c.ac:c.so} strokeWidth="2" strokeLinecap="round"><rect x="9" y="1" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0014 0"/><path d="M12 17v4M8 21h8"/></svg>
                       </button>
-                      <button onClick={doSend} disabled={!tx.trim()||loading} style={{padding:mob?"10px 16px":"11px 20px",borderRadius:12,border:"none",cursor:tx.trim()&&!loading?"pointer":"not-allowed",background:tx.trim()&&!loading?"linear-gradient(135deg,#F4A261,#E76F8B)":c.sf,color:tx.trim()&&!loading?"#fff":c.fa,fontSize:14,fontWeight:700,flexShrink:0}}>Send</button>
+                      <button onClick={doSend} disabled={(!tx.trim()&&pendingFiles.length===0)||loading} style={{padding:mob?"10px 16px":"11px 20px",borderRadius:12,border:"none",cursor:(tx.trim()||pendingFiles.length>0)&&!loading?"pointer":"not-allowed",background:(tx.trim()||pendingFiles.length>0)&&!loading?"linear-gradient(135deg,#F4A261,#E76F8B)":c.sf,color:(tx.trim()||pendingFiles.length>0)&&!loading?"#fff":c.fa,fontSize:14,fontWeight:700,flexShrink:0}}>Send</button>
                     </div>
                   </div>
                 </>
