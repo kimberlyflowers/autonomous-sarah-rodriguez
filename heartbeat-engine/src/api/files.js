@@ -305,10 +305,19 @@ router.get('/preview/:fileId', async (req, res) => {
 
     const file = result.rows[0];
 
-    // For images — serve the actual image inline
+    // For images — serve from filesystem if available
     if (file.file_type === 'image' && file.file_path && fs.existsSync(file.file_path)) {
       res.setHeader('Content-Type', file.mime_type || 'image/png');
       return fs.createReadStream(file.file_path).pipe(res);
+    }
+
+    // For images — serve from base64 if stored in content_text
+    if (file.file_type === 'image' && file.content_text) {
+      const base64Data = file.content_text.replace(/^data:image\/\w+;base64,/, '');
+      const buffer = Buffer.from(base64Data, 'base64');
+      res.setHeader('Content-Type', file.mime_type || 'image/png');
+      res.setHeader('Content-Length', buffer.length);
+      return res.send(buffer);
     }
 
     // For text content — return as JSON for rendering
