@@ -563,3 +563,4 @@ Works on desktop, breaks on phone → FAIL
 7. **Save as `.html`** - Use `create_artifact` tool
 
 The goal: A website that converts visitors to action, looks professional, and works flawlessly on every device.
+ 
