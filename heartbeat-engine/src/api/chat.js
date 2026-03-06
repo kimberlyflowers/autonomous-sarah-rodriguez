@@ -142,6 +142,19 @@ Examples of RIGHT behavior:
 Your boss is Kimberly, Founder/CEO of BLOOM Ecosystem.
 You serve whichever client Kimberly assigns you to. Ask if you're unsure who the current client is.
 You are an AI employee (a "Bloomie") — be honest if asked directly, but lead with capability.
+
+SKILLS — Expert guidelines that make your output premium:
+Before starting any major creative task (website, document, email campaign, blog, social content),
+call the load_skill tool to load the relevant expert instructions. This gives you data-driven
+best practices, formatting standards, and quality requirements. Match the skill to the task:
+- Building a website/landing page → load_skill("website-landing-page")
+- Creating a Word document (report, handbook, SOP, proposal) → load_skill("docx-documents")
+- Writing a blog post or article → load_skill("blog-content")
+- Writing an email campaign → load_skill("email-marketing")
+- Creating social media content → load_skill("social-media")
+- Working with CRM/contacts → load_skill("ghl-crm")
+- Writing a book/chapter → load_skill("book-writing")
+Load the skill FIRST, then do the work. Don't skip this — the skills contain critical quality standards.
 ${getSkillCatalogSummary()}`;
 }
 
@@ -863,6 +876,18 @@ const _ALL_TOOLS = [
     }
   },
   {
+    name: "load_skill",
+    description: "Load detailed expert instructions for a specific skill before doing complex work. Call this BEFORE starting any major creative or document task. The skill provides data-driven best practices, formatting standards, and quality requirements. Available skills are listed in your system prompt — match the skill name exactly.",
+    input_schema: {
+      type: "object",
+      properties: {
+        skill_name: { type: "string", description: "The skill to load (e.g. 'website-landing-page', 'docx-documents', 'professional-documents', 'blog-content', 'email-marketing', 'social-media', 'book-writing', 'ghl-crm')" },
+        context: { type: "string", description: "Brief description of what you're about to create — helps select the right guidelines" }
+      },
+      required: ["skill_name"]
+    }
+  },
+  {
     name: "dispatch_to_specialist",
     description: `Dispatch work to a specialist AI model that's better suited for specific tasks. Use this when the client needs something that another model does better than you:
 
@@ -1056,6 +1081,46 @@ async function executeTool(toolName, toolInput, sessionId = null) {
         };
       }
       return { success: false, error: data.error || 'Failed to create artifact' };
+    }
+
+    // Load skill — injects expert instructions into the conversation
+    if (toolName === 'load_skill') {
+      try {
+        const { getSkillContext, getAllSkills } = await import('../skills/skill-loader.js');
+        const skillName = toolInput.skill_name;
+        
+        // Find the matching skill type from the catalog
+        const allSkills = getAllSkills();
+        const match = allSkills.find(s => s.name === skillName);
+        
+        if (!match) {
+          return { success: false, error: `Skill "${skillName}" not found. Available: ${allSkills.map(s => s.name).join(', ')}` };
+        }
+        
+        // Load the full skill body by mapping name to type
+        const nameToType = {
+          'website-landing-page': 'coding',
+          'docx-documents': 'docx',
+          'professional-documents': 'docx',
+          'blog-content': 'writing',
+          'email-marketing': 'email',
+          'social-media': 'writing',
+          'book-writing': 'writing',
+          'ghl-crm': 'crm',
+        };
+        const skillType = nameToType[skillName] || 'writing';
+        const skillBody = getSkillContext(skillType, toolInput.context || '');
+        
+        if (skillBody) {
+          // Inject into system prompt for subsequent rounds
+          systemPrompt += skillBody;
+          logger.info('Skill loaded via tool', { skill: skillName, length: skillBody.length });
+          return { success: true, message: `Loaded "${skillName}" skill — ${skillBody.length} characters of expert guidelines now active. Proceed with the task using these instructions.` };
+        }
+        return { success: false, error: `Skill "${skillName}" found but body is empty` };
+      } catch(e) {
+        return { success: false, error: `Failed to load skill: ${e.message}` };
+      }
     }
 
     // DOCX document creation — executes a Node.js script using the docx library
@@ -1394,23 +1459,8 @@ IMPORTANT: Since a brand kit is configured, DO NOT ask the user about colors, fo
 
   // Inject matching skill body into system prompt based on user's message
   try {
-    const { getSkillContext } = await import('../skills/skill-loader.js');
-    // Try to match based on the user's message content
-    const msgLower = userMessage.toLowerCase();
-    let matchedType = null;
-    if (/website|landing page|web page|site|funnel|html|web design/i.test(msgLower)) matchedType = 'coding';
-    else if (/blog|article|post|content|seo/i.test(msgLower)) matchedType = 'writing';
-    else if (/email|newsletter|campaign|drip|sequence|subject line/i.test(msgLower)) matchedType = 'email';
-    else if (/social|instagram|linkedin|facebook|twitter|tiktok|caption|hashtag/i.test(msgLower)) matchedType = 'writing';
-    else if (/sop|report|proposal|document|contract|handbook|one-pager|memo|letter|onboarding/i.test(msgLower)) matchedType = 'docx';
-    else if (/book|chapter|manuscript|memoir|devotional/i.test(msgLower)) matchedType = 'writing';
-    if (matchedType) {
-      const skillBody = getSkillContext(matchedType, userMessage);
-      if (skillBody) {
-        systemPrompt += skillBody;
-        logger.info('Skill injected into main prompt', { matchedType, skillLength: skillBody.length });
-      }
-    }
+    // Skills are loaded by the LLM via the load_skill tool — no regex pre-matching
+    // Sarah sees the skill catalog in her system prompt and decides when to load one
   } catch(e) { /* skills not critical */ }
 
   const messages = [...history, { role: 'user', content: userMessage }];
