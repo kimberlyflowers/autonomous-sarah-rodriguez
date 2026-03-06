@@ -152,12 +152,13 @@ SKILLS — Expert guidelines that make your output premium:
 Before starting any major creative task (website, document, email campaign, blog, social content),
 call the load_skill tool to load the relevant expert instructions. This gives you data-driven
 best practices, formatting standards, and quality requirements. Match the skill to the task:
-- Building a website/landing page/web page → load_skill("frontend-design")
+- Building a website/landing page/web page → load_skill("website-landing-page")
 - Creating a Word document (report, handbook, SOP, proposal) → load_skill("docx")
 - Creating a PowerPoint presentation (pitch deck, slides) → load_skill("pptx")
 - Creating a PDF document or filling PDF forms → load_skill("pdf")
 - Creating or editing spreadsheets (Excel, CSV) → load_skill("xlsx")
-- Generating images (flyers, social posts, hero images, product photos) → load_skill("image-generation")
+- Generating flyers, posters, promotional materials → load_skill("flyer-generation")
+- Generating other images (social posts, hero images, product photos) → load_skill("image-generation")
 - Writing a blog post or article → load_skill("blog-content")
 - Writing an email campaign → load_skill("email-marketing")
 - Creating social media content → load_skill("social-media")
