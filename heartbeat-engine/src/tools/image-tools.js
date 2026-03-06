@@ -416,12 +416,13 @@ async function generateWithGemini(prompt, size) {
 
 async function generateWithNanoBanana(prompt, size) {
   try {
-    // Nano Banana 2 uses Gemini 3.1 Flash Image — conversational image generation
+    // Use Gemini 2.5 Flash Image (stable) instead of 3.1 preview (currently broken/hanging)
+    // See: https://discuss.ai.google.dev/t/gemini-3-pro-image-preview-persistent-timeout-issues
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30000); // 30 second timeout
     
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key=${getGeminiKey()}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${getGeminiKey()}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
