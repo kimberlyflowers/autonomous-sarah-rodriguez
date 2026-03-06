@@ -445,7 +445,6 @@ async function generateWithNanoBanana(prompt, size) {
       logger.error('Nano Banana API error', { status: response.status, error: err, hasKey: !!getGeminiKey() });
       throw new Error(`Nano Banana API error ${response.status}: ${err}`);
     }
-    }
 
     const data = await response.json();
 
