@@ -576,43 +576,44 @@ export async function executeImageTool(toolName, parameters) {
           }
         }
 
-        // Fallback: save as artifact directly to database (don't use localhost HTTP call)
-        if (!result.image_url) {
-          try {
-            const crypto = await import('crypto');
-            const { getSharedPool } = await import('../database/pool.js');
-            const pool = getSharedPool();
-            
-            const fileId = `art_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
-            const fname = `bloom-img-${Date.now()}.png`;
-            
-            // Save directly to artifacts table
-            const artifact = await pool.query(`
-              INSERT INTO artifacts (file_id, name, description, status, file_type, mime_type, thumbnail_base64, file_size, session_id, metadata, created_at)
-              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
-              RETURNING *
-            `, [
-              fileId,
-              fname,
-              `Generated: ${(parameters.prompt || '').slice(0, 100)}`,
-              'approved',
-              'image',
-              'image/png',
-              result.image_base64.length > 50000 ? result.image_base64.substring(0, 66666) : result.image_base64,
-              Buffer.from(result.image_base64, 'base64').length,
-              null,
-              JSON.stringify({})
-            ]);
-            
-            if (artifact.rows[0]) {
+        // ALWAYS save to artifacts table (even if Supabase worked) so it shows in Files tab
+        try {
+          const crypto = await import('crypto');
+          const { getSharedPool } = await import('../database/pool.js');
+          const pool = getSharedPool();
+          
+          const fileId = `art_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+          const fname = `bloom-img-${Date.now()}.png`;
+          
+          // Save directly to artifacts table
+          const artifact = await pool.query(`
+            INSERT INTO artifacts (file_id, name, description, status, file_type, mime_type, thumbnail_base64, file_size, session_id, metadata, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+            RETURNING *
+          `, [
+            fileId,
+            fname,
+            `Generated: ${(parameters.prompt || '').slice(0, 100)}`,
+            'approved',
+            'image',
+            'image/png',
+            result.image_base64.length > 50000 ? result.image_base64.substring(0, 66666) : result.image_base64,
+            Buffer.from(result.image_base64, 'base64').length,
+            parameters.sessionId || null,  // Include session ID if available
+            JSON.stringify({ supabase_url: result.image_url || null })
+          ]);
+          
+          if (artifact.rows[0]) {
+            // If we don't have a Supabase URL, use the database URL
+            if (!result.image_url) {
               result.image_url = `/api/files/preview/${fileId}`;
-              result.fileId = fileId;
-              result.message = `Image saved! View it in your Files tab or use this URL: ${result.image_url}`;
-              logger.info('Image saved as artifact (direct DB insert)', { fileId });
             }
-          } catch (dbErr) {
-            logger.error('Direct DB save failed', { error: dbErr.message, stack: dbErr.stack });
+            result.fileId = fileId;
+            result.message = result.message || `Image saved! View it in your Files tab or use this URL: ${result.image_url}`;
+            logger.info('Image saved as artifact', { fileId, hasSupabase: !!upload?.url });
           }
+        } catch (dbErr) {
+          logger.error('Direct DB save failed', { error: dbErr.message, stack: dbErr.stack });
         }
         
         // Ensure we always have a message, even if storage failed

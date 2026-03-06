@@ -2687,7 +2687,7 @@ function App() {
                                 </div>
                               </div>
                             ):(
-                              <SessionFilesPanel c={c} sessionId={sid} setActiveArtifact={setActiveArtifact}/>
+                              <SessionFilesPanel c={c} sessionId={sid.current} setActiveArtifact={setActiveArtifact}/>
                             )
                           )}
                         </div>
