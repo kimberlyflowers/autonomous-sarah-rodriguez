@@ -418,4 +418,4 @@ process.on('SIGINT', () => {
 });
 
 // Start the engine
-startHeartbeatEngine();
+startHeartbeatEngine();// Railway rebuild trigger Fri Mar  6 09:33:57 UTC 2026
