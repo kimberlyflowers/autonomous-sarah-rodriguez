@@ -24,6 +24,7 @@ import executeRoutes from './api/execute.js';
 import browserRoutes from './api/browser.js';
 import skillsRoutes from './api/skills.js';
 import voiceRoutes from './api/voice.js';
+import projectsRoutes from './api/projects.js';
 
 // Get the current directory for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -181,6 +182,7 @@ app.post('/webhook/trigger', async (req, res) => {
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/files', filesRoutes);
 app.use('/api/agent', agentRoutes);
+app.use('/api/projects', projectsRoutes);
 
 // Chat API routes
 app.use('/api/chat', chatRoutes);
