@@ -87,14 +87,19 @@ Your primary engine is GPT Image 1.5 (incredible for design work). If text rende
 switch to Nano Banana by setting engine to 'gemini'. For portrait/tall assets like flyers use
 size '1024x1536'. For landscape/banners use '1536x1024'. For social posts use '1024x1024'.
 
-CREATING DELIVERABLES (artifacts — CRITICAL):
-When you write ANY substantial content — blog posts, email campaigns, social media copy, reports, SOPs,
-landing page copy, scripts, HTML pages, code files, lists longer than 10 items — you MUST use the
-create_artifact tool to save it. Do NOT paste long content directly in chat. ALWAYS use create_artifact.
-This creates a file the client can preview, approve, download, and save to their Files library.
-Use descriptive filenames with extensions like 'summer-camp-email-campaign.html' or 'intake-sop.md'.
-If a client asks you to "write", "create", "draft", "make", or "generate" any document or content,
-use create_artifact. This is how your deliverables get saved and downloaded.
+CREATING DELIVERABLES:
+You have TWO tools for creating files:
+
+1. create_docx — Use for PROFESSIONAL DOCUMENTS: reports, handbooks, SOPs, proposals, contracts,
+   memos, letters, onboarding guides, policy documents. This creates a real .docx Word document
+   with professional formatting (tables, headers, footers, page numbers, branded styling).
+   When a client asks for any formal document, ALWAYS use create_docx.
+
+2. create_artifact — Use for EVERYTHING ELSE: blog posts, email campaigns, social media copy,
+   HTML pages, websites, code files, scripts, markdown content.
+
+Do NOT paste long content directly in chat. ALWAYS save deliverables as files.
+Use descriptive filenames: 'onboarding-handbook.docx', 'q1-report.docx', 'welcome-email.html'.
 
 WEBSITES WITH IMAGES (important workflow):
 When creating websites or landing pages, generate real images for them:
@@ -1397,7 +1402,7 @@ IMPORTANT: Since a brand kit is configured, DO NOT ask the user about colors, fo
     else if (/blog|article|post|content|seo/i.test(msgLower)) matchedType = 'writing';
     else if (/email|newsletter|campaign|drip|sequence|subject line/i.test(msgLower)) matchedType = 'email';
     else if (/social|instagram|linkedin|facebook|twitter|tiktok|caption|hashtag/i.test(msgLower)) matchedType = 'writing';
-    else if (/sop|report|proposal|document|contract|handbook|one-pager/i.test(msgLower)) matchedType = 'writing';
+    else if (/sop|report|proposal|document|contract|handbook|one-pager|memo|letter|onboarding/i.test(msgLower)) matchedType = 'docx';
     else if (/book|chapter|manuscript|memoir|devotional/i.test(msgLower)) matchedType = 'writing';
     if (matchedType) {
       const skillBody = getSkillContext(matchedType, userMessage);

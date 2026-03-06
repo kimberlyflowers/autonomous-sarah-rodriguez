@@ -97,9 +97,10 @@ const TASK_TO_SKILL_MAP = {
   writing:  ['blog-content'],
   email:    ['email-marketing'],
   coding:   ['website-landing-page'],
+  docx:     ['docx-documents', 'professional-documents'],
   crm:      ['ghl-crm'],
   design:   ['website-landing-page'],
-  research: [],  // No specific skill needed
+  research: [],
   data:     [],
   chat:     [],
 };
