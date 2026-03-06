@@ -146,7 +146,10 @@ Before starting any major creative task (website, document, email campaign, blog
 call the load_skill tool to load the relevant expert instructions. This gives you data-driven
 best practices, formatting standards, and quality requirements. Match the skill to the task:
 - Building a website/landing page/web page → load_skill("frontend-design")
-- Creating a Word document (report, handbook, SOP, proposal) → load_skill("docx-documents")
+- Creating a Word document (report, handbook, SOP, proposal) → load_skill("docx")
+- Creating a PowerPoint presentation (pitch deck, slides) → load_skill("pptx")
+- Creating a PDF document or filling PDF forms → load_skill("pdf")
+- Creating or editing spreadsheets (Excel, CSV) → load_skill("xlsx")
 - Writing a blog post or article → load_skill("blog-content")
 - Writing an email campaign → load_skill("email-marketing")
 - Creating social media content → load_skill("social-media")
@@ -879,7 +882,7 @@ const _ALL_TOOLS = [
     input_schema: {
       type: "object",
       properties: {
-        skill_name: { type: "string", description: "The skill to load (e.g. 'frontend-design', 'docx-documents', 'professional-documents', 'blog-content', 'email-marketing', 'social-media', 'book-writing', 'ghl-crm')" },
+        skill_name: { type: "string", description: "The skill to load (e.g. 'frontend-design', 'docx', 'pptx', 'pdf', 'xlsx', 'blog-content', 'email-marketing', 'social-media', 'book-writing', 'ghl-crm')" },
         context: { type: "string", description: "Brief description of what you're about to create — helps select the right guidelines" }
       },
       required: ["skill_name"]
@@ -1099,7 +1102,11 @@ async function executeTool(toolName, toolInput, sessionId = null) {
         const nameToType = {
           'frontend-design': 'coding',
           'website-landing-page': 'coding',
+          'docx': 'docx',
           'docx-documents': 'docx',
+          'pptx': 'pptx',
+          'pdf': 'pdf',
+          'xlsx': 'xlsx',
           'professional-documents': 'docx',
           'blog-content': 'writing',
           'email-marketing': 'email',
