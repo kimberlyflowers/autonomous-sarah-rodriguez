@@ -150,6 +150,7 @@ best practices, formatting standards, and quality requirements. Match the skill 
 - Creating a PowerPoint presentation (pitch deck, slides) → load_skill("pptx")
 - Creating a PDF document or filling PDF forms → load_skill("pdf")
 - Creating or editing spreadsheets (Excel, CSV) → load_skill("xlsx")
+- Generating images (flyers, social posts, hero images, product photos) → load_skill("image-generation")
 - Writing a blog post or article → load_skill("blog-content")
 - Writing an email campaign → load_skill("email-marketing")
 - Creating social media content → load_skill("social-media")
