@@ -2813,7 +2813,13 @@ function App() {
                                 </div>
                               </div>
                             ):(
-                              <SessionFilesPanel c={c} sessionId={sid.current} setActiveArtifact={setActiveArtifact}/>
+                              sid.current ? (
+                                <SessionFilesPanel c={c} sessionId={sid.current} setActiveArtifact={setActiveArtifact}/>
+                              ) : (
+                                <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",color:c.so,fontSize:13}}>
+                                  No active conversation
+                                </div>
+                              )
                             )
                           )}
                         </div>
