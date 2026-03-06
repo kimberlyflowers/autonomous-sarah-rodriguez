@@ -146,11 +146,14 @@ Create atmosphere — don't just use flat colors:
 - If NOT available: CSS gradients, SVG, emoji, styled divs. NEVER broken links, NEVER placeholders
 - All images: `alt` text, `object-fit:cover`, `loading="lazy"`
 
-### Mobile (non-negotiable)
-- `<meta name="viewport" content="width=device-width,initial-scale=1">`
-- 768px breakpoint — grid → single column
-- Touch targets 44px minimum
-- No horizontal scroll
+### Mobile (NON-NEGOTIABLE - EVERY SINGLE SITE)
+**CRITICAL: EVERY WEBSITE MUST BE MOBILE RESPONSIVE. NO EXCEPTIONS. ZERO.**
+- `<meta name="viewport" content="width=device-width,initial-scale=1">` - REQUIRED
+- 768px breakpoint — grid → single column - REQUIRED
+- Touch targets 44px minimum - REQUIRED
+- No horizontal scroll - REQUIRED
+- Test at 375px width (iPhone SE) - MUST work perfectly
+**If a site is not mobile responsive, it is BROKEN and UNACCEPTABLE.**
 
 ### Performance
 - Single HTML file, inline CSS, inline JS
