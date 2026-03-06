@@ -311,9 +311,9 @@ router.get('/preview/:fileId', async (req, res) => {
       return fs.createReadStream(file.file_path).pipe(res);
     }
 
-    // For images — serve from base64 if stored in content_text
-    if (file.file_type === 'image' && file.content_text) {
-      const base64Data = file.content_text.replace(/^data:image\/\w+;base64,/, '');
+    // For images — serve from base64 if stored in thumbnail_base64
+    if (file.file_type === 'image' && file.thumbnail_base64) {
+      const base64Data = file.thumbnail_base64.replace(/^data:image\/\w+;base64,/, '');
       const buffer = Buffer.from(base64Data, 'base64');
       res.setHeader('Content-Type', file.mime_type || 'image/png');
       res.setHeader('Content-Length', buffer.length);

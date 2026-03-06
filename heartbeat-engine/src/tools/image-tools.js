@@ -587,8 +587,8 @@ export async function executeImageTool(toolName, parameters) {
           
           // Save directly to artifacts table
           const artifact = await pool.query(`
-            INSERT INTO artifacts (file_id, name, description, status, file_type, mime_type, content_text, thumbnail_base64, file_size, session_id, metadata, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
+            INSERT INTO artifacts (file_id, name, description, status, file_type, mime_type, thumbnail_base64, file_size, session_id, metadata, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
             RETURNING *
           `, [
             fileId,
@@ -597,8 +597,7 @@ export async function executeImageTool(toolName, parameters) {
             'approved',
             'image',
             'image/png',
-            result.image_base64, // Full image in content_text
-            result.image_base64.length > 50000 ? result.image_base64.substring(0, 66666) : result.image_base64, // Smaller thumbnail
+            result.image_base64, // FULL image in thumbnail_base64 (no truncation)
             Buffer.from(result.image_base64, 'base64').length,
             parameters.sessionId || null,
             JSON.stringify({ supabase_url: result.image_url || null })
