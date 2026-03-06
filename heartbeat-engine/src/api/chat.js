@@ -834,7 +834,7 @@ const _ALL_TOOLS = [
   // ── ARTIFACTS — create deliverables for client review ────────────────────
   {
     name: "create_artifact",
-    description: "Create a deliverable file for the client to review and download. Use this whenever you write substantial content: blog posts, social media captions, email campaigns, reports, landing page copy, SOPs, scripts, HTML pages, code, or any content the client will want to keep. Files are automatically saved to the Files tab.",
+    description: "Create a deliverable file for the client to review and download. CRITICAL: After using this tool, ALWAYS tell the client in your response that you've created the file and include the filename in quotes. Example: 'Here's your flyer — \"summer-camp-flyer.html\"' or 'Done! Check out \"email-campaign.md\"'. The file will appear inline in chat AND in the Files tab. Use this for: blog posts, social media captions, email campaigns, reports, landing pages, SOPs, scripts, HTML pages, code, or any content the client will want to keep.",
     input_schema: {
       type: "object",
       properties: {
@@ -848,7 +848,7 @@ const _ALL_TOOLS = [
   },
   {
     name: "create_docx",
-    description: "Create a professional Word document (.docx) with real formatting — tables, headers, footers, page numbers, branded styling. Use this instead of create_artifact when the user asks for a document, report, handbook, SOP, proposal, or any professional deliverable. Provide a complete Node.js script that uses the 'docx' npm library to build the document. The script will be executed and the resulting .docx file saved for download.",
+    description: "Create a professional Word document (.docx) with real formatting — tables, headers, footers, page numbers, branded styling. Use this instead of create_artifact when the user asks for a document, report, handbook, SOP, proposal, or any professional deliverable. CRITICAL: After creating the file, ALWAYS tell the client in your response that you've created it and include the filename in quotes. Example: 'Here's your employee handbook — \"onboarding-handbook.docx\"'. Provide a complete Node.js script that uses the 'docx' npm library to build the document. The script will be executed and the resulting .docx file saved for download.",
     input_schema: {
       type: "object",
       properties: {
@@ -1800,7 +1800,22 @@ router.post('/upload', async (req, res) => {
     for (const f of files) {
       const mediaType = f.type || 'application/octet-stream';
       if (mediaType.startsWith('image/')) {
-        userContent.push({ type: 'image', source: { type: 'base64', media_type: mediaType, data: f.data } });
+        // Resize large images to prevent context explosion (232K tokens → 20K tokens)
+        try {
+          const sharp = await import('sharp');
+          const buf = Buffer.from(f.data, 'base64');
+          const resized = await sharp.default(buf)
+            .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
+            .jpeg({ quality: 80 })
+            .toBuffer();
+          const resizedB64 = resized.toString('base64');
+          logger.info(`Image resized`, { original: buf.length, resized: resized.length, reduction: Math.round((1 - resized.length/buf.length) * 100) + '%' });
+          userContent.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: resizedB64 } });
+        } catch (resizeErr) {
+          // If resize fails, send original (might fail later, but at least we tried)
+          logger.warn('Image resize failed, sending original:', resizeErr.message);
+          userContent.push({ type: 'image', source: { type: 'base64', media_type: mediaType, data: f.data } });
+        }
       } else if (mediaType === 'application/pdf') {
         userContent.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: f.data } });
       } else if (
