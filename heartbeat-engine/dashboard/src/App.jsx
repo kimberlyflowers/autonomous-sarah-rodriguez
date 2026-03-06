@@ -432,6 +432,24 @@ const PhoneIcon = ({c,size=16}) => (
   </svg>
 );
 
+const TaskListIcon = ({c,size=16}) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="8" y1="6" x2="21" y2="6"/>
+    <line x1="8" y1="12" x2="21" y2="12"/>
+    <line x1="8" y1="18" x2="21" y2="18"/>
+    <line x1="3" y1="6" x2="3.01" y2="6"/>
+    <line x1="3" y1="12" x2="3.01" y2="12"/>
+    <line x1="3" y1="18" x2="3.01" y2="18"/>
+  </svg>
+);
+
+const ClipboardIcon = ({c,size=16}) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+    <rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>
+  </svg>
+);
+
 // Shared card shell that matches Jaden's card aesthetic exactly
 function Card({c,title,subtitle,children,action,noPad,icon}) {
   return(
@@ -727,7 +745,7 @@ function ActionLog({c,sse}) {
   const catColors={communication:c.bl,data_modification:"#F59E0B",data_creation:c.gr,read:c.fa,logging:c.pu};
 
   return(
-    <Card c={c} title="📋 Action Log" subtitle="Live activity feed">
+    <Card c={c} title="Action Log" subtitle="Live activity feed" icon={<ClipboardIcon c={c} size={16}/>}>
       <div style={{maxHeight:260,overflowY:"auto"}}>
         {actions.length===0
           ? <div style={{padding:20,textAlign:"center",fontSize:12,color:c.so}}>No actions yet</div>
@@ -761,7 +779,7 @@ function InternalTasks({c,sse}) {
   const statusColors={pending:"#F59E0B",in_progress:c.bl,completed:c.gr,failed:"#EF4444"};
 
   return(
-    <Card c={c} title="Internal Tasks" subtitle="Sarah's active work queue">
+    <Card c={c} title="Internal Tasks" subtitle="Sarah's active work queue" icon={<TaskListIcon c={c} size={16}/>}>
       <div style={{maxHeight:240,overflowY:"auto"}}>
         {tasks.length===0
           ? <div style={{padding:20,textAlign:"center",fontSize:12,color:c.so}}>No active tasks</div>
@@ -800,7 +818,7 @@ function EscalationPanel({c,sse}) {
   },[sse]);
 
   const items=tab==="handoffs"?handoffs:rejections;
-  const tabs=[{k:"handoffs",l:"🤝 Escalations",ct:handoffs.length},{k:"rejections",l:"🚫 Rejections",ct:rejections.length}];
+  const tabs=[{k:"handoffs",l:"Escalations",ct:handoffs.length},{k:"rejections",l:"Rejections",ct:rejections.length}];
 
   return(
     <Card c={c} title="Escalations & Rejections" action={
