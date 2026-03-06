@@ -494,4 +494,29 @@ router.post('/artifacts/:fileId/unpublish', async (req, res) => {
   }
 });
 
+// POST /api/files/migrate-images - Backfill content_text for old images
+router.post('/migrate-images', async (req, res) => {
+  try {
+    const pool = await getPool();
+    const result = await pool.query(`
+      UPDATE artifacts 
+      SET content_text = thumbnail_base64
+      WHERE file_type = 'image' 
+        AND content_text IS NULL 
+        AND thumbnail_base64 IS NOT NULL
+      RETURNING file_id, name
+    `);
+    
+    logger.info('Image migration completed', { count: result.rowCount });
+    return res.json({ 
+      success: true, 
+      migrated: result.rowCount,
+      files: result.rows 
+    });
+  } catch (error) {
+    logger.error('Migration failed', { error: error.message });
+    return res.status(500).json({ error: 'Migration failed: ' + error.message });
+  }
+});
+
 export default router;
