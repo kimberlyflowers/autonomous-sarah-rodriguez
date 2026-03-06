@@ -28,16 +28,14 @@ async function getPool() {
 function buildSystemPrompt(agentConfig) {
   return `You are Sarah Rodriguez, Content & Digital Marketing Executive at BLOOM Ecosystem.
 
-You are sharp, warm, and capable — a real colleague, not a chatbot. You have a personality,
-opinions, and genuine expertise. You're not just a CRM tool — you're a full marketing and
-operations professional who happens to have CRM access as one of your superpowers.
+You are an autonomous AI employee who executes tasks directly. You don't explain what you're going to do — you just do it. You don't describe best practices — you follow them automatically. You are precise, capable, and action-oriented.
 
 COMMUNICATION STYLE:
 - Match the user's energy. Short question = short answer. Casual = casual.
 - Never use headers, bullet points, or formatted reports in chat — write like a human.
 - Never say "Great question!" or filler openers.
-- Never say "TASK COMPLETED" or give robotic status summaries.
-- Be direct and confident. If you have thoughts, share them.
+- Never say "I should have..." or "A real professional would..." — you ARE the professional. Just act.
+- Be direct and confident. Execute first, explain after (if asked).
 
 WHAT YOU CAN DO — and this is broad:
 You are a capable, intelligent assistant who can help with virtually anything:
@@ -1414,6 +1412,8 @@ async function chatWithSarah(userMessage, history, agentConfig, sessionId = null
       if (oldRes.rows[0]?.value) allKits = [JSON.parse(oldRes.rows[0].value)];
     }
     
+    logger.info('Brand kit check', { kitsFound: allKits.length, hasColors: allKits[0]?.colors?.length || 0 });
+    
     if (allKits.length > 1) {
       // Multiple kits — tell Sarah about all of them, she should ask which brand
       const kitSummaries = allKits.map((k,i) => `${i+1}. "${k.kitName||'Unnamed Kit'}"${k.active?' (currently active)':''} — colors: ${(k.colors||[]).slice(0,3).join(', ')}`).join('\n');
@@ -1448,14 +1448,18 @@ IMPORTANT: Since brand kits are configured, DO NOT ask about colors, fonts, or v
       if (bk.brandVoice) brandLines.push(`Brand voice: ${bk.brandVoice}`);
       if (bk.logo) brandLines.push(`Brand logo is uploaded — reference it in designs when appropriate`);
       if (brandLines.length > 0) {
-        systemPrompt += `\n\nBRAND KIT — MANDATORY FOR ALL CREATIVE OUTPUT:
+        const brandKitBlock = `\n\nBRAND KIT — MANDATORY FOR ALL CREATIVE OUTPUT:
 You MUST use these brand assets in every design, website, email, document, social post, and any visual or written content you create.
 ${brandLines.join('\n')}
 Use these colors as CSS variables. Load these fonts from Google Fonts. Match this voice in all copy.
 IMPORTANT: Since a brand kit is configured, DO NOT ask the user about colors, fonts, or visual style. You already have everything you need. Only ask about content — what the page is about, who the audience is, and what action they should take.`;
+        systemPrompt += brandKitBlock;
+        logger.info('Brand kit injected into system prompt', { colors: bk.colors?.length || 0, length: brandKitBlock.length });
       }
     }
-  } catch(e) { /* brand kit not available — proceed without */ }
+  } catch(e) { 
+    logger.warn('Brand kit injection failed:', e.message);
+  }
 
   // Inject matching skill body into system prompt based on user's message
   try {
