@@ -2270,6 +2270,7 @@ function App() {
     } catch(e){ console.error('Failed to load activity',e); }
   };
   const [umO,setUmO]=useState(false);
+  const [searchQuery,setSearchQuery]=useState(""); // Search conversations
   const [userImg,setUserImg]=useState(null);
   const userImgRef=useRef(null);
 
@@ -2558,13 +2559,39 @@ function App() {
                     >
                       <span style={{fontSize:16}}>+</span> New chat
                     </button>
+
+                    {/* Search conversations */}
+                    <div style={{padding:"8px 0"}}>
+                      <div style={{position:"relative"}}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={c.so} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",pointerEvents:"none"}}>
+                          <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+                        </svg>
+                        <input
+                          type="text"
+                          value={searchQuery}
+                          onChange={e=>setSearchQuery(e.target.value)}
+                          placeholder="Search"
+                          style={{width:"100%",padding:"8px 10px 8px 36px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,color:c.tx,fontSize:13,fontFamily:"inherit",outline:"none"}}
+                          onFocus={e=>e.currentTarget.style.borderColor=c.ac}
+                          onBlur={e=>e.currentTarget.style.borderColor=c.ln}
+                        />
+                      </div>
+                    </div>
                   </div>
 
                   {/* Session list */}
                   <div style={{flex:1,overflowY:"auto",padding:"8px 8px"}}>
-                    {sessions.length===0?(
-                      <div style={{padding:"20px 8px",textAlign:"center",fontSize:11,color:c.fa}}>No chats yet</div>
-                    ):sessions.map(s=>{
+                    {sessions.filter(s=>{
+                      if(!searchQuery.trim()) return true;
+                      const title = s.title || "New conversation";
+                      return title.toLowerCase().includes(searchQuery.toLowerCase());
+                    }).length===0?(
+                      <div style={{padding:"20px 8px",textAlign:"center",fontSize:11,color:c.fa}}>{searchQuery.trim()?"No chats found":"No chats yet"}</div>
+                    ):sessions.filter(s=>{
+                      if(!searchQuery.trim()) return true;
+                      const title = s.title || "New conversation";
+                      return title.toLowerCase().includes(searchQuery.toLowerCase());
+                    }).map(s=>{
                       const isActive = currentSessionId===s.id;
                       const title = s.title || "New conversation";
                       const when = new Date(s.updated_at);
@@ -2584,7 +2611,7 @@ function App() {
                             onMouseEnter={e=>{ if(!isActive) e.currentTarget.style.background=c.hv; }}
                             onMouseLeave={e=>{ if(!isActive) e.currentTarget.style.background="transparent"; }}
                           >
-                            <div style={{fontSize:16,fontWeight:isActive?600:500,color:isActive?c.ac:c.tx,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",paddingRight:30}}>{title}</div>
+                            <div style={{fontSize:15,fontWeight:isActive?600:500,color:isActive?c.ac:c.tx,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",paddingRight:30}}>{title}</div>
                             <div style={{fontSize:10,color:c.fa,marginTop:2,display:"flex",gap:6}}>
                               <span>{timeLabel}</span>
                               {s.message_count>0&&<span>· {Math.floor(s.message_count/2)} msg{s.message_count>2?"s":""}</span>}
