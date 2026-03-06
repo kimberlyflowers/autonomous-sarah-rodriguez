@@ -438,7 +438,7 @@ async function generateWithNanoBanana(prompt, size) {
           }],
           generationConfig: {
             responseModalities: ["IMAGE"], // Only return image (not TEXT+IMAGE)
-            imageGenerationConfig: {
+            imageConfig: {  // Correct field name per Google API docs
               aspectRatio: aspectRatio
             }
           },
