@@ -2525,14 +2525,14 @@ function App() {
                     {projO&&(
                       <div style={{position:"absolute",top:"100%",left:14,right:14,zIndex:70,background:c.cd,border:"1px solid "+c.ln,borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,.15)",overflow:"hidden",marginTop:4}}>
                         {projects.map(p=>(
-                          <button key={p} onClick={()=>{setActiveProj(p);setProjO(false);}} style={{width:"100%",textAlign:"left",padding:"9px 12px",border:"none",cursor:"pointer",background:activeProj===p?c.ac+"15":"transparent",fontSize:12,fontWeight:activeProj===p?600:500,color:activeProj===p?c.ac:c.tx,display:"flex",alignItems:"center",gap:8}} onMouseEnter={e=>{if(activeProj!==p)e.currentTarget.style.background=c.hv;}} onMouseLeave={e=>{if(activeProj!==p)e.currentTarget.style.background="transparent";}}>
-                            {activeProj===p&&<span style={{fontSize:10,color:c.ac}}>✓</span>}
-                            <span>{p}</span>
+                          <button key={p.id||p.name} onClick={()=>{setActiveProj(p.name);setProjO(false);setPg("projects");}} style={{width:"100%",textAlign:"left",padding:"9px 12px",border:"none",cursor:"pointer",background:activeProj===p.name?c.ac+"15":"transparent",fontSize:12,fontWeight:activeProj===p.name?600:500,color:activeProj===p.name?c.ac:c.tx,display:"flex",alignItems:"center",gap:8}} onMouseEnter={e=>{if(activeProj!==p.name)e.currentTarget.style.background=c.hv;}} onMouseLeave={e=>{if(activeProj!==p.name)e.currentTarget.style.background="transparent";}}>
+                            {activeProj===p.name&&<span style={{fontSize:10,color:c.ac}}>✓</span>}
+                            <span>{p.name}</span>
                           </button>
                         ))}
                         <div style={{borderTop:"1px solid "+c.ln,padding:"7px 12px"}}>
-                          <button style={{width:"100%",textAlign:"left",padding:"4px 0",border:"none",background:"transparent",cursor:"pointer",fontSize:11,color:c.so,display:"flex",alignItems:"center",gap:6}} onMouseEnter={e=>e.currentTarget.style.color=c.ac} onMouseLeave={e=>e.currentTarget.style.color=c.so}>
-                            <span>+</span><span>Add project</span>
+                          <button onClick={()=>{setProjO(false);setPg("projects");}} style={{width:"100%",textAlign:"left",padding:"4px 0",border:"none",background:"transparent",cursor:"pointer",fontSize:11,color:c.so,display:"flex",alignItems:"center",gap:6}} onMouseEnter={e=>e.currentTarget.style.color=c.ac} onMouseLeave={e=>e.currentTarget.style.color=c.so}>
+                            <span>+</span><span>Manage projects</span>
                           </button>
                         </div>
                       </div>
