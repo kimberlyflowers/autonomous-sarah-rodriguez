@@ -64,7 +64,7 @@ router.post('/', async (req, res) => {
       });
     }
     
-    const result = const pool = await getPool();
+    const pool = await getPool();
     const result = await pool.query(
       `INSERT INTO projects (user_id, name, description, created_at, updated_at) 
        VALUES ($1, $2, $3, NOW(), NOW()) 
@@ -122,7 +122,7 @@ router.patch('/:id', async (req, res) => {
     updates.push(`updated_at = NOW()`);
     values.push(id, userId);
     
-    const result = const pool = await getPool();
+    const pool = await getPool();
     const result = await pool.query(
       `UPDATE projects 
        SET ${updates.join(', ')} 
@@ -162,7 +162,7 @@ router.delete('/:id', async (req, res) => {
     const userId = 1; // TODO: Get from auth session when implemented
     const { id } = req.params;
     
-    const result = const pool = await getPool();
+    const pool = await getPool();
     const result = await pool.query(
       `DELETE FROM projects 
        WHERE id = $1 AND user_id = $2 
@@ -209,9 +209,10 @@ router.patch('/:id/conversations', async (req, res) => {
       });
     }
     
+    const pool = await getPool();
+    
     // Verify project exists and belongs to user
-    const projectCheck = const pool = await getPool();
-    const result = await pool.query(
+    const projectCheck = await pool.query(
       'SELECT id FROM projects WHERE id = $1 AND user_id = $2',
       [id, userId]
     );
@@ -225,7 +226,6 @@ router.patch('/:id/conversations', async (req, res) => {
     
     const projectIdValue = action === 'add' ? id : null;
     
-    const result = const pool = await getPool();
     const result = await pool.query(
       `UPDATE sessions 
        SET project_id = $1, updated_at = NOW() 
