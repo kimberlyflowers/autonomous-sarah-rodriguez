@@ -119,7 +119,18 @@ export const imageToolExecutors = {
     }
 
     if (useEngine === 'gpt') {
-      return await generateWithGPTImage(prompt, size, quality, background);
+      try {
+        const result = await generateWithGPTImage(prompt, size, quality, background);
+        if (result.success) return result;
+        // OpenAI failed — try Gemini if available
+        logger.warn('OpenAI image failed, trying Gemini fallback', { error: result.error });
+        if (getGeminiKey()) return await generateWithGemini(prompt, size);
+        return result;
+      } catch(e) {
+        logger.error('OpenAI image threw error', { error: e.message });
+        if (getGeminiKey()) return await generateWithGemini(prompt, size);
+        throw e;
+      }
     } else if (useEngine === 'gemini') {
       return await generateWithGemini(prompt, size);
     }
@@ -149,6 +160,10 @@ async function generateWithGPTImage(prompt, size, quality, background) {
   try {
     logger.info('Generating image with GPT Image 1.5', { size, quality });
 
+    // Map our sizes to OpenAI supported sizes
+    // gpt-image-1.5 supports: 1024x1024, 1536x1024, 1024x1536, auto
+    const validSize = ['1024x1024','1536x1024','1024x1536'].includes(size) ? size : '1024x1024';
+
     const response = await fetch('https://api.openai.com/v1/images/generations', {
       method: 'POST',
       headers: {
@@ -159,10 +174,8 @@ async function generateWithGPTImage(prompt, size, quality, background) {
         model: 'gpt-image-1.5',
         prompt,
         n: 1,
-        size,
-        quality,
-        background,
-        output_format: 'png',
+        size: validSize,
+        quality: quality === 'high' ? 'high' : quality === 'low' ? 'low' : 'medium',
       }),
     });
 
@@ -225,6 +238,7 @@ async function generateWithGPTImage(prompt, size, quality, background) {
 }
 
 async function generateWithGPTImageFallback(prompt, size, quality, background) {
+  const validSize = ['1024x1024','1536x1024','1024x1536'].includes(size) ? size : '1024x1024';
   const response = await fetch('https://api.openai.com/v1/images/generations', {
     method: 'POST',
     headers: {
@@ -235,10 +249,8 @@ async function generateWithGPTImageFallback(prompt, size, quality, background) {
       model: 'gpt-image-1',
       prompt,
       n: 1,
-      size,
-      quality,
-      background,
-      output_format: 'png',
+      size: validSize,
+      quality: quality === 'high' ? 'high' : quality === 'low' ? 'low' : 'medium',
     }),
   });
 
