@@ -1,6 +1,29 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Component } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+
+// Error boundary — prevents white screen crashes
+class ErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { hasError: false, error: null }; }
+  static getDerivedStateFromError(error) { return { hasError: true, error }; }
+  componentDidCatch(error, info) { console.error('UI crash caught:', error, info); }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{padding:40,textAlign:"center",color:"#ccc",fontFamily:"system-ui"}}>
+          <div style={{fontSize:32,marginBottom:12}}>⚠️</div>
+          <div style={{fontSize:16,fontWeight:600,marginBottom:8}}>Something went wrong</div>
+          <div style={{fontSize:13,color:"#888",marginBottom:20}}>{this.state.error?.message || "An unexpected error occurred"}</div>
+          <button onClick={()=>{ this.setState({hasError:false,error:null}); window.location.reload(); }} 
+            style={{padding:"10px 24px",borderRadius:8,border:"none",background:"linear-gradient(135deg,#F4A261,#E76F8B)",color:"#fff",cursor:"pointer",fontSize:14,fontWeight:600}}>
+            Reload App
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 /* ═══════════════════════════════════════════════════════════════
    THEME — exact copy from Jaden's dashboard
@@ -1934,7 +1957,11 @@ function BillingPage({c,mob}){
   );
 }
 
-export default function App() {
+export default function AppWithErrorBoundary() {
+  return <ErrorBoundary><App /></ErrorBoundary>;
+}
+
+function App() {
   const W=useW();
   const mob=W<768;
   const [dark,setDark]=useState(true);
@@ -2398,7 +2425,7 @@ export default function App() {
                     <h2 style={{fontSize:mob?22:28,fontWeight:700,color:c.tx,marginTop:18,marginBottom:6}}>Chat with Sarah</h2>
                     <p style={{fontSize:mob?13:15,color:c.so,marginBottom:28}}>Give her tasks, check her work, or ask what's going on</p>
                     <div style={{display:"flex",gap:mob?6:10,alignItems:"center",marginBottom:20}}>
-                      <textarea value={tx} onChange={e=>setTx(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();doSend();}}} placeholder={vcRec?"Listening…":"Ask anything..."} rows={1} style={{flex:1,padding:mob?"12px 14px":"14px 18px",borderRadius:14,border:"1.5px solid "+(vcRec?c.ac:c.ln),fontSize:15,fontFamily:"inherit",background:c.inp,color:c.tx,transition:"border-color .2s",resize:"none",lineHeight:1.4,maxHeight:120,overflowY:"auto"}}/>
+                      <textarea value={tx} onChange={e=>setTx(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();doSend();}}} placeholder={vcRec?"Listening…":"Ask anything..."} rows={3} style={{flex:1,padding:mob?"12px 14px":"14px 18px",borderRadius:14,border:"1.5px solid "+(vcRec?c.ac:c.ln),fontSize:15,fontFamily:"inherit",background:c.inp,color:c.tx,transition:"border-color .2s",resize:"none",lineHeight:1.4,maxHeight:120,overflowY:"auto"}}/>
                       <button onClick={()=>fRef.current?.click()} title="Attach file" style={{width:44,height:44,borderRadius:12,border:"1.5px solid "+c.ln,cursor:"pointer",background:c.cd,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={c.so} strokeWidth="2" strokeLinecap="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
                       </button>
@@ -2610,7 +2637,7 @@ export default function App() {
                       <span style={{fontSize:11,color:c.fa}}>{connected?"Connected to Sarah's API":"Reconnecting…"}</span>
                     </div>
                     <div style={{display:"flex",gap:mob?6:8,alignItems:"center"}}>
-                      <textarea value={tx} onChange={e=>setTx(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();doSend();}}} placeholder={vcRec?"Listening…":mob?"Message…":"Tell Sarah what you need…"} rows={1} style={{flex:1,padding:mob?"10px 14px":"11px 14px",borderRadius:12,border:"1.5px solid "+(vcRec?c.ac:c.ln),fontSize:14,fontFamily:"inherit",background:c.inp,color:c.tx,transition:"border-color .2s",resize:"none",lineHeight:1.4,maxHeight:120,overflowY:"auto"}}/>
+                      <textarea value={tx} onChange={e=>setTx(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();doSend();}}} placeholder={vcRec?"Listening…":mob?"Message…":"Tell Sarah what you need…"} rows={3} style={{flex:1,padding:mob?"10px 14px":"11px 14px",borderRadius:12,border:"1.5px solid "+(vcRec?c.ac:c.ln),fontSize:14,fontFamily:"inherit",background:c.inp,color:c.tx,transition:"border-color .2s",resize:"none",lineHeight:1.4,maxHeight:120,overflowY:"auto"}}/>
                       <button onClick={()=>fRef.current?.click()} title="Attach file" style={{width:40,height:40,borderRadius:11,border:"1.5px solid "+c.ln,cursor:"pointer",background:c.cd,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={c.so} strokeWidth="2" strokeLinecap="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
                       </button>
@@ -3769,7 +3796,19 @@ export default function App() {
             ):(
               /* View Mode */
               <>
-                {previewFile.name?.endsWith('.html')?(
+                {(previewFile.name?.endsWith('.docx')||previewFile.name?.endsWith('.pdf')||previewFile.name?.endsWith('.xlsx')||previewFile.name?.endsWith('.pptx')||previewFile.name?.endsWith('.zip'))?(
+                  /* Binary files — show download button, don't try to render */
+                  <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,color:c.so}}>
+                    <span style={{fontSize:48}}>{previewFile.name?.endsWith('.docx')?"📄":previewFile.name?.endsWith('.pdf')?"📕":previewFile.name?.endsWith('.xlsx')?"📊":"📦"}</span>
+                    <div style={{fontSize:16,fontWeight:600,color:c.tx}}>{previewFile.name}</div>
+                    <div style={{fontSize:13}}>This file type can't be previewed in the browser</div>
+                    {previewFile.fileId&&(
+                      <a href={`/api/files/download/${previewFile.fileId}`} download={previewFile.name} style={{padding:"12px 28px",borderRadius:10,background:"linear-gradient(135deg,#F4A261,#E76F8B)",color:"#fff",textDecoration:"none",fontSize:14,fontWeight:700,marginTop:8}}>
+                        Download {previewFile.name?.split('.').pop()?.toUpperCase()}
+                      </a>
+                    )}
+                  </div>
+                ):previewFile.name?.endsWith('.html')?(
                   <iframe
                     srcDoc={previewFile.content||''}
                     style={{flex:1,width:"100%",border:"none",background:"#fff"}}
