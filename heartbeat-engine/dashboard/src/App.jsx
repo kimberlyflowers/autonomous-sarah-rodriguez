@@ -3859,38 +3859,93 @@ function App() {
           {/* ══ PROJECTS — Organize conversations into projects ══ */}
           {pg==="projects"&&(
             selectedProject?(
-              /* Project Detail View */
-              <div style={{padding:mob?"16px 12px 40px":"32px 40px 60px",maxWidth:1200,margin:"0 auto"}}>
+              /* Project Detail View - Chat Workspace */
+              <div style={{display:"flex",flexDirection:"column",height:"100%",overflow:"hidden"}}>
                 {/* Header with back button */}
-                <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:32}}>
-                  <button onClick={()=>{setSelectedProject(null);setProjectConversations([]);}} style={{width:40,height:40,borderRadius:10,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,color:c.tx}}>←</button>
-                  <div style={{flex:1}}>
-                    <h1 style={{fontSize:mob?24:32,fontWeight:700,color:c.tx,marginBottom:4}}>{selectedProject.name}</h1>
-                    {selectedProject.description&&<p style={{fontSize:14,color:c.so,margin:0}}>{selectedProject.description}</p>}
+                <div style={{padding:"16px 20px",borderBottom:"1px solid "+c.ln,background:c.cd,display:"flex",alignItems:"center",gap:16,flexShrink:0}}>
+                  <button onClick={()=>{setSelectedProject(null);setProjectConversations([]);}} style={{width:36,height:36,borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,color:c.tx}}>←</button>
+                  <div style={{flex:1,minWidth:0}}>
+                    <h1 style={{fontSize:20,fontWeight:700,color:c.tx,marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{selectedProject.name}</h1>
+                    {selectedProject.description&&<p style={{fontSize:13,color:c.so,margin:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{selectedProject.description}</p>}
                   </div>
+                  <button onClick={()=>setShowProjectModal(true)} style={{padding:"8px 16px",borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:13,fontWeight:600,color:c.ac}}>+ New project</button>
                 </div>
 
-                {/* Conversations list */}
-                <div style={{marginBottom:24}}>
-                  <h2 style={{fontSize:18,fontWeight:700,color:c.tx,marginBottom:16}}>Conversations ({projectConversations.length})</h2>
-                  {projectConversations.length===0?(
-                    <div style={{textAlign:"center",padding:60,borderRadius:16,border:"1px solid "+c.ln,background:c.sf}}>
-                      <div style={{fontSize:48,marginBottom:16}}>💬</div>
-                      <div style={{fontSize:16,color:c.tx,marginBottom:8,fontWeight:600}}>No conversations yet</div>
-                      <div style={{fontSize:13,color:c.so}}>Add conversations to this project using the three-dot menu</div>
+                {/* Conversations list in sidebar-style */}
+                <div style={{display:"flex",flex:1,overflow:"hidden"}}>
+                  {/* Left sidebar - conversations */}
+                  <div style={{width:260,borderRight:"1px solid "+c.ln,background:c.sf,display:"flex",flexDirection:"column",flexShrink:0}}>
+                    <div style={{padding:"12px 14px",borderBottom:"1px solid "+c.ln,flexShrink:0}}>
+                      <div style={{fontSize:11,fontWeight:700,color:c.so,letterSpacing:"0.5px",textTransform:"uppercase"}}>Conversations ({projectConversations.length})</div>
                     </div>
-                  ):(
-                    <div style={{display:"grid",gap:12}}>
-                      {projectConversations.map(conv=>(
-                        <div key={conv.id} onClick={()=>{loadSession(conv.id);setPg("chat");}} style={{padding:20,borderRadius:12,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",transition:"all .15s"}} onMouseEnter={e=>{e.currentTarget.style.borderColor=c.ac;e.currentTarget.style.background=c.sf;}} onMouseLeave={e=>{e.currentTarget.style.borderColor=c.ln;e.currentTarget.style.background=c.cd;}}>
-                          <div style={{fontSize:15,fontWeight:600,color:c.tx,marginBottom:8}}>{conv.title||'Untitled conversation'}</div>
-                          <div style={{fontSize:12,color:c.so}}>
-                            {new Date(conv.updated_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})} • {conv.message_count||0} messages
+                    <div style={{flex:1,overflowY:"auto"}}>
+                      {projectConversations.length===0?(
+                        <div style={{padding:20,textAlign:"center"}}>
+                          <div style={{fontSize:13,color:c.so,marginBottom:8}}>No conversations yet</div>
+                          <div style={{fontSize:11,color:c.fa}}>Add chats using the three-dot menu</div>
+                        </div>
+                      ):(
+                        projectConversations.map(conv=>(
+                          <div key={conv.id} onClick={()=>{loadSession(conv.id);}} style={{padding:"10px 14px",cursor:"pointer",borderBottom:"1px solid "+c.ln,background:currentSessionId===conv.id?c.cd:"transparent",transition:"background .15s"}} onMouseEnter={e=>{ if(currentSessionId!==conv.id) e.currentTarget.style.background=c.hv; }} onMouseLeave={e=>{ if(currentSessionId!==conv.id) e.currentTarget.style.background="transparent"; }}>
+                            <div style={{fontSize:13,fontWeight:600,color:c.tx,marginBottom:4,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{conv.title||'Untitled'}</div>
+                            <div style={{fontSize:11,color:c.fa}}>
+                              {new Date(conv.updated_at).toLocaleDateString('en-US',{month:'short',day:'numeric'})} • {conv.message_count||0} msgs
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Right main area - chat interface */}
+                  <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+                    {currentSessionId&&messages.length>0?(
+                      /* Show active chat */
+                      <>
+                        <div style={{flex:1,overflowY:"auto",padding:"20px",display:"flex",flexDirection:"column",gap:16}}>
+                          {messages.map((msg,idx)=>(
+                            <div key={idx} style={{display:"flex",gap:12,alignItems:"flex-start"}}>
+                              {msg.role==="user"?(
+                                <>
+                                  <label style={{width:30,height:30,borderRadius:8,background:userImg?"transparent":"linear-gradient(135deg,#F4A261,#E76F8B)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"#fff",flexShrink:0,overflow:"hidden"}}>
+                                    {userImg?<img src={userImg} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>:"K"}
+                                  </label>
+                                  <div style={{flex:1}}>
+                                    <div style={{fontSize:13,fontWeight:600,color:c.tx,marginBottom:4}}>You</div>
+                                    <div style={{fontSize:15,color:c.tx,lineHeight:1.5}}>{msg.text}</div>
+                                  </div>
+                                </>
+                              ):(
+                                <>
+                                  <Face sz={30} agent={agent}/>
+                                  <div style={{flex:1}}>
+                                    <div style={{fontSize:13,fontWeight:600,color:c.tx,marginBottom:4}}>{agent.nm}</div>
+                                    <div style={{fontSize:15,color:c.tx,lineHeight:1.5}}><ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.text}</ReactMarkdown></div>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          ))}
+                          <div ref={btm}/>
+                        </div>
+                        <div style={{padding:"12px 16px",borderTop:"1px solid "+c.ln,background:c.cd,flexShrink:0}}>
+                          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                            <textarea value={tx} onChange={e=>setTx(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();doSend();}}} placeholder="Message..." rows={2} style={{flex:1,padding:"10px 12px",borderRadius:10,border:"1.5px solid "+c.ln,fontSize:14,fontFamily:"inherit",background:c.inp,color:c.tx,resize:"none"}}/>
+                            <button onClick={doSend} disabled={!tx.trim()||loading} style={{padding:"10px 18px",borderRadius:10,border:"none",cursor:tx.trim()&&!loading?"pointer":"not-allowed",background:tx.trim()&&!loading?c.gradient:c.sf,color:tx.trim()&&!loading?"#fff":c.fa,fontSize:13,fontWeight:700}}>Send</button>
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  )}
+                      </>
+                    ):(
+                      /* Empty state - start a chat */
+                      <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:40}}>
+                        <div style={{textAlign:"center",maxWidth:400}}>
+                          <div style={{fontSize:16,fontWeight:600,color:c.tx,marginBottom:8}}>Start a chat to keep conversations organized</div>
+                          <div style={{fontSize:13,color:c.so,marginBottom:20}}>Chats in this project will be saved here</div>
+                          <button onClick={()=>newSession()} style={{padding:"10px 20px",borderRadius:10,border:"none",background:c.gradient,color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer"}}>Start new chat</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             ):(
