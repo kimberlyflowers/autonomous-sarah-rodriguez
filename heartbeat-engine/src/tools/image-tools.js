@@ -409,7 +409,7 @@ async function generateWithGemini(prompt, size) {
     };
 
   } catch (error) {
-    logger.error('Gemini image generation failed:', error.message);
+    logger.error('Gemini image generation failed:', { error: error.message, stack: error.stack, hasKey: !!getGeminiKey() });
     return { success: false, error: error.message, engine: 'gemini' };
   }
 }
@@ -467,7 +467,7 @@ async function generateWithNanoBanana(prompt, size) {
     };
 
   } catch (error) {
-    logger.error('Nano Banana generation failed:', error.message);
+    logger.error('Nano Banana generation failed:', { error: error.message, stack: error.stack, prompt: prompt.substring(0, 100) });
     return { success: false, error: error.message, engine: 'nano-banana' };
   }
 }
