@@ -10,7 +10,7 @@ let pool = null;
 
 async function getPool() {
   if (!pool) {
-    const { getSharedPool } = await import('../../database/pool.js');
+    const { getSharedPool } = await import('../database/pool.js');
     pool = getSharedPool();
   }
   return pool;
