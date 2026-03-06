@@ -3796,6 +3796,84 @@ function App() {
             </div>
           )}
 
+          {/* ══ PROJECTS — Organize conversations into projects ══ */}
+          {pg==="projects"&&(
+            <div style={{padding:mob?"16px 12px 40px":"32px 40px 60px",maxWidth:1200,margin:"0 auto"}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:32}}>
+                <h1 style={{fontSize:mob?24:32,fontWeight:700,color:c.tx}}>Projects</h1>
+                <button onClick={()=>alert('Create new project feature coming soon!')} style={{padding:"10px 20px",borderRadius:10,border:"none",background:c.ac,color:"#fff",fontSize:13,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{fontSize:16}}>+</span> New project
+                </button>
+              </div>
+
+              {/* Projects grid - showing suggested projects for now */}
+              <div style={{display:"grid",gridTemplateColumns:mob?"1fr":"repeat(auto-fill, minmax(320px, 1fr))",gap:20}}>
+                {[
+                  {name:"BLOOMSHIELD Marketing",desc:"Content and campaigns for BLOOMSHIELD product launch",updated:"2 days ago"},
+                  {name:"YES School Operations",desc:"Administrative tasks and communications for Youth Empowerment School",updated:"1 week ago"},
+                  {name:"Client Onboarding",desc:"Templates and workflows for new Bloomie clients",updated:"3 days ago"}
+                ].map((proj,i)=>(
+                  <div key={i} onClick={()=>alert('Project view coming soon!')} style={{padding:24,borderRadius:16,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",transition:"all .2s"}} onMouseEnter={e=>{e.currentTarget.style.borderColor=c.ac;e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 8px 24px rgba(0,0,0,0.08)";}} onMouseLeave={e=>{e.currentTarget.style.borderColor=c.ln;e.currentTarget.style.transform="translateY(0)";e.currentTarget.style.boxShadow="none";}}>
+                    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={c.ac} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                      <h3 style={{fontSize:16,fontWeight:700,color:c.tx,margin:0}}>{proj.name}</h3>
+                    </div>
+                    <p style={{fontSize:13,color:c.so,marginBottom:16,lineHeight:1.5}}>{proj.desc}</p>
+                    <div style={{fontSize:11,color:c.fa}}>Updated {proj.updated}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{marginTop:40,padding:24,borderRadius:16,background:c.sf,border:"1px solid "+c.ln,textAlign:"center"}}>
+                <div style={{fontSize:14,color:c.so,marginBottom:8}}>💡 Tip: Projects help you organize related conversations</div>
+                <div style={{fontSize:12,color:c.fa}}>Create a project to group chats by client, campaign, or topic</div>
+              </div>
+            </div>
+          )}
+
+          {/* ══ CUSTOMIZE — Skills and Connectors ══ */}
+          {pg==="customize"&&(
+            <div style={{padding:mob?"16px 12px 40px":"32px 40px 60px",maxWidth:900,margin:"0 auto"}}>
+              <div style={{marginBottom:32}}>
+                <h1 style={{fontSize:mob?24:32,fontWeight:700,color:c.tx,marginBottom:8}}>Customize</h1>
+                <p style={{fontSize:14,color:c.so}}>Customize and manage the context and tools you are giving Sarah</p>
+              </div>
+
+              {/* Two main sections: Skills and Connectors */}
+              <div style={{display:"flex",flexDirection:"column",gap:24}}>
+                
+                {/* Connect your tools card */}
+                <div onClick={()=>alert('Connect tools feature coming soon!')} style={{padding:32,borderRadius:16,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",transition:"all .2s"}} onMouseEnter={e=>{e.currentTarget.style.borderColor=c.ac;e.currentTarget.style.transform="translateX(4px)";}} onMouseLeave={e=>{e.currentTarget.style.borderColor=c.ln;e.currentTarget.style.transform="translateX(0)";}}>
+                  <div style={{display:"flex",alignItems:"flex-start",gap:20}}>
+                    <div style={{width:48,height:48,borderRadius:12,background:c.sf,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={c.ac} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                    </div>
+                    <div style={{flex:1}}>
+                      <h3 style={{fontSize:18,fontWeight:700,color:c.tx,marginBottom:6}}>Connect your tools</h3>
+                      <p style={{fontSize:14,color:c.so,lineHeight:1.6}}>Integrate with the tools you use to complete your tasks</p>
+                    </div>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={c.so} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0,marginTop:4}}><polyline points="9 18 15 12 9 6"/></svg>
+                  </div>
+                </div>
+
+                {/* Create new skills card */}
+                <div onClick={()=>alert('Create skills feature coming soon!')} style={{padding:32,borderRadius:16,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",transition:"all .2s"}} onMouseEnter={e=>{e.currentTarget.style.borderColor=c.ac;e.currentTarget.style.transform="translateX(4px)";}} onMouseLeave={e=>{e.currentTarget.style.borderColor=c.ln;e.currentTarget.style.transform="translateX(0)";}}>
+                  <div style={{display:"flex",alignItems:"flex-start",gap:20}}>
+                    <div style={{width:48,height:48,borderRadius:12,background:c.sf,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={c.ac} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+                    </div>
+                    <div style={{flex:1}}>
+                      <h3 style={{fontSize:18,fontWeight:700,color:c.tx,marginBottom:6}}>Create new skills</h3>
+                      <p style={{fontSize:14,color:c.so,lineHeight:1.6}}>Teach Sarah your processes, team norms, and expertise</p>
+                    </div>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={c.so} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0,marginTop:4}}><polyline points="9 18 15 12 9 6"/></svg>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          )}
+
           {/* ══ SETTINGS — Jaden's layout, Sarah's details ══ */}
           {pg==="settings"&&(
             <div style={{padding:mob?"16px 12px 40px":"20px 20px 40px",maxWidth:800,margin:"0 auto"}}>
