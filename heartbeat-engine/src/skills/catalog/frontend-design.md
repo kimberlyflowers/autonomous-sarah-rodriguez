@@ -40,3 +40,27 @@ Interpret creatively and make unexpected choices that feel genuinely designed fo
 **IMPORTANT**: Match implementation complexity to the aesthetic vision. Maximalist designs need elaborate code with extensive animations and effects. Minimalist or refined designs need restraint, precision, and careful attention to spacing, typography, and subtle details. Elegance comes from executing the vision well.
 
 Remember: Claude is capable of extraordinary creative work. Don't hold back, show what can truly be created when thinking outside the box and committing fully to a distinctive vision.
+
+## Images for Websites
+
+**CRITICAL: You have image generation capabilities.** For landing pages, websites, and marketing pages, ALWAYS generate hero images and key visuals using the `image_generate` tool.
+
+**When to generate images:**
+- Hero sections (large background images, main visuals)
+- Product/service showcases
+- Team photos or business imagery
+- Background textures or abstract art
+- Icons or decorative elements
+
+**How to generate images:**
+1. Call `image_generate` with a detailed prompt describing the exact image you need
+2. Specify size: `1536x1024` for landscape hero images, `1024x1536` for tall images, `1024x1024` for squares
+3. Set quality to `high` for final deliverables
+4. The tool returns an image URL - use it directly in your HTML: `<img src="{image_url}" alt="...">`
+
+**Example workflow for a yoga studio website:**
+1. Generate hero image: "Serene yoga studio interior, morning sunlight streaming through large windows, yoga mats on wooden floor, plants, minimalist aesthetic, professional photography style"
+2. Build the HTML using the returned image URL in the hero section
+3. Add CSS for proper sizing and positioning
+
+**DO NOT use placeholder images or generic stock photo URLs.** Generate real, custom images that match your design aesthetic.
