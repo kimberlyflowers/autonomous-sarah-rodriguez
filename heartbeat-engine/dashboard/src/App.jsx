@@ -389,14 +389,60 @@ function useCRMLink() {
    SARAH'S FUNCTIONAL CARDS — Jaden's visual style applied
    ═══════════════════════════════════════════════════════════════ */
 
+// SVG Icons for Monitor Cards
+const HealthIcon = ({c,size=16}) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={c.ac} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+  </svg>
+);
+
+const LockIcon = ({c,size=16}) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={c.ac} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+    <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+  </svg>
+);
+
+const RobotIcon = ({c,size=16}) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={c.ac} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="11" width="18" height="10" rx="2"/>
+    <circle cx="12" cy="5" r="2"/>
+    <path d="M12 7v4"/>
+    <line x1="8" y1="16" x2="8" y2="16"/>
+    <line x1="16" y1="16" x2="16" y2="16"/>
+  </svg>
+);
+
+const WrenchIcon = ({c,size=16}) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={c.ac} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+  </svg>
+);
+
+const BrainIcon = ({c,size=16}) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={c.ac} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"/>
+    <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"/>
+  </svg>
+);
+
+const PhoneIcon = ({c,size=16}) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={c.ac} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+  </svg>
+);
+
 // Shared card shell that matches Jaden's card aesthetic exactly
-function Card({c,title,subtitle,children,action,noPad}) {
+function Card({c,title,subtitle,children,action,noPad,icon}) {
   return(
     <div style={{borderRadius:16,background:c.cd,border:"1px solid "+c.ln,overflow:"hidden"}}>
       <div style={{padding:"13px 16px",borderBottom:"1px solid "+c.ln,background:c.sf,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-        <div>
-          <div style={{fontSize:13,fontWeight:700,color:c.tx}}>{title}</div>
-          {subtitle&&<div style={{fontSize:10,color:c.so,marginTop:1}}>{subtitle}</div>}
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          {icon}
+          <div>
+            <div style={{fontSize:13,fontWeight:700,color:c.tx}}>{title}</div>
+            {subtitle&&<div style={{fontSize:10,color:c.so,marginTop:1}}>{subtitle}</div>}
+          </div>
         </div>
         {action}
       </div>
@@ -442,7 +488,7 @@ function SystemHealth({c,sse}) {
   const colMap={healthy:c.gr,warning:"#F59E0B",critical:"#EF4444"};
 
   return(
-    <Card c={c} title="System Health" action={<Pill c={c} status={overall}/>}>
+    <Card c={c} title="System Health" action={<Pill c={c} status={overall}/>} icon={<HealthIcon c={c} size={16}/>}>
       {!data
         ? <div style={{padding:20,textAlign:"center",fontSize:12,color:c.so}}>Loading…</div>
         : <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
@@ -479,7 +525,7 @@ function TrustGate({c,sse}) {
   const pct=Math.min(100,(used/limit)*100);
 
   return(
-    <Card c={c} title="Trust Gate" subtitle="Authorization & daily limits">
+    <Card c={c} title="Trust Gate" subtitle="Authorization & daily limits" icon={<LockIcon c={c} size={16}/>}>
       {!data
         ? <div style={{padding:20,textAlign:"center",fontSize:12,color:c.so}}>Loading…</div>
         : <>
@@ -558,7 +604,7 @@ function SubAgents({c,sse}) {
   },[sse]);
 
   return(
-    <Card c={c} title="Sub-Agent Network" subtitle="5 domain specialists">
+    <Card c={c} title="Sub-Agent Network" subtitle="5 domain specialists" icon={<RobotIcon c={c} size={16}/>}>
       {agents.length===0
         ? <div style={{padding:20,textAlign:"center",fontSize:12,color:c.so}}>No sub-agents active</div>
         : <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
@@ -597,7 +643,7 @@ function ToolPerformance({c,sse}) {
   const tools=data?.topTools||data?.tools||[];
 
   return(
-    <Card c={c} title="Tool Performance" subtitle="60 BLOOM CRM tools + internal">
+    <Card c={c} title="Tool Performance" subtitle="60 BLOOM CRM tools + internal" icon={<WrenchIcon c={c} size={16}/>}>
       {!data
         ? <div style={{padding:20,textAlign:"center",fontSize:12,color:c.so}}>Loading…</div>
         : <>
@@ -643,7 +689,7 @@ function ContextAnalytics({c,sse}) {
   const barColor=pct>80?"#EF4444":pct>60?"#F59E0B":c.gr;
 
   return(
-    <Card c={c} title="Context Analytics" subtitle="Token usage & compression">
+    <Card c={c} title="Context Analytics" subtitle="Token usage & compression" icon={<BrainIcon c={c} size={16}/>}>
       {!data
         ? <div style={{padding:20,textAlign:"center",fontSize:12,color:c.so}}>Loading…</div>
         : <>
@@ -3414,7 +3460,10 @@ function App() {
           {pg==="calls"&&(
             <div style={{padding:mob?"16px 12px 40px":"20px 20px 40px",maxWidth:900,margin:"0 auto"}}>
               <div style={{marginBottom:24}}>
-                <h1 style={{fontSize:mob?20:24,fontWeight:700,color:c.tx,marginBottom:6}}>Calls</h1>
+                <h1 style={{fontSize:mob?20:24,fontWeight:700,color:c.tx,marginBottom:6,display:"flex",alignItems:"center",gap:10}}>
+                  <PhoneIcon c={c} size={mob?20:24}/>
+                  Calls
+                </h1>
                 <p style={{fontSize:13,color:c.so}}>Phone calls and voicemails — Sarah reads transcripts and takes action</p>
               </div>
               <CallsPage c={c} mob={mob}/>
