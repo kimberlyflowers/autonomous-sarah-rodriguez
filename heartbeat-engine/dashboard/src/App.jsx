@@ -403,6 +403,12 @@ const LockIcon = ({c,size=16}) => (
   </svg>
 );
 
+const BoltIcon = ({c,size=16}) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={c.ac} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+  </svg>
+);
+
 const RobotIcon = ({c,size=16}) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={c.ac} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <rect x="3" y="11" width="18" height="10" rx="2"/>
@@ -433,7 +439,7 @@ const PhoneIcon = ({c,size=16}) => (
 );
 
 const TaskListIcon = ({c,size=16}) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={c.ac} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <line x1="8" y1="6" x2="21" y2="6"/>
     <line x1="8" y1="12" x2="21" y2="12"/>
     <line x1="8" y1="18" x2="21" y2="18"/>
@@ -444,9 +450,25 @@ const TaskListIcon = ({c,size=16}) => (
 );
 
 const ClipboardIcon = ({c,size=16}) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={c.ac} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
     <rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>
+  </svg>
+);
+
+const HandshakeIcon = ({c,size=16}) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={c.ac} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
+    <polyline points="10 17 15 12 10 7"/>
+    <line x1="15" y1="12" x2="3" y2="12"/>
+  </svg>
+);
+
+const XCircleIcon = ({c,size=16}) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={c.ac} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="10"/>
+    <line x1="15" y1="9" x2="9" y2="15"/>
+    <line x1="9" y1="9" x2="15" y2="15"/>
   </svg>
 );
 
@@ -589,7 +611,7 @@ function AgenticExecutions({c,sse}) {
   const statusColors={completed:c.gr,running:c.bl,failed:"#EF4444",pending:"#F59E0B"};
 
   return(
-    <Card c={c} title="Agentic Executions" subtitle="Multi-turn task runs">
+    <Card c={c} title="Agentic Executions" subtitle="Multi-turn task runs" icon={<BoltIcon c={c} size={16}/>}>
       {execs.length===0
         ? <div style={{padding:20,textAlign:"center",fontSize:12,color:c.so}}>No executions yet</div>
         : execs.map((ex,i)=>(
@@ -818,7 +840,10 @@ function EscalationPanel({c,sse}) {
   },[sse]);
 
   const items=tab==="handoffs"?handoffs:rejections;
-  const tabs=[{k:"handoffs",l:"Escalations",ct:handoffs.length},{k:"rejections",l:"Rejections",ct:rejections.length}];
+  const tabs=[
+    {k:"handoffs",l:<><HandshakeIcon c={c} size={14}/> <span style={{marginLeft:4}}>Escalations</span></>,ct:handoffs.length},
+    {k:"rejections",l:<><XCircleIcon c={c} size={14}/> <span style={{marginLeft:4}}>Rejections</span></>,ct:rejections.length}
+  ];
 
   return(
     <Card c={c} title="Escalations & Rejections" action={
