@@ -1,7 +1,7 @@
 # BLOOM Heartbeat Engine — with Playwright browser automation
 FROM node:20-slim
 
-# Install Playwright system dependencies + Chromium
+# Install Playwright system dependencies + Chromium + Sharp image processing libs
 RUN apt-get update && apt-get install -y \
     chromium \
     chromium-driver \
@@ -20,6 +20,9 @@ RUN apt-get update && apt-get install -y \
     libxkbcommon0 \
     libxrandr2 \
     xdg-utils \
+    libjpeg-dev \
+    libpng-dev \
+    libvips-dev \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Tell Playwright to use system Chromium instead of downloading its own
