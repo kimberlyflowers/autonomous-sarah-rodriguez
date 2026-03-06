@@ -96,7 +96,7 @@ function loadSkillCatalog() {
 const TASK_TO_SKILL_MAP = {
   writing:  ['blog-content'],
   email:    ['email-marketing'],
-  coding:   ['website-landing-page'],
+  coding:   ['website-creation'],
   docx:     ['docx-documents', 'professional-documents'],
   crm:      ['ghl-crm'],
   design:   ['website-landing-page'],
