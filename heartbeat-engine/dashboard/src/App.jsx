@@ -2204,6 +2204,8 @@ function App() {
   const [showProjectModal,setShowProjectModal]=useState(false);
   const [newProjectName,setNewProjectName]=useState('');
   const [newProjectDesc,setNewProjectDesc]=useState('');
+  const [selectedProject,setSelectedProject]=useState(null);
+  const [projectConversations,setProjectConversations]=useState([]);
   
   // Fetch projects when Projects page is opened
   useEffect(()=>{
@@ -3856,6 +3858,43 @@ function App() {
 
           {/* ══ PROJECTS — Organize conversations into projects ══ */}
           {pg==="projects"&&(
+            selectedProject?(
+              /* Project Detail View */
+              <div style={{padding:mob?"16px 12px 40px":"32px 40px 60px",maxWidth:1200,margin:"0 auto"}}>
+                {/* Header with back button */}
+                <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:32}}>
+                  <button onClick={()=>{setSelectedProject(null);setProjectConversations([]);}} style={{width:40,height:40,borderRadius:10,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,color:c.tx}}>←</button>
+                  <div style={{flex:1}}>
+                    <h1 style={{fontSize:mob?24:32,fontWeight:700,color:c.tx,marginBottom:4}}>{selectedProject.name}</h1>
+                    {selectedProject.description&&<p style={{fontSize:14,color:c.so,margin:0}}>{selectedProject.description}</p>}
+                  </div>
+                </div>
+
+                {/* Conversations list */}
+                <div style={{marginBottom:24}}>
+                  <h2 style={{fontSize:18,fontWeight:700,color:c.tx,marginBottom:16}}>Conversations ({projectConversations.length})</h2>
+                  {projectConversations.length===0?(
+                    <div style={{textAlign:"center",padding:60,borderRadius:16,border:"1px solid "+c.ln,background:c.sf}}>
+                      <div style={{fontSize:48,marginBottom:16}}>💬</div>
+                      <div style={{fontSize:16,color:c.tx,marginBottom:8,fontWeight:600}}>No conversations yet</div>
+                      <div style={{fontSize:13,color:c.so}}>Add conversations to this project using the three-dot menu</div>
+                    </div>
+                  ):(
+                    <div style={{display:"grid",gap:12}}>
+                      {projectConversations.map(conv=>(
+                        <div key={conv.id} onClick={()=>{loadSession(conv.id);setPg("chat");}} style={{padding:20,borderRadius:12,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",transition:"all .15s"}} onMouseEnter={e=>{e.currentTarget.style.borderColor=c.ac;e.currentTarget.style.background=c.sf;}} onMouseLeave={e=>{e.currentTarget.style.borderColor=c.ln;e.currentTarget.style.background=c.cd;}}>
+                          <div style={{fontSize:15,fontWeight:600,color:c.tx,marginBottom:8}}>{conv.title||'Untitled conversation'}</div>
+                          <div style={{fontSize:12,color:c.so}}>
+                            {new Date(conv.updated_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})} • {conv.message_count||0} messages
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ):(
+            /* Project List View */
             <div style={{padding:mob?"16px 12px 40px":"32px 40px 60px",maxWidth:1200,margin:"0 auto"}}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:32}}>
                 <h1 style={{fontSize:mob?24:32,fontWeight:700,color:c.tx}}>Projects</h1>
@@ -3884,7 +3923,18 @@ function App() {
               {!loadingProjects&&projects.length>0&&(
                 <div style={{display:"grid",gridTemplateColumns:mob?"1fr":"repeat(auto-fill, minmax(320px, 1fr))",gap:20}}>
                   {projects.map((proj)=>(
-                    <div key={proj.id} onClick={()=>alert('Project view coming soon! Project ID: '+proj.id)} style={{padding:24,borderRadius:16,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",transition:"all .2s"}} onMouseEnter={e=>{e.currentTarget.style.borderColor=c.ac;e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 8px 24px rgba(0,0,0,0.08)";}} onMouseLeave={e=>{e.currentTarget.style.borderColor=c.ln;e.currentTarget.style.transform="translateY(0)";e.currentTarget.style.boxShadow="none";}}>
+                    <div key={proj.id} onClick={async()=>{
+                      setSelectedProject(proj);
+                      // Fetch conversations for this project
+                      try{
+                        const res=await fetch(`/api/chat/sessions?projectId=${proj.id}`);
+                        const data=await res.json();
+                        setProjectConversations(data.sessions||[]);
+                      }catch(err){
+                        console.error('Failed to load project conversations:',err);
+                        setProjectConversations([]);
+                      }
+                    }} style={{padding:24,borderRadius:16,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",transition:"all .2s"}} onMouseEnter={e=>{e.currentTarget.style.borderColor=c.ac;e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 8px 24px rgba(0,0,0,0.08)";}} onMouseLeave={e=>{e.currentTarget.style.borderColor=c.ln;e.currentTarget.style.transform="translateY(0)";e.currentTarget.style.boxShadow="none";}}>
                       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={c.ac} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
                         <h3 style={{fontSize:16,fontWeight:700,color:c.tx,margin:0}}>{proj.name}</h3>
@@ -3983,6 +4033,7 @@ function App() {
                 </div>
               )}
             </div>
+            )
           )}
 
           {/* ══ CUSTOMIZE — Skills and Connectors ══ */}

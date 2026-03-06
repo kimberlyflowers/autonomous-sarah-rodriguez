@@ -1736,6 +1736,55 @@ async function saveMessages(pool, sessionId, userMsg, assistantMsg, files = null
 
 // GET /api/chat/sessions
 router.get('/sessions', async (req, res) => {
+  const { projectId } = req.query;
+  
+  // If projectId is provided, query Supabase
+  if (projectId) {
+    try {
+      const { createClient } = await import('@supabase/supabase-js');
+      const supabaseUrl = process.env.SUPABASE_URL;
+      const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
+      const supabase = createClient(supabaseUrl, supabaseKey);
+      
+      const userId = '00000000-0000-0000-0000-000000000001'; // TODO: Get from auth
+      
+      const { data, error } = await supabase
+        .from('sessions')
+        .select('id, title, created_at, updated_at, project_id, user_id')
+        .eq('project_id', projectId)
+        .eq('user_id', userId)
+        .order('updated_at', { ascending: false });
+      
+      if (error) {
+        logger.error('Supabase sessions fetch error', { error: error.message });
+        return res.json({ sessions: [] });
+      }
+      
+      // Add message_count from Railway if sessions exist there
+      const pool = await getPool();
+      const sessionsWithCounts = await Promise.all((data || []).map(async (session) => {
+        try {
+          const result = await pool.query(
+            `SELECT message_count FROM chat_sessions WHERE id = $1`,
+            [session.id]
+          );
+          return {
+            ...session,
+            message_count: result.rows[0]?.message_count || 0
+          };
+        } catch {
+          return { ...session, message_count: 0 };
+        }
+      }));
+      
+      return res.json({ sessions: sessionsWithCounts });
+    } catch (e) {
+      logger.error('Supabase sessions fetch error', { error: e.message });
+      return res.json({ sessions: [] });
+    }
+  }
+  
+  // Otherwise, query Railway Postgres (legacy)
   const pool = await getPool();
   try {
     const result = await pool.query(
