@@ -1,13 +1,8 @@
 [build]
-builder = "nixpacks"
-
-[build.nixpacksConfigOverride]
-install = ["npm ci", "npm run dashboard:install"]
-build = ["npm run build"]
-start = ["npm start"]
+builder = "DOCKERFILE"
+dockerfilePath = "heartbeat-engine/Dockerfile"
 
 [deploy]
 healthcheckPath = "/health"
-healthcheckTimeout = 30
-restartPolicyType = "always"
-rootDirectory = "/heartbeat-engine"
+healthcheckTimeout = 120
+restartPolicyType = "ON_FAILURE"
