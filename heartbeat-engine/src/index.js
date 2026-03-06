@@ -24,7 +24,7 @@ import executeRoutes from './api/execute.js';
 import browserRoutes from './api/browser.js';
 import skillsRoutes from './api/skills.js';
 import voiceRoutes from './api/voice.js';
-import projectsRoutes from './api/projects.js';
+import projectsRoutes from './api/projects-supabase.js'; // Supabase-based projects
 
 // Get the current directory for ES modules
 const __filename = fileURLToPath(import.meta.url);
