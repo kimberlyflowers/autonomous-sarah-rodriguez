@@ -568,34 +568,42 @@ export async function executeImageTool(toolName, parameters) {
           }
         }
 
-        // Fallback: save as artifact and serve from our API
+        // Fallback: save as artifact directly to database (don't use localhost HTTP call)
         if (!result.image_url) {
-          const port = process.env.PORT || 3000;
-          const fname = `bloom-img-${Date.now()}.png`;
-          const saveRes = await fetch(`http://localhost:${port}/api/files/artifacts`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              name: fname,
-              description: `Generated: ${(parameters.prompt || '').slice(0, 100)}`,
-              fileType: 'image',
-              mimeType: 'image/png',
-              content: result.image_base64,
-            })
-          });
-          if (!saveRes.ok) {
-            const errorText = await saveRes.text();
-            logger.error('Failed to save image artifact', { status: saveRes.status, error: errorText });
-          } else {
-            const saveData = await saveRes.json();
-            if (saveData.success && saveData.artifact?.fileId) {
-              result.image_url = `/api/files/preview/${saveData.artifact.fileId}`;
-              result.fileId = saveData.artifact.fileId;
+          try {
+            const crypto = await import('crypto');
+            const { getPool } = await import('../database/pool.js');
+            const pool = await getPool();
+            
+            const fileId = `art_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+            const fname = `bloom-img-${Date.now()}.png`;
+            
+            // Save directly to artifacts table
+            const artifact = await pool.query(`
+              INSERT INTO artifacts (file_id, name, description, status, file_type, mime_type, thumbnail_base64, file_size, session_id, metadata, created_at)
+              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+              RETURNING *
+            `, [
+              fileId,
+              fname,
+              `Generated: ${(parameters.prompt || '').slice(0, 100)}`,
+              'approved',
+              'image',
+              'image/png',
+              result.image_base64.length > 50000 ? result.image_base64.substring(0, 66666) : result.image_base64,
+              Buffer.from(result.image_base64, 'base64').length,
+              null,
+              JSON.stringify({})
+            ]);
+            
+            if (artifact.rows[0]) {
+              result.image_url = `/api/files/preview/${fileId}`;
+              result.fileId = fileId;
               result.message = `Image saved! View it in your Files tab or use this URL: ${result.image_url}`;
-              logger.info('Image saved as artifact', { fileId: saveData.artifact.fileId });
-            } else {
-              logger.error('Image save returned unsuccessful', saveData);
+              logger.info('Image saved as artifact (direct DB insert)', { fileId });
             }
+          } catch (dbErr) {
+            logger.error('Direct DB save failed', { error: dbErr.message, stack: dbErr.stack });
           }
         }
         
