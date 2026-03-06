@@ -117,6 +117,26 @@ export async function ensureDatabaseExists() {
       logger.info(`✅ All ${expectedTables} database tables exist`);
     }
 
+    // CRITICAL: Ensure agent_profile exists (this was missing before)
+    logger.info('🔧 Ensuring agent_profile table exists...');
+    await bloomPool.query(`
+      CREATE TABLE IF NOT EXISTS agent_profile (
+        id SERIAL PRIMARY KEY,
+        agent_id VARCHAR(64) DEFAULT 'bloomie-sarah-rodriguez' UNIQUE,
+        job_title TEXT DEFAULT 'AI Employee',
+        job_description TEXT DEFAULT '',
+        avatar_url TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await bloomPool.query(`
+      INSERT INTO agent_profile (agent_id) 
+      VALUES ('bloomie-sarah-rodriguez')
+      ON CONFLICT (agent_id) DO NOTHING
+    `);
+    logger.info('✅ agent_profile table verified');
+
     // Verify Sarah's agent profile exists
     await ensureAgentProfile(bloomPool);
 
