@@ -9,8 +9,10 @@ import path from 'path';
 
 const logger = createLogger('image-tools');
 
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
+// Read API keys fresh each call — not at module load time
+// Railway injects env vars before process starts, but dynamic reading is safer
+function getOpenAIKey() { return process.env.OPENAI_API_KEY || ""; }
+function getGeminiKey() { return process.env.GEMINI_API_KEY || ""; }
 
 // ── TOOL DEFINITIONS ─────────────────────────────────────────────────────
 
@@ -107,9 +109,9 @@ export const imageToolExecutors = {
     // Engine selection logic
     let useEngine = engine;
     if (engine === 'auto') {
-      if (OPENAI_API_KEY) {
+      if (getOpenAIKey()) {
         useEngine = 'gpt';
-      } else if (GEMINI_API_KEY) {
+      } else if (getGeminiKey()) {
         useEngine = 'gemini';
       } else {
         return { success: false, error: 'No image generation API key configured. Set OPENAI_API_KEY or GEMINI_API_KEY.' };
@@ -130,9 +132,9 @@ export const imageToolExecutors = {
     const size = params.size || '1024x1024';
     const quality = params.quality || 'high';
 
-    if (OPENAI_API_KEY) {
+    if (getOpenAIKey()) {
       return await editWithGPTImage(prompt, params.image_url, params.image_base64, size, quality);
-    } else if (GEMINI_API_KEY) {
+    } else if (getGeminiKey()) {
       // Gemini edit: re-generate with edit instructions + original context
       return await editWithGemini(prompt, params.image_url, params.image_base64);
     }
@@ -151,7 +153,7 @@ async function generateWithGPTImage(prompt, size, quality, background) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        'Authorization': `Bearer ${getOpenAIKey()}`,
       },
       body: JSON.stringify({
         model: 'gpt-image-1.5',
@@ -213,7 +215,7 @@ async function generateWithGPTImage(prompt, size, quality, background) {
     logger.error('GPT Image generation failed:', error.message);
     
     // Try Gemini as fallback if available
-    if (GEMINI_API_KEY) {
+    if (getGeminiKey()) {
       logger.info('Falling back to Gemini/Nano Banana');
       return await generateWithGemini(prompt, size);
     }
@@ -227,7 +229,7 @@ async function generateWithGPTImageFallback(prompt, size, quality, background) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${OPENAI_API_KEY}`,
+      'Authorization': `Bearer ${getOpenAIKey()}`,
     },
     body: JSON.stringify({
       model: 'gpt-image-1',
@@ -294,7 +296,7 @@ async function editWithGPTImage(prompt, imageUrl, imageBase64, size, quality) {
     const response = await fetch('https://api.openai.com/v1/images/edits', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        'Authorization': `Bearer ${getOpenAIKey()}`,
       },
       body: formData,
     });
@@ -344,7 +346,7 @@ async function generateWithGemini(prompt, size) {
 
     // Use Imagen 4 via Gemini API
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=${GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=${getGeminiKey()}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -395,7 +397,7 @@ async function generateWithNanoBanana(prompt, size) {
   try {
     // Nano Banana 2 uses Gemini 3.1 Flash Image — conversational image generation
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${getGeminiKey()}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -465,7 +467,7 @@ async function editWithGemini(prompt, imageUrl, imageBase64) {
     }
 
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${getGeminiKey()}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

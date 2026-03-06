@@ -1637,12 +1637,15 @@ router.post('/message', async (req, res) => {
     logger.info(`💬 Chat [${sessionId}] Sarah: ${response.replace(/\[Session context[\s\S]*$/, '').slice(0, 100)}${response.length > 100 ? '...' : ''}`);
     await saveMessages(pool, sessionId, message, response);
 
+    // Strip internal session context before sending to client
+    const cleanResponse = response.replace(/\s*\[Session context[\s\S]*$/g, '').trim();
+
     // Generate a smart title after the first message (history was empty = first exchange)
     if (history.length === 0) {
-      generateSessionTitle(pool, sessionId, message, response).catch(() => {});
+      generateSessionTitle(pool, sessionId, message, cleanResponse).catch(() => {});
     }
 
-    return res.json({ response, sessionId });
+    return res.json({ response: cleanResponse, sessionId });
   } catch (error) {
     logger.error('Chat error', { error: error.message });
     return res.status(500).json({

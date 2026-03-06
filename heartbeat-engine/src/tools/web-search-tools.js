@@ -7,7 +7,7 @@ import { createLogger } from '../logging/logger.js';
 
 const logger = createLogger('web-search');
 
-const BRAVE_API_KEY = process.env.BRAVE_SEARCH_API_KEY || '';
+function getBraveKey() { return process.env.BRAVE_SEARCH_API_KEY || ""; }
 const BRAVE_BASE_URL = 'https://api.search.brave.com/res/v1';
 
 /**
@@ -63,7 +63,7 @@ export const webSearchToolExecutors = {
     const count = Math.min(params.count || 5, 20);
 
     // Try Brave Search API first
-    if (BRAVE_API_KEY) {
+    if (getBraveKey()) {
       return await braveSearch(query, count);
     }
 
@@ -103,7 +103,7 @@ async function braveSearch(query, count) {
       headers: {
         'Accept': 'application/json',
         'Accept-Encoding': 'gzip',
-        'X-Subscription-Token': BRAVE_API_KEY,
+        'X-Subscription-Token': getBraveKey(),
       },
     });
 
