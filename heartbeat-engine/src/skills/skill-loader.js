@@ -99,7 +99,7 @@ const TASK_TO_SKILL_MAP = {
   coding:   ['website-creation'],
   docx:     ['docx-documents', 'professional-documents'],
   crm:      ['ghl-crm'],
-  design:   ['website-landing-page'],
+  design:   [],
   research: [],
   data:     [],
   chat:     [],
@@ -111,7 +111,7 @@ const KEYWORD_SKILL_MAP = [
   { keywords: /\b(email|newsletter|drip|sequence|subject line|sms)\b/i, skill: 'email-marketing' },
   { keywords: /\b(social|instagram|tiktok|facebook|linkedin|twitter|caption|hashtag)\b/i, skill: 'social-media' },
   { keywords: /\b(contact|lead|crm|ghl|pipeline|deal|appointment|invoice|workflow)\b/i, skill: 'ghl-crm' },
-  { keywords: /\b(website|landing page|dashboard|component|ui|ux|frontend|html|react|web page|sales page|opt.?in page|mockup)\b/i, skill: 'website-landing-page' },
+  { keywords: /\b(website|landing page|dashboard|component|ui|ux|frontend|html|react|web page|sales page|opt.?in page|mockup)\b/i, skill: 'website-creation' },
   { keywords: /\b(document|report|memo|letter|word doc|docx|proposal|quarterly|grant|sop)\b/i, skill: 'professional-documents' },
 ];
 
