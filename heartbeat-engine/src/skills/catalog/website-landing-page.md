@@ -140,6 +140,8 @@ Create atmosphere — don't just use flat colors:
 - Warm gradients for lifestyle/wellness
 
 ### Images
+- **HERO IMAGES MUST BE FULL-WIDTH** — Hero section images should span 100% of viewport width (`width: 100vw; margin-left: calc(-50vw + 50%);` or use full-width container)
+- Hero images should be large, immersive, and edge-to-edge with no side margins
 - If `image_generate` available: generate FIRST, use returned URLs
 - If NOT available: CSS gradients, SVG, emoji, styled divs. NEVER broken links, NEVER placeholders
 - All images: `alt` text, `object-fit:cover`, `loading="lazy"`
