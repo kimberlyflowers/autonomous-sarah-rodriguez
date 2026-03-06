@@ -3581,7 +3581,7 @@ function App() {
                         onMouseEnter={e=>e.currentTarget.style.borderColor=c.ac}
                         onMouseLeave={e=>e.currentTarget.style.borderColor=c.ln}>
                         {/* Preview area */}
-                        <div style={{height:120,background:c.sf,display:"flex",alignItems:"center",justifyContent:"center",borderBottom:"1px solid "+c.ln,cursor:"pointer",position:"relative"}}
+                        <div style={{height:120,background:c.sf,display:"flex",alignItems:"center",justifyContent:"center",borderBottom:"1px solid "+c.ln,cursor:"pointer",position:"relative",overflow:"hidden"}}
                           onClick={async()=>{
                             try{
                               const pr=await fetch(`/api/files/preview/${f.fileId}`);
@@ -3595,8 +3595,53 @@ function App() {
                           }}>
                           {f.fileType==='image' ? (
                             <img src={`/api/files/preview/${f.fileId}`} alt={f.name} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                          ) : ext==='html' ? (
+                            /* Website preview iframe */
+                            <iframe
+                              src={`/api/files/preview/${f.fileId}`}
+                              title={f.name}
+                              sandbox="allow-same-origin"
+                              style={{
+                                width: '400%',
+                                height: '400%',
+                                border: 'none',
+                                pointerEvents: 'none',
+                                transform: 'scale(0.25)',
+                                transformOrigin: 'top left',
+                                background: '#fff'
+                              }}
+                            />
                           ) : (
-                            <span style={{fontSize:40}}>{icon}</span>
+                            /* Modern SVG icons for other file types */
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke={c.so} strokeWidth="1.5" opacity="0.4">
+                              {ext==='md' ? (
+                                /* Markdown icon */
+                                <>
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                <polyline points="14 2 14 8 20 8"/>
+                                <line x1="7" y1="13" x2="17" y2="13"/>
+                                <line x1="7" y1="17" x2="13" y2="17"/>
+                                </>
+                              ) : ext==='js' || ext==='py' ? (
+                                /* Code icon */
+                                <>
+                                <polyline points="16 18 22 12 16 6"/>
+                                <polyline points="8 6 2 12 8 18"/>
+                                </>
+                              ) : ext==='pdf' ? (
+                                /* PDF icon */
+                                <>
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                <polyline points="14 2 14 8 20 8"/>
+                                </>
+                              ) : (
+                                /* Default file icon */
+                                <>
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                <polyline points="14 2 14 8 20 8"/>
+                                </>
+                              )}
+                            </svg>
                           )}
                           <div style={{position:"absolute",top:8,right:8,padding:"3px 8px",borderRadius:6,background:"rgba(0,0,0,0.5)",color:"#fff",fontSize:10,fontWeight:600}}>{ext.toUpperCase()}</div>
                         </div>
