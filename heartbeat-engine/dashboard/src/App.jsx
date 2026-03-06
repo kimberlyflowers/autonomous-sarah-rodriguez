@@ -2471,8 +2471,8 @@ function App() {
       <div style={{display:"flex",position:"relative"}}>
         {pg==="chat"&&sbO==="full"&&mob&&<div onClick={()=>setSbO("closed")} style={{position:"fixed",inset:0,top:52,background:"rgba(0,0,0,.3)",zIndex:45}}/>}
 
-        {/* ── SIDEBAR — session history like Claude ── */}
-        {pg==="chat"&&sbOpen&&(
+        {/* ── SIDEBAR — session history like Claude (visible on all pages) ── */}
+        {sbOpen&&(
           <div style={mob?{position:"fixed",top:52,left:0,bottom:0,zIndex:50}:{}}>
             <div style={{width:sbO==="mini"?60:260,height:"calc(100vh - 52px)",background:c.cd,borderRight:"1px solid "+c.ln,display:"flex",flexDirection:"column",flexShrink:0,transition:"width .2s ease",overflow:"hidden"}}>
 
@@ -2574,7 +2574,8 @@ function App() {
                     </div>
                   </div>
 
-                  {/* Session list */}
+                  {/* Session list - only show on Chat page */}
+                  {pg==="chat"&&(
                   <div style={{flex:1,overflowY:"auto",padding:"8px 8px"}}>
                     {sessions.filter(s=>{
                       if(!searchQuery.trim()) return true;
@@ -2642,6 +2643,7 @@ function App() {
                       );
                     })}
                   </div>
+                  )}
 
                   {/* Bottom — Kimberly expandable menu */}
                   <div style={{padding:"10px 14px",borderTop:"1px solid "+c.ln,flexShrink:0,position:"relative"}}>
