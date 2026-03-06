@@ -2612,6 +2612,18 @@ function App() {
                                       sandbox="allow-scripts allow-same-origin"
                                       title={activeArtifact.name}
                                     />
+                                  ):activeArtifact.name?.endsWith('.docx')||activeArtifact.name?.endsWith('.pdf')||activeArtifact.name?.endsWith('.xlsx')?(
+                                    <div style={{height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:40,textAlign:"center"}}>
+                                      <div style={{fontSize:48,marginBottom:16}}>
+                                        {activeArtifact.name?.endsWith('.pdf')?'📄':activeArtifact.name?.endsWith('.xlsx')?'📊':'📝'}
+                                      </div>
+                                      <div style={{fontSize:16,fontWeight:700,color:c.tx,marginBottom:8}}>{activeArtifact.name}</div>
+                                      <div style={{fontSize:13,color:c.so,marginBottom:20}}>Click the download button below to view this file</div>
+                                      <a href={activeArtifact.fileId?`/api/files/download/${activeArtifact.fileId}`:"#"} download 
+                                        style={{padding:"12px 32px",borderRadius:10,background:"linear-gradient(135deg,#34a853,#2d9248)",color:"#fff",textDecoration:"none",fontSize:14,fontWeight:700}}>
+                                        ↓ Download {activeArtifact.name?.endsWith('.pdf')?'PDF':activeArtifact.name?.endsWith('.xlsx')?'Excel':'Word Doc'}
+                                      </a>
+                                    </div>
                                   ):(
                                     <div style={{height:"100%",overflowY:"auto",padding:"16px 20px",fontSize:14,lineHeight:1.8,color:c.tx}}
                                       dangerouslySetInnerHTML={{__html: (activeArtifact.content||'')
