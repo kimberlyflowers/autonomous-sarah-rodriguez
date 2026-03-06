@@ -31,7 +31,7 @@ class ErrorBoundary extends Component {
 function mk(d) {
   return d
     ? { bg:"#1a1a1a",sf:"#212121",cd:"#262626",ac:"#F4A261",a2:"#E76F8B",
-        gr:"#34A853",gf:"#1a2b1a",tx:"#ececec",so:"#a0a0a0",fa:"#5c5c5c",
+        gr:"#34A853",gf:"#1a2b1a",tx:"#d4d4d4",so:"#a0a0a0",fa:"#5c5c5c",
         ln:"#353535",bl:"#5B8FF9",pu:"#A78BFA",inp:"#212121",hv:"#2f2f2f",
         gradient:"linear-gradient(135deg,#F4A261,#E76F8B)",err:"#ea4335",warn:"#FBBC04" }
     : { bg:"#F7F8FA",sf:"#EDEEF2",cd:"#FFFFFF",ac:"#F4A261",a2:"#E76F8B",
@@ -1157,8 +1157,9 @@ function SessionFilesPanel({c, sessionId, setActiveArtifact}){
                 display:'flex',
                 alignItems:'center',
                 justifyContent:'center',
-                background: isImage ? '#000' : c.bg,
-                position: 'relative'
+                background: isImage ? '#000' : ext==='html' ? '#fff' : c.bg,
+                position: 'relative',
+                overflow: 'hidden'
               }}>
                 {isImage && f.thumbnail_base64 ? (
                   <img 
@@ -1170,10 +1171,35 @@ function SessionFilesPanel({c, sessionId, setActiveArtifact}){
                       objectFit: 'cover'
                     }}
                   />
+                ) : ext==='html' ? (
+                  /* Website preview iframe */
+                  <iframe
+                    src={`/api/files/preview/${f.fileId}`}
+                    title={f.name}
+                    sandbox="allow-same-origin"
+                    style={{
+                      width: '400%',
+                      height: '400%',
+                      border: 'none',
+                      pointerEvents: 'none',
+                      transform: 'scale(0.25)',
+                      transformOrigin: 'top left'
+                    }}
+                  />
                 ) : (
-                  <div style={{fontSize:48,opacity:0.3}}>
-                    {ext==='html'?'🌐':ext==='md'?'📝':ext==='js'||ext==='py'?'💻':'📄'}
-                  </div>
+                  /* Modern SVG icons */
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke={c.so} strokeWidth="1.5" opacity="0.4">
+                    {ext==='md' ? (
+                      /* Markdown icon - document with lines */
+                      <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="7" y1="13" x2="17" y2="13"/><line x1="7" y1="17" x2="13" y2="17"/></>
+                    ) : ext==='js' || ext==='py' ? (
+                      /* Code icon - brackets */
+                      <><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></>
+                    ) : (
+                      /* Default file icon */
+                      <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></>
+                    )}
+                  </svg>
                 )}
               </div>
 
@@ -2606,7 +2632,7 @@ function App() {
                         <div key={m.id} style={{display:"flex",justifyContent:m.b?"flex-start":"flex-end",marginBottom:14,flexDirection:"column",alignItems:m.b?"flex-start":"flex-end"}}>
                           <div style={{display:"flex",justifyContent:m.b?"flex-start":"flex-end",width:"100%"}}>
                             {m.b&&<div style={{marginRight:8,marginTop:2}}><Face sz={mob?26:28} agent={agent}/></div>}
-                            <div style={{maxWidth:mob?"85%":"72%",padding:"10px 14px",fontSize:mob?13:14,lineHeight:1.55,color:m.b?c.tx:"#fff",borderRadius:m.b?"6px 18px 18px 18px":"18px 6px 18px 18px",background:m.b?c.cd:"linear-gradient(135deg,#F4A261,#E76F8B)",border:m.b?"1px solid "+c.ln:"none",wordBreak:"break-word",overflowWrap:"anywhere"}}>
+                            <div style={{maxWidth:mob?"85%":"72%",padding:"10px 14px",fontSize:mob?13:15,lineHeight:1.55,color:m.b?c.tx:"#fff",borderRadius:m.b?"6px 18px 18px 18px":"18px 6px 18px 18px",background:m.b?c.cd:"linear-gradient(135deg,#F4A261,#E76F8B)",border:m.b?"1px solid "+c.ln:"none",wordBreak:"break-word",overflowWrap:"anywhere"}}>
                               {/* File previews */}
                               {m.files&&m.files.length>0&&(
                                 <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:m.t?8:4}}>
@@ -2621,7 +2647,7 @@ function App() {
                                 </div>
                               )}
                               {m.t&&(m.b?(
-                                <div className="sarah-msg" style={{fontSize:14,lineHeight:1.65,color:c.tx}}>
+                                <div className="sarah-msg" style={{fontSize:15,lineHeight:1.65,color:c.tx}}>
                                   <ReactMarkdown
                                     remarkPlugins={[remarkGfm]}
                                     components={{
