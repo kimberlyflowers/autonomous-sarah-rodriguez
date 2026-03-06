@@ -1,82 +1,32 @@
 ---
 name: professional-documents
-description: "Create polished professional documents: SOPs, reports, proposals, contracts, one-pagers, handbooks, onboarding docs, policy documents, and business plans. Use this skill whenever creating any formal business document, operational procedure, proposal, contract template, employee handbook, training material, grant application, or accreditation document. Also triggers for 'SOP', 'report', 'proposal', 'contract', 'handbook', 'policy', 'procedure', 'one-pager', 'pitch deck outline', 'business plan', or any formal document request. Every document should look like it came from a $300/hr consultant — not a template generator."
+description: "Create polished professional documents: SOPs, reports, proposals, contracts, one-pagers, handbooks, onboarding docs, policy documents, and business plans. Triggers for any document, report, proposal, handbook, SOP, policy, contract, one-pager, memo, letter, or formal business document request. Creates real .docx Word documents with professional formatting — tables, headers, footers, page numbers, branded styling. Every document should look like it came from a $300/hr consultant."
 ---
 
-# Professional Documents — Consultant-Grade Output
+# Professional Documents — Real .docx Word Documents
 
-Every document Sarah produces should look like it was prepared by a senior consultant at a top firm. The standard: would this document win a client's confidence in a boardroom?
+## Rule #1: CREATE .DOCX FILES, NOT MARKDOWN
+When a user asks for a document, report, handbook, SOP, proposal, or any professional deliverable:
+- Use the `dispatch_to_specialist` tool with taskType "coding" to generate a Node.js script that uses the `docx` npm library
+- The script creates a real .docx Word document with proper formatting
+- Save the resulting .docx file using create_artifact
+- NEVER output a plain .md or .txt file for professional documents
+- Reference the docx-documents skill for the full API reference
 
-## Encoded Preferences (data-backed defaults)
+## Rule #2: BRAND KIT INTEGRATION
+If a Brand Kit is in your system prompt, use those colors for headers, accent borders, and table headers. If no Brand Kit, use professional navy + gold or the client's industry-appropriate colors.
 
-### Document Hierarchy
-- **Executive summary first** — 80% of executives ONLY read this. Make it count.
-- **One idea per paragraph**, 3-5 sentences max
-- **Active voice** — increases comprehension 25%. "We recommend" not "It is recommended"
-- **Specific numbers over vague claims** — "$47,000 in savings" not "significant cost reduction"
-- **Visual data preferred 4:1** over text-only data presentation
+## Rule #3: FILL IN REAL DETAILS
+Never leave [brackets] or placeholder text. Use what you know about the client. If you don't know something specific, use realistic content and mark it with a comment.
 
-### Formatting Standards
-- **Title page**: Document name, prepared for [client], prepared by [Sarah Rodriguez / BLOOM], date, confidentiality note if needed
-- **Table of contents** for documents >5 pages
-- **Page numbers** on all pages except title
-- **Consistent heading hierarchy**: H1 for title, H2 for sections, H3 for subsections
-- **Professional fonts**: When generating HTML — use Inter, Source Serif 4, or Merriweather. Never Comic Sans, Papyrus, or decorative fonts.
-- **Brand Kit integration**: Use client's colors for accent elements, headers, and borders
-
-### Document Types & Templates
-
-**SOP (Standard Operating Procedure)**:
-- Purpose statement (1 sentence: why this exists)
-- Scope (who does this apply to)
-- Definitions (any jargon)
-- Step-by-step procedure (numbered, imperative voice: "Open the CRM", "Click...")
-- Decision points clearly marked (IF/THEN format)
-- Exceptions and escalation paths
-- Version history table at the bottom
-
-**Business Proposal**:
-- Executive summary (the whole pitch in 200 words)
-- Problem statement (their pain, quantified)
-- Proposed solution (what you'll do, timeline, deliverables)
-- Pricing/investment (not "cost" — frame as investment)
-- Social proof (testimonials, case studies, credentials)
-- Terms and next steps
-- Appendix for supporting data
-
-**Report/Analysis**:
-- Executive summary with key findings (3-5 bullet points)
-- Methodology (how data was gathered — builds credibility)
-- Findings organized by theme, not chronology
-- Data visualizations described in detail (Sarah can generate charts via artifacts)
-- Recommendations (actionable, numbered, with owner and timeline)
-- Appendix for raw data
-
-**One-Pager / Fact Sheet**:
-- Single page. No scrolling in print.
-- Hero statement at top (the one thing they should remember)
-- 3-4 key points with supporting stats
-- Visual elements (icons, charts, callout boxes)
-- Clear CTA at bottom
-- Brand colors and logo placement
-
-### Writing Style
-- **Professional but accessible** — no jargon unless the audience expects it
-- **Third person for formal docs**, first person for proposals and letters
-- **Strong verbs**: "implement", "achieve", "reduce", "accelerate" — not "utilize", "leverage", "synergize"
-- **Quantify everything possible**: timelines, costs, percentages, headcounts
-- **Cite sources** for external claims. Internal data can be stated as fact.
-
-### Delivery
-- Save as `.md` artifact (can be converted to PDF/DOCX by the client)
-- For HTML-formatted documents, save as `.html` with print-friendly CSS
-- Include metadata at top: Document Type, Prepared For, Date, Version
-- Flag any sections that need client input: `[CLIENT TO PROVIDE: specific data needed]`
-
-### NEVER do these
-- Start a document with "Introduction" as the first heading (it's implicit — just start)
-- Use passive voice for action items ("It should be done" → "Do this")
-- Write executive summaries longer than one page
-- Forget page numbers, date, or version number
-- Use bullet points for everything (prose for narrative, bullets for lists >3 items)
-- Submit without proofreading for consistency in tone, tense, and formatting
+## Document Quality Standards
+- Title/cover page with document name, date, author
+- Table of contents for docs over 3 pages
+- Headers and footers with page numbers
+- Professional tables with branded header rows
+- Proper bullet lists (never unicode bullets)
+- Consistent heading hierarchy
+- US Letter size (12240 x 15840 DXA)
+- 1 inch margins
+- Arial or brand fonts
+- Active voice, specific numbers, consultant-grade writing

@@ -829,6 +829,19 @@ const _ALL_TOOLS = [
     }
   },
   {
+    name: "create_docx",
+    description: "Create a professional Word document (.docx) with real formatting — tables, headers, footers, page numbers, branded styling. Use this instead of create_artifact when the user asks for a document, report, handbook, SOP, proposal, or any professional deliverable. Provide a complete Node.js script that uses the 'docx' npm library to build the document. The script will be executed and the resulting .docx file saved for download.",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "File name (e.g. 'onboarding-handbook.docx', 'q1-report.docx')" },
+        description: { type: "string", description: "Brief description of the document" },
+        script: { type: "string", description: "Complete Node.js script using the docx library. Must end with Packer.toBuffer(doc).then(buffer => { fs.writeFileSync(OUTPUT_PATH, buffer); console.log('SUCCESS'); }); The variable OUTPUT_PATH will be replaced with the actual save path." }
+      },
+      required: ["name", "description", "script"]
+    }
+  },
+  {
     name: "create_scheduled_task",
     description: "Create a recurring scheduled task for yourself. Use when the client asks you to do something regularly — daily blog posts, weekly newsletters, daily lead checks, etc. This adds it to your daily task schedule.",
     input_schema: {
@@ -1038,6 +1051,68 @@ async function executeTool(toolName, toolInput, sessionId = null) {
         };
       }
       return { success: false, error: data.error || 'Failed to create artifact' };
+    }
+
+    // DOCX document creation — executes a Node.js script using the docx library
+    if (toolName === 'create_docx') {
+      try {
+        const filename = toolInput.name || 'document.docx';
+        const tmpDir = '/tmp/bloom-docx';
+        const tmpScript = `${tmpDir}/build-${Date.now()}.js`;
+        const tmpOutput = `${tmpDir}/${filename}`;
+        
+        // Ensure tmp directory exists
+        const fsMod = await import('fs');
+        const pathMod = await import('path');
+        if (!fsMod.default.existsSync(tmpDir)) fsMod.default.mkdirSync(tmpDir, { recursive: true });
+        
+        // Replace OUTPUT_PATH in the script with actual path
+        const script = toolInput.script.replace(/OUTPUT_PATH/g, `"${tmpOutput}"`);
+        fsMod.default.writeFileSync(tmpScript, script);
+        
+        // Execute the script
+        const { execSync } = await import('child_process');
+        const result = execSync(`cd /app && node "${tmpScript}"`, { timeout: 30000, encoding: 'utf8' });
+        
+        if (fsMod.default.existsSync(tmpOutput)) {
+          // Read the docx file and save as artifact
+          const docxBuffer = fsMod.default.readFileSync(tmpOutput);
+          const base64 = docxBuffer.toString('base64');
+          
+          // Save to artifacts API
+          const port = process.env.PORT || 3000;
+          const saveResp = await fetch(`http://localhost:${port}/api/files/artifacts`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: filename,
+              description: toolInput.description,
+              fileType: 'binary',
+              mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+              content: base64,
+              sessionId: sessionId
+            })
+          });
+          const saveData = await saveResp.json();
+          
+          // Cleanup
+          try { fsMod.default.unlinkSync(tmpScript); fsMod.default.unlinkSync(tmpOutput); } catch {}
+          
+          if (saveData.success) {
+            return {
+              success: true,
+              message: `Created "${filename}" — professional Word document ready for download.`,
+              artifact: saveData.artifact,
+              downloadUrl: saveData.artifact?.downloadUrl
+            };
+          }
+          return { success: false, error: saveData.error || 'Failed to save docx artifact' };
+        }
+        return { success: false, error: 'Script ran but no .docx file was created. Check script output: ' + result };
+      } catch (docxErr) {
+        logger.error('DOCX creation failed', { error: docxErr.message });
+        return { success: false, error: `DOCX creation failed: ${docxErr.message}. Try creating as HTML instead using create_artifact.` };
+      }
     }
 
     // Scheduled task creation
