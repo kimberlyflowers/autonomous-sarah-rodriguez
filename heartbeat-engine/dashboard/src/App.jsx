@@ -2197,6 +2197,27 @@ function App() {
   const [tx,setTx]=useState("");
   const [isNew,setNew]=useState(true);
   const [vcRec,setVcRec]=useState(false);
+  
+  // Projects state
+  const [projects,setProjects]=useState([]);
+  const [loadingProjects,setLoadingProjects]=useState(false);
+  
+  // Fetch projects when Projects page is opened
+  useEffect(()=>{
+    if(pg==="projects" && projects.length===0 && !loadingProjects){
+      setLoadingProjects(true);
+      fetch('/api/projects')
+        .then(r=>r.json())
+        .then(data=>{
+          if(data.success){
+            setProjects(data.projects);
+          }
+        })
+        .catch(err=>console.error('Failed to load projects:',err))
+        .finally(()=>setLoadingProjects(false));
+    }
+  },[pg]);
+  
   const [scrM,setScrM]=useState("docked");
   const [rightTab,setRightTab]=useState("browser"); // "browser" | "artifact"
   const [activeArtifact,setActiveArtifact]=useState(null); // {name, content, fileId}
@@ -2283,7 +2304,6 @@ function App() {
   const [activeProj,setActiveProj]=useState("My Business");
   const [bizLogo,setBizLogo]=useState(null);
   const [bizName,setBizName]=useState(null);
-  const projects=[];
 
   // Load business profile for logo
   useEffect(()=>{
@@ -3803,28 +3823,69 @@ function App() {
             <div style={{padding:mob?"16px 12px 40px":"32px 40px 60px",maxWidth:1200,margin:"0 auto"}}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:32}}>
                 <h1 style={{fontSize:mob?24:32,fontWeight:700,color:c.tx}}>Projects</h1>
-                <button onClick={()=>alert('Create new project feature coming soon!')} style={{padding:"10px 20px",borderRadius:10,border:"none",background:c.ac,color:"#fff",fontSize:13,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:8}}>
+                <button onClick={async()=>{
+                  const name=prompt('Project name:');
+                  if(!name) return;
+                  const description=prompt('Description (optional):');
+                  try {
+                    const res=await fetch('/api/projects',{
+                      method:'POST',
+                      headers:{'Content-Type':'application/json'},
+                      body:JSON.stringify({name,description:description||''})
+                    });
+                    const data=await res.json();
+                    if(data.success){
+                      setProjects([data.project,...projects]);
+                      alert('✅ Project created!');
+                    }else{
+                      alert('❌ Failed to create project: '+data.error);
+                    }
+                  }catch(err){
+                    alert('❌ Error: '+err.message);
+                  }
+                }} style={{padding:"10px 20px",borderRadius:10,border:"none",background:c.ac,color:"#fff",fontSize:13,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:8}}>
                   <span style={{fontSize:16}}>+</span> New project
                 </button>
               </div>
 
-              {/* Projects grid - showing suggested projects for now */}
-              <div style={{display:"grid",gridTemplateColumns:mob?"1fr":"repeat(auto-fill, minmax(320px, 1fr))",gap:20}}>
-                {[
-                  {name:"BLOOMSHIELD Marketing",desc:"Content and campaigns for BLOOMSHIELD product launch",updated:"2 days ago"},
-                  {name:"YES School Operations",desc:"Administrative tasks and communications for Youth Empowerment School",updated:"1 week ago"},
-                  {name:"Client Onboarding",desc:"Templates and workflows for new Bloomie clients",updated:"3 days ago"}
-                ].map((proj,i)=>(
-                  <div key={i} onClick={()=>alert('Project view coming soon!')} style={{padding:24,borderRadius:16,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",transition:"all .2s"}} onMouseEnter={e=>{e.currentTarget.style.borderColor=c.ac;e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 8px 24px rgba(0,0,0,0.08)";}} onMouseLeave={e=>{e.currentTarget.style.borderColor=c.ln;e.currentTarget.style.transform="translateY(0)";e.currentTarget.style.boxShadow="none";}}>
-                    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={c.ac} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-                      <h3 style={{fontSize:16,fontWeight:700,color:c.tx,margin:0}}>{proj.name}</h3>
+              {/* Loading state */}
+              {loadingProjects&&(
+                <div style={{textAlign:"center",padding:60,color:c.so}}>
+                  <div style={{fontSize:14}}>Loading projects...</div>
+                </div>
+              )}
+
+              {/* Empty state */}
+              {!loadingProjects&&projects.length===0&&(
+                <div style={{textAlign:"center",padding:60}}>
+                  <div style={{fontSize:48,marginBottom:16}}>📁</div>
+                  <div style={{fontSize:16,color:c.tx,marginBottom:8,fontWeight:600}}>No projects yet</div>
+                  <div style={{fontSize:13,color:c.so}}>Create your first project to organize conversations</div>
+                </div>
+              )}
+
+              {/* Projects grid */}
+              {!loadingProjects&&projects.length>0&&(
+                <div style={{display:"grid",gridTemplateColumns:mob?"1fr":"repeat(auto-fill, minmax(320px, 1fr))",gap:20}}>
+                  {projects.map((proj)=>(
+                    <div key={proj.id} onClick={()=>alert('Project view coming soon! Project ID: '+proj.id)} style={{padding:24,borderRadius:16,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",transition:"all .2s"}} onMouseEnter={e=>{e.currentTarget.style.borderColor=c.ac;e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 8px 24px rgba(0,0,0,0.08)";}} onMouseLeave={e=>{e.currentTarget.style.borderColor=c.ln;e.currentTarget.style.transform="translateY(0)";e.currentTarget.style.boxShadow="none";}}>
+                      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={c.ac} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                        <h3 style={{fontSize:16,fontWeight:700,color:c.tx,margin:0}}>{proj.name}</h3>
+                      </div>
+                      <p style={{fontSize:13,color:c.so,marginBottom:16,lineHeight:1.5}}>{proj.description||'No description'}</p>
+                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                        <div style={{fontSize:11,color:c.fa}}>
+                          {new Date(proj.updated_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
+                        </div>
+                        <div style={{fontSize:11,color:c.fa}}>
+                          {proj.conversation_count||0} {proj.conversation_count===1?'chat':'chats'}
+                        </div>
+                      </div>
                     </div>
-                    <p style={{fontSize:13,color:c.so,marginBottom:16,lineHeight:1.5}}>{proj.desc}</p>
-                    <div style={{fontSize:11,color:c.fa}}>Updated {proj.updated}</div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
 
               <div style={{marginTop:40,padding:24,borderRadius:16,background:c.sf,border:"1px solid "+c.ln,textAlign:"center"}}>
                 <div style={{fontSize:14,color:c.so,marginBottom:8}}>💡 Tip: Projects help you organize related conversations</div>

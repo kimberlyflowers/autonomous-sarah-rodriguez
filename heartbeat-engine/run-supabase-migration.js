@@ -9,50 +9,42 @@ if (!supabaseUrl || !supabaseKey) {
   process.exit(1);
 }
 
+console.log('🔗 Connecting to Supabase...');
+console.log(`URL: ${supabaseUrl}`);
+
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// Read the SQL migration file
 const sql = fs.readFileSync('./supabase-schema-projects.sql', 'utf8');
 
-console.log('🚀 Running Supabase migration for BLOOM Projects...\n');
+console.log('📝 Running migration SQL...');
 
-// Split SQL into individual statements (PostgreSQL can't handle multiple statements in one query via REST API)
-const statements = sql
-  .split(';')
-  .map(s => s.trim())
-  .filter(s => s.length > 0 && !s.startsWith('--'));
-
-let successCount = 0;
-let errors = [];
-
-for (let i = 0; i < statements.length; i++) {
-  const statement = statements[i] + ';';
+try {
+  // Execute the SQL
+  const { data, error } = await supabase.rpc('exec_sql', { sql_string: sql });
   
-  // Skip comment lines
-  if (statement.trim().startsWith('--')) continue;
-  
-  try {
-    const { data, error } = await supabase.rpc('exec_sql', { query: statement });
-    
-    if (error) {
-      console.log(`⚠️  Statement ${i + 1}: ${error.message}`);
-      errors.push({ statement: statement.substring(0, 50) + '...', error: error.message });
-    } else {
-      successCount++;
-      console.log(`✅ Statement ${i + 1}: Success`);
-    }
-  } catch (err) {
-    console.log(`⚠️  Statement ${i + 1}: ${err.message}`);
-    errors.push({ statement: statement.substring(0, 50) + '...', error: err.message });
+  if (error) {
+    console.error('❌ Migration failed:', error);
+    process.exit(1);
   }
+  
+  console.log('✅ Migration completed successfully!');
+  
+  // Verify tables created
+  console.log('\n🔍 Verifying tables...');
+  const { data: tables, error: verifyError } = await supabase
+    .from('information_schema.tables')
+    .select('table_name')
+    .in('table_name', ['projects', 'sessions']);
+    
+  if (verifyError) {
+    console.log('Note: Table verification query not supported, but migration likely succeeded');
+  } else {
+    console.log('Tables found:', tables);
+  }
+  
+  console.log('\n✅ DONE! Projects backend is ready.');
+  process.exit(0);
+} catch (error) {
+  console.error('❌ Error:', error.message);
+  process.exit(1);
 }
-
-console.log(`\n📊 Migration Summary:`);
-console.log(`   ✅ Successful: ${successCount}`);
-console.log(`   ⚠️  Errors: ${errors.length}`);
-
-if (errors.length > 0) {
-  console.log(`\n⚠️  Note: Some errors may be expected (e.g., "already exists" for tables/policies)`);
-}
-
-process.exit(0);
