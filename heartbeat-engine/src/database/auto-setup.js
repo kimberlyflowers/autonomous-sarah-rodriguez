@@ -97,12 +97,13 @@ export async function ensureDatabaseExists() {
       FROM information_schema.tables
       WHERE table_schema = 'public' AND table_name IN (
         'agents', 'heartbeat_cycles', 'action_log', 'rejection_log',
-        'handoff_log', 'trust_metrics', 'memory_snapshots', 'bloom_context'
+        'handoff_log', 'trust_metrics', 'memory_snapshots', 'bloom_context',
+        'agent_profile'
       )
     `);
 
     const tableCount = parseInt(tableResult.rows[0].table_count);
-    const expectedTables = 8;
+    const expectedTables = 9;
 
     if (tableCount === 0) {
       logger.info('🏗️  Creating database schema (no tables found)...');
@@ -332,7 +333,27 @@ async function createBasicSchema(pool) {
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id, created_at ASC)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_chat_sessions_updated ON chat_sessions(updated_at DESC)`);
 
-  logger.info('✅ Basic schema created manually');
+  // Agent profile — Sarah's job title, description, and avatar
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS agent_profile (
+      id SERIAL PRIMARY KEY,
+      agent_id VARCHAR(64) DEFAULT 'bloomie-sarah-rodriguez' UNIQUE,
+      job_title TEXT DEFAULT 'AI Employee',
+      job_description TEXT DEFAULT '',
+      avatar_url TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+
+  // Insert default profile for Sarah
+  await pool.query(`
+    INSERT INTO agent_profile (agent_id) 
+    VALUES ('bloomie-sarah-rodriguez')
+    ON CONFLICT (agent_id) DO NOTHING
+  `);
+
+  logger.info('✅ Basic schema created manually (including agent_profile)');
 }
 
 // Simple database connection test
