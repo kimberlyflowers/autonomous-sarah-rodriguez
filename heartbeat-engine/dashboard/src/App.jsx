@@ -525,7 +525,7 @@ function AgenticExecutions({c,sse}) {
   const statusColors={completed:c.gr,running:c.bl,failed:"#EF4444",pending:"#F59E0B"};
 
   return(
-    <Card c={c} title="⚡ Agentic Executions" subtitle="Multi-turn task runs">
+    <Card c={c} title="Agentic Executions" subtitle="Multi-turn task runs">
       {execs.length===0
         ? <div style={{padding:20,textAlign:"center",fontSize:12,color:c.so}}>No executions yet</div>
         : execs.map((ex,i)=>(
@@ -715,7 +715,7 @@ function InternalTasks({c,sse}) {
   const statusColors={pending:"#F59E0B",in_progress:c.bl,completed:c.gr,failed:"#EF4444"};
 
   return(
-    <Card c={c} title="📝 Internal Tasks" subtitle="Sarah's active work queue">
+    <Card c={c} title="Internal Tasks" subtitle="Sarah's active work queue">
       <div style={{maxHeight:240,overflowY:"auto"}}>
         {tasks.length===0
           ? <div style={{padding:20,textAlign:"center",fontSize:12,color:c.so}}>No active tasks</div>
@@ -757,7 +757,7 @@ function EscalationPanel({c,sse}) {
   const tabs=[{k:"handoffs",l:"🤝 Escalations",ct:handoffs.length},{k:"rejections",l:"🚫 Rejections",ct:rejections.length}];
 
   return(
-    <Card c={c} title="📊 Escalations & Rejections" action={
+    <Card c={c} title="Escalations & Rejections" action={
       <div style={{display:"flex",gap:3,background:c.sf,padding:3,borderRadius:8}}>
         {tabs.map(t=>(
           <button key={t.k} onClick={()=>setTab(t.k)} style={{padding:"4px 10px",borderRadius:6,border:"none",cursor:"pointer",fontSize:11,fontWeight:600,background:tab===t.k?c.cd:"transparent",color:tab===t.k?c.tx:c.so}}>
@@ -897,7 +897,7 @@ function Screen({c,mob,mode,setMode}) {
           </div>
         ):(
           <div style={{textAlign:"center",padding:30}}>
-            <div style={{fontSize:36,marginBottom:10,opacity:0.3}}>🖥️</div>
+            
             <div style={{fontSize:13,color:"#666",marginBottom:4}}>Browser idle</div>
             <div style={{fontSize:11,color:"#555"}}>Activates when Sarah starts browsing</div>
           </div>
@@ -1073,7 +1073,7 @@ function SessionFilesPanel({c, sessionId, setActiveArtifact}){
   if(files.length===0) return(
     <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",textAlign:"center",padding:30}}>
       <div>
-        <div style={{fontSize:36,marginBottom:10,opacity:0.3}}>📄</div>
+        
         <div style={{fontSize:13,color:c.so,marginBottom:4}}>No files in this chat</div>
         <div style={{fontSize:11,color:c.fa}}>Ask Sarah to create content — blogs, websites, emails, docs — and they'll appear here</div>
       </div>
@@ -1240,7 +1240,7 @@ function ArtifactCard({ name, c, onOpenSide, mob }) {
 
   const dn = artData?.name || (name === '__latest__' ? 'Loading...' : name);
   const ext = dn.split('.').pop()?.toLowerCase() || '';
-  const icon = ext === 'html' ? '🌐' : ext === 'md' ? '📝' : ext === 'js' || ext === 'py' ? '💻' : '📄';
+  const icon = null;
 
   useEffect(() => {
     (async () => {
@@ -1276,7 +1276,7 @@ function ArtifactCard({ name, c, onOpenSide, mob }) {
       onMouseLeave={e=>e.currentTarget.style.transform="translateY(0)"}>
       <span style={{fontSize:20}}>{icon}</span>
       <div style={{flex:1,minWidth:0}}>
-        <div style={{fontSize:11,fontWeight:700,color:c.gr,textTransform:"uppercase",letterSpacing:"0.5px"}}>📄 New File — Saved</div>
+        <div style={{fontSize:11,fontWeight:700,color:c.gr,textTransform:"uppercase",letterSpacing:"0.5px"}}>New File — Saved</div>
         <div style={{fontSize:13,fontWeight:600,color:c.tx,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{dn}</div>
       </div>
       <span style={{fontSize:11,color:c.so}}>View →</span>
@@ -1555,7 +1555,7 @@ function SkillsPage({c,mob}){
 
         {skills.length===0&&!showAdd&&(
           <div style={{padding:32,borderRadius:12,border:'2px dashed '+c.ln,textAlign:'center'}}>
-            <div style={{fontSize:28,marginBottom:8}}>📝</div>
+            
             <div style={{fontSize:14,fontWeight:600,color:c.tx,marginBottom:4}}>No company skills yet</div>
             <div style={{fontSize:12,color:c.so,marginBottom:12}}>Train your Bloomie on your company's processes, brand voice, and SOPs</div>
             <button onClick={()=>setShowAdd(true)} style={{padding:'8px 20px',borderRadius:8,border:'none',cursor:'pointer',background:ac,color:'#fff',fontSize:13,fontWeight:600}}>Create Your First Skill</button>
@@ -2026,7 +2026,7 @@ function BillingPage({c,mob}){
         <div style={{borderTop:"1px solid "+c.ln,marginTop:6,paddingTop:14}}>
           <div style={{fontSize:12,fontWeight:700,color:c.so,marginBottom:10}}>Content Created This Period</div>
           <div style={{display:"grid",gridTemplateColumns:mob?"repeat(3,1fr)":"repeat(5,1fr)",gap:8}}>
-            {[{l:"Chat Messages",v:usage.chatMessages,i:"💬"},{l:"Articles",v:usage.blogPosts,i:"📝"},{l:"Emails Drafted",v:usage.emailDrafts,i:"✉️"},{l:"Pages Built",v:usage.codePages,i:"💻"},{l:"Research",v:usage.research,i:"🔍"}].map((s,idx)=>(
+            {[{l:"Chat Messages",v:usage.chatMessages,i:null},{l:"Articles",v:usage.blogPosts,i:null},{l:"Emails Drafted",v:usage.emailDrafts,i:null},{l:"Pages Built",v:usage.codePages,i:null},{l:"Research",v:usage.research,i:null}].map((s,idx)=>(
               <div key={idx} style={{textAlign:"center",padding:"10px 6px",borderRadius:8,background:c.sf||"#222",border:"1px solid "+c.ln}}>
                 <div style={{fontSize:16,marginBottom:4}}>{s.i}</div>
                 <div style={{fontSize:18,fontWeight:700,color:c.ac2||"#F4A261"}}>{s.v.toLocaleString()}</div>
@@ -2660,7 +2660,7 @@ function App() {
                                     f.type?.startsWith("image/")
                                       ? <img key={fi} src={f.dataUrl} alt={f.name} style={{maxWidth:220,maxHeight:160,borderRadius:8,objectFit:"cover",border:"1px solid rgba(255,255,255,0.15)"}}/>
                                       : <div key={fi} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 10px",borderRadius:8,background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.15)"}}>
-                                          <span style={{fontSize:18}}>{f.type==="application/pdf"?"📄":f.type?.includes("sheet")||f.name?.endsWith(".csv")?"📊":f.type?.includes("word")||f.name?.endsWith(".docx")?"📝":"📎"}</span>
+                                          <span style={{fontSize:18}}>{null}</span>
                                           <span style={{fontSize:11,fontWeight:600,color:m.b?c.tx:"#fff",maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</span>
                                         </div>
                                   ))}
@@ -2737,7 +2737,7 @@ function App() {
                                   </div>
                                   <div style={{fontSize:11,color:c.so,lineHeight:1.5}}>
                                     <div style={{display:"flex",alignItems:"center",gap:6}}>
-                                      <span style={{animation:"spin 1.5s linear infinite",display:"inline-block"}}>⚙️</span>
+                                      Loading...
                                       <span>{workingStatus||"Processing..."}</span>
                                     </div>
                                   </div>
@@ -2755,9 +2755,9 @@ function App() {
                         <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
                           {/* ── Right panel tabs ── */}
                           <div style={{display:"flex",borderBottom:"1px solid "+c.ln,background:c.sf,flexShrink:0}}>
-                            <button onClick={()=>setRightTab("browser")} style={{flex:1,padding:"8px 0",fontSize:11,fontWeight:700,border:"none",borderBottom:rightTab==="browser"?"2px solid "+c.ac:"2px solid transparent",background:"transparent",color:rightTab==="browser"?c.tx:c.so,cursor:"pointer",letterSpacing:"0.5px"}}>🖥️ Browser</button>
+                            <button onClick={()=>setRightTab("browser")} style={{flex:1,padding:"8px 0",fontSize:11,fontWeight:700,border:"none",borderBottom:rightTab==="browser"?"2px solid "+c.ac:"2px solid transparent",background:"transparent",color:rightTab==="browser"?c.tx:c.so,cursor:"pointer",letterSpacing:"0.5px"}}>Browser</button>
                             <button onClick={()=>setRightTab("artifact")} style={{flex:1,padding:"8px 0",fontSize:11,fontWeight:700,border:"none",borderBottom:rightTab==="artifact"?"2px solid "+c.ac:"2px solid transparent",background:"transparent",color:rightTab==="artifact"?c.tx:c.so,cursor:"pointer",letterSpacing:"0.5px",position:"relative"}}>
-                              📄 Files
+                              Files
                               {activeArtifact&&<span style={{position:"absolute",top:4,right:"20%",width:6,height:6,borderRadius:"50%",background:c.ac}}/>}
                             </button>
                             <button onClick={()=>setScrM("hidden")} title="Collapse panel" style={{width:36,padding:"8px 0",fontSize:13,border:"none",borderBottom:"2px solid transparent",background:"transparent",color:c.so,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -2803,7 +2803,7 @@ function App() {
                                   ):activeArtifact.name?.endsWith('.docx')||activeArtifact.name?.endsWith('.pdf')||activeArtifact.name?.endsWith('.xlsx')?(
                                     <div style={{height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:40,textAlign:"center"}}>
                                       <div style={{fontSize:48,marginBottom:16}}>
-                                        {activeArtifact.name?.endsWith('.pdf')?'📄':activeArtifact.name?.endsWith('.xlsx')?'📊':'📝'}
+                                        null
                                       </div>
                                       <div style={{fontSize:16,fontWeight:700,color:c.tx,marginBottom:8}}>{activeArtifact.name}</div>
                                       <div style={{fontSize:13,color:c.so,marginBottom:20}}>Click the download button below to view this file</div>
@@ -2828,7 +2828,7 @@ function App() {
                                   )}
                                 </div>
                                 <div style={{padding:"12px 16px",borderTop:"1px solid "+c.ln,background:c.cd,display:"flex",gap:8,flexShrink:0}}>
-                                  <button onClick={()=>{setRightTab("browser");setTx("I want to make some changes to "+activeArtifact.name);}} style={{flex:1,padding:"10px 0",borderRadius:10,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:13,fontWeight:600,color:c.tx}}>✏️ Request Changes</button>
+                                  <button onClick={()=>{setRightTab("browser");setTx("I want to make some changes to "+activeArtifact.name);}} style={{flex:1,padding:"10px 0",borderRadius:10,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:13,fontWeight:600,color:c.tx}}>Request Changes</button>
                                   <a href={activeArtifact.fileId?`/api/files/download/${activeArtifact.fileId}`:"#"} download style={{flex:1,padding:"10px 0",borderRadius:10,border:"none",background:"linear-gradient(135deg,#34a853,#2d9248)",cursor:"pointer",fontSize:13,fontWeight:700,color:"#fff",textDecoration:"none",textAlign:"center",display:"block"}}>↓ Download</a>
                                 </div>
                               </div>
@@ -2856,7 +2856,7 @@ function App() {
                       <div style={{display:"flex",gap:6,padding:"8px 0",flexWrap:"wrap"}}>
                         {pendingFiles.map((pf,i)=>(
                           <div key={i} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 10px",borderRadius:8,background:c.sf,border:"1px solid "+c.ln,fontSize:12,color:c.tx}}>
-                            {pf.preview?<img src={pf.preview} style={{width:28,height:28,borderRadius:6,objectFit:"cover"}}/>:<span>📎</span>}
+                            {pf.preview?<img src={pf.preview} style={{width:28,height:28,borderRadius:6,objectFit:"cover"}}/>:<span></span>}
                             <span style={{maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{pf.name}</span>
                             <button onClick={()=>setPendingFiles(p=>p.filter((_,j)=>j!==i))} style={{background:"none",border:"none",cursor:"pointer",color:c.fa,fontSize:14,padding:0,lineHeight:1}}>✕</button>
                           </div>
@@ -2885,7 +2885,7 @@ function App() {
             <div style={{padding:mob?"16px 12px 40px":"20px 20px 40px"}}>
               <div style={{marginBottom:20,display:"flex",alignItems:"flex-start",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
                 <div>
-                  <h1 style={{fontSize:mob?20:24,fontWeight:700,color:c.tx,marginBottom:6}}>📊 Operations Monitor</h1>
+                  <h1 style={{fontSize:mob?20:24,fontWeight:700,color:c.tx,marginBottom:6}}>Operations Monitor</h1>
                   <p style={{fontSize:13,color:c.so}}>Real-time visibility into Sarah's autonomous work</p>
                 </div>
                 <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
@@ -2981,7 +2981,7 @@ function App() {
                         <textarea value={newTask.instruction} onChange={e=>setNewTask(p=>({...p,instruction:e.target.value}))} placeholder="What should Sarah do?" rows={3} style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,fontSize:13,color:c.tx,marginBottom:8,fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
                         <div style={{display:"flex",gap:6,marginBottom:10}}>
                           <select value={newTask.taskType} onChange={e=>setNewTask(p=>({...p,taskType:e.target.value}))} style={{flex:1,padding:"8px 10px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,fontSize:12,color:c.tx,fontFamily:"inherit"}}>
-                            <option value="content">📝 Content</option><option value="email">✉️ Email</option><option value="research">🔍 Research</option><option value="crm">📊 CRM</option><option value="custom">⚡ Custom</option>
+                            <option value="content">Content</option><option value="email">Email</option><option value="research">Research</option><option value="crm">CRM</option><option value="custom">Custom</option>
                           </select>
                           <select value={newTask.frequency} onChange={e=>setNewTask(p=>({...p,frequency:e.target.value}))} style={{flex:1,padding:"8px 10px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,fontSize:12,color:c.tx,fontFamily:"inherit"}}>
                             <option value="daily">Daily</option><option value="weekdays">Weekdays</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option>
@@ -3021,7 +3021,7 @@ function App() {
                           onDragOver={e=>{e.preventDefault();e.currentTarget.style.borderColor=c.ac;}}
                           onDragLeave={e=>e.currentTarget.style.borderColor=c.ln}
                           onDrop={e=>{e.preventDefault();e.currentTarget.style.borderColor=c.ln;const f=e.dataTransfer.files[0];if(f)handleCSVFile(f);}}>
-                          <div style={{fontSize:24,marginBottom:6,opacity:0.4}}>📄</div>
+                          
                           <div style={{fontSize:13,fontWeight:600,color:c.tx}}>Drop CSV file here or click to upload</div>
                           <div style={{fontSize:11,color:c.so,marginTop:4}}>Format: Task Name, Instruction, Frequency, Time</div>
                           <input type="file" accept=".csv,.txt" style={{display:"none"}} onChange={e=>{const f=e.target.files[0];if(f)handleCSVFile(f);}}/>
@@ -3090,7 +3090,7 @@ function App() {
 
                     {/* Task cards */}
                     {scheduledTasks.map((task,i)=>{
-                      const typeIc={content:"📝",email:"✉️",research:"🔍",crm:"📊",custom:"⚡"}[task.taskType]||"⚡";
+                      const typeIc={content:null,email:null,research:null,crm:null,custom:null}[task.taskType]||null;
                       return(
                         <div key={task.taskId} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 16px",borderRadius:10,background:c.sf,border:"1px solid "+c.ln,opacity:task.enabled?1:0.45,marginBottom:6}}>
                           <button onClick={async()=>{
@@ -3189,7 +3189,7 @@ function App() {
                                 <div key={d} onClick={()=>setCalSelDay(calSelDay===d?null:d)} style={{minHeight:mob?60:80,borderRadius:8,border:calSelDay===d?"2px solid "+c.ac:isToday(d)?"2px solid "+c.ac+"80":"1px solid "+c.ln,background:calSelDay===d?c.ac+"12":isToday(d)?c.ac+"08":c.sf,padding:"4px 6px",overflow:"hidden",cursor:"pointer",transition:"border-color .15s, background .15s"}}>
                                   <div style={{fontSize:12,fontWeight:isToday(d)?700:500,color:isToday(d)?c.ac:isPast?c.fa:c.tx,marginBottom:3}}>{d}</div>
                                   {runs.map((r,ri)=>{
-                                    const ic={content:"📝",email:"✉️",research:"🔍",crm:"📊",custom:"⚡"}[r.taskType]||"⚡";
+                                    const ic={content:null,email:null,research:null,crm:null,custom:null}[r.taskType]||null;
                                     const bg=r.status==="completed"?c.gr+"20":r.status==="failed"?c.err+"20":c.ac+"20";
                                     const tc=r.status==="completed"?c.gr:r.status==="failed"?c.err:c.ac;
                                     return ri<3?<div key={ri} style={{fontSize:10,padding:"2px 4px",borderRadius:4,background:bg,color:tc,marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ic} {r.taskName}</div>:null;
@@ -3198,7 +3198,7 @@ function App() {
                                   {runs.length===0&&scheduled.length>0&&(
                                     <>
                                       {scheduled.slice(0,2).map((t,ti)=>{
-                                        const ic={content:"📝",email:"✉️",research:"🔍",crm:"📊",custom:"⚡"}[t.taskType]||"⚡";
+                                        const ic={content:null,email:null,research:null,crm:null,custom:null}[t.taskType]||null;
                                         return <div key={ti} style={{fontSize:10,padding:"2px 4px",borderRadius:4,background:c.cd,color:isPast?c.fa:c.so,marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",opacity:isPast?0.4:0.7}}>{ic} {t.name}</div>;
                                       })}
                                       {scheduled.length>2&&<div style={{fontSize:9,color:c.so}}>+{scheduled.length-2}</div>}
@@ -3253,7 +3253,7 @@ function App() {
                             <div style={{marginBottom:16}}>
                               <div style={{fontSize:11,fontWeight:700,color:c.so,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>Activity</div>
                               {dayRuns.map((r,i)=>{
-                                const ic={content:"📝",email:"✉️",research:"🔍",crm:"📊",custom:"⚡"}[r.taskType]||"⚡";
+                                const ic={content:null,email:null,research:null,crm:null,custom:null}[r.taskType]||null;
                                 const sc={completed:c.gr,failed:c.err,pending:c.ac}[r.status]||c.so;
                                 return(
                                   <div key={i} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"10px 12px",borderRadius:8,background:c.sf,border:"1px solid "+c.ln,marginBottom:4}}>
@@ -3283,7 +3283,7 @@ function App() {
                             <div style={{marginBottom:16}}>
                               <div style={{fontSize:11,fontWeight:700,color:c.so,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>Scheduled</div>
                               {dayScheduled.map((t,i)=>{
-                                const ic={content:"📝",email:"✉️",research:"🔍",crm:"📊",custom:"⚡"}[t.taskType]||"⚡";
+                                const ic={content:null,email:null,research:null,crm:null,custom:null}[t.taskType]||null;
                                 return(
                                   <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",borderRadius:8,background:c.sf,border:"1px solid "+c.ln,marginBottom:4}}>
                                     <span style={{fontSize:16}}>{ic}</span>
@@ -3340,7 +3340,7 @@ function App() {
                         {taskRuns.map((run,i)=>{
                           const sdColors={queued:c.warn,pending:c.ac,completed:c.gr,failed:c.err};
                           const sdLabels={pending:"Running...",queued:"Queued",failed:"Failed"};
-                          const typeIc={content:"📝",email:"✉️",research:"🔍",crm:"📊",custom:"⚡"}[run.taskType]||"⚡";
+                          const typeIc={content:null,email:null,research:null,crm:null,custom:null}[run.taskType]||null;
                           const expanded=expandedRun===run.id;
                           const ev=run.evidence||{};
                           return(
@@ -3387,7 +3387,7 @@ function App() {
                                       {ev.files.map((f,fi)=>(
                                         <div key={fi} style={{borderRadius:8,border:"1px solid "+c.ln,overflow:"hidden",marginBottom:6}}>
                                           <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:c.cd}}>
-                                            <span>📄</span>
+                                            <span></span>
                                             <span style={{flex:1,fontSize:13,fontWeight:600,color:c.gr}}>{f.name}</span>
                                             <button onClick={e=>{e.stopPropagation();setPreviewFileIdx(previewFileIdx===fi?null:fi);}} style={{padding:"3px 10px",borderRadius:5,border:"1px solid "+c.ln,background:"transparent",cursor:"pointer",fontSize:11,fontWeight:600,color:c.ac,fontFamily:"inherit"}}>{previewFileIdx===fi?"Close":"Preview"}</button>
                                             <button style={{padding:"3px 10px",borderRadius:5,border:"none",background:c.gr+"15",cursor:"pointer",fontSize:11,fontWeight:600,color:c.gr,fontFamily:"inherit"}}>Open in Files →</button>
@@ -3534,7 +3534,7 @@ function App() {
                   {scheduledTasks.length===0?(
                     <div style={{padding:16,textAlign:"center",color:c.so,fontSize:12}}>No scheduled tasks yet</div>
                   ):scheduledTasks.slice(0,3).map((task,i)=>{
-                    const typeIc={content:"📝",email:"✉️",research:"🔍",crm:"📊",custom:"⚡"}[task.taskType]||"⚡";
+                    const typeIc={content:null,email:null,research:null,crm:null,custom:null}[task.taskType]||null;
                     return(
                       <div key={task.taskId} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:i<Math.min(scheduledTasks.length,3)-1?"1px solid "+c.ln+"40":"none"}}>
                         <span>{typeIc}</span>
@@ -3556,7 +3556,7 @@ function App() {
             <div style={{padding:mob?"16px 12px 40px":"20px 20px 40px",maxWidth:1000,margin:"0 auto"}}>
               <div style={{marginBottom:16,display:"flex",flexDirection:mob?"column":"row",gap:12,alignItems:mob?"stretch":"center",justifyContent:"space-between"}}>
                 <div>
-                  <h1 style={{fontSize:mob?20:24,fontWeight:700,color:c.tx,marginBottom:4}}>📁 Files & Deliverables</h1>
+                  <h1 style={{fontSize:mob?20:24,fontWeight:700,color:c.tx,marginBottom:4}}>Files & Deliverables</h1>
                   <p style={{fontSize:13,color:c.so}}>All content Sarah has created for you</p>
                 </div>
                 <input value={filesSearch||''} onChange={e=>setFilesSearch(e.target.value)} placeholder="Search files..." style={{padding:"8px 14px",borderRadius:10,border:"1.5px solid "+c.ln,fontSize:13,fontFamily:"inherit",background:c.inp,color:c.tx,width:mob?"100%":240}}/>
@@ -3565,7 +3565,7 @@ function App() {
                 <div style={{textAlign:"center",padding:40,color:c.so}}>Loading files...</div>
               ) : files.length === 0 ? (
                 <div style={{textAlign:"center",padding:60,color:c.so,background:c.cd,borderRadius:16,border:"1px solid "+c.ln}}>
-                  <div style={{fontSize:40,marginBottom:12}}>📂</div>
+                  
                   <div style={{fontSize:15,fontWeight:600,color:c.tx,marginBottom:6}}>No files yet</div>
                   <div style={{fontSize:13}}>Ask Sarah to create content — blog posts, email campaigns, SOPs, reports — and they'll appear here.</div>
                 </div>
@@ -3658,11 +3658,11 @@ function App() {
                               {f.status==='pending'&&<button onClick={async()=>{
                                 await fetch(`/api/files/artifacts/${f.fileId}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'approved'})});
                                 setFiles(p=>p.map(x=>x.fileId===f.fileId?{...x,status:'approved'}:x));
-                              }} style={{padding:"4px 10px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#34a853,#2d9248)",cursor:"pointer",fontSize:11,fontWeight:700,color:"#fff"}}>✓ Approve</button>}
+                              }} style={{padding:"4px 10px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#34a853,#2d9248)",cursor:"pointer",fontSize:11,fontWeight:700,color:"#fff"}}>Approve</button>}
                               {ext==='html'&&(f.slug?
-                                <a href={`/p/${f.slug}`} target="_blank" rel="noopener noreferrer" style={{padding:"4px 10px",borderRadius:6,border:"1px solid "+c.gr,background:c.gr+"12",cursor:"pointer",fontSize:11,fontWeight:700,color:c.gr,textDecoration:"none"}}>✓ Live</a>
+                                <a href={`/p/${f.slug}`} target="_blank" rel="noopener noreferrer" style={{padding:"4px 10px",borderRadius:6,border:"1px solid "+c.gr,background:c.gr+"12",cursor:"pointer",fontSize:11,fontWeight:700,color:c.gr,textDecoration:"none"}}>Live</a>
                               :
-                                <button onClick={async(e)=>{e.stopPropagation();const slug=prompt('Choose a URL slug for this page:\n\nyoursite.com/p/___',f.name?.replace(/\.[^.]+$/,'').toLowerCase().replace(/[^a-z0-9]+/g,'-'));if(!slug)return;const r=await fetch(`/api/files/artifacts/${f.fileId}/publish`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({slug})});const d=await r.json();if(d.success){setFiles(p=>p.map(x=>x.fileId===f.fileId?{...x,slug:d.slug,published:true}:x));window.open(`/p/${d.slug}`,'_blank');}else{alert(d.error||'Failed');}}} style={{padding:"4px 10px",borderRadius:6,border:"1px solid "+c.ac,background:c.ac+"12",cursor:"pointer",fontSize:11,fontWeight:700,color:c.ac,fontFamily:"inherit"}}>🚀 Publish</button>
+                                <button onClick={async(e)=>{e.stopPropagation();const slug=prompt('Choose a URL slug for this page:\n\nyoursite.com/p/___',f.name?.replace(/\.[^.]+$/,'').toLowerCase().replace(/[^a-z0-9]+/g,'-'));if(!slug)return;const r=await fetch(`/api/files/artifacts/${f.fileId}/publish`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({slug})});const d=await r.json();if(d.success){setFiles(p=>p.map(x=>x.fileId===f.fileId?{...x,slug:d.slug,published:true}:x));window.open(`/p/${d.slug}`,'_blank');}else{alert(d.error||'Failed');}}} style={{padding:"4px 10px",borderRadius:6,border:"1px solid "+c.ac,background:c.ac+"12",cursor:"pointer",fontSize:11,fontWeight:700,color:c.ac,fontFamily:"inherit"}}>Publish</button>
                               )}
                               <a href={`/api/files/download/${f.fileId}`} download style={{padding:"4px 10px",borderRadius:6,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:11,fontWeight:600,color:c.ac,textDecoration:"none"}}>↓ Download</a>
                               <button onClick={async()=>{
@@ -3686,7 +3686,7 @@ function App() {
           {pg==="settings"&&(
             <div style={{padding:mob?"16px 12px 40px":"20px 20px 40px",maxWidth:800,margin:"0 auto"}}>
               <div style={{marginBottom:24}}>
-                <h1 style={{fontSize:mob?20:24,fontWeight:700,color:c.tx,marginBottom:6}}>⚙️ Settings</h1>
+                <h1 style={{fontSize:mob?20:24,fontWeight:700,color:c.tx,marginBottom:6}}>Settings</h1>
                 <p style={{fontSize:13,color:c.so}}>Configure Sarah and your Bloomie experience</p>
               </div>
               <div style={{display:"flex",flexDirection:mob?"column":"row",background:c.cd,borderRadius:16,border:"1px solid "+c.ln,overflow:"hidden"}}>
@@ -3924,7 +3924,7 @@ function App() {
           <div onClick={e=>e.stopPropagation()} style={{width:editorFullscreen?"100%":"100%",maxWidth:editorFullscreen?"100%":previewFile.name?.endsWith('.html')?1100:800,height:editorFullscreen?"100vh":"90vh",background:c.cd,borderRadius:editorFullscreen?0:16,border:editorFullscreen?"none":"1px solid "+c.ln,display:"flex",flexDirection:"column",overflow:"hidden",boxShadow:editorFullscreen?"none":"0 20px 60px rgba(0,0,0,.4)",margin:editorFullscreen?0:"auto"}}>
             {/* Header */}
             <div style={{padding:"12px 20px",borderBottom:"1px solid "+c.ln,display:"flex",alignItems:"center",gap:8,background:c.sf,flexShrink:0}}>
-              <span style={{fontSize:18}}>{editMode?"✏️":"📄"}</span>
+              <span style={{fontSize:18}}>null</span>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontSize:15,fontWeight:700,color:c.tx,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{previewFile.name}</div>
               </div>
@@ -3939,7 +3939,7 @@ function App() {
                 <a href={previewFile.slug?`/p/${previewFile.slug}`:`/api/files/publish/${previewFile.fileId}`} target="_blank" rel="noopener noreferrer" style={{padding:"5px 12px",borderRadius:8,border:"none",background:c.gradient,fontSize:11,fontWeight:700,color:"#fff",textDecoration:"none"}}>↗ {previewFile.slug?"View Live":"Full Screen"}</a>
               )}
               <button onClick={()=>{setPublishOpen(true);setPublishSlug(previewFile.slug||previewFile.name?.replace(/\.[^.]+$/,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'');setPublishError('');setPublishedUrl(previewFile.slug?`${window.location.origin}/p/${previewFile.slug}`:null);}} style={{padding:"5px 12px",borderRadius:8,border:previewFile.slug?"1px solid "+c.gr:"1px solid "+c.ac,background:previewFile.slug?c.gr+"15":c.ac+"15",fontSize:11,fontWeight:700,color:previewFile.slug?c.gr:c.ac,cursor:"pointer",fontFamily:"inherit"}}>
-                {previewFile.slug?"✓ Published":"🚀 Publish"}
+                {previewFile.slug?"✓ Published":"Publish"}
               </button>
               <a href={`/api/files/download/${previewFile.fileId}`} download style={{padding:"5px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.cd,fontSize:11,fontWeight:600,color:c.ac,textDecoration:"none"}}>↓</a>
               <button onClick={()=>{setPreviewFile(null);setEditMode(false);setEditorFullscreen(false);}} style={{width:30,height:30,borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:14,color:c.so,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
@@ -4071,7 +4071,7 @@ function App() {
                 {(previewFile.name?.endsWith('.docx')||previewFile.name?.endsWith('.pdf')||previewFile.name?.endsWith('.xlsx')||previewFile.name?.endsWith('.pptx')||previewFile.name?.endsWith('.zip'))?(
                   /* Binary files — show download button, don't try to render */
                   <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,color:c.so}}>
-                    <span style={{fontSize:48}}>{previewFile.name?.endsWith('.docx')?"📄":previewFile.name?.endsWith('.pdf')?"📕":previewFile.name?.endsWith('.xlsx')?"📊":"📦"}</span>
+                    <span style={{fontSize:48}}>null</span>
                     <div style={{fontSize:16,fontWeight:600,color:c.tx}}>{previewFile.name}</div>
                     <div style={{fontSize:13}}>This file type can't be previewed in the browser</div>
                     {previewFile.fileId&&(
@@ -4139,7 +4139,7 @@ function App() {
                         if(d.slug){setPublishUrl(`${window.location.origin}/s/${d.slug}`);setPublishOpen(false);}
                       }).catch(()=>{});
                     }} style={{padding:"8px 20px",borderRadius:8,border:"none",background:c.gradient,cursor:"pointer",fontSize:12,fontWeight:700,color:"#fff",fontFamily:"inherit"}}>
-                      🌐 Publish as Site
+                      Publish as Site
                     </button>
                   )}
                 </div>
@@ -4154,7 +4154,7 @@ function App() {
         <div onClick={()=>setPublishOpen(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:250,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
           <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:480,background:c.cd,borderRadius:16,border:"1px solid "+c.ln,overflow:"hidden",boxShadow:"0 20px 60px rgba(0,0,0,.4)"}}>
             <div style={{padding:"20px 24px",borderBottom:"1px solid "+c.ln,background:"linear-gradient(135deg, rgba(244,162,97,0.08), rgba(231,111,139,0.08))"}}>
-              <div style={{fontSize:18,fontWeight:700,color:c.tx}}>🚀 Publish Page</div>
+              <div style={{fontSize:18,fontWeight:700,color:c.tx}}>Publish Page</div>
               <div style={{fontSize:12,color:c.so,marginTop:4}}>Give your page a clean URL that anyone can visit</div>
             </div>
             <div style={{padding:24}}>
@@ -4190,7 +4190,7 @@ function App() {
                     }
                   }catch(e){setPublishError('Network error');}
                 }} style={{flex:1,padding:"12px 0",borderRadius:10,border:"none",background:c.gradient,cursor:"pointer",fontSize:14,fontWeight:700,color:"#fff",fontFamily:"inherit"}}>
-                  {publishedUrl?"Update URL":"🚀 Publish"}
+                  {publishedUrl?"Update URL":"Publish"}
                 </button>
                 {previewFile.slug&&(
                   <button onClick={async()=>{
