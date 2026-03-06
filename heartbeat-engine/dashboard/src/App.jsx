@@ -442,7 +442,7 @@ function SystemHealth({c,sse}) {
   const colMap={healthy:c.gr,warning:"#F59E0B",critical:"#EF4444"};
 
   return(
-    <Card c={c} title="🏥 System Health" action={<Pill c={c} status={overall}/>}>
+    <Card c={c} title="System Health" action={<Pill c={c} status={overall}/>}>
       {!data
         ? <div style={{padding:20,textAlign:"center",fontSize:12,color:c.so}}>Loading…</div>
         : <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
@@ -479,7 +479,7 @@ function TrustGate({c,sse}) {
   const pct=Math.min(100,(used/limit)*100);
 
   return(
-    <Card c={c} title="🔐 Trust Gate" subtitle="Authorization & daily limits">
+    <Card c={c} title="Trust Gate" subtitle="Authorization & daily limits">
       {!data
         ? <div style={{padding:20,textAlign:"center",fontSize:12,color:c.so}}>Loading…</div>
         : <>
@@ -558,7 +558,7 @@ function SubAgents({c,sse}) {
   },[sse]);
 
   return(
-    <Card c={c} title="🤖 Sub-Agent Network" subtitle="5 domain specialists">
+    <Card c={c} title="Sub-Agent Network" subtitle="5 domain specialists">
       {agents.length===0
         ? <div style={{padding:20,textAlign:"center",fontSize:12,color:c.so}}>No sub-agents active</div>
         : <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
@@ -597,7 +597,7 @@ function ToolPerformance({c,sse}) {
   const tools=data?.topTools||data?.tools||[];
 
   return(
-    <Card c={c} title="🔧 Tool Performance" subtitle="60 BLOOM CRM tools + internal">
+    <Card c={c} title="Tool Performance" subtitle="60 BLOOM CRM tools + internal">
       {!data
         ? <div style={{padding:20,textAlign:"center",fontSize:12,color:c.so}}>Loading…</div>
         : <>
@@ -643,7 +643,7 @@ function ContextAnalytics({c,sse}) {
   const barColor=pct>80?"#EF4444":pct>60?"#F59E0B":c.gr;
 
   return(
-    <Card c={c} title="🧠 Context Analytics" subtitle="Token usage & compression">
+    <Card c={c} title="Context Analytics" subtitle="Token usage & compression">
       {!data
         ? <div style={{padding:20,textAlign:"center",fontSize:12,color:c.so}}>Loading…</div>
         : <>
@@ -3414,7 +3414,7 @@ function App() {
           {pg==="calls"&&(
             <div style={{padding:mob?"16px 12px 40px":"20px 20px 40px",maxWidth:900,margin:"0 auto"}}>
               <div style={{marginBottom:24}}>
-                <h1 style={{fontSize:mob?20:24,fontWeight:700,color:c.tx,marginBottom:6}}>📞 Calls</h1>
+                <h1 style={{fontSize:mob?20:24,fontWeight:700,color:c.tx,marginBottom:6}}>Calls</h1>
                 <p style={{fontSize:13,color:c.so}}>Phone calls and voicemails — Sarah reads transcripts and takes action</p>
               </div>
               <CallsPage c={c} mob={mob}/>
