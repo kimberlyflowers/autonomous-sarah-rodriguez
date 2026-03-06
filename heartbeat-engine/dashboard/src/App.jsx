@@ -441,7 +441,7 @@ function SystemHealth({c,sse}) {
       {!data
         ? <div style={{padding:20,textAlign:"center",fontSize:12,color:c.so}}>Loading…</div>
         : <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-            {(components.length?components:[{name:"Database",status:"unknown"},{name:"Claude API",status:"unknown"},{name:"GHL API",status:"unknown"},{name:"Memory",status:"unknown"}]).map((comp,i)=>(
+            {(components.length?components:[{name:"Database",status:"unknown"},{name:"Claude API",status:"unknown"},{name:"BLOOM CRM API",status:"unknown"},{name:"Memory",status:"unknown"}]).map((comp,i)=>(
               <div key={i} style={{padding:"10px 12px",borderRadius:10,background:c.sf,border:"1px solid "+c.ln,display:"flex",alignItems:"center",gap:8}}>
                 <span style={{width:8,height:8,borderRadius:"50%",background:colMap[comp.status]||c.fa,flexShrink:0}}/>
                 <div>
@@ -592,7 +592,7 @@ function ToolPerformance({c,sse}) {
   const tools=data?.topTools||data?.tools||[];
 
   return(
-    <Card c={c} title="🔧 Tool Performance" subtitle="60 GHL tools + internal">
+    <Card c={c} title="🔧 Tool Performance" subtitle="60 BLOOM CRM tools + internal">
       {!data
         ? <div style={{padding:20,textAlign:"center",fontSize:12,color:c.so}}>Loading…</div>
         : <>
@@ -1248,7 +1248,7 @@ function CallsPage({c,mob}){
     <div style={{textAlign:"center",padding:60,background:c.cd,borderRadius:16,border:"1px solid "+c.ln}}>
       <div style={{fontSize:40,marginBottom:12}}>📞</div>
       <div style={{fontSize:15,fontWeight:600,color:c.tx,marginBottom:6}}>No calls yet</div>
-      <div style={{fontSize:13,color:c.so,maxWidth:400,margin:"0 auto",lineHeight:1.6}}>When clients call or leave voicemails on your GHL number, Sarah will read the transcript, extract action items, and get to work. Call transcripts and Sarah's actions will appear here.</div>
+      <div style={{fontSize:13,color:c.so,maxWidth:400,margin:"0 auto",lineHeight:1.6}}>When clients call or leave voicemails on your BLOOM number, Sarah will read the transcript, extract action items, and get to work. Call transcripts and Sarah's actions will appear here.</div>
     </div>
   );
 
@@ -1472,7 +1472,7 @@ function SkillsPage({c,mob}){
 
             <div style={{marginBottom:20}}>
               <label style={{fontSize:12,fontWeight:600,color:c.tx,marginBottom:4,display:'block'}}>Instructions</label>
-              <textarea value={form.instructions} onChange={e=>setForm(f=>({...f,instructions:e.target.value}))} placeholder={"Describe exactly how you want this done. For example:\n\n1. When a new lead fills out the intake form...\n2. Create a contact in GHL with tags 'new-intake'\n3. Add them to the Welcome workflow\n4. Send the intake confirmation email\n5. Create a note with the form submission details\n6. Notify the team in the #new-leads channel"} style={{width:'100%',padding:'10px 12px',borderRadius:8,border:'1px solid '+c.ln,background:c.sf,color:c.tx,fontSize:13,outline:'none',minHeight:180,resize:'vertical',fontFamily:'inherit',boxSizing:'border-box',lineHeight:1.5}}/>
+              <textarea value={form.instructions} onChange={e=>setForm(f=>({...f,instructions:e.target.value}))} placeholder={"Describe exactly how you want this done. For example:\n\n1. When a new lead fills out the intake form...\n2. Create a contact in BLOOM CRM with tags 'new-intake'\n3. Add them to the Welcome workflow\n4. Send the intake confirmation email\n5. Create a note with the form submission details\n6. Notify the team in the #new-leads channel"} style={{width:'100%',padding:'10px 12px',borderRadius:8,border:'1px solid '+c.ln,background:c.sf,color:c.tx,fontSize:13,outline:'none',minHeight:180,resize:'vertical',fontFamily:'inherit',boxSizing:'border-box',lineHeight:1.5}}/>
               <div style={{fontSize:11,color:c.so,marginTop:4}}>Be specific — the more detail you give, the better Sarah performs this task</div>
             </div>
 
@@ -1498,7 +1498,7 @@ function SkillsPage({c,mob}){
   );
 }
 
-// ── BUSINESS PROFILE PAGE — Synced from GHL ─────────────────────────────────
+// ── BUSINESS PROFILE PAGE — Synced from BLOOM CRM ─────────────────────────────────
 function BusinessProfilePage({c,mob,userImg,setUserImg}){
   const [biz,setBiz]=useState(null);
   const [loading,setLoading]=useState(true);
@@ -1731,7 +1731,7 @@ function BusinessProfilePage({c,mob,userImg,setUserImg}){
         </div>
       </div>
 
-      {/* ═══ GHL BUSINESS INFO ═══ */}
+      {/* ═══ BLOOM CRM BUSINESS INFO ═══ */}
       {biz?(
         <div style={{background:c.cd,borderRadius:16,border:"1px solid "+c.ln,overflow:"hidden"}}>
           <div style={{padding:24,display:"flex",alignItems:"center",gap:16,borderBottom:"1px solid "+c.ln,background:"linear-gradient(135deg, rgba(244,162,97,0.06), rgba(231,111,139,0.06))"}}>
@@ -2433,23 +2433,25 @@ function App() {
                     </div>
                     <h2 style={{fontSize:mob?22:28,fontWeight:700,color:c.tx,marginTop:18,marginBottom:6}}>Chat with Sarah</h2>
                     <p style={{fontSize:mob?13:15,color:c.so,marginBottom:28}}>Give her tasks, check her work, or ask what's going on</p>
-                    <div style={{display:"flex",gap:mob?6:10,alignItems:"center",marginBottom:20}}>
-                      <textarea value={tx} onChange={e=>setTx(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();doSend();}}} placeholder={vcRec?"Listening…":"Ask anything..."} rows={3} style={{flex:1,padding:mob?"12px 14px":"14px 18px",borderRadius:14,border:"1.5px solid "+(vcRec?c.ac:c.ln),fontSize:15,fontFamily:"inherit",background:c.inp,color:c.tx,transition:"border-color .2s",resize:"none",lineHeight:1.4,maxHeight:120,overflowY:"auto"}}/>
-                      <button onClick={()=>fRef.current?.click()} title="Attach file" style={{width:44,height:44,borderRadius:12,border:"1.5px solid "+c.ln,cursor:"pointer",background:c.cd,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                        <span style={{fontSize:22,color:c.so,fontWeight:300,lineHeight:1}}>+</span>
-                      </button>
-                      <button onClick={toggleVoice} style={{width:44,height:44,borderRadius:12,border:vcRec?"2px solid "+c.ac:"1.5px solid "+c.ln,cursor:"pointer",background:vcRec?c.ac+"18":c.cd,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,position:"relative"}}>
-                        {vcRec&&<span style={{position:"absolute",inset:-4,borderRadius:16,border:"2px solid "+c.ac,animation:"pulse 1.2s ease infinite",opacity:0.4}}/>}
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={vcRec?c.ac:c.so} strokeWidth="2" strokeLinecap="round"><rect x="9" y="1" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0014 0"/><path d="M12 17v4M8 21h8"/></svg>
-                      </button>
-                      {loading?(
-                        <button onClick={stopSarah} style={{width:44,height:44,borderRadius:12,border:"none",cursor:"pointer",background:"rgba(234,67,53,0.15)",color:"#ea4335",fontSize:16,fontWeight:700,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",transition:"background .15s"}} title="Stop Sarah">■</button>
-                      ):(
-                        <button onClick={doSend} disabled={!tx.trim()} style={{width:44,height:44,borderRadius:12,border:"none",cursor:tx.trim()?"pointer":"not-allowed",background:tx.trim()?"linear-gradient(135deg,#F4A261,#E76F8B)":c.sf,color:tx.trim()?"#fff":c.fa,fontSize:18,fontWeight:700,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>➜</button>
-                      )}
+                    <div style={{position:"relative",marginBottom:20}}>
+                      <div style={{display:"flex",alignItems:"flex-end",gap:8,padding:mob?"12px":"14px 16px",borderRadius:20,border:"1.5px solid "+(vcRec?c.ac:c.ln),background:c.inp,transition:"border-color .2s"}}>
+                        <button onClick={()=>fRef.current?.click()} title="Attach file" style={{width:36,height:36,borderRadius:10,border:"none",cursor:"pointer",background:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginBottom:2}}>
+                          <span style={{fontSize:20,color:c.so,fontWeight:300,lineHeight:1}}>+</span>
+                        </button>
+                        <textarea value={tx} onChange={e=>setTx(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();doSend();}}} placeholder={vcRec?"Listening…":"Ask anything..."} rows={1} style={{flex:1,padding:"10px 0",border:"none",fontSize:15,fontFamily:"inherit",background:"transparent",color:c.tx,resize:"none",lineHeight:1.4,maxHeight:120,overflowY:"auto",outline:"none"}}/>
+                        <button onClick={toggleVoice} style={{width:36,height:36,borderRadius:10,border:"none",cursor:"pointer",background:vcRec?c.ac+"18":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,position:"relative",marginBottom:2}}>
+                          {vcRec&&<span style={{position:"absolute",inset:-4,borderRadius:14,border:"2px solid "+c.ac,animation:"pulse 1.2s ease infinite",opacity:0.4}}/>}
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={vcRec?c.ac:c.so} strokeWidth="2" strokeLinecap="round"><rect x="9" y="1" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0014 0"/><path d="M12 17v4M8 21h8"/></svg>
+                        </button>
+                        {loading?(
+                          <button onClick={stopSarah} style={{width:36,height:36,borderRadius:10,border:"none",cursor:"pointer",background:"rgba(234,67,53,0.15)",color:"#ea4335",fontSize:14,fontWeight:700,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:2}} title="Stop Sarah">■</button>
+                        ):(
+                          <button onClick={doSend} disabled={!tx.trim()} style={{width:36,height:36,borderRadius:10,border:"none",cursor:tx.trim()?"pointer":"not-allowed",background:tx.trim()?"linear-gradient(135deg,#F4A261,#E76F8B)":"transparent",color:tx.trim()?"#fff":c.fa,fontSize:16,fontWeight:700,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:2}}>➜</button>
+                        )}
+                      </div>
                     </div>
                     <div style={{display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap"}}>
-                      {["What can you help me with?","Check my GHL contacts","Show system health","What tasks are pending?"].map((s,i)=>(
+                      {["What can you help me with?","Check my BLOOM CRM contacts","Show system health","What tasks are pending?"].map((s,i)=>(
                         <button key={i} onClick={()=>setTx(s)} style={{padding:"8px 16px",borderRadius:20,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:12,color:c.so,transition:"border-color .15s"}} onMouseEnter={e=>e.currentTarget.style.borderColor=c.ac} onMouseLeave={e=>e.currentTarget.style.borderColor=c.ln}>{s}</button>
                       ))}
                     </div>
