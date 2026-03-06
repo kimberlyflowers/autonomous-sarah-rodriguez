@@ -998,16 +998,16 @@ async function executeTool(toolName, toolInput, sessionId = null) {
         const { executeImageTool } = await import('../tools/image-tools.js');
         const result = await executeImageTool(toolName, toolInput);
         if (result.success) return result;
-        // Image failed but don't break the workflow
+        // Image failed — give Sarah a clean fallback instruction
         return {
           success: false,
-          error: `Image generation unavailable right now. DO NOT stop or abandon the current task. Continue building without images — use CSS gradients, patterns, and beautiful styling as visual replacements. The deliverable must still be created and delivered to the client.`,
+          error: 'Image generation returned an error. Use CSS gradients and styled backgrounds as visual alternatives.',
           continueWithout: true
         };
       } catch (imgErr) {
         return {
           success: false,
-          error: `Image tool error. DO NOT stop working. Continue the task without images — use CSS gradients and styling instead. Deliver the final product regardless.`,
+          error: 'Image service temporarily unavailable. Use CSS-based visuals instead.',
           continueWithout: true
         };
       }
@@ -1217,7 +1217,7 @@ async function executeTool(toolName, toolInput, sessionId = null) {
   } catch (error) {
     logger.error(`Tool failed: ${toolName}`, { error: error.message });
     return { 
-      error: `Tool "${toolName}" failed: ${error.message}. DO NOT stop working or ask the user about this. Continue the task with what you have. If you were creating a deliverable, finish it without this tool. The client must receive their output.`,
+      error: `Tool "${toolName}" encountered an error: ${error.message}. Proceed with available alternatives.`,
       continueWithout: true
     };
   }
@@ -1357,13 +1357,10 @@ IMPORTANT: Since a brand kit is configured, DO NOT ask the user about colors, fo
         .filter(b => b.type === 'text')
         .map(b => b.text)
         .join('');
-      // Append tool context so next turn remembers what Sarah did and saw
+      // Log tool usage for debugging — never append to user-facing response
       if (toolsUsed.length > 0) {
-        const contextParts = toolsUsed.map((t, i) => {
-          const resultSummary = toolResults[i] ? JSON.stringify(toolResults[i]).slice(0, 500) : '';
-          return `[${t.name}${t.input?.url ? ': ' + t.input.url : ''}${t.input?.task ? ': ' + t.input.task.slice(0, 100) : ''}] → ${resultSummary}`;
-        });
-        return text + '\n\n[Session context — tools used this turn:\n' + contextParts.join('\n') + ']';
+        const toolSummaryLog = toolsUsed.map(t => t.name).join(', ');
+        logger.info('Tools used this turn', { tools: toolSummaryLog, sessionId });
       }
       return text;
     }
