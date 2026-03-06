@@ -1698,6 +1698,8 @@ async function ensureSession(pool, sessionId) {
         .upsert({
           id: sessionId,
           user_id: userId,
+          organization_id: process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001',
+          agent_id: process.env.AGENT_UUID || 'c3000000-0000-0000-0000-000000000003',
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         }, {
@@ -1813,23 +1815,23 @@ async function saveMessages(pool, sessionId, userMsg, assistantMsg, files = null
     await supabase
       .from('messages')
       .insert({
-        conversation_id: sessionId,
+        session_id: sessionId,
+        organization_id: process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001',
         user_id: userId,
-        type: 'user',
-        text: userText,
-        files: files ? JSON.stringify(files) : null,
-        timestamp: new Date().toISOString()
+        role: 'user',
+        content: userText,
+        files: files ? files : null
       });
     
     // Insert assistant message
     await supabase
       .from('messages')
       .insert({
-        conversation_id: sessionId,
+        session_id: sessionId,
+        organization_id: process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001',
         user_id: userId,
-        type: 'sarah', // Maps 'assistant' → 'sarah' for Sarah's identity
-        text: assistantMsg,
-        timestamp: new Date().toISOString()
+        role: 'assistant',
+        content: assistantMsg
       });
     
     // Update session metadata in Supabase
