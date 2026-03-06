@@ -3402,7 +3402,7 @@ function App() {
           {/* ══ FILES — Approved deliverables library ══ */}
           {pg==="artifacts"&&(
             <div style={{padding:mob?"16px 12px 40px":"20px 20px 40px",maxWidth:1000,margin:"0 auto"}}>
-              <div style={{marginBottom:16,display:"flex",alignItems:mob?"column":"row",gap:12,alignItems:mob?"stretch":"center",justifyContent:"space-between"}}>
+              <div style={{marginBottom:16,display:"flex",flexDirection:mob?"column":"row",gap:12,alignItems:mob?"stretch":"center",justifyContent:"space-between"}}>
                 <div>
                   <h1 style={{fontSize:mob?20:24,fontWeight:700,color:c.tx,marginBottom:4}}>📁 Files & Deliverables</h1>
                   <p style={{fontSize:13,color:c.so}}>All content Sarah has created for you</p>
