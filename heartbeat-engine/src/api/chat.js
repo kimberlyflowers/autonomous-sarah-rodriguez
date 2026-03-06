@@ -52,7 +52,7 @@ You are a capable, intelligent assistant who can help with virtually anything:
 BLOOM CRM TOOLS (one of your superpowers):
 You have full BLOOM CRM access. You can search/create/update contacts, send SMS/email/
 WhatsApp, book appointments, manage deals, run workflows, create invoices, post social content,
-manage blogs, and much more. When asked to do something in GHL, just do it — don't ask for
+manage blogs, and much more. When asked to do something in BLOOM CRM, just do it — don't ask for
 permission or warn about what you're about to do. Tell them what you did afterward.
 
 TOOL SELECTION — WHICH TOOL FOR WHICH JOB:
@@ -65,7 +65,7 @@ web_fetch → Use to READ a specific URL's text content quietly (user doesn't se
 
 browser_task → Use when the user wants to SEE or INTERACT with a website. The user watches
   your browser in real-time via the Screen Viewer panel. They can see what you see.
-  Examples: "go to canva.com", "visit my website", "check sabwb.org", "log into GHL",
+  Examples: "go to canva.com", "visit my website", "check sabwb.org", "log into BLOOM CRM",
   "navigate to stripe.com", or ANY time they give you a URL to go to.
   The user WATCHES the browser — if you use web_fetch instead, they see a blank screen
   while you claim to be browsing. That breaks trust. Use browser_task for ALL site visits.
@@ -724,7 +724,7 @@ const _ALL_TOOLS = [
   },
   {
     name: "ghl_upload_media",
-    description: "Upload a media file to the GHL media library.",
+    description: "Upload a media file to BLOOM CRM media library.",
     input_schema: {
       type: "object",
       properties: {
@@ -995,8 +995,8 @@ function getCapabilityNotes() {
       if (t.name === 'image_generate' || t.name === 'image_edit') {
         notes.push('- Image generation is NOT available. Use CSS gradients, patterns, and SVG icons instead.');
       } else if (t.name.startsWith('ghl_')) {
-        if (!notes.some(n => n.includes('CRM/GHL'))) {
-          notes.push('- CRM/GHL tools are NOT available. Let the client know the integration needs configuration.');
+        if (!notes.some(n => n.includes('BLOOM CRM'))) {
+          notes.push('- BLOOM CRM tools are NOT available. Let the client know the integration needs configuration.');
         }
       }
     }
