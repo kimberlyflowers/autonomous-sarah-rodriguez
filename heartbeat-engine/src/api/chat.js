@@ -1143,6 +1143,7 @@ async function executeTool(toolName, toolInput, sessionId = null) {
         const nameToType = {
           'frontend-design': 'coding',
           'website-landing-page': 'coding',
+          'website-creation': 'coding',  // NEW comprehensive website skill
           'docx': 'docx',
           'docx-documents': 'docx',
           'pptx': 'pptx',
@@ -1154,6 +1155,8 @@ async function executeTool(toolName, toolInput, sessionId = null) {
           'social-media': 'writing',
           'book-writing': 'writing',
           'ghl-crm': 'crm',
+          'flyer-generation': 'image',  // NEW specialized flyer skill
+          'image-generation': 'image',
         };
         const skillType = nameToType[skillName] || 'writing';
         const skillBody = getSkillContext(skillType, toolInput.context || '');
