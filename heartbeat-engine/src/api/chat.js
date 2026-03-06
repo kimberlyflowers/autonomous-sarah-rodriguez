@@ -145,7 +145,7 @@ SKILLS — Expert guidelines that make your output premium:
 Before starting any major creative task (website, document, email campaign, blog, social content),
 call the load_skill tool to load the relevant expert instructions. This gives you data-driven
 best practices, formatting standards, and quality requirements. Match the skill to the task:
-- Building a website/landing page → load_skill("website-landing-page")
+- Building a website/landing page/web page → load_skill("frontend-design")
 - Creating a Word document (report, handbook, SOP, proposal) → load_skill("docx-documents")
 - Writing a blog post or article → load_skill("blog-content")
 - Writing an email campaign → load_skill("email-marketing")
@@ -879,7 +879,7 @@ const _ALL_TOOLS = [
     input_schema: {
       type: "object",
       properties: {
-        skill_name: { type: "string", description: "The skill to load (e.g. 'website-landing-page', 'docx-documents', 'professional-documents', 'blog-content', 'email-marketing', 'social-media', 'book-writing', 'ghl-crm')" },
+        skill_name: { type: "string", description: "The skill to load (e.g. 'frontend-design', 'docx-documents', 'professional-documents', 'blog-content', 'email-marketing', 'social-media', 'book-writing', 'ghl-crm')" },
         context: { type: "string", description: "Brief description of what you're about to create — helps select the right guidelines" }
       },
       required: ["skill_name"]
@@ -1097,6 +1097,7 @@ async function executeTool(toolName, toolInput, sessionId = null) {
         
         // Load the full skill body by mapping name to type
         const nameToType = {
+          'frontend-design': 'coding',
           'website-landing-page': 'coding',
           'docx-documents': 'docx',
           'professional-documents': 'docx',
