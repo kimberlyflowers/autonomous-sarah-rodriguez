@@ -421,6 +421,12 @@ async function generateWithNanoBanana(prompt, size) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30000); // 30 second timeout
     
+    // Map size to aspect ratio (Google's official format from Feb 27, 2026)
+    // Supports: 21:9, 16:9, 4:3, 3:2, 1:1, 9:16, 3:4, 2:3, 5:4, 4:5
+    let aspectRatio = '1:1'; // default square
+    if (size === '1024x1536') aspectRatio = '2:3'; // portrait
+    if (size === '1536x1024') aspectRatio = '3:2'; // landscape
+    
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${getGeminiKey()}`,
       {
@@ -431,7 +437,10 @@ async function generateWithNanoBanana(prompt, size) {
             parts: [{ text: prompt }]
           }],
           generationConfig: {
-            responseModalities: ["TEXT", "IMAGE"],
+            responseModalities: ["IMAGE"], // Only return image (not TEXT+IMAGE)
+            imageGenerationConfig: {
+              aspectRatio: aspectRatio
+            }
           },
         }),
         signal: controller.signal
