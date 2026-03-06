@@ -31,8 +31,7 @@ router.get('/', async (req, res) => {
         name,
         description,
         created_at,
-        updated_at,
-        sessions:sessions(count)
+        updated_at
       `)
       .eq('user_id', userId)
       .order('updated_at', { ascending: false });
@@ -45,16 +44,24 @@ router.get('/', async (req, res) => {
       });
     }
     
-    // Transform the response to include conversation_count
-    const projects = data.map(p => ({
-      ...p,
-      conversation_count: p.sessions?.[0]?.count || 0,
-      sessions: undefined // Remove the nested sessions object
-    }));
+    // For each project, count its sessions
+    const projectsWithCounts = await Promise.all(
+      data.map(async (project) => {
+        const { count } = await supabase
+          .from('sessions')
+          .select('*', { count: 'exact', head: true })
+          .eq('project_id', project.id);
+        
+        return {
+          ...project,
+          conversation_count: count || 0
+        };
+      })
+    );
     
     res.json({ 
       success: true, 
-      projects 
+      projects: projectsWithCounts 
     });
   } catch (error) {
     logger.error('Error fetching projects:', error);

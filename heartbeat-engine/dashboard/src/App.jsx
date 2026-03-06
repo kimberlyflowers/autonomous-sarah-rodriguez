@@ -3879,7 +3879,7 @@ function App() {
                           {new Date(proj.updated_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
                         </div>
                         <div style={{fontSize:11,color:c.fa}}>
-                          {proj.conversation_count||0} {proj.conversation_count===1?'chat':'chats'}
+                          {(typeof proj.conversation_count === 'number' ? proj.conversation_count : 0)} {((typeof proj.conversation_count === 'number' ? proj.conversation_count : 0)===1)?'chat':'chats'}
                         </div>
                       </div>
                     </div>
