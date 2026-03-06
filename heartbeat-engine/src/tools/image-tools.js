@@ -583,14 +583,28 @@ export async function executeImageTool(toolName, parameters) {
               content: result.image_base64,
             })
           });
-          const saveData = await saveRes.json();
-          if (saveData.success && saveData.artifact?.fileId) {
-            result.image_url = `/api/files/preview/${saveData.artifact.fileId}`;
-            result.message = `Image generated! Use this URL in HTML: ${result.image_url}`;
+          if (!saveRes.ok) {
+            const errorText = await saveRes.text();
+            logger.error('Failed to save image artifact', { status: saveRes.status, error: errorText });
+          } else {
+            const saveData = await saveRes.json();
+            if (saveData.success && saveData.artifact?.fileId) {
+              result.image_url = `/api/files/preview/${saveData.artifact.fileId}`;
+              result.fileId = saveData.artifact.fileId;
+              result.message = `Image saved! View it in your Files tab or use this URL: ${result.image_url}`;
+              logger.info('Image saved as artifact', { fileId: saveData.artifact.fileId });
+            } else {
+              logger.error('Image save returned unsuccessful', saveData);
+            }
           }
         }
+        
+        // Ensure we always have a message, even if storage failed
+        if (!result.message) {
+          result.message = 'Image generated but storage failed. The image was created but could not be saved to Files. Please try again or contact support.';
+        }
       } catch (e) {
-        logger.warn('Image storage failed (non-critical):', e.message);
+        logger.error('Image storage failed:', { error: e.message, stack: e.stack });
       }
     }
 
