@@ -1074,7 +1074,7 @@ async function executeTool(toolName, toolInput, sessionId = null) {
       if (data.success) {
         return {
           success: true,
-          message: `Created "${toolInput.name}" — waiting for your approval.`,
+          message: `FILE CREATED SUCCESSFULLY. YOU MUST tell the client: "Here's your ${toolInput.fileType || 'file'} — \\"${toolInput.name}\\" (check the Files tab or click to view inline)"`,
           artifact: data.artifact
         };
       }
