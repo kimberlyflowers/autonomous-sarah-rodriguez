@@ -572,8 +572,8 @@ export async function executeImageTool(toolName, parameters) {
         if (!result.image_url) {
           try {
             const crypto = await import('crypto');
-            const { getPool } = await import('../database/pool.js');
-            const pool = await getPool();
+            const { getSharedPool } = await import('../database/pool.js');
+            const pool = getSharedPool();
             
             const fileId = `art_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
             const fname = `bloom-img-${Date.now()}.png`;
