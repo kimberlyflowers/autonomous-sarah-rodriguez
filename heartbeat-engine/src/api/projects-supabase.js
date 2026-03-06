@@ -1,8 +1,9 @@
 import express from 'express';
 import { createClient } from '@supabase/supabase-js';
-import { logger } from '../logging/logger.js';
+import { createLogger } from '../logging/logger.js';
 
 const router = express.Router();
+const logger = createLogger('projects-api');
 
 // Initialize Supabase client
 const supabaseUrl = process.env.SUPABASE_URL;
