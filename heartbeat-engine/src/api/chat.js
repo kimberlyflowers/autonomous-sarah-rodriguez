@@ -1681,6 +1681,37 @@ async function ensureSession(pool, sessionId) {
     `INSERT INTO chat_sessions(id) VALUES($1) ON CONFLICT(id) DO NOTHING`,
     [sessionId]
   );
+  
+  // ALSO create session in Supabase (for project organization)
+  try {
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
+    
+    if (supabaseUrl && supabaseKey) {
+      const supabase = createClient(supabaseUrl, supabaseKey);
+      const userId = '00000000-0000-0000-0000-000000000001'; // TODO: Get from auth
+      
+      // Insert into Supabase sessions table (upsert to handle existing sessions)
+      const { error } = await supabase
+        .from('sessions')
+        .upsert({
+          id: sessionId,
+          user_id: userId,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'id'
+        });
+      
+      if (!error) {
+        logger.info(`Session ${sessionId} synced to Supabase`);
+      }
+    }
+  } catch (err) {
+    // Don't fail chat creation if Supabase sync fails - Railway is source of truth for messages
+    logger.warn(`Failed to sync session to Supabase:`, err.message);
+  }
 }
 
 async function loadHistory(pool, sessionId) {
@@ -1708,6 +1739,23 @@ Title:`;
     const title = result.content[0]?.text?.trim().replace(/^["']|["']$/g, '').slice(0, 60);
     if (title) {
       await pool.query(`UPDATE chat_sessions SET title=$1 WHERE id=$2`, [title, sessionId]);
+      
+      // Also update title in Supabase
+      try {
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabaseUrl = process.env.SUPABASE_URL;
+        const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
+        
+        if (supabaseUrl && supabaseKey) {
+          const supabase = createClient(supabaseUrl, supabaseKey);
+          await supabase
+            .from('sessions')
+            .update({ title, updated_at: new Date().toISOString() })
+            .eq('id', sessionId);
+        }
+      } catch (err) {
+        logger.warn(`Failed to sync title to Supabase:`, err.message);
+      }
     }
   } catch (e) {
     // Non-critical — title stays as first-message truncation fallback
