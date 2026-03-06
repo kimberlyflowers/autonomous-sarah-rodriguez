@@ -1690,7 +1690,7 @@ async function ensureSession(pool, sessionId) {
     
     if (supabaseUrl && supabaseKey) {
       const supabase = createClient(supabaseUrl, supabaseKey);
-      const userId = '00000000-0000-0000-0000-000000000001'; // TODO: Get from auth
+      const userId = process.env.BLOOM_OWNER_USER_ID || '823e2fb5-2f8f-4279-9c84-c8f4bf78bcce'; // Kimberly's UUID
       
       // Insert into Supabase sessions table (upsert to handle existing sessions)
       const { error } = await supabase
@@ -1807,7 +1807,7 @@ async function saveMessages(pool, sessionId, userMsg, assistantMsg, files = null
     const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
     const supabase = createClient(supabaseUrl, supabaseKey);
     
-    const userId = '00000000-0000-0000-0000-000000000001'; // TODO: Get from auth
+    const userId = process.env.BLOOM_OWNER_USER_ID || '823e2fb5-2f8f-4279-9c84-c8f4bf78bcce'; // Kimberly's UUID
     
     // Insert user message
     await supabase
@@ -1878,7 +1878,7 @@ router.get('/sessions', async (req, res) => {
       const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
       const supabase = createClient(supabaseUrl, supabaseKey);
       
-      const userId = '00000000-0000-0000-0000-000000000001'; // TODO: Get from auth
+      const userId = process.env.BLOOM_OWNER_USER_ID || '823e2fb5-2f8f-4279-9c84-c8f4bf78bcce'; // Kimberly's UUID
       
       const { data, error } = await supabase
         .from('sessions')
