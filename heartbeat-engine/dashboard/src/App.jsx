@@ -1080,33 +1080,120 @@ function SessionFilesPanel({c, sessionId, setActiveArtifact}){
     </div>
   );
 
+  // Modern file type badge component
+  const FileBadge = ({ ext }) => {
+    const badges = {
+      html: { label: 'HTML', bg: 'linear-gradient(135deg, #E44D26, #F16529)', icon: '🌐' },
+      md: { label: 'MD', bg: 'linear-gradient(135deg, #083FA1, #0969DA)', icon: '📝' },
+      png: { label: 'PNG', bg: 'linear-gradient(135deg, #8B5CF6, #A78BFA)', icon: '🖼️' },
+      jpg: { label: 'JPG', bg: 'linear-gradient(135deg, #8B5CF6, #A78BFA)', icon: '🖼️' },
+      jpeg: { label: 'JPG', bg: 'linear-gradient(135deg, #8B5CF6, #A78BFA)', icon: '🖼️' },
+      js: { label: 'JS', bg: 'linear-gradient(135deg, #F7DF1E, #FFEA00)', icon: '💻' },
+      py: { label: 'PY', bg: 'linear-gradient(135deg, #3776AB, #FFD43B)', icon: '🐍' },
+    };
+    const badge = badges[ext] || { label: ext.toUpperCase(), bg: 'linear-gradient(135deg, #6B7280, #9CA3AF)', icon: '📄' };
+    return (
+      <div style={{
+        position: 'absolute',
+        top: 8,
+        right: 8,
+        padding: '4px 8px',
+        borderRadius: 6,
+        background: badge.bg,
+        color: '#fff',
+        fontSize: 10,
+        fontWeight: 700,
+        letterSpacing: '0.5px',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+        zIndex: 2,
+      }}>{badge.label}</div>
+    );
+  };
+
   return(
     <div style={{flex:1,overflowY:"auto",padding:12}}>
-      <div style={{fontSize:11,fontWeight:700,color:c.so,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8,padding:"0 4px"}}>Files in this chat ({files.length})</div>
-      {files.map(f=>{
-        const ext=(f.name||'').split('.').pop()?.toLowerCase()||'';
-        const icon=ext==='html'?'🌐':ext==='md'?'📝':ext==='js'||ext==='py'?'💻':'📄';
-        return(
-          <div key={f.fileId} onClick={async()=>{
-            try{
-              const pr=await fetch(`/api/files/preview/${f.fileId}`);
-              if(pr.headers.get('content-type')?.includes('json')){
-                const pd=await pr.json();
-                setActiveArtifact({name:f.name,content:pd.content||'',fileId:f.fileId});
-              }
-            }catch{}
-          }} style={{padding:"10px 12px",borderRadius:10,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",marginBottom:8,display:"flex",alignItems:"center",gap:10,transition:"border-color .15s"}}
-            onMouseEnter={e=>e.currentTarget.style.borderColor=c.ac}
-            onMouseLeave={e=>e.currentTarget.style.borderColor=c.ln}>
-            <span style={{fontSize:18}}>{icon}</span>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{fontSize:12,fontWeight:600,color:c.tx,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</div>
-              {f.description&&<div style={{fontSize:10,color:c.so,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginTop:1}}>{f.description}</div>}
+      <div style={{fontSize:11,fontWeight:700,color:c.so,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:12,padding:"0 4px"}}>Files in this chat ({files.length})</div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(180px, 1fr))',gap:12}}>
+        {files.map(f=>{
+          const ext=(f.name||'').split('.').pop()?.toLowerCase()||'';
+          const isImage = ['png','jpg','jpeg','gif','webp'].includes(ext);
+          
+          return(
+            <div key={f.fileId} onClick={async()=>{
+              try{
+                const pr=await fetch(`/api/files/preview/${f.fileId}`);
+                if(pr.headers.get('content-type')?.includes('json')){
+                  const pd=await pr.json();
+                  setActiveArtifact({name:f.name,content:pd.content||'',fileId:f.fileId});
+                }
+              }catch{}
+            }} style={{
+              position: 'relative',
+              borderRadius:12,
+              border:"1px solid "+c.ln,
+              background:c.cd,
+              cursor:"pointer",
+              overflow:"hidden",
+              transition:"all .2s",
+              aspectRatio: '1'
+            }}
+              onMouseEnter={e=>{
+                e.currentTarget.style.borderColor=c.ac;
+                e.currentTarget.style.transform="translateY(-2px)";
+                e.currentTarget.style.boxShadow="0 8px 16px rgba(0,0,0,0.1)";
+              }}
+              onMouseLeave={e=>{
+                e.currentTarget.style.borderColor=c.ln;
+                e.currentTarget.style.transform="translateY(0)";
+                e.currentTarget.style.boxShadow="none";
+              }}>
+              
+              <FileBadge ext={ext} />
+              
+              {/* Preview Image or Icon */}
+              <div style={{
+                width:'100%',
+                height:'100%',
+                display:'flex',
+                alignItems:'center',
+                justifyContent:'center',
+                background: isImage ? '#000' : c.bg,
+                position: 'relative'
+              }}>
+                {isImage && f.thumbnail_base64 ? (
+                  <img 
+                    src={`data:image/png;base64,${f.thumbnail_base64}`}
+                    alt={f.name}
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover'
+                    }}
+                  />
+                ) : (
+                  <div style={{fontSize:48,opacity:0.3}}>
+                    {ext==='html'?'🌐':ext==='md'?'📝':ext==='js'||ext==='py'?'💻':'📄'}
+                  </div>
+                )}
+              </div>
+
+              {/* File Info Overlay */}
+              <div style={{
+                position:'absolute',
+                bottom:0,
+                left:0,
+                right:0,
+                padding:'8px 10px',
+                background:'linear-gradient(to top, rgba(0,0,0,0.8), transparent)',
+                color:'#fff'
+              }}>
+                <div style={{fontSize:11,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</div>
+                {f.description&&<div style={{fontSize:9,opacity:0.8,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginTop:2}}>{f.description}</div>}
+              </div>
             </div>
-            {ext==='html'&&<a href={`/api/files/publish/${f.fileId}`} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} style={{fontSize:10,color:c.ac,textDecoration:"none",fontWeight:600}}>↗</a>}
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 }
