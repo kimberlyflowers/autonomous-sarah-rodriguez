@@ -2398,7 +2398,6 @@ function App() {
   const navTabs=[
     {k:"chat",l:"Chat",icon:ChatIcon},
     {k:"monitor",l:"Status",icon:StatusIcon},
-    {k:"artifacts",l:"Files",icon:FilesIcon},
     {k:"activity",l:"Activity",icon:ActivityIcon},
     {k:"calls",l:"Calls",icon:CallsIcon},
   ];
@@ -2449,30 +2448,6 @@ function App() {
               </button>
             ))}
           </div>
-          {/* Business / Project switcher */}
-          {!mob&&(
-            <div style={{display:"flex",alignItems:"center",gap:6}}>
-              <div style={{position:"relative"}}>
-                <button onClick={()=>setProjO(!projO)} style={{display:"flex",alignItems:"center",gap:5,padding:"5px 10px",borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:11,fontWeight:600,color:c.so}}>
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={c.ac} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
-                  </svg>
-                  <span style={{color:c.tx,maxWidth:80,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{activeProj.split(" ")[0]}</span>
-                  <span style={{fontSize:9}}>▾</span>
-                </button>
-                {projO&&(
-                  <div style={{position:"absolute",top:"100%",left:0,zIndex:80,background:c.cd,border:"1px solid "+c.ln,borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,.18)",overflow:"hidden",marginTop:4,minWidth:180}}>
-                    {projects.map(p=>(
-                      <button key={p} onClick={()=>{setActiveProj(p);setProjO(false);}} style={{width:"100%",textAlign:"left",padding:"9px 12px",border:"none",cursor:"pointer",background:activeProj===p?c.ac+"15":"transparent",fontSize:12,fontWeight:activeProj===p?600:500,color:activeProj===p?c.ac:c.tx,display:"flex",alignItems:"center",gap:8}} onMouseEnter={e=>{if(activeProj!==p)e.currentTarget.style.background=c.hv;}} onMouseLeave={e=>{if(activeProj!==p)e.currentTarget.style.background="transparent";}}>
-                        {activeProj===p&&<span style={{fontSize:10,color:c.ac}}>✓</span>}
-                        <span>{p}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
           <div style={{display:"flex",alignItems:"center",gap:6,padding:"4px 10px",borderRadius:12,background:connected?c.gf:"#fef2f2",border:"1px solid "+(connected?c.gr+"30":"#fecaca")}}>
             <span style={{width:6,height:6,borderRadius:"50%",background:connected?c.gr:"#ef4444",animation:connected?"pulse 1.5s ease infinite":"none"}}/>
             <span style={{fontSize:10,fontWeight:600,color:connected?c.gr:"#dc2626"}}>{connected?"Connected":"Offline"}</span>
@@ -2576,6 +2551,26 @@ function App() {
                           onBlur={e=>e.currentTarget.style.borderColor=c.ln}
                         />
                       </div>
+                    </div>
+
+                    {/* Sidebar navigation menu */}
+                    <div style={{padding:"4px 0",marginBottom:8,borderBottom:"1px solid "+c.ln}}>
+                      <button onClick={()=>setPg("customize")} style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"none",cursor:"pointer",background:pg==="customize"?c.sf:"transparent",color:pg==="customize"?c.tx:c.so,fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:10,transition:"background .15s"}} onMouseEnter={e=>{ if(pg!=="customize") e.currentTarget.style.background=c.hv; }} onMouseLeave={e=>{ if(pg!=="customize") e.currentTarget.style.background="transparent"; }}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+                        <span>Customize</span>
+                      </button>
+                      <button onClick={()=>setPg("chat")} style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"none",cursor:"pointer",background:pg==="chat"?c.sf:"transparent",color:pg==="chat"?c.tx:c.so,fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:10,transition:"background .15s"}} onMouseEnter={e=>{ if(pg!=="chat") e.currentTarget.style.background=c.hv; }} onMouseLeave={e=>{ if(pg!=="chat") e.currentTarget.style.background="transparent"; }}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                        <span>Chats</span>
+                      </button>
+                      <button onClick={()=>setPg("projects")} style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"none",cursor:"pointer",background:pg==="projects"?c.sf:"transparent",color:pg==="projects"?c.tx:c.so,fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:10,transition:"background .15s"}} onMouseEnter={e=>{ if(pg!=="projects") e.currentTarget.style.background=c.hv; }} onMouseLeave={e=>{ if(pg!=="projects") e.currentTarget.style.background="transparent"; }}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                        <span>Projects</span>
+                      </button>
+                      <button onClick={()=>setPg("artifacts")} style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"none",cursor:"pointer",background:pg==="artifacts"?c.sf:"transparent",color:pg==="artifacts"?c.tx:c.so,fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:10,transition:"background .15s"}} onMouseEnter={e=>{ if(pg!=="artifacts") e.currentTarget.style.background=c.hv; }} onMouseLeave={e=>{ if(pg!=="artifacts") e.currentTarget.style.background="transparent"; }}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                        <span>Files</span>
+                      </button>
                     </div>
                   </div>
 
