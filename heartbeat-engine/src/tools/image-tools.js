@@ -349,14 +349,23 @@ async function editWithGPTImage(prompt, imageUrl, imageBase64, size, quality) {
 
 async function generateWithGemini(prompt, size) {
   try {
-    logger.info('Generating image with Gemini (Nano Banana)');
+    logger.info('Generating image with Gemini');
 
-    // Map sizes to Gemini aspect ratios
+    // Try Nano Banana FIRST (free tier — gemini-2.0-flash-exp native image gen)
+    try {
+      logger.info('Trying Nano Banana (free tier)');
+      const result = await generateWithNanoBanana(prompt, size);
+      if (result.success) return result;
+    } catch(e) {
+      logger.warn('Nano Banana failed, trying Imagen 4', { error: e.message });
+    }
+
+    // Fallback: Imagen 4 (may require paid tier)
+    logger.info('Trying Imagen 4');
     let aspectRatio = '1:1';
     if (size === '1024x1536') aspectRatio = '2:3';
     if (size === '1536x1024') aspectRatio = '3:2';
 
-    // Use Imagen 4 via Gemini API
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=${getGeminiKey()}`,
       {
