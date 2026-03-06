@@ -2084,6 +2084,7 @@ function App() {
     }
   },[messages]);
   const [sbO,setSbO]=useState(!mob?"full":"closed");
+  const [openChatMenu,setOpenChatMenu]=useState(null); // Track which chat's menu is open
   const [stab,setStab]=useState("General");
   const [hlpO,setHlpO]=useState(false);
   const [profileOpen,setProfileOpen]=useState(false);
@@ -2448,6 +2449,7 @@ function App() {
                         : diff < 86400000 ? Math.floor(diff/3600000)+"h ago"
                         : diff < 604800000 ? Math.floor(diff/86400000)+"d ago"
                         : when.toLocaleDateString([],{month:"short",day:"numeric"});
+                      const menuOpen = openChatMenu === s.id;
                       return(
                         <div key={s.id} style={{position:"relative",marginBottom:2}} className="session-row">
                           <button
@@ -2456,19 +2458,29 @@ function App() {
                             onMouseEnter={e=>{ if(!isActive) e.currentTarget.style.background=c.hv; }}
                             onMouseLeave={e=>{ if(!isActive) e.currentTarget.style.background="transparent"; }}
                           >
-                            <div style={{fontSize:12,fontWeight:isActive?600:500,color:isActive?c.ac:c.tx,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",paddingRight:20}}>{title}</div>
+                            <div style={{fontSize:16,fontWeight:isActive?600:500,color:isActive?c.ac:c.tx,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",paddingRight:30}}>{title}</div>
                             <div style={{fontSize:10,color:c.fa,marginTop:2,display:"flex",gap:6}}>
                               <span>{timeLabel}</span>
                               {s.message_count>0&&<span>· {Math.floor(s.message_count/2)} msg{s.message_count>2?"s":""}</span>}
                             </div>
                           </button>
                           <button
-                            onClick={e=>{e.stopPropagation();if(confirm('Delete this conversation?'))deleteSession(s.id);}}
-                            title="Delete"
-                            style={{position:"absolute",right:4,top:"50%",transform:"translateY(-50%)",width:22,height:22,borderRadius:6,border:"none",background:"transparent",cursor:"pointer",fontSize:12,color:c.fa,opacity:0.35,transition:"all .15s",display:"flex",alignItems:"center",justifyContent:"center"}}
-                            onMouseEnter={e=>{e.currentTarget.style.opacity="1";e.currentTarget.style.background=c.sf;e.currentTarget.style.color="#ef4444";}}
-                            onMouseLeave={e=>{e.currentTarget.style.opacity="0.35";e.currentTarget.style.background="transparent";e.currentTarget.style.color=c.fa;}}
-                          >✕</button>
+                            onClick={e=>{e.stopPropagation();setOpenChatMenu(menuOpen ? null : s.id);}}
+                            title="Options"
+                            style={{position:"absolute",right:4,top:"50%",transform:"translateY(-50%)",width:28,height:28,borderRadius:6,border:"none",background:menuOpen?c.sf:"transparent",cursor:"pointer",fontSize:20,color:c.tx,opacity:menuOpen?1:0.5,transition:"all .15s",display:"flex",alignItems:"center",justifyContent:"center"}}
+                            onMouseEnter={e=>{e.currentTarget.style.opacity="1";if(!menuOpen)e.currentTarget.style.background=c.sf;}}
+                            onMouseLeave={e=>{if(!menuOpen){e.currentTarget.style.opacity="0.5";e.currentTarget.style.background="transparent";}}}
+                          >⋮</button>
+                          {menuOpen&&(
+                            <>
+                              <div onClick={()=>setOpenChatMenu(null)} style={{position:"fixed",inset:0,zIndex:999}}/>
+                              <div style={{position:"absolute",right:8,top:"calc(50% + 20px)",background:c.cd,border:"1px solid "+c.ln,borderRadius:8,padding:4,zIndex:1000,minWidth:140,boxShadow:"0 4px 12px rgba(0,0,0,0.15)"}}>
+                                <button onClick={()=>{setOpenChatMenu(null);alert('Star feature coming soon');}} style={{width:"100%",textAlign:"left",padding:"8px 12px",borderRadius:6,border:"none",background:"transparent",cursor:"pointer",fontSize:13,color:c.tx,display:"flex",alignItems:"center",gap:8}} onMouseEnter={e=>e.currentTarget.style.background=c.hv} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>⭐ Star</button>
+                                <button onClick={()=>{setOpenChatMenu(null);alert('Rename feature coming soon');}} style={{width:"100%",textAlign:"left",padding:"8px 12px",borderRadius:6,border:"none",background:"transparent",cursor:"pointer",fontSize:13,color:c.tx,display:"flex",alignItems:"center",gap:8}} onMouseEnter={e=>e.currentTarget.style.background=c.hv} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>✏️ Rename</button>
+                                <button onClick={()=>{setOpenChatMenu(null);if(confirm('Delete this conversation?'))deleteSession(s.id);}} style={{width:"100%",textAlign:"left",padding:"8px 12px",borderRadius:6,border:"none",background:"transparent",cursor:"pointer",fontSize:13,color:"#ef4444",display:"flex",alignItems:"center",gap:8}} onMouseEnter={e=>e.currentTarget.style.background=c.hv} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>🗑️ Delete</button>
+                              </div>
+                            </>
+                          )}
                         </div>
                       );
                     })}
