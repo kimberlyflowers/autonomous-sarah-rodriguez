@@ -417,6 +417,9 @@ async function generateWithGemini(prompt, size) {
 async function generateWithNanoBanana(prompt, size) {
   try {
     // Nano Banana 2 uses Gemini 3.1 Flash Image — conversational image generation
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+    
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key=${getGeminiKey()}`,
       {
@@ -430,12 +433,17 @@ async function generateWithNanoBanana(prompt, size) {
             responseModalities: ["TEXT", "IMAGE"],
           },
         }),
+        signal: controller.signal
       }
     );
+    
+    clearTimeout(timeout);
 
     if (!response.ok) {
       const err = await response.text();
-      throw new Error(`Nano Banana API error: ${err}`);
+      logger.error('Nano Banana API error', { status: response.status, error: err, hasKey: !!getGeminiKey() });
+      throw new Error(`Nano Banana API error ${response.status}: ${err}`);
+    }
     }
 
     const data = await response.json();
