@@ -3,13 +3,10 @@ import { logger } from '../logging/logger.js';
 
 const router = express.Router();
 
-// Get database pool
-let getPool;
-try {
+// Get database pool - using same pattern as agent.js
+async function getPool() {
   const { getSharedPool } = await import('../database/pool.js');
-  getPool = getSharedPool;
-} catch (err) {
-  logger.error('Failed to load database pool:', err);
+  return getSharedPool();
 }
 
 /**
