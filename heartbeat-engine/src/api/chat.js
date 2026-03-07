@@ -142,7 +142,13 @@ Never tell Kimberly you "can't" do something that you actually can. If someone u
 image, you can see it — say so and engage with it. If they need a blog post written, write it.
 If they need advice, give it. Your job is to be genuinely useful, not to list your limitations.
 
-CRITICAL — NEVER abandon a deliverable because a tool fails:
+EDITING YOUR OWN WORK — never ask the user to re-upload:
+When a user asks you to edit or modify something you already created (a flyer, image, website,
+document), call get_session_files FIRST to retrieve the file URL from this session.
+Then use image_edit (for images) or create_artifact (for documents/HTML) with that URL.
+NEVER say "can you share the flyer?" or "please upload the image" — you made it, you can get it.
+
+CRITICAL — never abandon a deliverable because a tool fails:
 If image_generate fails (no API key, error, timeout), you still deliver the website/design using
 CSS gradients, patterns, and beautiful styling instead. If a CRM call fails, you still write the
 email copy and tell them about the error. If web_search fails, you still answer with what you know.
@@ -888,7 +894,18 @@ const _ALL_TOOLS = [
       required: ["prompt"]
     }
   },
-  // ── ARTIFACTS — create deliverables for client review ────────────────────
+  {
+    name: "get_session_files",
+    description: "Retrieve files and images you previously created in this session or recent sessions. Use this BEFORE asking the user to re-upload something you already made. When a user asks you to edit or modify something you created (a flyer, image, document, website), call this tool first to get the file URL — then use image_edit or create_artifact with that URL. Never ask the user to re-upload a file you already created.",
+    input_schema: {
+      type: "object",
+      properties: {
+        sessionId: { type: "string", description: "The session ID to look up files for. Use the current session ID." },
+        fileType: { type: "string", enum: ["image", "html", "markdown", "docx", "all"], description: "Filter by file type. Use 'all' to see everything." }
+      },
+      required: ["sessionId"]
+    }
+  },
   {
     name: "create_artifact",
     description: "Create a deliverable file for the client to review and download. CRITICAL: After using this tool, ALWAYS tell the client in your response that you've created the file and include the filename in quotes. Example: 'Here's your flyer — \"summer-camp-flyer.html\"' or 'Done! Check out \"email-campaign.md\"'. The file will appear inline in chat AND in the Files tab. Use this for: blog posts, social media captions, email campaigns, reports, landing pages, SOPs, scripts, HTML pages, code, or any content the client will want to keep.",
@@ -1113,9 +1130,63 @@ async function executeTool(toolName, toolInput, sessionId = null) {
       }
     }
 
+    // Get previously created files — so Sarah never asks user to re-upload her own work
+    if (toolName === 'get_session_files') {
+      try {
+        const pool = await getPool();
+        const sid = toolInput.sessionId || sessionId;
+        const fileType = toolInput.fileType || 'all';
+
+        let query = `
+          SELECT file_id, name, description, file_type, mime_type, created_at,
+                 metadata->>'supabase_url' as supabase_url,
+                 '/api/files/preview/' || file_id as preview_url
+          FROM artifacts
+          WHERE session_id = $1
+          AND status != 'deleted'
+        `;
+        const params = [sid];
+
+        if (fileType !== 'all') {
+          query += ` AND file_type = $2`;
+          params.push(fileType);
+        }
+
+        query += ` ORDER BY created_at DESC LIMIT 20`;
+
+        const result = await pool.query(query, params);
+
+        if (result.rows.length === 0) {
+          return {
+            success: true,
+            files: [],
+            message: 'No files found for this session. You may need to recreate the asset.'
+          };
+        }
+
+        const files = result.rows.map(row => ({
+          fileId: row.file_id,
+          name: row.name,
+          description: row.description,
+          fileType: row.file_type,
+          createdAt: row.created_at,
+          // Prefer Supabase CDN URL, fall back to local preview URL
+          url: row.supabase_url || row.preview_url
+        }));
+
+        return {
+          success: true,
+          files,
+          message: `Found ${files.length} file(s) from this session. Use the 'url' field to reference or edit them.`
+        };
+      } catch (err) {
+        logger.error('get_session_files failed:', err.message);
+        return { success: false, error: 'Could not retrieve session files: ' + err.message };
+      }
+    }
+
     // Artifact creation — save deliverables for client review
     if (toolName === 'create_artifact') {
-      const port = process.env.PORT || 3000;
       const mimeMap = { text: 'text/plain', html: 'text/html', code: 'text/javascript', markdown: 'text/markdown' };
       const resp = await fetch(`http://localhost:${port}/api/files/artifacts`, {
         method: 'POST',
