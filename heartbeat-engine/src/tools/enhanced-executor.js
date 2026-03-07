@@ -7,6 +7,7 @@ import { executeInternalTool } from './internal-tools.js';
 import { executeBrowserTool } from './browser-tools.js';
 import { executeWebSearchTool } from './web-search-tools.js';
 import { executeImageTool } from './image-tools.js';
+import { executeScrapeTools } from './scrape-tools.js';
 import { trustGate } from '../trust/trust-gate.js';
 
 const logger = createLogger('enhanced-executor');
@@ -294,6 +295,8 @@ export class EnhancedToolExecutor {
       result = await executeWebSearchTool(execution.toolName, execution.parameters);
     } else if (execution.toolName.startsWith('image_')) {
       result = await executeImageTool(execution.toolName, execution.parameters);
+    } else if (execution.toolName.startsWith('scrape_')) {
+      result = await executeScrapeTools(execution.toolName, execution.parameters);
     } else {
       throw new Error(`Unknown tool category: ${execution.toolName}`);
     }

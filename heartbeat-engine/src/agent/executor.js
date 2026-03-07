@@ -10,6 +10,7 @@ import { executeInternalTool, internalToolDefinitions } from '../tools/internal-
 import { executeBrowserTool, browserToolDefinitions } from '../tools/browser-tools.js';
 import { executeWebSearchTool, webSearchToolDefinitions } from '../tools/web-search-tools.js';
 import { executeImageTool, imageToolDefinitions } from '../tools/image-tools.js';
+import { executeScrapeTools, scrapeToolDefinitions } from '../tools/scrape-tools.js';
 import { subAgentSystem, SUB_AGENTS } from '../agents/sub-agent-system.js';
 import { trustGate } from '../trust/trust-gate.js';
 import { contextManager } from '../context/context-manager.js';
@@ -575,6 +576,15 @@ Use the available tools to complete this task. Work step by step and explain you
 
     // Add image generation tools
     for (const [toolName, toolDef] of Object.entries(imageToolDefinitions)) {
+      claudeTools.push({
+        name: toolName,
+        description: toolDef.description,
+        input_schema: toolDef.parameters
+      });
+    }
+
+    // Add lead scraping tools
+    for (const [toolName, toolDef] of Object.entries(scrapeToolDefinitions)) {
       claudeTools.push({
         name: toolName,
         description: toolDef.description,
