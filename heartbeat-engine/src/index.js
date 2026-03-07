@@ -51,6 +51,10 @@ app.use(helmet({
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
+// Increase max listeners — Winston registers listeners per logger instance,
+// and we have many route modules each calling createLogger() at load time.
+process.setMaxListeners(25);
+
 // Global error handler - log but don't crash the web service
 process.on('uncaughtException', (error) => {
   logger.error('Uncaught Exception (non-fatal):', error);
