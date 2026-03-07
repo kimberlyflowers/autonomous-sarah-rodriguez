@@ -1619,6 +1619,8 @@ IMPORTANT: Since a brand kit is configured, DO NOT ask the user about colors, fo
 
   const toolsUsed = [];
   const toolResults = []; // Track what tools returned for history
+  let totalInputTokens = 0;
+  let totalOutputTokens = 0;
 
   // Detect multi-step requests — use Sonnet to preserve context across tool calls
   const multiStepKeywords = /\b(and (then|also|after|send|text|email|post|share|save|upload)|then (send|text|email|post|share|save)|after (that|you|creating|making|generating)|also (send|text|email)|as well|too\b.*\b(send|text|email))/i;
@@ -1638,6 +1640,12 @@ IMPORTANT: Since a brand kit is configured, DO NOT ask the user about colors, fo
       tools: availableTools
     });
 
+    // Accumulate token usage every round
+    if (response.usage) {
+      totalInputTokens += response.usage.input_tokens || 0;
+      totalOutputTokens += response.usage.output_tokens || 0;
+    }
+
     if (response.stop_reason === 'end_turn') {
       const text = response.content
         .filter(b => b.type === 'text')
@@ -1648,6 +1656,30 @@ IMPORTANT: Since a brand kit is configured, DO NOT ask the user about colors, fo
         const toolSummaryLog = toolsUsed.map(t => t.name).join(', ');
         logger.info('Tools used this turn', { tools: toolSummaryLog, sessionId });
       }
+
+      // Write token usage to Supabase usage_metrics (fire and forget — never block response)
+      try {
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+        const today = new Date().toISOString().split('T')[0];
+        const orgId = process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001';
+        const agentId = process.env.AGENT_UUID || 'c3000000-0000-0000-0000-000000000003';
+        const artifactsCreated = toolsUsed.filter(t => t.name === 'create_artifact' || t.name === 'image_generate').length;
+
+        await supabase.rpc('upsert_usage_metrics', {
+          p_org_id: orgId,
+          p_agent_id: agentId,
+          p_date: today,
+          p_messages: 1,
+          p_tokens_input: totalInputTokens,
+          p_tokens_output: totalOutputTokens,
+          p_artifacts: artifactsCreated
+        });
+        logger.info('Usage metrics recorded', { inputTokens: totalInputTokens, outputTokens: totalOutputTokens, model: chatModel });
+      } catch (usageErr) {
+        logger.warn('Usage metrics write failed (non-critical):', usageErr.message);
+      }
+
       return text;
     }
 
