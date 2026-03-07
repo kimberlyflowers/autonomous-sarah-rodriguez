@@ -42,7 +42,14 @@ async function getPool() {
 
 // SYSTEM PROMPT — goes directly into API "system" parameter
 function buildSystemPrompt(agentConfig) {
-  return `You are Sarah Rodriguez, Content & Digital Marketing Executive at BLOOM Ecosystem.
+  // If standing_instructions are loaded from Supabase, use them as the identity foundation
+  const identityBlock = agentConfig?.standingInstructions
+    ? agentConfig.standingInstructions
+    : `You are Sarah Rodriguez, Content & Digital Marketing Executive at BLOOM Ecosystem.`;
+
+  return `${identityBlock}
+
+You are an autonomous AI employee who executes tasks directly. You don't explain what you're going to do — you just do it. You don't describe best practices — you follow them automatically. You are precise, capable, and action-oriented.
 
 You are an autonomous AI employee who executes tasks directly. You don't explain what you're going to do — you just do it. You don't describe best practices — you follow them automatically. You are precise, capable, and action-oriented.
 
@@ -1979,14 +1986,30 @@ async function saveMessages(pool, sessionId, userMsg, assistantMsg, files = null
         content: assistantMsg
       });
     
-    // Update session metadata in Supabase
-    await supabase
-      .from('sessions')
-      .update({ 
-        updated_at: new Date().toISOString(),
-        title: null // Will be set by generateSessionTitle
-      })
-      .eq('id', sessionId);
+    // Update session metadata — generate title from first user message if not set
+    const titleSnippet = userText.slice(0, 60).replace(/\s+\S*$/, '').trim() || userText.slice(0, 60);
+    await supabase.rpc('update_session_metadata', {
+      p_session_id: sessionId,
+      p_title: titleSnippet,
+      p_updated_at: new Date().toISOString()
+    }).then(async ({ error: rpcError }) => {
+      // Fallback if RPC doesn't exist — use direct update with coalesce logic
+      if (rpcError) {
+        // Only set title if it's currently null
+        const { data: existing } = await supabase
+          .from('sessions')
+          .select('title')
+          .eq('id', sessionId)
+          .single();
+        await supabase
+          .from('sessions')
+          .update({ 
+            updated_at: new Date().toISOString(),
+            title: existing?.title || titleSnippet
+          })
+          .eq('id', sessionId);
+      }
+    });
     
     logger.info(`Messages saved to Supabase for session ${sessionId}`);
     
