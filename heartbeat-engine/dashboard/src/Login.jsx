@@ -3,24 +3,21 @@ import { supabase } from './supabase.js';
 
 export default function Login() {
   const [email, setEmail] = useState('');
-  const [sent, setSent] = useState(false);
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   const handleLogin = async () => {
-    if (!email.trim()) return;
+    if (!email.trim() || !password.trim()) return;
     setLoading(true);
     setError('');
-    const { error } = await supabase.auth.signInWithOtp({
+    const { error } = await supabase.auth.signInWithPassword({
       email: email.trim().toLowerCase(),
-      options: { shouldCreateUser: false } // only existing users can log in
+      password
     });
     setLoading(false);
-    if (error) {
-      setError(error.message);
-    } else {
-      setSent(true);
-    }
+    if (error) setError(error.message);
+    // On success, onAuthStateChange in main.jsx handles the redirect automatically
   };
 
   const bg = '#f7f7f8';
@@ -29,25 +26,6 @@ export default function Login() {
   const text = '#1a1a2e';
   const sub = '#6b7280';
   const border = '#e5e7eb';
-
-  if (sent) return (
-    <div style={{ minHeight:'100vh', background:bg, display:'flex', alignItems:'center', justifyContent:'center', fontFamily:'-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif' }}>
-      <div style={{ background:card, borderRadius:16, padding:'48px 40px', maxWidth:400, width:'100%', textAlign:'center', boxShadow:'0 4px 24px rgba(0,0,0,0.08)', border:`1px solid ${border}` }}>
-        <div style={{ fontSize:48, marginBottom:16 }}>✉️</div>
-        <h2 style={{ margin:'0 0 12px', color:text, fontSize:22, fontWeight:700 }}>Check your email</h2>
-        <p style={{ margin:0, color:sub, fontSize:15, lineHeight:1.6 }}>
-          We sent a magic link to <strong>{email}</strong>.<br/>
-          Click it to sign in — no password needed.
-        </p>
-        <button
-          onClick={() => { setSent(false); setEmail(''); }}
-          style={{ marginTop:24, background:'transparent', border:'none', color:accent, fontSize:14, cursor:'pointer', fontWeight:600 }}
-        >
-          Use a different email
-        </button>
-      </div>
-    </div>
-  );
 
   return (
     <div style={{ minHeight:'100vh', background:bg, display:'flex', alignItems:'center', justifyContent:'center', fontFamily:'-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif' }}>
@@ -64,36 +42,48 @@ export default function Login() {
 
         {/* Form */}
         <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-          <label style={{ fontSize:13, fontWeight:600, color:text }}>Email address</label>
-          <input
-            type="email"
-            value={email}
-            onChange={e => setEmail(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleLogin()}
-            placeholder="you@example.com"
-            style={{ padding:'12px 16px', borderRadius:10, border:`1.5px solid ${border}`, fontSize:15, color:text, outline:'none', background:'#fafafa', transition:'border .15s' }}
-            onFocus={e => e.target.style.borderColor = accent}
-            onBlur={e => e.target.style.borderColor = border}
-          />
+          <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+            <label style={{ fontSize:13, fontWeight:600, color:text }}>Email address</label>
+            <input
+              type="email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleLogin()}
+              placeholder="you@example.com"
+              style={{ padding:'12px 16px', borderRadius:10, border:`1.5px solid ${border}`, fontSize:15, color:text, outline:'none', background:'#fafafa' }}
+              onFocus={e => e.target.style.borderColor = accent}
+              onBlur={e => e.target.style.borderColor = border}
+            />
+          </div>
+
+          <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+            <label style={{ fontSize:13, fontWeight:600, color:text }}>Password</label>
+            <input
+              type="password"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleLogin()}
+              placeholder="••••••••"
+              style={{ padding:'12px 16px', borderRadius:10, border:`1.5px solid ${border}`, fontSize:15, color:text, outline:'none', background:'#fafafa' }}
+              onFocus={e => e.target.style.borderColor = accent}
+              onBlur={e => e.target.style.borderColor = border}
+            />
+          </div>
 
           {error && (
             <p style={{ margin:0, color:'#ef4444', fontSize:13, padding:'8px 12px', background:'#fef2f2', borderRadius:8 }}>
-              {error === 'Signups not allowed for otp' ? 'That email isn\'t registered. Contact your BLOOM admin.' : error}
+              {error === 'Invalid login credentials' ? 'Wrong email or password.' : error}
             </p>
           )}
 
           <button
             onClick={handleLogin}
-            disabled={loading || !email.trim()}
-            style={{ padding:'13px', borderRadius:10, border:'none', background: loading || !email.trim() ? '#d1d5db' : `linear-gradient(135deg, ${accent}, #a78bdb)`, color:'#fff', fontSize:15, fontWeight:700, cursor: loading || !email.trim() ? 'not-allowed' : 'pointer', transition:'opacity .15s', marginTop:4 }}
+            disabled={loading || !email.trim() || !password.trim()}
+            style={{ padding:'13px', borderRadius:10, border:'none', background: loading || !email.trim() || !password.trim() ? '#d1d5db' : `linear-gradient(135deg, ${accent}, #a78bdb)`, color:'#fff', fontSize:15, fontWeight:700, cursor: loading || !email.trim() || !password.trim() ? 'not-allowed' : 'pointer', marginTop:4 }}
           >
-            {loading ? 'Sending…' : 'Send magic link'}
+            {loading ? 'Signing in…' : 'Sign in'}
           </button>
         </div>
-
-        <p style={{ marginTop:24, textAlign:'center', color:sub, fontSize:13 }}>
-          No password needed — we'll email you a sign-in link.
-        </p>
       </div>
     </div>
   );
