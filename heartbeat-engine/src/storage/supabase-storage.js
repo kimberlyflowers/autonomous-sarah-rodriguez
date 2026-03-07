@@ -10,7 +10,7 @@ import { createLogger } from '../logging/logger.js';
 
 const logger = createLogger('supabase-storage');
 
-const BUCKET_NAME = 'bloom-assets';
+const BUCKET_NAME = 'bloom-images';
 
 let _supabase = null;
 
