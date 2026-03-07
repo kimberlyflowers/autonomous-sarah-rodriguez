@@ -1851,9 +1851,9 @@ async function loadHistory(pool, sessionId) {
     
     const { data, error } = await supabase
       .from('messages')
-      .select('type, text, timestamp')
-      .eq('conversation_id', sessionId)
-      .order('timestamp', { ascending: true })
+      .select('role, content, created_at')
+      .eq('session_id', sessionId)
+      .order('created_at', { ascending: true })
       .limit(40);
     
     if (error) {
@@ -1866,11 +1866,10 @@ async function loadHistory(pool, sessionId) {
       return res.rows.map(r => ({ role: r.role, content: r.content }));
     }
     
-    // Map Supabase schema to expected format
-    // 'user' → 'user', 'sarah' → 'assistant', 'system' → 'system'
+    // Map Supabase schema — role is already 'user'/'assistant'
     return (data || []).map(msg => ({
-      role: msg.type === 'sarah' ? 'assistant' : msg.type,
-      content: msg.text
+      role: msg.role === 'sarah' ? 'assistant' : msg.role,
+      content: msg.content
     }));
     
   } catch (err) {
