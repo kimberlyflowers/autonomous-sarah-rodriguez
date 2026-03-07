@@ -18,6 +18,22 @@ const router = express.Router();
 const logger = createLogger('chat-api');
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+// Extract user ID from Supabase JWT — falls back to env var during transition
+async function getUserId(req) {
+  try {
+    const authHeader = req.headers['authorization'];
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.slice(7);
+      // Decode JWT payload (Supabase JWTs are standard base64url)
+      const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
+      if (payload.sub) return payload.sub;
+    }
+  } catch (e) {
+    // Fall through to env var fallback
+  }
+  return process.env.BLOOM_OWNER_USER_ID || '823e2fb5-2f8f-4279-9c84-c8f4bf78bcce';
+}
+
 // Get database pool - using the same pattern as existing code
 async function getPool() {
   const { getSharedPool } = await import('../database/pool.js');
@@ -1733,7 +1749,7 @@ IMPORTANT: Since a brand kit is configured, DO NOT ask the user about colors, fo
 // ROUTES — DB-backed persistent sessions
 
 let _tablesReady = false;
-async function ensureSession(pool, sessionId) {
+async function ensureSession(pool, sessionId, userId = null) {
   if (!_tablesReady) {
   // Create tables if missing (only runs on first call)
   await pool.query(`
@@ -1815,14 +1831,14 @@ async function ensureSession(pool, sessionId) {
     
     if (supabaseUrl && supabaseKey) {
       const supabase = createClient(supabaseUrl, supabaseKey);
-      const userId = process.env.BLOOM_OWNER_USER_ID || '823e2fb5-2f8f-4279-9c84-c8f4bf78bcce'; // Kimberly's UUID
+      const resolvedUserId = userId || process.env.BLOOM_OWNER_USER_ID || '823e2fb5-2f8f-4279-9c84-c8f4bf78bcce';
       
       // Insert into Supabase sessions table (upsert to handle existing sessions)
       const { error } = await supabase
         .from('sessions')
         .upsert({
           id: sessionId,
-          user_id: userId,
+          user_id: resolvedUserId,
           organization_id: process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001',
           agent_id: process.env.AGENT_UUID || 'c3000000-0000-0000-0000-000000000003',
           created_at: new Date().toISOString(),
@@ -1923,7 +1939,7 @@ Title:`;
   }
 }
 
-async function saveMessages(pool, sessionId, userMsg, assistantMsg, files = null) {
+async function saveMessages(pool, sessionId, userMsg, assistantMsg, files = null, userId = null) {
   const userText = typeof userMsg === 'string' ? userMsg : JSON.stringify(userMsg);
   
   // Save messages to SUPABASE (source of truth for millions of users)
@@ -1933,7 +1949,7 @@ async function saveMessages(pool, sessionId, userMsg, assistantMsg, files = null
     const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
     const supabase = createClient(supabaseUrl, supabaseKey);
     
-    const userId = process.env.BLOOM_OWNER_USER_ID || '823e2fb5-2f8f-4279-9c84-c8f4bf78bcce'; // Kimberly's UUID
+    const resolvedUserId = userId || process.env.BLOOM_OWNER_USER_ID || '823e2fb5-2f8f-4279-9c84-c8f4bf78bcce';
     
     // Insert user message
     await supabase
@@ -1941,7 +1957,7 @@ async function saveMessages(pool, sessionId, userMsg, assistantMsg, files = null
       .insert({
         session_id: sessionId,
         organization_id: process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001',
-        user_id: userId,
+        user_id: resolvedUserId,
         role: 'user',
         content: userText,
         files: files ? files : null
@@ -1953,7 +1969,7 @@ async function saveMessages(pool, sessionId, userMsg, assistantMsg, files = null
       .insert({
         session_id: sessionId,
         organization_id: process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001',
-        user_id: userId,
+        user_id: resolvedUserId,
         role: 'assistant',
         content: assistantMsg
       });
@@ -2099,7 +2115,8 @@ router.post('/message', async (req, res) => {
     const { message, sessionId = 'session-' + Date.now() } = req.body;
     if (!message?.trim()) return res.status(400).json({ error: 'Message required' });
 
-    await ensureSession(pool, sessionId);
+    const userId = await getUserId(req);
+    await ensureSession(pool, sessionId, userId);
     const history = await loadHistory(pool, sessionId);
     const agentConfig = await loadAgentConfig();
 
@@ -2142,7 +2159,7 @@ router.post('/message', async (req, res) => {
     const response = await chatWithSarah(enrichedMessage, history, agentConfig, sessionId);
     logger.info(`💬 Chat [${sessionId}] User: ${message.slice(0, 100)}${message.length > 100 ? '...' : ''}`);
     logger.info(`💬 Chat [${sessionId}] Sarah: ${response.replace(/\[Session context[\s\S]*$/, '').slice(0, 100)}${response.length > 100 ? '...' : ''}`);
-    await saveMessages(pool, sessionId, message, response);
+    await saveMessages(pool, sessionId, message, response, null, userId);
 
     // Strip internal session context before sending to client
     const cleanResponse = response.replace(/\s*\[Session context[\s\S]*$/g, '').trim();
@@ -2171,7 +2188,8 @@ router.post('/upload', async (req, res) => {
       return res.status(400).json({ error: 'Message or files required' });
     }
 
-    await ensureSession(pool, sessionId);
+    const userId = await getUserId(req);
+    await ensureSession(pool, sessionId, userId);
     const history = await loadHistory(pool, sessionId);
     const agentConfig = await loadAgentConfig();
 
@@ -2242,7 +2260,7 @@ router.post('/upload', async (req, res) => {
       ? `[Files: ${files.map(f => f.name).join(', ')}]${textMsg ? ' ' + textMsg : ''}`
       : textMsg;
     const filesMeta = files.map(f => ({ name: f.name, type: f.type }));
-    await saveMessages(pool, sessionId, historyLabel, response, filesMeta);
+    await saveMessages(pool, sessionId, historyLabel, response, filesMeta, userId);
 
     return res.json({ response, sessionId });
   } catch (error) {
