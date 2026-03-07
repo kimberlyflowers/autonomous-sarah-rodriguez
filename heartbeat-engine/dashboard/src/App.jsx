@@ -2822,8 +2822,7 @@ function App() {
               ):(
                 <>
                   <div style={{flex:1,minHeight:0,display:"flex",minWidth:0}}>
-                    <div style={{flex:1,minWidth:0,overflowY:"auto",overflowX:"hidden",background:c.bg}}>
-                    <div style={{maxWidth:720,margin:"0 auto",padding:mob?"14px 16px":"20px 24px",boxSizing:"border-box",minWidth:0}}>
+                    <div style={{flex:1,minWidth:0,overflowY:"auto",overflowX:"hidden",background:c.bg,padding:mob?"14px 12px":"18px 24px"}}><div>
                       {messages.map((m)=>{
                         const cards=m.b?parseMessageCards(m.t):[];
                         return (
@@ -2927,7 +2926,7 @@ function App() {
                         </div>
                       )}
                       <div ref={btm}/>
-                    </div>{/* centering inner wrapper */}
+                    </div></div>
                     </div>{/* messages scroll container */}
                     {!mob&&scrM!=="hidden"&&(
                       <ResizablePanel c={c} defaultWidth={480} minWidth={280} maxWidth={800}>
@@ -3025,8 +3024,7 @@ function App() {
                       </ResizablePanel>
                     )}
                   </div>
-                  <div style={{flexShrink:0,padding:mob?"8px 16px 12px":"10px 24px 14px",background:c.cd,borderTop:"1px solid "+c.ln}}>
-                    <div style={{maxWidth:720,margin:"0 auto",boxSizing:"border-box"}}>
+                  <div style={{flexShrink:0,padding:mob?"8px 12px 12px":"10px 20px 14px",background:c.cd,borderTop:"1px solid "+c.ln}}><div>
                       <div style={{display:"flex",alignItems:"center",gap:6,paddingBottom:6}}>
                         <span style={{width:5,height:5,borderRadius:"50%",background:connected?c.gr:c.fa}}/>
                         <span style={{fontSize:11,color:c.fa}}>{connected?"Connected to Sarah's API":"Reconnecting…"}</span>
@@ -3060,7 +3058,7 @@ function App() {
                         )}
                       </div>
                     </div>
-                  </div>
+                  </div></div>
                 </>
               )}
             </div>
