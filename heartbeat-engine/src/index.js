@@ -399,7 +399,132 @@ function setupCronSchedules(agentConfig) {
     timezone: "America/New_York"
   });
 
+  // ── Sidecar warmup ping ─────────────────────────────────────────────────
+  // Keeps the browser-use Python sidecar warm on Railway so it never cold-starts.
+  // Without this, every first scrape costs 20-30s waiting for the container to wake.
+  // Runs every 10 minutes — lightweight GET to /health, no browser launched.
+  cron.schedule('*/10 * * * *', async () => {
+    const url = process.env.BROWSER_AGENT_URL || 'http://sweet-nature.railway.internal:8080';
+    try {
+      const res = await fetch(`${url}/health`, { signal: AbortSignal.timeout(5000) });
+      if (res.ok) {
+        logger.debug('🌐 Sidecar ping OK');
+      } else {
+        logger.warn(`⚠️  Sidecar ping returned ${res.status}`);
+      }
+    } catch (e) {
+      logger.debug(`Sidecar ping failed (may be starting up): ${e.message}`);
+    }
+  });
+
+  // ── Scheduled task runner ────────────────────────────────────────────────
+  // Polls the scheduled_tasks table every minute.
+  // When a task is due (next_run_at <= now, status=active), executes it via chat
+  // and writes the result to task_runs so Sarah remembers what she did overnight.
+  cron.schedule('* * * * *', async () => {
+    try {
+      await runScheduledTasks(agentConfig);
+    } catch (e) {
+      logger.error('Scheduled task runner error:', e.message);
+    }
+  }, { timezone: 'America/Chicago' });
+
   logger.info('✅ All cron schedules configured');
+}
+
+// ── Scheduled Task Runner ──────────────────────────────────────────────────
+async function runScheduledTasks(agentConfig) {
+  const { getSharedPool } = await import('./database/pool.js');
+  const pool = getSharedPool();
+  if (!pool) return;
+
+  // Find tasks that are due now
+  let dueTasks;
+  try {
+    const result = await pool.query(`
+      SELECT * FROM scheduled_tasks
+      WHERE status = 'active'
+        AND next_run_at IS NOT NULL
+        AND next_run_at <= NOW()
+      ORDER BY next_run_at ASC
+      LIMIT 5
+    `);
+    dueTasks = result.rows;
+  } catch (e) {
+    logger.debug('Scheduled task query failed:', e.message);
+    return;
+  }
+
+  if (!dueTasks || dueTasks.length === 0) return;
+
+  logger.info(`⏰ Running ${dueTasks.length} scheduled task(s)`);
+
+  for (const task of dueTasks) {
+    const runId = `run_${Date.now()}`;
+    const startedAt = new Date().toISOString();
+
+    // Mark as running — prevent double-execution
+    try {
+      await pool.query(
+        `UPDATE scheduled_tasks SET status = 'active', last_run_at = NOW(),
+          next_run_at = CASE frequency
+            WHEN 'daily'    THEN NOW() + INTERVAL '1 day'
+            WHEN 'weekdays' THEN NOW() + INTERVAL '1 day'
+            WHEN 'weekly'   THEN NOW() + INTERVAL '7 days'
+            WHEN 'monthly'  THEN NOW() + INTERVAL '30 days'
+            ELSE NULL END,
+          run_count = run_count + 1
+        WHERE id = $1`,
+        [task.id]
+      );
+    } catch (e) {
+      logger.warn('Could not update scheduled task timing:', e.message);
+      continue;
+    }
+
+    // Execute the task by running it through Sarah's chat endpoint
+    let output = '';
+    let success = false;
+    try {
+      logger.info(`▶ Running task: ${task.name} — "${task.instruction.slice(0, 80)}"`);
+
+      // Import and call the agent executor directly (avoids HTTP round-trip)
+      const { AgentExecutor } = await import('./agent/executor.js');
+      const executor = new AgentExecutor(agentConfig);
+      const result = await executor.execute(
+        task.instruction,
+        [], // no conversation history for scheduled tasks
+        `scheduled_task_${task.id}`
+      );
+
+      output = typeof result === 'string' ? result : result?.response || JSON.stringify(result);
+      success = true;
+      logger.info(`✅ Task complete: ${task.name}`);
+
+    } catch (e) {
+      output = `Task failed: ${e.message}`;
+      logger.error(`❌ Task failed: ${task.name}`, e.message);
+    }
+
+    // Write result to task_runs
+    try {
+      await pool.query(
+        `INSERT INTO task_runs (scheduled_task_id, agent_id, organization_id, status, output, error, started_at, completed_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+        [
+          task.id,
+          task.agent_id,
+          task.organization_id,
+          success ? 'completed' : 'failed',
+          success ? output : null,
+          success ? null : output,
+          startedAt
+        ]
+      );
+    } catch (e) {
+      logger.warn('Could not write task_run record:', e.message);
+    }
+  }
 }
 
 function getNextScheduledHeartbeat() {
