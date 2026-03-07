@@ -41,7 +41,7 @@ COPY src/ ./src/
 COPY database/ ./database/
 COPY dashboard/ ./dashboard/
 
-# Build React dashboard (cache bust: 2026-03-07)
+# Build React dashboard (cache bust: 2026-03-07b)
 WORKDIR /app/dashboard
 RUN npm install
 RUN npm run build
