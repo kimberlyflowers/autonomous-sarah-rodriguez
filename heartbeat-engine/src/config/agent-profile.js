@@ -47,7 +47,7 @@ async function loadConfigFromDatabase(agentId) {
   while (retries > 0) {
     let pool = null;
     try {
-      const { getSharedPool } = await import('../../database/pool.js');
+      const { getSharedPool } = await import('../database/pool.js');
       pool = getSharedPool();
 
       const result = await pool.query(`
@@ -256,7 +256,7 @@ export async function updateAgentConfig(agentId, updates) {
     updates: Object.keys(updates)
   });
 
-  const { getSharedPool } = await import('../../database/pool.js');
+  const { getSharedPool } = await import('../database/pool.js');
   const pool = getSharedPool();
 
   try {

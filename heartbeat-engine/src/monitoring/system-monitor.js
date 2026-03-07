@@ -142,7 +142,7 @@ export class SystemMonitor {
       name: 'Database Connection',
       check: async () => {
         try {
-          const { getSharedPool } = await import('../../database/pool.js');
+          const { getSharedPool } = await import('../database/pool.js');
           const pool = getSharedPool();
           const result = await pool.query('SELECT 1 as health_check');
 
