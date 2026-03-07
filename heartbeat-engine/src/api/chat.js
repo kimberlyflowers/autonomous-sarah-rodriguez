@@ -155,6 +155,14 @@ the client an acknowledgment — you do NOT need to write one. Start working imm
 Do NOT respond with just text saying "I'll work on this" — actually call the tools and do the work.
 Your first action should be a tool call, not a text response.
 
+CRITICAL — complete ALL parts of every request:
+When a request has multiple steps (e.g. "create a flyer AND text it to me"), you MUST complete
+EVERY step before your turn ends. After finishing one step (like generating the flyer), immediately
+continue to the next step (like sending the SMS) — do NOT stop and present partial results.
+Before ending your turn, mentally check: "Did the user ask me to do anything else?" If yes, do it.
+This applies even after dispatching to a specialist — when the specialist returns, check what still
+needs to be done and keep going. Never let a tool call make you forget the rest of the instructions.
+
 Examples of WRONG behavior:
 - User: "write me a blog post" → Sarah: "Great, I'll write that for you!" (NO — use create_artifact)
 - User: "create a website" → Sarah: "On it, let me design something!" (NO — call create_artifact with HTML)
@@ -1536,9 +1544,19 @@ IMPORTANT: Since a brand kit is configured, DO NOT ask the user about colors, fo
 
   const toolsUsed = [];
   const toolResults = []; // Track what tools returned for history
+
+  // Detect multi-step requests — use Sonnet to preserve context across tool calls
+  const multiStepKeywords = /\b(and (then|also|after|send|text|email|post|share|save|upload)|then (send|text|email|post|share|save)|after (that|you|creating|making|generating)|also (send|text|email)|as well|too\b.*\b(send|text|email))/i;
+  const isMultiStep = multiStepKeywords.test(userMessage) || userMessage.split(/\band\b/i).length > 2;
+  const chatModel = isMultiStep
+    ? 'claude-sonnet-4-5'
+    : (process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001');
+
+  if (isMultiStep) logger.info('Multi-step request detected — using Sonnet for full context retention');
+
   for (let round = 0; round < 15; round++) {
     const response = await callAnthropicWithRetry({
-      model: process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001',
+      model: chatModel,
       max_tokens: 8192,
       system: systemPrompt,
       messages: currentMessages,
