@@ -2822,8 +2822,8 @@ function App() {
               ):(
                 <>
                   <div style={{flex:1,minHeight:0,overflowY:"auto",display:"flex",minWidth:0}}>
-                    <div style={{flex:1,minWidth:0,overflowY:"auto",overflowX:"hidden",padding:mob?"14px 12px":"18px 20px",background:c.bg,display:"flex",flexDirection:"column",alignItems:(sbO==="closed"&&!mob)?"center":"stretch"}}>
-                    <div style={{width:"100%",maxWidth:(sbO==="closed"&&!mob)?"760px":"100%"}}>
+                    <div style={{flex:1,minWidth:0,overflowY:"auto",overflowX:"hidden",background:c.bg,display:"flex",flexDirection:"column",alignItems:"center"}}>
+                    <div style={{width:"100%",maxWidth:760,padding:mob?"14px 12px":"18px 24px",boxSizing:"border-box"}}>
                       {messages.map((m)=>{
                         const cards=m.b?parseMessageCards(m.t):[];
                         return (
@@ -3025,8 +3025,8 @@ function App() {
                       </ResizablePanel>
                     )}
                   </div>
-                  <div style={{flexShrink:0,padding:mob?"6px 10px":"10px 16px",background:c.cd,borderTop:"1px solid "+c.ln,display:"flex",justifyContent:(sbO==="closed"&&!mob)?"center":"stretch"}}>
-                    <div style={{width:"100%",maxWidth:(sbO==="closed"&&!mob)?"760px":"100%"}}>
+                  <div style={{flexShrink:0,padding:mob?"6px 10px":"10px 16px",background:c.cd,borderTop:"1px solid "+c.ln,display:"flex",justifyContent:"center"}}>
+                    <div style={{width:"100%",maxWidth:760}}>
                       <div style={{display:"flex",alignItems:"center",gap:6,paddingBottom:6}}>
                         <span style={{width:5,height:5,borderRadius:"50%",background:connected?c.gr:c.fa}}/>
                         <span style={{fontSize:11,color:c.fa}}>{connected?"Connected to Sarah's API":"Reconnecting…"}</span>
@@ -3045,18 +3045,18 @@ function App() {
                       )}
                       {/* ── Input pill — + and mic inside like Claude ── */}
                       <div style={{display:"flex",alignItems:"flex-end",gap:8,padding:"8px 10px 8px 6px",borderRadius:16,border:"1.5px solid "+(vcRec?c.ac:c.ln),background:c.inp,transition:"border-color .2s"}}>
-                        <button onClick={()=>fRef.current?.click()} title="Attach file" style={{width:34,height:34,borderRadius:9,border:"none",cursor:"pointer",background:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginBottom:1}}>
+                        <button onClick={()=>fRef.current?.click()} title="Attach file" style={{width:34,height:34,borderRadius:9,border:"none",cursor:"pointer",background:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginBottom:2}}>
                           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={c.so} strokeWidth="2" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                         </button>
-                        <textarea value={tx} onChange={e=>{setTx(e.target.value);e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,200)+"px";}} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();doSend();}}} placeholder={vcRec?"Listening…":mob?"Message…":"Tell Sarah what you need…"} rows={1} style={{flex:1,padding:"8px 4px",border:"none",fontSize:14,fontFamily:"inherit",background:"transparent",color:c.tx,resize:"none",lineHeight:1.5,minHeight:36,maxHeight:200,overflowY:"auto",outline:"none"}}/>
-                        <button onClick={toggleVoice} style={{width:34,height:34,borderRadius:9,border:"none",cursor:"pointer",background:vcRec?c.ac+"22":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,position:"relative",marginBottom:1}}>
+                        <textarea value={tx} onChange={e=>{setTx(e.target.value);e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,200)+"px";}} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();doSend();}}} placeholder={vcRec?"Listening…":mob?"Message…":"Tell Sarah what you need…"} rows={2} style={{flex:1,padding:"8px 4px",border:"none",fontSize:14,fontFamily:"inherit",background:"transparent",color:c.tx,resize:"none",lineHeight:1.5,minHeight:52,maxHeight:200,overflowY:"auto",outline:"none"}}/>
+                        <button onClick={toggleVoice} style={{width:34,height:34,borderRadius:9,border:"none",cursor:"pointer",background:vcRec?c.ac+"22":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,position:"relative",marginBottom:2}}>
                           {vcRec&&<span style={{position:"absolute",inset:-3,borderRadius:12,border:"2px solid "+c.ac,animation:"pulse 1.2s ease infinite",opacity:0.4}}/>}
                           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={vcRec?c.ac:c.so} strokeWidth="2" strokeLinecap="round"><rect x="9" y="1" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0014 0"/><path d="M12 17v4M8 21h8"/></svg>
                         </button>
                         {loading?(
-                          <button onClick={stopSarah} style={{width:34,height:34,borderRadius:9,border:"none",cursor:"pointer",background:"rgba(234,67,53,0.15)",color:"#ea4335",fontSize:13,fontWeight:700,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:1}} title="Stop">■</button>
+                          <button onClick={stopSarah} style={{width:34,height:34,borderRadius:9,border:"none",cursor:"pointer",background:"rgba(234,67,53,0.15)",color:"#ea4335",fontSize:13,fontWeight:700,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:2}} title="Stop">■</button>
                         ):(
-                          <button onClick={doSend} disabled={!tx.trim()&&pendingFiles.length===0} style={{width:34,height:34,borderRadius:9,border:"none",cursor:(tx.trim()||pendingFiles.length>0)?"pointer":"not-allowed",background:(tx.trim()||pendingFiles.length>0)?"linear-gradient(135deg,#F4A261,#E76F8B)":"transparent",color:(tx.trim()||pendingFiles.length>0)?"#fff":c.fa,fontSize:15,fontWeight:700,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:1}}>➜</button>
+                          <button onClick={doSend} disabled={!tx.trim()&&pendingFiles.length===0} style={{width:34,height:34,borderRadius:9,border:"none",cursor:(tx.trim()||pendingFiles.length>0)?"pointer":"not-allowed",background:(tx.trim()||pendingFiles.length>0)?"linear-gradient(135deg,#F4A261,#E76F8B)":"transparent",color:(tx.trim()||pendingFiles.length>0)?"#fff":c.fa,fontSize:15,fontWeight:700,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:2}}>➜</button>
                         )}
                       </div>
                     </div>
