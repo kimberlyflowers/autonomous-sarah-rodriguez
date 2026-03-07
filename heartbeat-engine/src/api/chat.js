@@ -1624,7 +1624,7 @@ IMPORTANT: Since a brand kit is configured, DO NOT ask the user about colors, fo
   const multiStepKeywords = /\b(and (then|also|after|send|text|email|post|share|save|upload)|then (send|text|email|post|share|save)|after (that|you|creating|making|generating)|also (send|text|email)|as well|too\b.*\b(send|text|email))/i;
   const isMultiStep = multiStepKeywords.test(userMessage) || userMessage.split(/\band\b/i).length > 2;
   const chatModel = isMultiStep
-    ? 'claude-sonnet-4-5'
+    ? 'claude-sonnet-4-5-20250929'
     : (process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001');
 
   if (isMultiStep) logger.info('Multi-step request detected — using Sonnet for full context retention');
