@@ -323,9 +323,9 @@ function useSarahChat() {
       const responseText = (data.response||data.message||"Done.").replace(/\s*\[Session context[\s\S]*$/,'').replace(/\s*\[Tool:.*?\]\s*/g,'').trim();
       
       if(ackId){
-        setMessages(p=>p.filter(m=>m.id!==ackId).concat([{id:Date.now(),b:true,t:responseText,tm:ts2,skill:data.skillUsed||null,hasArtifact:!!responseText.match(/Created "|I've created|I created|saved as|saved it to|in your Files tab|saved to.*Files/i)}]));
+        setMessages(p=>p.filter(m=>m.id!==ackId).concat([{id:Date.now(),b:true,t:responseText,tm:ts2,skills:data.skillsUsed||[],hasArtifact:!!responseText.match(/Created "|I've created|I created|saved as|saved it to|in your Files tab|saved to.*Files/i)}]));
       } else {
-        setMessages(p=>[...p,{id:Date.now(),b:true,t:responseText,tm:ts2,skill:data.skillUsed||null,hasArtifact:!!responseText.match(/Created "|I've created|I created|saved as|saved it to|in your Files tab|saved to.*Files/i)}]);
+        setMessages(p=>[...p,{id:Date.now(),b:true,t:responseText,tm:ts2,skills:data.skillsUsed||[],hasArtifact:!!responseText.match(/Created "|I've created|I created|saved as|saved it to|in your Files tab|saved to.*Files/i)}]);
       }
       fetchSessions();
       setTimeout(fetchSessions, 3000);
@@ -2885,6 +2885,17 @@ function App() {
                                 <div style={{fontSize:14,lineHeight:1.65}}>{m.t}</div>
                               ))}
                               <div style={{fontSize:10,opacity:0.45,marginTop:5,textAlign:m.b?"left":"right"}}>{m.tm}</div>
+                              {/* Skill badge — shows which skill Sarah used for this response */}
+                              {m.b&&m.skills&&m.skills.length>0&&(
+                                <div style={{display:"flex",flexWrap:"wrap",gap:4,marginTop:6}}>
+                                  {m.skills.map((sk,si)=>(
+                                    <div key={si} style={{display:"inline-flex",alignItems:"center",gap:4,padding:"2px 8px",borderRadius:20,background:"rgba(168,85,247,0.1)",border:"1px solid rgba(168,85,247,0.25)",fontSize:10,fontWeight:600,color:"#a855f7",letterSpacing:"0.02em"}}>
+                                      <span style={{fontSize:9}}>⚡</span>
+                                      {sk.replace(/-/g," ")}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                             </div>
                           </div>
                           {/* Inline action cards — Sarah's messages only */}

@@ -231,6 +231,7 @@ Skill mapping (load these BEFORE starting work):
 - Creating social media content → load_skill("social-media") — MANDATORY
 - Working with CRM/contacts → load_skill("ghl-crm") — MANDATORY
 - Writing a book/chapter → load_skill("book-writing") — MANDATORY
+- Finding leads, building prospect lists, scraping directories → load_skill("lead-scraper") — MANDATORY
 
 If you skip loading the skill, the output will be LOW QUALITY and UNACCEPTABLE.
 **DO NOT proceed without loading the skill first.**
@@ -1249,7 +1250,7 @@ async function executeTool(toolName, toolInput, sessionId = null) {
         const nameToType = {
           'frontend-design': 'coding',
           'website-landing-page': 'coding',
-          'website-creation': 'coding',  // NEW comprehensive website skill
+          'website-creation': 'coding',
           'docx': 'docx',
           'docx-documents': 'docx',
           'pptx': 'pptx',
@@ -1261,8 +1262,9 @@ async function executeTool(toolName, toolInput, sessionId = null) {
           'social-media': 'writing',
           'book-writing': 'writing',
           'ghl-crm': 'crm',
-          'flyer-generation': 'image',  // NEW specialized flyer skill
+          'flyer-generation': 'image',
           'image-generation': 'image',
+          'lead-scraper': 'scraping',   // Lead generation via browser
         };
         const skillType = nameToType[skillName] || 'writing';
         const skillBody = getSkillContext(skillType, toolInput.context || '');
@@ -1270,6 +1272,9 @@ async function executeTool(toolName, toolInput, sessionId = null) {
         if (skillBody) {
           // Inject into system prompt for subsequent rounds
           systemPrompt += skillBody;
+          // Track which skills were used this turn for dashboard visibility
+          if (!skillsUsedThisTurn) skillsUsedThisTurn = [];
+          skillsUsedThisTurn.push(skillName);
           logger.info('Skill loaded via tool', { skill: skillName, length: skillBody.length });
           return { success: true, message: `Loaded "${skillName}" skill — ${skillBody.length} characters of expert guidelines now active. Proceed with the task using these instructions.` };
         }
@@ -2111,6 +2116,8 @@ router.patch('/sessions/:id/title', async (req, res) => {
 
 router.post('/message', async (req, res) => {
   const pool = await getPool();
+  // Track which skills Sarah loads during this turn — shown as badges in the dashboard
+  let skillsUsedThisTurn = [];
   try {
     const { message, sessionId = 'session-' + Date.now() } = req.body;
     if (!message?.trim()) return res.status(400).json({ error: 'Message required' });
@@ -2169,7 +2176,7 @@ router.post('/message', async (req, res) => {
       generateSessionTitle(pool, sessionId, message, cleanResponse).catch(() => {});
     }
 
-    return res.json({ response: cleanResponse, sessionId });
+    return res.json({ response: cleanResponse, sessionId, skillsUsed: skillsUsedThisTurn });
   } catch (error) {
     logger.error('Chat error', { error: error.message });
     return res.status(500).json({
