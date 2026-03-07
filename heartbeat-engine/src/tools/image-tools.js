@@ -585,44 +585,45 @@ export async function executeImageTool(toolName, parameters) {
           }
         }
 
-        // ALWAYS save to artifacts table (even if Supabase worked) so it shows in Files tab
+        // ALWAYS save to Supabase artifacts table so it shows in Files tab
         try {
-          const crypto = await import('crypto');
-          const { getSharedPool } = await import('../database/pool.js');
-          const pool = getSharedPool();
-          
-          const fileId = `art_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
-          const fname = `bloom-img-${Date.now()}.png`;
-          
-          // Save directly to artifacts table
-          const artifact = await pool.query(`
-            INSERT INTO artifacts (file_id, name, description, status, file_type, mime_type, thumbnail_base64, file_size, session_id, metadata, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
-            RETURNING *
-          `, [
-            fileId,
-            fname,
-            `Generated: ${(parameters.prompt || '').slice(0, 100)}`,
-            'approved',
-            'image',
-            'image/png',
-            result.image_base64, // FULL image in thumbnail_base64 (no truncation)
-            Buffer.from(result.image_base64, 'base64').length,
-            parameters.sessionId || null,
-            JSON.stringify({ supabase_url: result.image_url || null })
-          ]);
-          
-          if (artifact.rows[0]) {
-            // If we don't have a Supabase URL, use the database URL
+          const { createClient } = await import('@supabase/supabase-js');
+          const supabase = createClient(
+            process.env.SUPABASE_URL,
+            process.env.SUPABASE_SERVICE_KEY
+          );
+
+          const { data: artifact, error: artifactErr } = await supabase
+            .from('artifacts')
+            .insert({
+              organization_id: process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001',
+              created_by_user_id: process.env.BLOOM_OWNER_USER_ID || '823e2fb5-2f8f-4279-9c84-c8f4bf78bcce',
+              agent_id: process.env.AGENT_UUID || 'c3000000-0000-0000-0000-000000000003',
+              session_id: parameters.sessionId || null,
+              name: `bloom-img-${Date.now()}.png`,
+              description: `Generated: ${(parameters.prompt || '').slice(0, 100)}`,
+              file_type: 'image',
+              mime_type: 'image/png',
+              file_size: result.image_base64 ? Buffer.from(result.image_base64, 'base64').length : null,
+              storage_path: result.image_url || null,
+              content: null // images stored in Storage, not content column
+            })
+            .select('id')
+            .single();
+
+          if (!artifactErr && artifact) {
+            // Use Supabase artifact ID as file reference
             if (!result.image_url) {
-              result.image_url = `/api/files/preview/${fileId}`;
+              result.image_url = `/api/files/preview/${artifact.id}`;
             }
-            result.fileId = fileId;
-            result.message = result.message || `Image saved! View it in your Files tab or use this URL: ${result.image_url}`;
-            logger.info('Image saved as artifact', { fileId, hasSupabase: !!upload?.url });
+            result.fileId = artifact.id;
+            result.message = result.message || `Image saved! URL: ${result.image_url}`;
+            logger.info('Image saved to Supabase artifacts', { id: artifact.id, url: result.image_url });
+          } else if (artifactErr) {
+            logger.error('Supabase artifact insert failed', { error: artifactErr.message });
           }
         } catch (dbErr) {
-          logger.error('Direct DB save failed', { error: dbErr.message, stack: dbErr.stack });
+          logger.error('Supabase artifact save failed', { error: dbErr.message });
         }
         
         // Ensure we always have a message, even if storage failed

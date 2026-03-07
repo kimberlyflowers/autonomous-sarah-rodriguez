@@ -1133,30 +1133,33 @@ async function executeTool(toolName, toolInput, sessionId = null) {
     // Get previously created files — so Sarah never asks user to re-upload her own work
     if (toolName === 'get_session_files') {
       try {
-        const pool = await getPool();
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabase = createClient(
+          process.env.SUPABASE_URL,
+          process.env.SUPABASE_SERVICE_KEY
+        );
         const sid = toolInput.sessionId || sessionId;
         const fileType = toolInput.fileType || 'all';
 
-        let query = `
-          SELECT file_id, name, description, file_type, mime_type, created_at,
-                 metadata->>'supabase_url' as supabase_url,
-                 '/api/files/preview/' || file_id as preview_url
-          FROM artifacts
-          WHERE session_id = $1
-          AND status != 'deleted'
-        `;
-        const params = [sid];
+        let query = supabase
+          .from('artifacts')
+          .select('id, name, description, file_type, mime_type, storage_path, content, created_at')
+          .eq('session_id', sid)
+          .order('created_at', { ascending: false })
+          .limit(20);
 
         if (fileType !== 'all') {
-          query += ` AND file_type = $2`;
-          params.push(fileType);
+          query = query.eq('file_type', fileType);
         }
 
-        query += ` ORDER BY created_at DESC LIMIT 20`;
+        const { data, error } = await query;
 
-        const result = await pool.query(query, params);
+        if (error) {
+          logger.error('get_session_files Supabase error:', error.message);
+          return { success: false, error: 'Could not retrieve session files: ' + error.message };
+        }
 
-        if (result.rows.length === 0) {
+        if (!data || data.length === 0) {
           return {
             success: true,
             files: [],
@@ -1164,20 +1167,21 @@ async function executeTool(toolName, toolInput, sessionId = null) {
           };
         }
 
-        const files = result.rows.map(row => ({
-          fileId: row.file_id,
+        const files = data.map(row => ({
+          fileId: row.id,
           name: row.name,
           description: row.description,
           fileType: row.file_type,
           createdAt: row.created_at,
-          // Prefer Supabase CDN URL, fall back to local preview URL
-          url: row.supabase_url || row.preview_url
+          // storage_path is the Supabase CDN URL for images, or use content for text files
+          url: row.storage_path || null,
+          hasContent: !!row.content
         }));
 
         return {
           success: true,
           files,
-          message: `Found ${files.length} file(s) from this session. Use the 'url' field to reference or edit them.`
+          message: `Found ${files.length} file(s) from this session. Use the 'url' field to reference or edit images, or 'hasContent: true' means text content is stored for documents.`
         };
       } catch (err) {
         logger.error('get_session_files failed:', err.message);
