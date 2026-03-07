@@ -116,6 +116,11 @@ router.post('/artifacts', async (req, res) => {
     const artifact = result.rows[0];
     logger.info('Artifact created', { fileId, name, fileType, fileSize });
 
+    // Save to Supabase artifacts table + trigger BLOOMSHIELD registration (async, non-blocking)
+    saveArtifactToSupabaseAndShield({ artifact, fileId, name, description, fileType, mimeType, contentText, sessionId }).catch(err => {
+      logger.warn('Supabase/BLOOMSHIELD artifact sync failed (non-fatal)', { error: err.message });
+    });
+
     return res.json({
       success: true,
       artifact: {
@@ -125,7 +130,8 @@ router.post('/artifacts', async (req, res) => {
         status: artifact.status,
         createdAt: artifact.created_at,
         downloadUrl: `/api/files/download/${artifact.file_id}`,
-        previewUrl: `/api/files/preview/${artifact.file_id}`
+        previewUrl: `/api/files/preview/${artifact.file_id}`,
+        bloomshieldPending: true
       }
     });
   } catch (error) {
@@ -133,6 +139,86 @@ router.post('/artifacts', async (req, res) => {
     return res.status(500).json({ error: 'Failed to create artifact' });
   }
 });
+
+// Async helper: save artifact to Supabase + register with BLOOMSHIELD
+async function saveArtifactToSupabaseAndShield({ artifact, fileId, name, description, fileType, mimeType, contentText, sessionId }) {
+  try {
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+
+    const orgId = process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001';
+    const userId = process.env.BLOOM_OWNER_USER_ID || '823e2fb5-2f8f-4279-9c84-c8f4bf78bcce';
+    const agentId = process.env.AGENT_UUID; // Sarah's UUID from agents table
+
+    // Generate a unique floral_id for BLOOMSHIELD tracking
+    const floralId = `bloom-${fileId}`;
+
+    // 1. Save to Supabase artifacts table
+    const { data: supaArtifact, error: insertErr } = await supabase
+      .from('artifacts')
+      .insert({
+        organization_id: orgId,
+        created_by_user_id: userId,
+        agent_id: agentId || null,
+        session_id: sessionId || null,
+        name,
+        description,
+        file_type: fileType,
+        mime_type: mimeType,
+        content: contentText || null,
+        floral_id: floralId,
+        bloomshield_registered: false,
+        published: false
+      })
+      .select('id')
+      .single();
+
+    if (insertErr) {
+      logger.warn('Supabase artifact insert failed', { error: insertErr.message });
+      return;
+    }
+
+    logger.info('Artifact saved to Supabase', { supabaseId: supaArtifact.id, floralId });
+
+    // 2. Generate content hash for BLOOMSHIELD
+    const crypto = await import('crypto');
+    const contentToHash = contentText || name;
+    const contentHash = crypto.default.createHash('sha256').update(contentToHash).digest('hex');
+
+    // 3. Insert BLOOMSHIELD registration record (pending)
+    const { data: shieldReg, error: shieldErr } = await supabase
+      .from('bloomshield_registrations')
+      .insert({
+        artifact_id: supaArtifact.id,
+        owner_org_id: orgId,
+        owner_wallet_address: process.env.BLOOM_WALLET_ADDRESS || 'pending',
+        floral_id: floralId,
+        content_hash: contentHash,
+        registration_status: 'pending'
+      })
+      .select('id')
+      .single();
+
+    if (shieldErr) {
+      logger.warn('BLOOMSHIELD registration insert failed', { error: shieldErr.message });
+      return;
+    }
+
+    // 4. Update artifact to link back to registration
+    await supabase
+      .from('artifacts')
+      .update({
+        bloomshield_registered: true,
+        bloomshield_registration_id: shieldReg.id
+      })
+      .eq('id', supaArtifact.id);
+
+    logger.info('BLOOMSHIELD registration queued', { floralId, registrationId: shieldReg.id });
+
+  } catch (err) {
+    logger.warn('saveArtifactToSupabaseAndShield error', { error: err.message });
+  }
+}
 
 // ── LIST ARTIFACTS ──────────────────────────────────────────────────────────
 // GET /api/files/artifacts?status=approved&limit=50
