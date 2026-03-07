@@ -1,6 +1,14 @@
 import { useState, useEffect, useRef, Component } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { supabase } from "./supabase.js";
+
+// Get auth headers for API calls
+async function getAuthHeaders() {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return { "Content-Type": "application/json" };
+  return { "Content-Type": "application/json", "Authorization": `Bearer ${session.access_token}` };
+}
 
 // Error boundary — prevents white screen crashes
 class ErrorBoundary extends Component {
@@ -300,9 +308,10 @@ function useSarahChat() {
     const timeoutId = setTimeout(()=>controller.abort(), 180000); // 3 min timeout
     
     try {
+      const authHeaders = await getAuthHeaders();
       const res = await fetch("/api/chat/message",{
         method:"POST",
-        headers:{"Content-Type":"application/json"},
+        headers:authHeaders,
         body:JSON.stringify({message:text,sessionId:sid.current}),
         signal: controller.signal
       });
@@ -355,7 +364,8 @@ function useSarahChat() {
       // Show outgoing message with file previews
       setMessages(p=>[...p,{id:Date.now(),b:false,t:text||'',tm:ts,files:encoded}]);
       if(!sid.current){ const id="session-"+Date.now(); sid.current=id; setCurrentSessionId(id); }
-      const resp = await fetch("/api/chat/upload",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:text,sessionId:sid.current,files:encoded})});
+      const uploadHeaders = await getAuthHeaders();
+      const resp = await fetch("/api/chat/upload",{method:"POST",headers:uploadHeaders,body:JSON.stringify({message:text,sessionId:sid.current,files:encoded})});
       const data = await resp.json();
       const ts2 = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
       setMessages(p=>[...p,{id:Date.now(),b:true,t:data.response||data.message||"Got it.",tm:ts2}]);
