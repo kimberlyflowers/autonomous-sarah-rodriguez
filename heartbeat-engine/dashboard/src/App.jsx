@@ -2821,9 +2821,9 @@ function App() {
                 </div>
               ):(
                 <>
-                  <div style={{flex:1,minHeight:0,overflowY:"auto",display:"flex",minWidth:0}}>
+                  <div style={{flex:1,minHeight:0,display:"flex",minWidth:0}}>
                     <div style={{flex:1,minWidth:0,overflowY:"auto",overflowX:"hidden",background:c.bg,display:"flex",flexDirection:"column",alignItems:"center"}}>
-                    <div style={{width:"100%",maxWidth:720,padding:mob?"14px 16px":"20px 24px",boxSizing:"border-box",transition:"max-width .3s ease",flexShrink:0}}>
+                    <div style={{width:"100%",maxWidth:720,padding:mob?"14px 16px":"20px 24px",boxSizing:"border-box"}}>
                       {messages.map((m)=>{
                         const cards=m.b?parseMessageCards(m.t):[];
                         return (
