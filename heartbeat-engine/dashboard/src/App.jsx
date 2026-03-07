@@ -904,7 +904,7 @@ function ResizablePanel({c,defaultWidth,minWidth,maxWidth,children}) {
   },[]);
 
   return(
-    <div style={{width,flexShrink:0,borderLeft:"1px solid "+c.ln,display:"flex",flexDirection:"column",position:"relative"}}>
+    <div style={{width,flexShrink:0,borderLeft:"1px solid "+c.ln,display:"flex",flexDirection:"column",position:"relative",transition:"width .25s ease"}}>
       <div onMouseDown={onMouseDown} style={{position:"absolute",left:0,top:0,bottom:0,width:8,cursor:"ew-resize",zIndex:10,display:"flex",alignItems:"center",justifyContent:"center"}} title="Drag to resize">
         <div style={{width:3,height:40,borderRadius:2,background:c.ln}}/>
       </div>
@@ -2822,7 +2822,7 @@ function App() {
               ):(
                 <>
                   <div style={{flex:1,minHeight:0,display:"flex",minWidth:0}}>
-                    <div style={{flex:1,minWidth:0,overflowY:"auto",overflowX:"hidden",background:c.bg,padding:mob?"14px 12px":"18px 24px"}}><div>
+                    <div style={{flex:1,minWidth:0,overflowY:"auto",overflowX:"hidden",background:c.bg,padding:mob?"14px 12px":"18px 24px",transition:"padding .25s ease"}}><div>
                       {messages.map((m)=>{
                         const cards=m.b?parseMessageCards(m.t):[];
                         return (
