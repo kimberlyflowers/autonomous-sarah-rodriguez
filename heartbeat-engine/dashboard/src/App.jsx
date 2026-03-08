@@ -2876,6 +2876,27 @@ function App() {
                           <button onClick={()=>setShowPlusMenu(p=>!p)} title="Add" style={{width:36,height:36,borderRadius:10,border:"none",cursor:"pointer",background:showPlusMenu?c.sf:"transparent",display:"flex",alignItems:"center",justifyContent:"center",transition:"background .15s"}}>
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={showPlusMenu?c.ac:c.so} strokeWidth="2" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                           </button>
+                          {showPlusMenu&&(
+                            <>
+                              <div onClick={()=>setShowPlusMenu(false)} style={{position:"fixed",inset:0,zIndex:998}}/>
+                              <div style={{position:"absolute",bottom:46,left:0,zIndex:999,width:260,borderRadius:14,border:"1px solid "+c.ln,background:c.cd,boxShadow:"0 8px 32px rgba(0,0,0,0.25)",overflow:"hidden",padding:"6px 0"}}>
+                                <div style={{padding:"6px 14px 4px",fontSize:11,fontWeight:700,color:c.fa,letterSpacing:"0.06em",textTransform:"uppercase"}}>Files</div>
+                                {[
+                                  {icon:<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>, label:"Add files or photos", action:()=>{fRef.current?.click();setShowPlusMenu(false);}},
+                                  {icon:<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>, label:"Take a screenshot", action:()=>{setShowPlusMenu(false);}},
+                                ].map((item,i)=>(
+                                  <button key={i} onClick={item.action} style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"9px 14px",border:"none",background:"transparent",cursor:"pointer",color:c.tx,fontSize:13,textAlign:"left",transition:"background .12s"}} onMouseEnter={e=>e.currentTarget.style.background=c.hv} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                                    <span style={{color:c.so,flexShrink:0}}>{item.icon}</span>{item.label}
+                                  </button>
+                                ))}
+                                <div style={{height:1,background:c.ln,margin:"4px 0"}}/>
+                                <div style={{padding:"6px 14px 4px",fontSize:11,fontWeight:700,color:c.fa,letterSpacing:"0.06em",textTransform:"uppercase"}}>Connectors</div>
+                                <button onClick={()=>{setPg("customize");setShowPlusMenu(false);}} style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"9px 14px",border:"none",background:"transparent",cursor:"pointer",fontSize:13,textAlign:"left",fontWeight:700,transition:"background .12s"}} onMouseEnter={e=>e.currentTarget.style.background=c.hv} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                                  <span style={{background:"linear-gradient(135deg,#F4A261,#E76F8B)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",backgroundClip:"text",fontWeight:700,fontSize:13}}>Manage connectors →</span>
+                                </button>
+                              </div>
+                            </>
+                          )}
                         </div>
                         <textarea value={tx} onChange={e=>setTx(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();doSend();}}} placeholder={vcRec?"Listening…":"Ask anything..."} rows={1} style={{flex:1,padding:"10px 0",border:"none",fontSize:15,fontFamily:"inherit",background:"transparent",color:c.tx,resize:"none",lineHeight:1.4,maxHeight:120,overflowY:"auto",outline:"none"}}/>
                         <button onClick={toggleVoice} style={{width:36,height:36,borderRadius:10,border:"none",cursor:"pointer",background:vcRec?c.ac+"18":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,position:"relative",marginBottom:2}}>
@@ -4252,34 +4273,34 @@ function App() {
                 </div>
                 {[
                   {cat:"CRM & Communication",items:[
-                    {name:"GoHighLevel",slug:"ghl",icon:<img src="https://app.gohighlevel.com/favicon.ico" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Contacts, pipelines, SMS, email, automation",connected:true},
-                    {name:"Salesforce",slug:"salesforce",icon:<img src="https://www.salesforce.com/favicon.ico" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"CRM, deals, leads, accounts, reports",connected:false},
-                    {name:"HubSpot",slug:"hubspot",icon:<img src="https://www.hubspot.com/favicon.ico" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Marketing, sales, service hub",connected:false},
+                    {name:"GoHighLevel",slug:"ghl",icon:<img src="https://www.google.com/s2/favicons?domain=gohighlevel.com&sz=64" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Contacts, pipelines, SMS, email, automation",connected:true},
+                    {name:"Salesforce",slug:"salesforce",icon:<img src="https://www.google.com/s2/favicons?domain=salesforce.com&sz=64" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"CRM, deals, leads, accounts, reports",connected:false},
+                    {name:"HubSpot",slug:"hubspot",icon:<img src="https://www.google.com/s2/favicons?domain=hubspot.com&sz=64" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Marketing, sales, service hub",connected:false},
                   ]},
                   {cat:"Email & Calendar",items:[
-                    {name:"Gmail",slug:"gmail",icon:<img src="https://ssl.gstatic.com/ui/v1/icons/mail/rfr/gmail.ico" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Read, send, and manage email",connected:false},
-                    {name:"Google Calendar",slug:"google-calendar",icon:<img src="https://calendar.google.com/googlecalendar/images/favicon_v2014_57.ico" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Events, scheduling, availability",connected:false},
+                    {name:"Gmail",slug:"gmail",icon:<img src="https://www.google.com/s2/favicons?domain=gmail.com&sz=64" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Read, send, and manage email",connected:false},
+                    {name:"Google Calendar",slug:"google-calendar",icon:<img src="https://www.google.com/s2/favicons?domain=calendar.google.com&sz=64" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Events, scheduling, availability",connected:false},
                   ]},
                   {cat:"Social Media",items:[
-                    {name:"Instagram",slug:"instagram",icon:<img src="https://static.cdninstagram.com/rsrc.php/v3/yI/r/VsNE-OHk_8a.png" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Posts, stories, DMs, analytics",connected:false},
-                    {name:"TikTok",slug:"tiktok",icon:<img src="https://www.tiktok.com/favicon.ico" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Videos, analytics, scheduling",connected:false},
-                    {name:"LinkedIn",slug:"linkedin",icon:<img src="https://static.licdn.com/sc/h/al2o9zrlrelo7th4t28gr5pg3.png" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Posts, connections, outreach",connected:false},
-                    {name:"Facebook",slug:"facebook",icon:<img src="https://www.facebook.com/favicon.ico" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Pages, posts, ads",connected:false},
+                    {name:"Instagram",slug:"instagram",icon:<img src="https://www.google.com/s2/favicons?domain=instagram.com&sz=64" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Posts, stories, DMs, analytics",connected:false},
+                    {name:"TikTok",slug:"tiktok",icon:<img src="https://www.google.com/s2/favicons?domain=tiktok.com&sz=64" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Videos, analytics, scheduling",connected:false},
+                    {name:"LinkedIn",slug:"linkedin",icon:<img src="https://www.google.com/s2/favicons?domain=linkedin.com&sz=64" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Posts, connections, outreach",connected:false},
+                    {name:"Facebook",slug:"facebook",icon:<img src="https://www.google.com/s2/favicons?domain=facebook.com&sz=64" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Pages, posts, ads",connected:false},
                   ]},
                   {cat:"Storage & Productivity",items:[
-                    {name:"Google Drive",slug:"google-drive",icon:<img src="https://ssl.gstatic.com/images/branding/product/1x/drive_2020q4_32dp.png" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Files, docs, sheets, slides",connected:false},
-                    {name:"Notion",slug:"notion",icon:<img src="https://www.notion.so/images/favicon.ico" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Docs, databases, wikis",connected:false},
-                    {name:"Slack",slug:"slack",icon:<img src="https://slack.com/favicon.ico" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Channels, messages, files",connected:false},
-                    {name:"Airtable",slug:"airtable",icon:<img src="https://airtable.com/favicon.ico" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Databases, views, automations",connected:false},
-                    {name:"Canva",slug:"canva",icon:<img src="https://www.canva.com/favicon.ico" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Designs, brand kits, exports",connected:false},
+                    {name:"Google Drive",slug:"google-drive",icon:<img src="https://www.google.com/s2/favicons?domain=drive.google.com&sz=64" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Files, docs, sheets, slides",connected:false},
+                    {name:"Notion",slug:"notion",icon:<img src="https://www.google.com/s2/favicons?domain=notion.so&sz=64" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Docs, databases, wikis",connected:false},
+                    {name:"Slack",slug:"slack",icon:<img src="https://www.google.com/s2/favicons?domain=slack.com&sz=64" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Channels, messages, files",connected:false},
+                    {name:"Airtable",slug:"airtable",icon:<img src="https://www.google.com/s2/favicons?domain=airtable.com&sz=64" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Databases, views, automations",connected:false},
+                    {name:"Canva",slug:"canva",icon:<img src="https://www.google.com/s2/favicons?domain=canva.com&sz=64" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Designs, brand kits, exports",connected:false},
                   ]},
                   {cat:"E-Commerce & Billing",items:[
-                    {name:"Shopify",slug:"shopify",icon:<img src="https://cdn.shopify.com/shopifycloud/web/assets/v1/favicon.ico" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Orders, products, inventory",connected:false},
-                    {name:"Stripe",slug:"stripe",icon:<img src="https://stripe.com/favicon.ico" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Payments, subscriptions, invoices",connected:false},
+                    {name:"Shopify",slug:"shopify",icon:<img src="https://www.google.com/s2/favicons?domain=shopify.com&sz=64" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Orders, products, inventory",connected:false},
+                    {name:"Stripe",slug:"stripe",icon:<img src="https://www.google.com/s2/favicons?domain=stripe.com&sz=64" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Payments, subscriptions, invoices",connected:false},
                   ]},
                   {cat:"Automation",items:[
-                    {name:"n8n",slug:"n8n",icon:<img src="https://n8n.io/favicon.ico" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Workflows, triggers, automations",connected:false},
-                    {name:"Zapier",slug:"zapier",icon:<img src="https://zapier.com/favicon.ico" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"App integrations, zaps",connected:false},
+                    {name:"n8n",slug:"n8n",icon:<img src="https://www.google.com/s2/favicons?domain=n8n.io&sz=64" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Workflows, triggers, automations",connected:false},
+                    {name:"Zapier",slug:"zapier",icon:<img src="https://www.google.com/s2/favicons?domain=zapier.com&sz=64" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"App integrations, zaps",connected:false},
                   ]},
                   {cat:"BLOOM",items:[
                     {name:"BLOOMSHIELD",slug:"bloomshield",icon:<img src="/favicon.ico" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"IP protection, blockchain registry",connected:false},
