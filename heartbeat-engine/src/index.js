@@ -67,6 +67,27 @@ process.on('unhandledRejection', (error) => {
 });
 
 // Health check endpoint - always returns 200 OK for Railway
+// Active connectors for an org — used by dashboard + menu
+app.get('/api/connectors/active', async (req, res) => {
+  try {
+    const { orgId } = req.query;
+    if (!orgId) return res.json({ connectors: [] });
+    const { data, error } = await supabase
+      .from('user_connectors')
+      .select('connector_id, connectors(slug, name)')
+      .eq('organization_id', orgId)
+      .eq('status', 'active');
+    if (error) return res.json({ connectors: [] });
+    const connectors = (data || []).map(r => ({
+      slug: r.connectors?.slug,
+      name: r.connectors?.name,
+    })).filter(r => r.slug);
+    res.json({ connectors });
+  } catch (e) {
+    res.json({ connectors: [] });
+  }
+});
+
 app.get('/health', (req, res) => {
   res.json({
     status: 'healthy',
