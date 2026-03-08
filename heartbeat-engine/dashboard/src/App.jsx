@@ -2724,18 +2724,18 @@ function App() {
                             <>
                               <div onClick={()=>setOpenChatMenu(null)} style={{position:"fixed",inset:0,zIndex:999}}/>
                               <div style={{position:"absolute",right:8,top:"calc(50% + 20px)",background:c.cd,border:"1px solid "+c.ln,borderRadius:8,padding:4,zIndex:1000,minWidth:140,boxShadow:"0 4px 12px rgba(0,0,0,0.15)"}}>
-                                <button onClick={()=>{setOpenChatMenu(null);alert('Star feature coming soon');}} style={{width:"100%",textAlign:"left",padding:"8px 12px",borderRadius:6,border:"none",background:"transparent",cursor:"pointer",fontSize:13,color:c.tx,display:"flex",alignItems:"center",gap:8}} onMouseEnter={e=>e.currentTarget.style.background=c.hv} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                                <button onClick={()=>{setOpenChatMenu(null);setOauthToast({type:'success',msg:'⭐ Star feature coming soon'}); setTimeout(()=>setOauthToast(null),3000);}} style={{width:"100%",textAlign:"left",padding:"8px 12px",borderRadius:6,border:"none",background:"transparent",cursor:"pointer",fontSize:13,color:c.tx,display:"flex",alignItems:"center",gap:8}} onMouseEnter={e=>e.currentTarget.style.background=c.hv} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={c.tx} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
                                   Star
                                 </button>
-                                <button onClick={()=>{setOpenChatMenu(null);alert('Rename feature coming soon');}} style={{width:"100%",textAlign:"left",padding:"8px 12px",borderRadius:6,border:"none",background:"transparent",cursor:"pointer",fontSize:13,color:c.tx,display:"flex",alignItems:"center",gap:8}} onMouseEnter={e=>e.currentTarget.style.background=c.hv} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                                <button onClick={()=>{setOpenChatMenu(null);setOauthToast({type:'success',msg:'✏️ Rename feature coming soon'}); setTimeout(()=>setOauthToast(null),3000);}} style={{width:"100%",textAlign:"left",padding:"8px 12px",borderRadius:6,border:"none",background:"transparent",cursor:"pointer",fontSize:13,color:c.tx,display:"flex",alignItems:"center",gap:8}} onMouseEnter={e=>e.currentTarget.style.background=c.hv} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={c.tx} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                                   Rename
                                 </button>
                                 <button onClick={async()=>{
                                   setOpenChatMenu(null);
                                   if(projects.length===0){
-                                    alert('No projects yet. Create a project first!');
+                                    setOauthToast({type:'error',msg:'No projects yet — create one first'}); setTimeout(()=>setOauthToast(null),4000);
                                     return;
                                   }
                                   // Show project selection
@@ -2743,7 +2743,7 @@ function App() {
                                   const choice=prompt(`Add this chat to which project?\n\n${projList}\n\nEnter number (1-${projects.length}):`);
                                   if(!choice) return;
                                   const idx=parseInt(choice)-1;
-                                  if(idx<0||idx>=projects.length){alert('Invalid choice');return;}
+                                  if(idx<0||idx>=projects.length){setOauthToast({type:'error',msg:'Invalid choice'}); setTimeout(()=>setOauthToast(null),3000);return;}
                                   const selectedProj=projects[idx];
                                   try{
                                     const res=await fetch(`/api/projects/${selectedProj.id}/conversations`,{
@@ -2753,13 +2753,13 @@ function App() {
                                     });
                                     const data=await res.json();
                                     if(data.success){
-                                      alert(`✅ Added to "${selectedProj.name}"`);
+                                      setOauthToast({type:'success',msg:`Added to "${selectedProj.name}"`}); setTimeout(()=>setOauthToast(null),3000);
                                       fetchSessions(); // Refresh to show project assignment
                                     }else{
-                                      alert('Failed: '+(data.error||'Unknown error'));
+                                      setOauthToast({type:'error',msg:'Failed: '+(data.error||'Unknown error')}); setTimeout(()=>setOauthToast(null),4000);
                                     }
                                   }catch(err){
-                                    alert('Error: '+err.message);
+                                    setOauthToast({type:'error',msg:'Error: '+err.message}); setTimeout(()=>setOauthToast(null),4000);
                                   }
                                 }} style={{width:"100%",textAlign:"left",padding:"8px 12px",borderRadius:6,border:"none",background:"transparent",cursor:"pointer",fontSize:13,color:c.tx,display:"flex",alignItems:"center",gap:8}} onMouseEnter={e=>e.currentTarget.style.background=c.hv} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={c.tx} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
@@ -2973,7 +2973,7 @@ function App() {
                                     onOpenSide={(art)=>{setActiveArtifact(art);setRightTab("artifact");}}
                                     mob={mob}
                                   />
-                                : <EmailCard key={ci} subject={cd2.subject} c={c} onReview={()=>alert("Email review panel coming soon")}/>
+                                : <EmailCard key={ci} subject={cd2.subject} c={c} onReview={()=>{setOauthToast({type:'success',msg:'📧 Email review panel coming soon'}); setTimeout(()=>setOauthToast(null),3000);}}/>
                               )}
                             </div>
                           )}
@@ -3393,7 +3393,7 @@ function App() {
                                 const cleaned=d.response.replace(/```csv?/g,'').replace(/```/g,'').replace(/^Task Name.*\n/i,'').trim();
                                 setBulkText(cleaned);
                               }
-                            }catch(e){alert('Failed to decompose: '+e.message);}
+                            }catch(e){setOauthToast({type:'error',msg:'Failed: '+e.message}); setTimeout(()=>setOauthToast(null),4000);}
                           }} style={{padding:"10px 18px",borderRadius:8,border:"1px solid "+c.ac,background:c.ac+"10",cursor:"pointer",fontSize:13,fontWeight:600,color:c.ac,fontFamily:"inherit"}}>
                             ✨ AI Break Down a Vision
                           </button>
@@ -3979,7 +3979,7 @@ function App() {
                               {ext==='html'&&(f.slug?
                                 <a href={`/p/${f.slug}`} target="_blank" rel="noopener noreferrer" style={{padding:"4px 10px",borderRadius:6,border:"1px solid "+c.gr,background:c.gr+"12",cursor:"pointer",fontSize:11,fontWeight:700,color:c.gr,textDecoration:"none"}}>Live</a>
                               :
-                                <button onClick={async(e)=>{e.stopPropagation();const slug=prompt('Choose a URL slug for this page:\n\nyoursite.com/p/___',f.name?.replace(/\.[^.]+$/,'').toLowerCase().replace(/[^a-z0-9]+/g,'-'));if(!slug)return;const r=await fetch(`/api/files/artifacts/${f.fileId}/publish`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({slug})});const d=await r.json();if(d.success){setFiles(p=>p.map(x=>x.fileId===f.fileId?{...x,slug:d.slug,published:true}:x));window.open(`/p/${d.slug}`,'_blank');}else{alert(d.error||'Failed');}}} style={{padding:"4px 10px",borderRadius:6,border:"1px solid "+c.ac,background:c.ac+"12",cursor:"pointer",fontSize:11,fontWeight:700,color:c.ac,fontFamily:"inherit"}}>Publish</button>
+                                <button onClick={async(e)=>{e.stopPropagation();const slug=prompt('Choose a URL slug for this page:\n\nyoursite.com/p/___',f.name?.replace(/\.[^.]+$/,'').toLowerCase().replace(/[^a-z0-9]+/g,'-'));if(!slug)return;const r=await fetch(`/api/files/artifacts/${f.fileId}/publish`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({slug})});const d=await r.json();if(d.success){setFiles(p=>p.map(x=>x.fileId===f.fileId?{...x,slug:d.slug,published:true}:x));window.open(`/p/${d.slug}`,'_blank');}else{setOauthToast({type:'error',msg:d.error||'Publish failed'}); setTimeout(()=>setOauthToast(null),4000);}}} style={{padding:"4px 10px",borderRadius:6,border:"1px solid "+c.ac,background:c.ac+"12",cursor:"pointer",fontSize:11,fontWeight:700,color:c.ac,fontFamily:"inherit"}}>Publish</button>
                               )}
                               <a href={`/api/files/download/${f.fileId}`} download style={{padding:"4px 10px",borderRadius:6,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:11,fontWeight:600,color:c.ac,textDecoration:"none"}}>↓ Download</a>
                               <button onClick={async()=>{
@@ -4199,7 +4199,7 @@ function App() {
                       <button
                         onClick={async()=>{
                           if(!newProjectName.trim()){
-                            alert('Please enter a project name');
+                            setOauthToast({type:'error',msg:'Please enter a project name'}); setTimeout(()=>setOauthToast(null),3000);
                             return;
                           }
                           try {
@@ -4215,10 +4215,10 @@ function App() {
                               setNewProjectName('');
                               setNewProjectDesc('');
                             }else{
-                              alert('Failed to create project: '+(data.error||'Unknown error'));
+                              setOauthToast({type:'error',msg:'Failed to create project: '+(data.error||'Unknown error')}); setTimeout(()=>setOauthToast(null),4000);
                             }
                           }catch(err){
-                            alert('Error: '+err.message);
+                            setOauthToast({type:'error',msg:'Error: '+err.message}); setTimeout(()=>setOauthToast(null),4000);
                           }
                         }}
                         disabled={!newProjectName.trim()}
@@ -4296,7 +4296,7 @@ function App() {
                               <button onClick={e=>e.stopPropagation()} style={{fontSize:10,color:c.fa,background:"none",border:"none",cursor:"pointer",padding:"2px 4px"}}>Disconnect</button>
                             </div>
                           ):(
-                            <button onClick={e=>{e.stopPropagation();alert("Connect "+item.name+" — OAuth coming soon!");}} style={{padding:"7px 14px",borderRadius:8,border:"1.5px solid "+c.ac,background:"transparent",color:c.ac,fontSize:12,fontWeight:700,cursor:"pointer",flexShrink:0,whiteSpace:"nowrap",transition:"all .15s"}} onMouseEnter={e=>{e.currentTarget.style.background="linear-gradient(135deg,#F4A261,#E76F8B)";e.currentTarget.style.borderColor="transparent";e.currentTarget.style.color="#fff";}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.borderColor=c.ac;e.currentTarget.style.color=c.ac;}}>Connect</button>
+                            <button onClick={e=>{e.stopPropagation();const orgId="a1000000-0000-0000-0000-000000000001";window.location.href=`/oauth/connect/${item.slug}?orgId=${orgId}`;}} style={{padding:"7px 14px",borderRadius:8,border:"1.5px solid "+c.ac,background:"transparent",color:c.ac,fontSize:12,fontWeight:700,cursor:"pointer",flexShrink:0,whiteSpace:"nowrap",transition:"all .15s"}} onMouseEnter={e=>{e.currentTarget.style.background="linear-gradient(135deg,#F4A261,#E76F8B)";e.currentTarget.style.borderColor="transparent";e.currentTarget.style.color="#fff";}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.borderColor=c.ac;e.currentTarget.style.color=c.ac;}}>Connect</button>
                           )}
                         </div>
                       ))}
@@ -4308,7 +4308,7 @@ function App() {
               {/* ── SKILLS ── */}
               <div style={{borderTop:"1px solid "+c.ln,paddingTop:28}}>
                 <div style={{fontSize:16,fontWeight:700,color:c.tx,marginBottom:14}}>Skills</div>
-                <div onClick={()=>alert("Create skills coming soon!")} style={{padding:24,borderRadius:14,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",transition:"all .2s"}} onMouseEnter={e=>{e.currentTarget.style.borderColor=c.ac;e.currentTarget.style.transform="translateX(4px)";}} onMouseLeave={e=>{e.currentTarget.style.borderColor=c.ln;e.currentTarget.style.transform="translateX(0)";}}>
+                <div onClick={()=>{setOauthToast({type:'success',msg:'🎯 Skills marketplace coming soon!'}); setTimeout(()=>setOauthToast(null),3000);}} style={{padding:24,borderRadius:14,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",transition:"all .2s"}} onMouseEnter={e=>{e.currentTarget.style.borderColor=c.ac;e.currentTarget.style.transform="translateX(4px)";}} onMouseLeave={e=>{e.currentTarget.style.borderColor=c.ln;e.currentTarget.style.transform="translateX(0)";}}>
                   <div style={{display:"flex",alignItems:"center",gap:16}}>
                     <div style={{width:44,height:44,borderRadius:12,background:c.sf,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={c.ac} strokeWidth="2" strokeLinecap="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
