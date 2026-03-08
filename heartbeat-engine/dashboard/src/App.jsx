@@ -2226,6 +2226,8 @@ function App() {
   const [tx,setTx]=useState("");
   const [isNew,setNew]=useState(true);
   const [vcRec,setVcRec]=useState(false);
+  const [showPlusMenu,setShowPlusMenu]=useState(false);
+  const plusMenuRef=useRef(null);
   
   // Projects state
   const [projects,setProjects]=useState([]);
@@ -3082,9 +3084,54 @@ function App() {
                       )}
                       {/* ── Input pill — + and mic inside like Claude ── */}
                       <div style={{display:"flex",alignItems:"flex-end",gap:6,padding:"10px 12px 10px 8px",borderRadius:20,border:"1.5px solid "+(vcRec?c.ac:c.ln),background:c.inp,transition:"border-color .2s",boxShadow:"0 1px 4px rgba(0,0,0,0.1)"}}>
-                        <button onClick={()=>fRef.current?.click()} title="Attach file" style={{width:36,height:36,borderRadius:10,border:"none",cursor:"pointer",background:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginBottom:2}}>
-                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={c.so} strokeWidth="2" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                        </button>
+                        {/* ── Claude-style + menu ── */}
+                        <div ref={plusMenuRef} style={{position:"relative",flexShrink:0,marginBottom:2}}>
+                          <button onClick={()=>setShowPlusMenu(p=>!p)} title="Add" style={{width:36,height:36,borderRadius:10,border:"none",cursor:"pointer",background:showPlusMenu?c.sf:"transparent",display:"flex",alignItems:"center",justifyContent:"center",transition:"background .15s"}}>
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={showPlusMenu?c.ac:c.so} strokeWidth="2" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                          </button>
+                          {showPlusMenu&&(
+                            <>
+                              {/* backdrop */}
+                              <div onClick={()=>setShowPlusMenu(false)} style={{position:"fixed",inset:0,zIndex:998}}/>
+                              {/* menu panel */}
+                              <div style={{position:"absolute",bottom:46,left:0,zIndex:999,width:260,borderRadius:14,border:"1px solid "+c.ln,background:c.cd,boxShadow:"0 8px 32px rgba(0,0,0,0.25)",overflow:"hidden",padding:"6px 0"}}>
+                                {/* Files section */}
+                                <div style={{padding:"6px 14px 4px",fontSize:11,fontWeight:700,color:c.fa,letterSpacing:"0.06em",textTransform:"uppercase"}}>Files</div>
+                                {[
+                                  {icon:<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>, label:"Add files or photos", action:()=>{fRef.current?.click();setShowPlusMenu(false);}},
+                                  {icon:<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>, label:"Take a screenshot", action:()=>{setShowPlusMenu(false);}},
+                                ].map((item,i)=>(
+                                  <button key={i} onClick={item.action} style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"9px 14px",border:"none",background:"transparent",cursor:"pointer",color:c.tx,fontSize:13,textAlign:"left",transition:"background .12s"}} onMouseEnter={e=>e.currentTarget.style.background=c.hv} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                                    <span style={{color:c.so,flexShrink:0}}>{item.icon}</span>{item.label}
+                                  </button>
+                                ))}
+                                <div style={{height:1,background:c.ln,margin:"4px 0"}}/>
+                                {/* Connectors section */}
+                                <div style={{padding:"6px 14px 4px",fontSize:11,fontWeight:700,color:c.fa,letterSpacing:"0.06em",textTransform:"uppercase"}}>Connectors</div>
+                                {/* Active connectors — loaded dynamically, shown as toggles */}
+                                {[
+                                  {icon:"🟠",label:"BLOOM CRM",active:true},
+                                  {icon:"📅",label:"Google Calendar",active:false},
+                                  {icon:"📁",label:"Google Drive",active:false},
+                                  {icon:"🎨",label:"Canva",active:false},
+                                ].map((conn,i)=>(
+                                  <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 14px",cursor:"pointer",transition:"background .12s"}} onMouseEnter={e=>e.currentTarget.style.background=c.hv} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                                    <div style={{display:"flex",alignItems:"center",gap:10,fontSize:13,color:c.tx}}>
+                                      <span style={{fontSize:15}}>{conn.icon}</span>{conn.label}
+                                    </div>
+                                    <div style={{width:32,height:18,borderRadius:9,background:conn.active?c.ac:c.ln,position:"relative",transition:"background .2s",cursor:"pointer",flexShrink:0}}>
+                                      <div style={{position:"absolute",top:2,left:conn.active?14:2,width:14,height:14,borderRadius:"50%",background:"#fff",transition:"left .2s",boxShadow:"0 1px 3px rgba(0,0,0,0.3)"}}/>
+                                    </div>
+                                  </div>
+                                ))}
+                                <button onClick={()=>{setPg("customize");setShowPlusMenu(false);}} style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"9px 14px",border:"none",background:"transparent",cursor:"pointer",color:c.ac,fontSize:13,textAlign:"left",fontWeight:600,transition:"background .12s"}} onMouseEnter={e=>e.currentTarget.style.background=c.hv} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+                                  Manage connectors
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
                         <textarea value={tx} onChange={e=>{setTx(e.target.value);e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,200)+"px";}} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();doSend();}}} placeholder={vcRec?"Listening…":mob?"Message…":"Tell Sarah what you need…"} rows={2} style={{flex:1,padding:"6px 4px",border:"none",fontSize:14,fontFamily:"inherit",background:"transparent",color:c.tx,resize:"none",lineHeight:1.6,minHeight:48,maxHeight:200,overflowY:"auto",outline:"none"}}/>
                         <button onClick={toggleVoice} style={{width:36,height:36,borderRadius:10,border:"none",cursor:"pointer",background:vcRec?c.ac+"22":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,position:"relative",marginBottom:2}}>
                           {vcRec&&<span style={{position:"absolute",inset:-3,borderRadius:12,border:"2px solid "+c.ac,animation:"pulse 1.2s ease infinite",opacity:0.4}}/>}
@@ -4142,45 +4189,92 @@ function App() {
             )
           )}
 
-          {/* ══ CUSTOMIZE — Skills and Connectors ══ */}
+          {/* ══ CUSTOMIZE — Connectors & Skills ══ */}
           {pg==="customize"&&(
-            <div style={{padding:mob?"16px 12px 40px":"32px 40px 60px",maxWidth:900,margin:"0 auto"}}>
+            <div style={{padding:mob?"16px 12px 40px":"32px 40px 60px",maxWidth:960,margin:"0 auto"}}>
               <div style={{marginBottom:32}}>
                 <h1 style={{fontSize:mob?24:32,fontWeight:700,color:c.tx,marginBottom:8}}>Customize</h1>
-                <p style={{fontSize:14,color:c.so}}>Customize and manage the context and tools you are giving Sarah</p>
+                <p style={{fontSize:14,color:c.so}}>Connect the tools Sarah can use — she'll have access to them automatically in every conversation.</p>
               </div>
 
-              {/* Two main sections: Skills and Connectors */}
-              <div style={{display:"flex",flexDirection:"column",gap:24}}>
-                
-                {/* Connect your tools card */}
-                <div onClick={()=>alert('Connect tools feature coming soon!')} style={{padding:32,borderRadius:16,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",transition:"all .2s"}} onMouseEnter={e=>{e.currentTarget.style.borderColor=c.ac;e.currentTarget.style.transform="translateX(4px)";}} onMouseLeave={e=>{e.currentTarget.style.borderColor=c.ln;e.currentTarget.style.transform="translateX(0)";}}>
-                  <div style={{display:"flex",alignItems:"flex-start",gap:20}}>
-                    <div style={{width:48,height:48,borderRadius:12,background:c.sf,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={c.ac} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+              {/* ── CONNECTORS GRID ── */}
+              <div style={{marginBottom:40}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+                  <div style={{fontSize:16,fontWeight:700,color:c.tx}}>Your Connectors</div>
+                  <div style={{fontSize:12,color:c.so}}>Connect once — Sarah uses them automatically</div>
+                </div>
+                {[
+                  {cat:"CRM & Communication",items:[
+                    {name:"GoHighLevel",slug:"ghl",icon:"🟠",desc:"Contacts, pipelines, SMS, email, automation",connected:true},
+                    {name:"Salesforce",slug:"salesforce",icon:"☁️",desc:"CRM, deals, leads, accounts, reports",connected:false},
+                    {name:"HubSpot",slug:"hubspot",icon:"🟧",desc:"Marketing, sales, service hub",connected:false},
+                  ]},
+                  {cat:"Email & Calendar",items:[
+                    {name:"Gmail",slug:"gmail",icon:"✉️",desc:"Read, send, and manage email",connected:false},
+                    {name:"Google Calendar",slug:"google-calendar",icon:"📅",desc:"Events, scheduling, availability",connected:false},
+                  ]},
+                  {cat:"Social Media",items:[
+                    {name:"Instagram",slug:"instagram",icon:"📸",desc:"Posts, stories, DMs, analytics",connected:false},
+                    {name:"TikTok",slug:"tiktok",icon:"🎵",desc:"Videos, analytics, trends",connected:false},
+                    {name:"LinkedIn",slug:"linkedin",icon:"💼",desc:"Posts, connections, messaging",connected:false},
+                    {name:"Facebook",slug:"facebook",icon:"📘",desc:"Pages, posts, ads",connected:false},
+                  ]},
+                  {cat:"Storage & Productivity",items:[
+                    {name:"Google Drive",slug:"google-drive",icon:"📁",desc:"Files, docs, sheets, slides",connected:false},
+                    {name:"Notion",slug:"notion",icon:"⬛",desc:"Docs, databases, wikis",connected:false},
+                    {name:"Slack",slug:"slack",icon:"💬",desc:"Channels, messages, files",connected:false},
+                    {name:"Airtable",slug:"airtable",icon:"🗃️",desc:"Databases, views, automations",connected:false},
+                    {name:"Canva",slug:"canva",icon:"🎨",desc:"Designs, brand kits, assets",connected:false},
+                  ]},
+                  {cat:"E-commerce & Billing",items:[
+                    {name:"Shopify",slug:"shopify",icon:"🛍️",desc:"Orders, products, customers",connected:false},
+                    {name:"Stripe",slug:"stripe",icon:"💳",desc:"Payments, subscriptions, invoices",connected:false},
+                  ]},
+                  {cat:"Automation",items:[
+                    {name:"n8n",slug:"n8n",icon:"⚡",desc:"Workflows, triggers, custom automations",connected:false},
+                    {name:"Zapier",slug:"zapier",icon:"🔗",desc:"Connect 5,000+ apps via webhooks",connected:false},
+                  ]},
+                ].map(({cat,items})=>(
+                  <div key={cat} style={{marginBottom:28}}>
+                    <div style={{fontSize:11,fontWeight:700,color:c.fa,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:10}}>{cat}</div>
+                    <div style={{display:"grid",gridTemplateColumns:mob?"1fr":"repeat(auto-fill,minmax(280px,1fr))",gap:10}}>
+                      {items.map(item=>(
+                        <div key={item.slug} style={{display:"flex",alignItems:"center",gap:14,padding:"14px 16px",borderRadius:12,border:"1.5px solid "+(item.connected?c.ac+"55":c.ln),background:item.connected?c.ac+"08":c.cd,transition:"all .2s"}} onMouseEnter={e=>{if(!item.connected)e.currentTarget.style.borderColor=c.ac+"44";}} onMouseLeave={e=>{if(!item.connected)e.currentTarget.style.borderColor=item.connected?c.ac+"55":c.ln;}}>
+                          <div style={{width:40,height:40,borderRadius:10,background:c.sf,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>{item.icon}</div>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontSize:13,fontWeight:700,color:c.tx,marginBottom:2}}>{item.name}</div>
+                            <div style={{fontSize:11,color:c.so,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{item.desc}</div>
+                          </div>
+                          {item.connected?(
+                            <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4,flexShrink:0}}>
+                              <div style={{fontSize:10,fontWeight:700,color:c.ac,background:c.ac+"18",padding:"2px 8px",borderRadius:20}}>Connected</div>
+                              <button onClick={e=>e.stopPropagation()} style={{fontSize:10,color:c.fa,background:"none",border:"none",cursor:"pointer",padding:"2px 4px"}}>Disconnect</button>
+                            </div>
+                          ):(
+                            <button onClick={e=>{e.stopPropagation();alert("Connect "+item.name+" — OAuth coming soon!");}} style={{padding:"7px 14px",borderRadius:8,border:"1.5px solid "+c.ac,background:"transparent",color:c.ac,fontSize:12,fontWeight:700,cursor:"pointer",flexShrink:0,whiteSpace:"nowrap",transition:"all .15s"}} onMouseEnter={e=>{e.currentTarget.style.background=c.ac;e.currentTarget.style.color="#fff";}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=c.ac;}}>Connect</button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* ── SKILLS ── */}
+              <div style={{borderTop:"1px solid "+c.ln,paddingTop:28}}>
+                <div style={{fontSize:16,fontWeight:700,color:c.tx,marginBottom:14}}>Skills</div>
+                <div onClick={()=>alert("Create skills coming soon!")} style={{padding:24,borderRadius:14,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",transition:"all .2s"}} onMouseEnter={e=>{e.currentTarget.style.borderColor=c.ac;e.currentTarget.style.transform="translateX(4px)";}} onMouseLeave={e=>{e.currentTarget.style.borderColor=c.ln;e.currentTarget.style.transform="translateX(0)";}}>
+                  <div style={{display:"flex",alignItems:"center",gap:16}}>
+                    <div style={{width:44,height:44,borderRadius:12,background:c.sf,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={c.ac} strokeWidth="2" strokeLinecap="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
                     </div>
                     <div style={{flex:1}}>
-                      <h3 style={{fontSize:18,fontWeight:700,color:c.tx,marginBottom:6}}>Connect your tools</h3>
-                      <p style={{fontSize:14,color:c.so,lineHeight:1.6}}>Integrate with the tools you use to complete your tasks</p>
+                      <div style={{fontSize:14,fontWeight:700,color:c.tx,marginBottom:3}}>Create new skills</div>
+                      <div style={{fontSize:12,color:c.so}}>Teach Sarah your processes, team norms, and expertise — she'll follow them on every task.</div>
                     </div>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={c.so} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0,marginTop:4}}><polyline points="9 18 15 12 9 6"/></svg>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={c.so} strokeWidth="2" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
                   </div>
                 </div>
-
-                {/* Create new skills card */}
-                <div onClick={()=>alert('Create skills feature coming soon!')} style={{padding:32,borderRadius:16,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",transition:"all .2s"}} onMouseEnter={e=>{e.currentTarget.style.borderColor=c.ac;e.currentTarget.style.transform="translateX(4px)";}} onMouseLeave={e=>{e.currentTarget.style.borderColor=c.ln;e.currentTarget.style.transform="translateX(0)";}}>
-                  <div style={{display:"flex",alignItems:"flex-start",gap:20}}>
-                    <div style={{width:48,height:48,borderRadius:12,background:c.sf,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={c.ac} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
-                    </div>
-                    <div style={{flex:1}}>
-                      <h3 style={{fontSize:18,fontWeight:700,color:c.tx,marginBottom:6}}>Create new skills</h3>
-                      <p style={{fontSize:14,color:c.so,lineHeight:1.6}}>Teach Sarah your processes, team norms, and expertise</p>
-                    </div>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={c.so} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0,marginTop:4}}><polyline points="9 18 15 12 9 6"/></svg>
-                  </div>
-                </div>
-
               </div>
             </div>
           )}
