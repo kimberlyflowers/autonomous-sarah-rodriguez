@@ -1,76 +1,39 @@
 // BLOOM Agent API — profile, scheduled tasks, connected tools
+// ⚡ MIGRATED: scheduled_tasks + agent_profile now read/write Supabase (not Railway Postgres)
 import { Router } from 'express';
 import { createLogger } from '../logging/logger.js';
 
 const logger = createLogger('agent-api');
 const router = Router();
 
-async function getPool() {
-  const { getSharedPool } = await import('../database/pool.js');
-  return getSharedPool();
-}
+// Sarah Rodriguez agent UUID (stable across deploys)
+const SARAH_AGENT_ID = process.env.AGENT_UUID || 'c3000000-0000-0000-0000-000000000003';
+const BLOOM_ORG_ID   = 'a1000000-0000-0000-0000-000000000001';
 
-async function ensureTables(pool) {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS agent_profile (
-      id SERIAL PRIMARY KEY,
-      agent_id VARCHAR(64) DEFAULT 'bloomie-sarah-rodriguez' UNIQUE,
-      job_title TEXT DEFAULT 'AI Employee',
-      job_description TEXT DEFAULT '',
-      avatar_url TEXT,
-      created_at TIMESTAMPTZ DEFAULT NOW(),
-      updated_at TIMESTAMPTZ DEFAULT NOW()
-    )
-  `);
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS scheduled_tasks (
-      id SERIAL PRIMARY KEY,
-      task_id VARCHAR(64) UNIQUE NOT NULL,
-      agent_id VARCHAR(64) DEFAULT 'bloomie-sarah-rodriguez',
-      name VARCHAR(500) NOT NULL,
-      description TEXT,
-      task_type VARCHAR(50) NOT NULL DEFAULT 'custom',
-      instruction TEXT NOT NULL,
-      frequency VARCHAR(50) NOT NULL DEFAULT 'daily',
-      cron_expression VARCHAR(100),
-      run_time VARCHAR(10) DEFAULT '09:00',
-      timezone VARCHAR(50) DEFAULT 'America/Chicago',
-      enabled BOOLEAN DEFAULT true,
-      last_run_at TIMESTAMPTZ,
-      next_run_at TIMESTAMPTZ,
-      run_count INTEGER DEFAULT 0,
-      last_result TEXT,
-      created_at TIMESTAMPTZ DEFAULT NOW(),
-      updated_at TIMESTAMPTZ DEFAULT NOW()
-    )
-  `);
-  // Ensure default profile exists
-  await pool.query(`
-    INSERT INTO agent_profile (agent_id) VALUES ('bloomie-sarah-rodriguez')
-    ON CONFLICT (agent_id) DO NOTHING
-  `);
+async function getSupabase() {
+  const { createClient } = await import('@supabase/supabase-js');
+  return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 }
 
 // Helper: frequency → cron expression
 function frequencyToCron(frequency, runTime = '09:00') {
   const [hour, minute] = (runTime || '09:00').split(':').map(Number);
   switch (frequency) {
-    case 'daily': return `${minute} ${hour} * * *`;
+    case 'daily':    return `${minute} ${hour} * * *`;
     case 'weekdays': return `${minute} ${hour} * * 1-5`;
-    case 'weekly': return `${minute} ${hour} * * 1`; // Mondays
-    case 'monthly': return `${minute} ${hour} 1 * *`; // 1st of month
-    default: return `${minute} ${hour} * * *`;
+    case 'weekly':   return `${minute} ${hour} * * 1`;
+    case 'monthly':  return `${minute} ${hour} 1 * *`;
+    default:         return `${minute} ${hour} * * *`;
   }
 }
 
 // Helper: calculate next run time
-function nextRunTime(frequency, runTime = '09:00', timezone = 'America/Chicago') {
+function nextRunTime(frequency, runTime = '09:00') {
   const now = new Date();
   const [hour, minute] = (runTime || '09:00').split(':').map(Number);
   const next = new Date(now);
   next.setHours(hour, minute, 0, 0);
   if (next <= now) next.setDate(next.getDate() + 1);
-  // Skip weekends for weekday tasks
   if (frequency === 'weekdays') {
     while (next.getDay() === 0 || next.getDay() === 6) {
       next.setDate(next.getDate() + 1);
@@ -85,56 +48,56 @@ function nextRunTime(frequency, runTime = '09:00', timezone = 'America/Chicago')
 
 // GET /api/agent/profile
 router.get('/profile', async (req, res) => {
-  let pool;
   try {
-    pool = await getPool();
-    await ensureTables(pool);
-    
-    const result = await pool.query(
-      `SELECT * FROM agent_profile WHERE agent_id = 'bloomie-sarah-rodriguez'`
-    );
-    const profile = result.rows[0] || {};
+    const supabase = await getSupabase();
 
-    // Get task count
-    const taskResult = await pool.query(
-      `SELECT COUNT(*) as count FROM scheduled_tasks WHERE agent_id = 'bloomie-sarah-rodriguez' AND enabled = true`
-    );
+    const { data: agent, error: agentErr } = await supabase
+      .from('agents')
+      .select('id, name, role, avatar_url, standing_instructions, created_at, updated_at')
+      .eq('id', SARAH_AGENT_ID)
+      .single();
 
-    // Get file count
-    let fileCount = 0;
-    try {
-      const fileResult = await pool.query(`SELECT COUNT(*) as count FROM artifacts`);
-      fileCount = parseInt(fileResult.rows[0]?.count || 0);
-    } catch {}
+    if (agentErr && agentErr.code !== 'PGRST116') {
+      logger.error('Get agent profile error', { error: agentErr.message });
+    }
 
-    // Get message count
-    let msgCount = 0;
-    try {
-      const msgResult = await pool.query(`SELECT COALESCE(SUM(message_count), 0) as count FROM chat_sessions`);
-      msgCount = parseInt(msgResult.rows[0]?.count || 0);
-    } catch {}
+    const { count: taskCount } = await supabase
+      .from('scheduled_tasks')
+      .select('id', { count: 'exact', head: true })
+      .eq('agent_id', SARAH_AGENT_ID)
+      .eq('enabled', true);
+
+    const { count: fileCount } = await supabase
+      .from('artifacts')
+      .select('id', { count: 'exact', head: true })
+      .eq('agent_id', SARAH_AGENT_ID);
+
+    const { count: msgCount } = await supabase
+      .from('messages')
+      .select('id', { count: 'exact', head: true })
+      .eq('agent_id', SARAH_AGENT_ID);
 
     return res.json({
       profile: {
-        agentId: profile.agent_id,
-        jobTitle: profile.job_title || 'AI Employee',
-        jobDescription: profile.job_description || '',
-        avatarUrl: profile.avatar_url || null,
-        createdAt: profile.created_at,
-        updatedAt: profile.updated_at
+        agentId:        agent?.id || SARAH_AGENT_ID,
+        jobTitle:       agent?.role || 'AI Employee',
+        jobDescription: agent?.standing_instructions?.slice(0, 200) || '',
+        avatarUrl:      agent?.avatar_url || null,
+        createdAt:      agent?.created_at,
+        updatedAt:      agent?.updated_at
       },
       stats: {
-        messages: msgCount,
-        files: fileCount,
-        activeTasks: parseInt(taskResult.rows[0]?.count || 0)
+        messages:    msgCount    || 0,
+        files:       fileCount   || 0,
+        activeTasks: taskCount   || 0
       },
       connectedTools: [
-        { name: 'GoHighLevel CRM', connected: true, icon: '📊', capabilities: ['Contacts', 'Conversations', 'Email', 'SMS', 'Campaigns'] },
-        { name: 'Browser & Research', connected: true, icon: '🌐', capabilities: ['Web browsing', 'Screenshots', 'Form filling'] },
-        { name: 'File Creation', connected: true, icon: '📄', capabilities: ['Blog posts', 'Email copy', 'SOPs', 'Reports'] },
-        { name: 'Email & SMS', connected: true, icon: '✉️', capabilities: ['Send via GHL', 'Campaign management'] },
-        { name: 'Google Drive', connected: false, icon: '📁', capabilities: ['Save files', 'Read docs'] },
-        { name: 'Social Media', connected: false, icon: '📱', capabilities: ['Post content', 'Schedule posts'] }
+        { name: 'GoHighLevel CRM',    connected: true,  icon: '📊', capabilities: ['Contacts', 'Conversations', 'Email', 'SMS', 'Campaigns'] },
+        { name: 'Browser & Research', connected: true,  icon: '🌐', capabilities: ['Web browsing', 'Screenshots', 'Form filling'] },
+        { name: 'File Creation',      connected: true,  icon: '📄', capabilities: ['Blog posts', 'Email copy', 'SOPs', 'Reports'] },
+        { name: 'Email & SMS',        connected: true,  icon: '✉️', capabilities: ['Send via GHL', 'Campaign management'] },
+        { name: 'Google Drive',       connected: false, icon: '📁', capabilities: ['Save files', 'Read docs'] },
+        { name: 'Social Media',       connected: false, icon: '📱', capabilities: ['Post content', 'Schedule posts'] }
       ]
     });
   } catch (error) {
@@ -145,13 +108,11 @@ router.get('/profile', async (req, res) => {
 
 // PATCH /api/agent/profile
 router.patch('/profile', async (req, res) => {
-  let pool;
   try {
-    pool = await getPool();
-    await ensureTables(pool);
+    const supabase = await getSupabase();
     let { jobTitle, jobDescription, avatarUrl } = req.body;
 
-    // If avatar is a data URL, upload to Supabase Storage
+    // If avatar is a data URL, upload to Supabase Storage first
     if (avatarUrl && avatarUrl.startsWith('data:image')) {
       try {
         const { uploadImage, isConfigured } = await import('../storage/supabase-storage.js');
@@ -160,25 +121,29 @@ router.patch('/profile', async (req, res) => {
           const ext = avatarUrl.includes('png') ? 'png' : 'jpg';
           const fname = `avatars/agent-${Date.now()}.${ext}`;
           const upload = await uploadImage(base64, fname, `image/${ext}`);
-          if (upload.success && upload.url) {
-            avatarUrl = upload.url;
-          }
+          if (upload.success && upload.url) avatarUrl = upload.url;
         }
-      } catch (e) { /* fallback to storing data URL */ }
+      } catch (e) {
+        logger.warn('Avatar upload failed, storing URL directly', { error: e.message });
+      }
     }
 
-    const result = await pool.query(`
-      UPDATE agent_profile 
-      SET job_title = COALESCE($1, job_title),
-          job_description = COALESCE($2, job_description),
-          avatar_url = COALESCE($3, avatar_url),
-          updated_at = NOW()
-      WHERE agent_id = 'bloomie-sarah-rodriguez'
-      RETURNING *
-    `, [jobTitle || null, jobDescription || null, avatarUrl || null]);
+    const updates = { updated_at: new Date().toISOString() };
+    if (jobTitle)                  updates.role                 = jobTitle;
+    if (avatarUrl)                 updates.avatar_url           = avatarUrl;
+    if (jobDescription !== undefined) updates.standing_instructions = jobDescription;
 
-    logger.info('Profile updated', { jobTitle, jobDescription: jobDescription?.slice(0, 50) });
-    return res.json({ success: true, profile: result.rows[0] });
+    const { data, error } = await supabase
+      .from('agents')
+      .update(updates)
+      .eq('id', SARAH_AGENT_ID)
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+
+    logger.info('Profile updated in Supabase', { jobTitle, hasAvatar: !!avatarUrl });
+    return res.json({ success: true, profile: data });
   } catch (error) {
     logger.error('Update profile error', { error: error.message });
     return res.status(500).json({ error: 'Failed to update profile' });
@@ -189,58 +154,54 @@ router.patch('/profile', async (req, res) => {
 // SCHEDULED TASKS ENDPOINTS
 // ═══════════════════════════════════════════════════════════════
 
-// GET /api/agent/tasks/runs — task execution history
+// GET /api/agent/tasks/runs
 router.get('/tasks/runs', async (req, res) => {
-  let pool;
   try {
-    pool = await getPool();
-    // task_runs table will be created when heartbeat execution is wired up
-    // For now return empty array
-    try {
-      const result = await pool.query(`
-        SELECT * FROM task_runs 
-        WHERE agent_id = 'bloomie-sarah-rodriguez'
-        ORDER BY created_at DESC LIMIT 50
-      `);
-      return res.json({ runs: result.rows });
-    } catch {
-      // Table doesn't exist yet — that's fine
-      return res.json({ runs: [] });
-    }
+    const supabase = await getSupabase();
+    const { data, error } = await supabase
+      .from('task_runs')
+      .select('*')
+      .eq('agent_id', SARAH_AGENT_ID)
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    if (error) throw new Error(error.message);
+    return res.json({ runs: data || [] });
   } catch (error) {
+    logger.error('Get task runs error', { error: error.message });
     return res.json({ runs: [] });
   }
 });
 
 // GET /api/agent/tasks
 router.get('/tasks', async (req, res) => {
-  let pool;
   try {
-    pool = await getPool();
-    await ensureTables(pool);
+    const supabase = await getSupabase();
+    const { data, error } = await supabase
+      .from('scheduled_tasks')
+      .select('*')
+      .eq('agent_id', SARAH_AGENT_ID)
+      .order('enabled', { ascending: false })
+      .order('created_at', { ascending: false });
 
-    const result = await pool.query(`
-      SELECT * FROM scheduled_tasks 
-      WHERE agent_id = 'bloomie-sarah-rodriguez'
-      ORDER BY enabled DESC, created_at DESC
-    `);
+    if (error) throw new Error(error.message);
 
-    const tasks = result.rows.map(t => ({
-      id: t.id,
-      taskId: t.task_id,
-      name: t.name,
+    const tasks = (data || []).map(t => ({
+      id:          t.id,
+      taskId:      t.task_id,
+      name:        t.name,
       description: t.description,
-      taskType: t.task_type,
+      taskType:    t.task_type,
       instruction: t.instruction,
-      frequency: t.frequency,
-      runTime: t.run_time,
-      timezone: t.timezone,
-      enabled: t.enabled,
-      lastRunAt: t.last_run_at,
-      nextRunAt: t.next_run_at,
-      runCount: t.run_count,
-      lastResult: t.last_result,
-      createdAt: t.created_at
+      frequency:   t.frequency,
+      runTime:     t.run_time,
+      timezone:    t.timezone,
+      enabled:     t.enabled,
+      lastRunAt:   t.last_run_at,
+      nextRunAt:   t.next_run_at,
+      runCount:    t.run_count,
+      lastResult:  t.last_result,
+      createdAt:   t.created_at
     }));
 
     return res.json({ tasks });
@@ -252,65 +213,77 @@ router.get('/tasks', async (req, res) => {
 
 // POST /api/agent/tasks
 router.post('/tasks', async (req, res) => {
-  let pool;
   try {
-    pool = await getPool();
-    await ensureTables(pool);
-
+    const supabase = await getSupabase();
     const { name, description, taskType, instruction, frequency, runTime } = req.body;
+
     if (!name || !instruction) {
       return res.status(400).json({ error: 'name and instruction are required' });
     }
 
-    const taskId = 'task_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
-    const cron = frequencyToCron(frequency || 'daily', runTime);
+    const taskId  = 'task_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+    const cron    = frequencyToCron(frequency || 'daily', runTime);
     const nextRun = nextRunTime(frequency || 'daily', runTime);
 
-    const result = await pool.query(`
-      INSERT INTO scheduled_tasks (task_id, name, description, task_type, instruction, frequency, cron_expression, run_time, next_run_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-      RETURNING *
-    `, [taskId, name, description || '', taskType || 'custom', instruction, frequency || 'daily', cron, runTime || '09:00', nextRun]);
+    const { data, error } = await supabase
+      .from('scheduled_tasks')
+      .insert({
+        task_id:         taskId,
+        agent_id:        SARAH_AGENT_ID,
+        organization_id: BLOOM_ORG_ID,
+        name,
+        description:     description || '',
+        task_type:       taskType || 'custom',
+        instruction,
+        frequency:       frequency || 'daily',
+        cron_expression: cron,
+        run_time:        runTime || '09:00',
+        next_run_at:     nextRun,
+        enabled:         true
+      })
+      .select()
+      .single();
 
-    logger.info('Scheduled task created', { taskId, name, frequency, runTime });
-    return res.json({ success: true, task: result.rows[0] });
+    if (error) throw new Error(error.message);
+
+    logger.info('Scheduled task created in Supabase', { taskId, name, frequency });
+    return res.json({ success: true, task: data });
   } catch (error) {
     logger.error('Create task error', { error: error.message });
     return res.status(500).json({ error: 'Failed to create task' });
   }
 });
 
-// PATCH /api/agent/tasks/:taskId — toggle enabled, update fields
+// PATCH /api/agent/tasks/:taskId
 router.patch('/tasks/:taskId', async (req, res) => {
-  let pool;
   try {
-    pool = await getPool();
+    const supabase = await getSupabase();
     const { taskId } = req.params;
     const { enabled, name, instruction, frequency, runTime } = req.body;
 
-    const updates = [];
-    const params = [];
-    let idx = 1;
-
-    if (enabled !== undefined) { updates.push(`enabled = $${idx++}`); params.push(enabled); }
-    if (name) { updates.push(`name = $${idx++}`); params.push(name); }
-    if (instruction) { updates.push(`instruction = $${idx++}`); params.push(instruction); }
+    const updates = { updated_at: new Date().toISOString() };
+    if (enabled !== undefined) updates.enabled     = enabled;
+    if (name)                  updates.name        = name;
+    if (instruction)           updates.instruction = instruction;
     if (frequency) {
-      updates.push(`frequency = $${idx++}`); params.push(frequency);
-      updates.push(`cron_expression = $${idx++}`); params.push(frequencyToCron(frequency, runTime || '09:00'));
-      updates.push(`next_run_at = $${idx++}`); params.push(nextRunTime(frequency, runTime));
+      updates.frequency       = frequency;
+      updates.cron_expression = frequencyToCron(frequency, runTime || '09:00');
+      updates.next_run_at     = nextRunTime(frequency, runTime);
     }
-    if (runTime) { updates.push(`run_time = $${idx++}`); params.push(runTime); }
-    updates.push(`updated_at = NOW()`);
+    if (runTime) updates.run_time = runTime;
 
-    params.push(taskId);
-    const result = await pool.query(
-      `UPDATE scheduled_tasks SET ${updates.join(', ')} WHERE task_id = $${idx} RETURNING *`,
-      params
-    );
+    const { data, error } = await supabase
+      .from('scheduled_tasks')
+      .update(updates)
+      .eq('task_id', taskId)
+      .eq('agent_id', SARAH_AGENT_ID)
+      .select()
+      .single();
 
-    if (!result.rows.length) return res.status(404).json({ error: 'Task not found' });
-    return res.json({ success: true, task: result.rows[0] });
+    if (error) throw new Error(error.message);
+    if (!data) return res.status(404).json({ error: 'Task not found' });
+
+    return res.json({ success: true, task: data });
   } catch (error) {
     logger.error('Update task error', { error: error.message });
     return res.status(500).json({ error: 'Failed to update task' });
@@ -319,13 +292,22 @@ router.patch('/tasks/:taskId', async (req, res) => {
 
 // DELETE /api/agent/tasks/:taskId
 router.delete('/tasks/:taskId', async (req, res) => {
-  let pool;
   try {
-    pool = await getPool();
+    const supabase = await getSupabase();
     const { taskId } = req.params;
-    const result = await pool.query(`DELETE FROM scheduled_tasks WHERE task_id = $1 RETURNING task_id`, [taskId]);
-    if (!result.rows.length) return res.status(404).json({ error: 'Task not found' });
-    logger.info('Scheduled task deleted', { taskId });
+
+    const { data, error } = await supabase
+      .from('scheduled_tasks')
+      .delete()
+      .eq('task_id', taskId)
+      .eq('agent_id', SARAH_AGENT_ID)
+      .select('task_id')
+      .single();
+
+    if (error) throw new Error(error.message);
+    if (!data) return res.status(404).json({ error: 'Task not found' });
+
+    logger.info('Scheduled task deleted from Supabase', { taskId });
     return res.json({ success: true });
   } catch (error) {
     logger.error('Delete task error', { error: error.message });
@@ -337,7 +319,7 @@ router.delete('/tasks/:taskId', async (req, res) => {
 // TASK RUNS (Activity feed)
 // ═══════════════════════════════════════════════════════════════
 
-// GET /api/agent/runs — task execution history for Activity page
+// GET /api/agent/runs
 router.get('/runs', async (req, res) => {
   try {
     const { getTaskRuns } = await import('../orchestrator/task-executor.js');
@@ -350,12 +332,12 @@ router.get('/runs', async (req, res) => {
   }
 });
 
-// GET /api/agent/models — current model routing config
+// GET /api/agent/models
 router.get('/models', async (req, res) => {
   try {
     const { getModelMap, getAvailableProviders } = await import('../orchestrator/router.js');
     return res.json({
-      routing: getModelMap(),
+      routing:   getModelMap(),
       providers: getAvailableProviders()
     });
   } catch (error) {
