@@ -234,6 +234,19 @@ async function updateNextRun(supabase, task) {
   let next = new Date(now);
   next.setHours(hour, minute, 0, 0);
 
+  if (task.frequency === 'hourly') {
+    // Hourly: next run is next hour at the same :MM minutes
+    next.setMinutes(minute, 0, 0);
+    next.setHours(now.getHours() + 1);
+    await supabase.from('scheduled_tasks').update({
+      next_run_at: next.toISOString(),
+      last_run_at: now.toISOString(),
+      run_count:   (task.run_count || 0) + 1,
+      updated_at:  now.toISOString()
+    }).eq('task_id', task.task_id);
+    return;
+  }
+
   switch (task.frequency) {
     case 'daily':    next.setDate(next.getDate() + 1); break;
     case 'weekdays':
