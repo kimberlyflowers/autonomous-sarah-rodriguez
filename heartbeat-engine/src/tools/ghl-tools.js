@@ -952,17 +952,61 @@ export const ghlExecutors = {
     if (!ownerContactId) {
       throw new Error('OWNER_GHL_CONTACT_ID not configured in Railway env vars. Set this to your GHL contact ID.');
     }
+    const locationId = process.env.GHL_LOCATION_ID;
     const messageType = params.type || 'SMS';
+
+    logger.info('notify_owner firing', { urgency: params.urgency, type: messageType, preview: params.message.slice(0, 80) });
+
+    // Step 1: Find or create a conversation for this contact
+    // GHL requires a conversationId to send messages — can't send directly to contactId
+    let conversationId;
+    try {
+      const searchResult = await callGHL('/conversations/search', 'GET', null, {
+        locationId,
+        contactId: ownerContactId,
+        limit: 1
+      });
+      const existing = searchResult?.conversations?.[0];
+      if (existing?.id) {
+        conversationId = existing.id;
+        logger.info('notify_owner: found existing conversation', { conversationId });
+      }
+    } catch (e) {
+      logger.warn('notify_owner: conversation search failed, will create new', { error: e.message });
+    }
+
+    // Step 2: Create conversation if none exists
+    if (!conversationId) {
+      try {
+        const created = await callGHL('/conversations/', 'POST', {
+          locationId,
+          contactId: ownerContactId
+        });
+        conversationId = created?.id || created?.conversation?.id;
+        logger.info('notify_owner: created new conversation', { conversationId });
+      } catch (e) {
+        throw new Error(`notify_owner: failed to create conversation — ${e.message}`);
+      }
+    }
+
+    if (!conversationId) {
+      throw new Error('notify_owner: could not find or create a GHL conversation for owner contact');
+    }
+
+    // Step 3: Send the message to the conversation
     const payload = {
-      contactId: ownerContactId,
       type: messageType,
       message: params.message,
+      conversationId,
+      contactId: ownerContactId,
     };
     if (messageType === 'Email') {
       payload.subject = params.urgency === 'urgent' ? '🚨 URGENT — Sarah Rodriguez Update' : '📋 Sarah Rodriguez Update';
     }
-    logger.info('notify_owner firing', { urgency: params.urgency, type: messageType, preview: params.message.slice(0, 80) });
-    return await callGHL('/conversations/messages', 'POST', payload);
+
+    const result = await callGHL('/conversations/messages', 'POST', payload);
+    logger.info('notify_owner: message sent', { conversationId, messageType, result });
+    return result;
   },
 
   // CALENDARS
