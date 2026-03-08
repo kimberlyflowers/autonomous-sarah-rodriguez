@@ -63,6 +63,7 @@ const ACTION_PERMISSIONS = {
 
   // Write operations — Level 1 Assistant can do all of these
   'ghl_send_message': { level: 1, category: 'communication', risk: 'medium' },
+  'notify_owner': { level: 0, category: 'communication', risk: 'low' },  // Always allowed — owner notifying owner
   'ghl_update_contact': { level: 1, category: 'data_modification', risk: 'medium' },
   'ghl_create_contact': { level: 1, category: 'data_creation', risk: 'medium' },
   'ghl_create_appointment': { level: 1, category: 'scheduling', risk: 'medium' },
@@ -512,6 +513,7 @@ export class TrustGate {
       'ghl_create_contact': `create a new contact for ${parameters.firstName || 'the person'}`,
       'ghl_update_contact': `update the contact information`,
       'ghl_send_message': `send a message to the contact`,
+      'notify_owner': `notify the business owner via SMS or email`,
       'ghl_create_opportunity': `create a new opportunity: ${parameters.title || 'untitled opportunity'}`,
       'ghl_update_opportunity_stage': `move the opportunity to the next stage`,
       'ghl_create_appointment': `schedule an appointment`,

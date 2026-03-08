@@ -3,11 +3,11 @@
 
 // Heartbeat frequency configurations
 export const cronSchedules = {
-  // Main operational heartbeat - every 30 minutes during business hours
+  // Main operational heartbeat - every 10 minutes during business hours
   operational: {
-    cron: '*/30 8-18 * * 1-5', // Every 30 min, 8am-6pm, Mon-Fri EST
+    cron: '*/10 * * * *', // Every 10 min, 24/7 — supports sub-hourly tasks like email monitoring
     type: 'full_cycle',
-    description: 'Main business hours heartbeat - full sense/think/act cycle',
+    description: 'Main heartbeat - checks scheduled tasks every 10 min, runs full cycle when tasks are due',
     timezone: 'America/New_York',
     enabled: true
   },

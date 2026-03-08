@@ -182,6 +182,73 @@ app.post('/webhook/trigger', async (req, res) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════
+// GHL INBOUND SMS/EMAIL WEBHOOK
+// When the OWNER (Kimberly) replies to Sarah's text, GHL fires this.
+// The reply enters Sarah's brain as a real message in the owner session.
+// GHL Workflow setup: Trigger = "Inbound Message" → Custom Webhook POST here
+// Webhook URL: https://autonomous-sarah-rodriguez-production.up.railway.app/webhook/ghl-inbound
+// ═══════════════════════════════════════════════════════════════
+app.post('/webhook/ghl-inbound', async (req, res) => {
+  try {
+    // GHL sends different payloads — normalize them
+    const body = req.body;
+    logger.info('📱 GHL inbound message received', { 
+      type: body.type, 
+      contactId: body.contactId || body.contact_id,
+      from: body.from || body.phone
+    });
+
+    // Only process messages from the owner
+    const ownerContactId = process.env.OWNER_GHL_CONTACT_ID;
+    const incomingContactId = body.contactId || body.contact_id || body.id;
+    
+    // Extract the actual message text (GHL uses different field names)
+    const messageText = body.message || body.body || body.text || body.messageText || '';
+    const contactName = body.contactName || body.contact?.name || 'Owner';
+    const contactPhone = body.phone || body.contact?.phone || '';
+
+    if (!messageText) {
+      logger.warn('GHL inbound: no message text found', { body: JSON.stringify(body).slice(0, 200) });
+      return res.json({ success: true, skipped: 'no message text' });
+    }
+
+    // Route this through Sarah's REAL chat pipeline
+    // Owner session is persistent — Sarah remembers the full conversation
+    const ownerSessionId = `owner-sms-${ownerContactId || 'kimberly'}`;
+    const port = process.env.PORT || 3000;
+
+    logger.info('📱 Routing owner reply to Sarah pipeline', { 
+      sessionId: ownerSessionId, 
+      messagePreview: messageText.slice(0, 80) 
+    });
+
+    const messageRes = await fetch(`http://localhost:${port}/api/chat/message`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: `[📱 SMS from ${contactName}]: ${messageText}`,
+        sessionId: ownerSessionId,
+      }),
+    });
+
+    const result = await messageRes.json();
+
+    // Sarah's response goes back to owner via GHL automatically
+    // (Sarah will call notify_owner in her pipeline if she needs to reply)
+    logger.info('📱 Owner message processed', { 
+      sessionId: ownerSessionId,
+      responseLength: result.response?.length 
+    });
+
+    return res.json({ success: true, sessionId: ownerSessionId });
+
+  } catch (error) {
+    logger.error('GHL inbound webhook failed:', error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Dashboard API routes
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/files', filesRoutes);

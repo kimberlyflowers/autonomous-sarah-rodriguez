@@ -174,6 +174,23 @@ export const ghlToolDefinitions = {
     operation: "write"
   },
 
+  // OWNER NOTIFICATIONS — Sarah proactively contacts the user/owner
+  notify_owner: {
+    name: "notify_owner",
+    description: "Send a text message or make a call notification to the business owner (Kimberly). Use this proactively to: report completed work, flag blockers/walls you've hit, alert on VIP emails or urgent items, confirm task completion, or request a decision. ALWAYS use this instead of ghl_send_message when the recipient is the owner.",
+    parameters: {
+      type: "object",
+      properties: {
+        message: { type: "string", description: "The message to send to the owner. Be concise and clear. Include what you did, what you found, or what you need." },
+        type: { type: "string", enum: ["SMS", "Email"], description: "How to reach the owner. Default: SMS for quick updates, Email for detailed reports.", default: "SMS" },
+        urgency: { type: "string", enum: ["normal", "urgent"], description: "urgent = VIP contact, blocker, or time-sensitive. normal = routine update.", default: "normal" }
+      },
+      required: ["message"]
+    },
+    category: "conversations",
+    operation: "write"
+  },
+
   // CALENDARS
   ghl_list_calendars: {
     name: "ghl_list_calendars",
@@ -927,6 +944,25 @@ export const ghlExecutors = {
   // POST /conversations/messages
   ghl_send_message: async (params) => {
     return await callGHL('/conversations/messages', 'POST', params);
+  },
+
+  // OWNER NOTIFICATIONS
+  notify_owner: async (params) => {
+    const ownerContactId = process.env.OWNER_GHL_CONTACT_ID;
+    if (!ownerContactId) {
+      throw new Error('OWNER_GHL_CONTACT_ID not configured in Railway env vars. Set this to your GHL contact ID.');
+    }
+    const messageType = params.type || 'SMS';
+    const payload = {
+      contactId: ownerContactId,
+      type: messageType,
+      message: params.message,
+    };
+    if (messageType === 'Email') {
+      payload.subject = params.urgency === 'urgent' ? '🚨 URGENT — Sarah Rodriguez Update' : '📋 Sarah Rodriguez Update';
+    }
+    logger.info('notify_owner firing', { urgency: params.urgency, type: messageType, preview: params.message.slice(0, 80) });
+    return await callGHL('/conversations/messages', 'POST', payload);
   },
 
   // CALENDARS
