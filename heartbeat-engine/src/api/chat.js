@@ -419,6 +419,20 @@ const _ALL_TOOLS = [
     }
   },
 
+  {
+    name: "notify_owner",
+    description: "Send a text (SMS) or email to the business owner (Kimberly) directly. Use this to: report completed work, alert on VIP emails, flag a blocker you've hit, confirm task done, or ask a question that needs a human decision. ALWAYS use this when contacting the owner — not ghl_send_message.",
+    input_schema: {
+      type: "object",
+      properties: {
+        message: { type: "string", description: "The message to send. Be concise. Include what you did, found, or need." },
+        type: { type: "string", enum: ["SMS", "Email"], description: "SMS for quick updates, Email for detailed reports. Default: SMS" },
+        urgency: { type: "string", enum: ["normal", "urgent"], description: "urgent = VIP contact, blocker, time-sensitive" }
+      },
+      required: ["message"]
+    }
+  },
+
   // ── CALENDARS & APPOINTMENTS ──────────────────────────────────────────────
   {
     name: "ghl_list_calendars",

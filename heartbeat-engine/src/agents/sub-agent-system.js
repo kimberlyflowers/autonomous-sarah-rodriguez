@@ -57,7 +57,7 @@ APPROACH:
     description: 'Expert in client communication, messaging, and relationship management',
     expertise: ['messaging', 'communication', 'relationships', 'follow_ups', 'campaigns'],
     tools: [
-      'ghl_send_message', 'ghl_get_conversations', 'ghl_create_note',
+      'ghl_send_message', 'notify_owner', 'ghl_get_conversations', 'ghl_create_note',
       'ghl_get_notes', 'ghl_add_contact_tag', 'ghl_remove_contact_tag',
       'ghl_list_campaigns', 'ghl_get_campaign_stats',
       'bloom_log_decision', 'bloom_log_observation', 'bloom_store_context',
