@@ -5,7 +5,11 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
-import logger from '../logging/logger.js';
+const logger = {
+  info: (...a) => console.log('[oauth]', ...a),
+  warn: (...a) => console.warn('[oauth]', ...a),
+  error: (...a) => console.error('[oauth]', ...a),
+};
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
