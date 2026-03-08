@@ -3110,16 +3110,16 @@ function App() {
                                 <div style={{padding:"6px 14px 4px",fontSize:11,fontWeight:700,color:c.fa,letterSpacing:"0.06em",textTransform:"uppercase"}}>Connectors</div>
                                 {/* Active connectors — loaded dynamically, shown as toggles */}
                                 {[
-                                  {icon:"🟠",label:"BLOOM CRM",active:true},
-                                  {icon:"📅",label:"Google Calendar",active:false},
-                                  {icon:"📁",label:"Google Drive",active:false},
-                                  {icon:"🎨",label:"Canva",active:false},
+                                  {icon:<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>, label:"BLOOM CRM",active:true},
+                                  {icon:<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>, label:"Google Calendar",active:false},
+                                  {icon:<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>, label:"Google Drive",active:false},
+                                  {icon:<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8.56 2.75c4.37 6.03 6.02 9.42 8.03 17.72m2.54-15.38c-3.72 4.35-8.94 5.66-16.88 5.85m19.5 1.9c-3.5-.93-6.63-.82-8.94 0-2.58.92-5.01 2.86-7.44 6.32"/></svg>, label:"Canva",active:false},
                                 ].map((conn,i)=>(
                                   <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 14px",cursor:"pointer",transition:"background .12s"}} onMouseEnter={e=>e.currentTarget.style.background=c.hv} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                                     <div style={{display:"flex",alignItems:"center",gap:10,fontSize:13,color:c.tx}}>
-                                      <span style={{fontSize:15}}>{conn.icon}</span>{conn.label}
+                                      <span style={{color:conn.active?"#F4A261":c.so,flexShrink:0}}>{conn.icon}</span>{conn.label}
                                     </div>
-                                    <div style={{width:32,height:18,borderRadius:9,background:conn.active?c.ac:c.ln,position:"relative",transition:"background .2s",cursor:"pointer",flexShrink:0}}>
+                                    <div style={{width:32,height:18,borderRadius:9,background:conn.active?"linear-gradient(135deg,#F4A261,#E76F8B)":c.ln,position:"relative",transition:"all .2s",cursor:"pointer",flexShrink:0}}>
                                       <div style={{position:"absolute",top:2,left:conn.active?14:2,width:14,height:14,borderRadius:"50%",background:"#fff",transition:"left .2s",boxShadow:"0 1px 3px rgba(0,0,0,0.3)"}}/>
                                     </div>
                                   </div>
@@ -4205,34 +4205,34 @@ function App() {
                 </div>
                 {[
                   {cat:"CRM & Communication",items:[
-                    {name:"GoHighLevel",slug:"ghl",icon:"🟠",desc:"Contacts, pipelines, SMS, email, automation",connected:true},
-                    {name:"Salesforce",slug:"salesforce",icon:"☁️",desc:"CRM, deals, leads, accounts, reports",connected:false},
-                    {name:"HubSpot",slug:"hubspot",icon:"🟧",desc:"Marketing, sales, service hub",connected:false},
+                    {name:"GoHighLevel",slug:"ghl",icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>,desc:"Contacts, pipelines, SMS, email, automation",connected:true},
+                    {name:"Salesforce",slug:"salesforce",icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,desc:"CRM, deals, leads, accounts, reports",connected:false},
+                    {name:"HubSpot",slug:"hubspot",icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>,desc:"Marketing, sales, service hub",connected:false},
                   ]},
                   {cat:"Email & Calendar",items:[
-                    {name:"Gmail",slug:"gmail",icon:"✉️",desc:"Read, send, and manage email",connected:false},
-                    {name:"Google Calendar",slug:"google-calendar",icon:"📅",desc:"Events, scheduling, availability",connected:false},
+                    {name:"Gmail",slug:"gmail",icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>,desc:"Read, send, and manage email",connected:false},
+                    {name:"Google Calendar",slug:"google-calendar",icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>,desc:"Events, scheduling, availability",connected:false},
                   ]},
                   {cat:"Social Media",items:[
-                    {name:"Instagram",slug:"instagram",icon:"📸",desc:"Posts, stories, DMs, analytics",connected:false},
-                    {name:"TikTok",slug:"tiktok",icon:"🎵",desc:"Videos, analytics, trends",connected:false},
-                    {name:"LinkedIn",slug:"linkedin",icon:"💼",desc:"Posts, connections, messaging",connected:false},
-                    {name:"Facebook",slug:"facebook",icon:"📘",desc:"Pages, posts, ads",connected:false},
+                    {name:"Instagram",slug:"instagram",icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>,desc:"Posts, stories, DMs, analytics",connected:false},
+                    {name:"TikTok",slug:"tiktok",icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5"/></svg>,desc:"Videos, analytics, trends",connected:false},
+                    {name:"LinkedIn",slug:"linkedin",icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/><rect x="2" y="9" width="4" height="12"/><circle cx="4" cy="4" r="2"/></svg>,desc:"Posts, connections, messaging",connected:false},
+                    {name:"Facebook",slug:"facebook",icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>,desc:"Pages, posts, ads",connected:false},
                   ]},
                   {cat:"Storage & Productivity",items:[
-                    {name:"Google Drive",slug:"google-drive",icon:"📁",desc:"Files, docs, sheets, slides",connected:false},
-                    {name:"Notion",slug:"notion",icon:"⬛",desc:"Docs, databases, wikis",connected:false},
-                    {name:"Slack",slug:"slack",icon:"💬",desc:"Channels, messages, files",connected:false},
-                    {name:"Airtable",slug:"airtable",icon:"🗃️",desc:"Databases, views, automations",connected:false},
-                    {name:"Canva",slug:"canva",icon:"🎨",desc:"Designs, brand kits, assets",connected:false},
+                    {name:"Google Drive",slug:"google-drive",icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>,desc:"Files, docs, sheets, slides",connected:false},
+                    {name:"Notion",slug:"notion",icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>,desc:"Docs, databases, wikis",connected:false},
+                    {name:"Slack",slug:"slack",icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22.08 9C19.56 1.68 14.9-.06 7.58 2.46S-1.54 9.1 1 16.42 9.1 25.54 16.42 23s8.64-5.9 6.12-13.22a1.06 1.06 0 0 0-.46-.78z"/></svg>,desc:"Channels, messages, files",connected:false},
+                    {name:"Airtable",slug:"airtable",icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>,desc:"Databases, views, automations",connected:false},
+                    {name:"Canva",slug:"canva",icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8.56 2.75c4.37 6.03 6.02 9.42 8.03 17.72m2.54-15.38c-3.72 4.35-8.94 5.66-16.88 5.85m19.5 1.9c-3.5-.93-6.63-.82-8.94 0-2.58.92-5.01 2.86-7.44 6.32"/></svg>,desc:"Designs, brand kits, assets",connected:false},
                   ]},
                   {cat:"E-commerce & Billing",items:[
-                    {name:"Shopify",slug:"shopify",icon:"🛍️",desc:"Orders, products, customers",connected:false},
-                    {name:"Stripe",slug:"stripe",icon:"💳",desc:"Payments, subscriptions, invoices",connected:false},
+                    {name:"Shopify",slug:"shopify",icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>,desc:"Orders, products, customers",connected:false},
+                    {name:"Stripe",slug:"stripe",icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>,desc:"Payments, subscriptions, invoices",connected:false},
                   ]},
                   {cat:"Automation",items:[
-                    {name:"n8n",slug:"n8n",icon:"⚡",desc:"Workflows, triggers, custom automations",connected:false},
-                    {name:"Zapier",slug:"zapier",icon:"🔗",desc:"Connect 5,000+ apps via webhooks",connected:false},
+                    {name:"n8n",slug:"n8n",icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>,desc:"Workflows, triggers, custom automations",connected:false},
+                    {name:"Zapier",slug:"zapier",icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>,desc:"Connect 5,000+ apps via webhooks",connected:false},
                   ]},
                 ].map(({cat,items})=>(
                   <div key={cat} style={{marginBottom:28}}>
@@ -4240,7 +4240,7 @@ function App() {
                     <div style={{display:"grid",gridTemplateColumns:mob?"1fr":"repeat(auto-fill,minmax(280px,1fr))",gap:10}}>
                       {items.map(item=>(
                         <div key={item.slug} style={{display:"flex",alignItems:"center",gap:14,padding:"14px 16px",borderRadius:12,border:"1.5px solid "+(item.connected?c.ac+"55":c.ln),background:item.connected?c.ac+"08":c.cd,transition:"all .2s"}} onMouseEnter={e=>{if(!item.connected)e.currentTarget.style.borderColor=c.ac+"44";}} onMouseLeave={e=>{if(!item.connected)e.currentTarget.style.borderColor=item.connected?c.ac+"55":c.ln;}}>
-                          <div style={{width:40,height:40,borderRadius:10,background:c.sf,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>{item.icon}</div>
+                          <div style={{width:40,height:40,borderRadius:10,background:item.connected?"linear-gradient(135deg,#F4A261,#E76F8B)":c.sf,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,color:item.connected?"#fff":c.so}}>{item.icon}</div>
                           <div style={{flex:1,minWidth:0}}>
                             <div style={{fontSize:13,fontWeight:700,color:c.tx,marginBottom:2}}>{item.name}</div>
                             <div style={{fontSize:11,color:c.so,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{item.desc}</div>
@@ -4251,7 +4251,7 @@ function App() {
                               <button onClick={e=>e.stopPropagation()} style={{fontSize:10,color:c.fa,background:"none",border:"none",cursor:"pointer",padding:"2px 4px"}}>Disconnect</button>
                             </div>
                           ):(
-                            <button onClick={e=>{e.stopPropagation();alert("Connect "+item.name+" — OAuth coming soon!");}} style={{padding:"7px 14px",borderRadius:8,border:"1.5px solid "+c.ac,background:"transparent",color:c.ac,fontSize:12,fontWeight:700,cursor:"pointer",flexShrink:0,whiteSpace:"nowrap",transition:"all .15s"}} onMouseEnter={e=>{e.currentTarget.style.background=c.ac;e.currentTarget.style.color="#fff";}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=c.ac;}}>Connect</button>
+                            <button onClick={e=>{e.stopPropagation();alert("Connect "+item.name+" — OAuth coming soon!");}} style={{padding:"7px 14px",borderRadius:8,border:"1.5px solid "+c.ac,background:"transparent",color:c.ac,fontSize:12,fontWeight:700,cursor:"pointer",flexShrink:0,whiteSpace:"nowrap",transition:"all .15s"}} onMouseEnter={e=>{e.currentTarget.style.background="linear-gradient(135deg,#F4A261,#E76F8B)";e.currentTarget.style.borderColor="transparent";e.currentTarget.style.color="#fff";}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.borderColor=c.ac;e.currentTarget.style.color=c.ac;}}>Connect</button>
                           )}
                         </div>
                       ))}
