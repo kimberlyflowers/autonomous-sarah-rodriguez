@@ -2143,18 +2143,31 @@ router.get('/sessions', async (req, res) => {
   }
 });
 
-// GET /api/chat/sessions/:id — load full history
+// GET /api/chat/sessions/:id — load full history from Supabase
 router.get('/sessions/:id', async (req, res) => {
-  const pool = await getPool();
   try {
-    const msgs = await pool.query(
-      `SELECT id, role, content, files, created_at FROM chat_messages WHERE session_id=$1 ORDER BY created_at ASC`,
-      [req.params.id]
-    );
-    res.json({ messages: msgs.rows });
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const { data, error } = await supabase
+      .from('messages')
+      .select('id, role, content, files, created_at')
+      .eq('session_id', req.params.id)
+      .order('created_at', { ascending: true });
+    if (error) throw new Error(error.message);
+    res.json({ messages: data || [] });
   } catch (e) {
     logger.error('Session load error', { error: e.message });
-    res.json({ messages: [] });
+    // Fallback to Railway Postgres for older sessions
+    try {
+      const pool = await getPool();
+      const msgs = await pool.query(
+        `SELECT id, role, content, files, created_at FROM chat_messages WHERE session_id=$1 ORDER BY created_at ASC`,
+        [req.params.id]
+      );
+      res.json({ messages: msgs.rows });
+    } catch {
+      res.json({ messages: [] });
+    }
   }
 });
 
