@@ -19,6 +19,7 @@ async function getSupabase() {
 function frequencyToCron(frequency, runTime = '09:00') {
   const [hour, minute] = (runTime || '09:00').split(':').map(Number);
   switch (frequency) {
+    case 'hourly':   return `${minute} * * * *`;           // every hour at :MM
     case 'daily':    return `${minute} ${hour} * * *`;
     case 'weekdays': return `${minute} ${hour} * * 1-5`;
     case 'weekly':   return `${minute} ${hour} * * 1`;
@@ -32,6 +33,14 @@ function nextRunTime(frequency, runTime = '09:00') {
   const now = new Date();
   const [hour, minute] = (runTime || '09:00').split(':').map(Number);
   const next = new Date(now);
+
+  if (frequency === 'hourly') {
+    // Next top of the hour (at :MM minutes past each hour)
+    next.setMinutes(minute, 0, 0);
+    if (next <= now) next.setHours(next.getHours() + 1);
+    return next.toISOString();
+  }
+
   next.setHours(hour, minute, 0, 0);
   if (next <= now) next.setDate(next.getDate() + 1);
   if (frequency === 'weekdays') {
