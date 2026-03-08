@@ -933,9 +933,14 @@ function Screen({c,mob,mode,setMode}) {
   useEffect(()=>{
     if(mode==="hidden") return;
     let es;
+    let retryCount = 0;
+    let retryTimer = null;
+    const MAX_RETRIES = 5;
     const connect = () => {
+      if(es) { try { es.close(); } catch {} es = null; }
       es = new EventSource("/api/browser/stream");
       es.onmessage = (e) => {
+        retryCount = 0; // reset on successful message
         try {
           const d = JSON.parse(e.data);
           if(d.type==="screenshot") {
@@ -949,10 +954,24 @@ function Screen({c,mob,mode,setMode}) {
           }
         } catch {}
       };
-      es.onerror = () => { setLive(false); es.close(); setTimeout(connect, 5000); };
+      es.onerror = () => {
+        setLive(false);
+        try { es.close(); } catch {}
+        es = null;
+        if(retryCount < MAX_RETRIES) {
+          // Exponential backoff: 5s, 10s, 20s, 40s, 60s
+          const delay = Math.min(5000 * Math.pow(2, retryCount), 60000);
+          retryCount++;
+          retryTimer = setTimeout(connect, delay);
+        }
+        // After MAX_RETRIES, stop reconnecting — browser is simply not active
+      };
     };
     connect();
-    return () => { try { es&&es.close(); } catch {} };
+    return () => {
+      if(retryTimer) clearTimeout(retryTimer);
+      try { es&&es.close(); } catch {}
+    };
   },[mode]);
 
   if(mode==="hidden") return null;
