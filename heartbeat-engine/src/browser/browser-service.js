@@ -15,6 +15,9 @@ const BROWSERLESS_TOKEN = process.env.BROWSERLESS_TOKEN || '';
 class BrowserService extends EventEmitter {
   constructor() {
     super();
+    // Allow up to 50 concurrent screenshot listeners (one per open dashboard tab/SSE connection)
+    // Default of 10 triggers false-positive memory leak warnings when multiple tabs are open
+    this.setMaxListeners(50);
     this.browser = null;
     this.context = null;
     this.page = null;
