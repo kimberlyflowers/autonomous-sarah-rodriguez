@@ -2228,6 +2228,25 @@ function App() {
   const [vcRec,setVcRec]=useState(false);
   const [showPlusMenu,setShowPlusMenu]=useState(false);
   const plusMenuRef=useRef(null);
+  const [oauthToast,setOauthToast]=useState(null);
+
+  useEffect(()=>{
+    const params=new URLSearchParams(window.location.search);
+    const success=params.get('oauth_success');
+    const error=params.get('oauth_error');
+    const connector=params.get('connector');
+    if(success){
+      setOauthToast({type:'success',msg:`${connector||success} connected!`});
+      setPg('customize');
+      window.history.replaceState({},'',window.location.pathname);
+      setTimeout(()=>setOauthToast(null),5000);
+    } else if(error){
+      setOauthToast({type:'error',msg:`Connection failed: ${decodeURIComponent(error)}`});
+      setPg('customize');
+      window.history.replaceState({},'',window.location.pathname);
+      setTimeout(()=>setOauthToast(null),6000);
+    }
+  },[]);
   
   // Projects state
   const [projects,setProjects]=useState([]);
