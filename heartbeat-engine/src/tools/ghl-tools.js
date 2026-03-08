@@ -948,9 +948,28 @@ export const ghlExecutors = {
 
   // OWNER NOTIFICATIONS
   notify_owner: async (params) => {
-    const ownerContactId = process.env.OWNER_GHL_CONTACT_ID;
+    // Look up owner contact ID from Supabase organizations table
+    // This scales to all clients — no Railway env var needed per client
+    let ownerContactId = process.env.OWNER_GHL_CONTACT_ID; // fallback for legacy
+    try {
+      const { createClient } = await import('@supabase/supabase-js');
+      const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+      const orgId = process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001';
+      const { data: org } = await supabase
+        .from('organizations')
+        .select('owner_ghl_contact_id, owner_name')
+        .eq('id', orgId)
+        .single();
+      if (org?.owner_ghl_contact_id) {
+        ownerContactId = org.owner_ghl_contact_id;
+        logger.info('notify_owner: contact ID loaded from Supabase', { owner: org.owner_name });
+      }
+    } catch (e) {
+      logger.warn('notify_owner: Supabase lookup failed, falling back to env var', { error: e.message });
+    }
+
     if (!ownerContactId) {
-      throw new Error('OWNER_GHL_CONTACT_ID not configured in Railway env vars. Set this to your GHL contact ID.');
+      throw new Error('notify_owner: no owner_ghl_contact_id found in Supabase organizations table or OWNER_GHL_CONTACT_ID env var');
     }
     const locationId = process.env.GHL_LOCATION_ID;
     const messageType = params.type || 'SMS';
