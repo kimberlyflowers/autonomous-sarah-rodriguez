@@ -2472,6 +2472,15 @@ function App() {
         ::-webkit-scrollbar{width:4px}
         ::-webkit-scrollbar-thumb{background:${c.ln};border-radius:10px}
       `}</style>
+      {/* ── OAuth Toast ── */}
+      {oauthToast&&(
+        <div style={{position:"fixed",bottom:24,left:"50%",transform:"translateX(-50%)",zIndex:9999,padding:"12px 20px",borderRadius:12,background:oauthToast.type==="success"?"linear-gradient(135deg,#F4A261,#E76F8B)":"#ea4335",color:"#fff",fontSize:13,fontWeight:600,boxShadow:"0 4px 20px rgba(0,0,0,0.3)",display:"flex",alignItems:"center",gap:10,whiteSpace:"nowrap"}}>
+          {oauthToast.type==="success"
+            ?<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+            :<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>}
+          {oauthToast.msg}
+        </div>
+      )}
       <input ref={fRef} type="file" multiple accept="image/*,.pdf,.csv,.txt,.docx,.xlsx,.json,.md" style={{display:"none"}} onChange={async(e)=>{
         const files=[...e.target.files];
         if(!files.length) return;

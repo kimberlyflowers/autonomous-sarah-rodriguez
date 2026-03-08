@@ -183,65 +183,155 @@ app.post('/webhook/trigger', async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════
+// OAUTH CONNECTOR FLOW
+// GET /oauth/connect/:slug  → redirects user to provider's auth page
+// GET /oauth/callback/:slug → receives code, saves token, redirects back to dashboard
+// ═══════════════════════════════════════════════════════════════
+import { buildAuthUrl, handleCallback } from './integrations/oauth.js';
+
+const DASHBOARD_URL = process.env.RAILWAY_PUBLIC_DOMAIN
+  ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+  : 'https://autonomous-sarah-rodriguez-production.up.railway.app';
+
+// Step 1 — Start OAuth: dashboard calls this with orgId in query
+app.get('/oauth/connect/:slug', (req, res) => {
+  try {
+    const { slug } = req.params;
+    const orgId = req.query.orgId || process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001';
+    const authUrl = buildAuthUrl(slug, orgId);
+    logger.info(`OAuth connect: redirecting to ${slug} for org ${orgId}`);
+    res.redirect(authUrl);
+  } catch (err) {
+    logger.error('OAuth connect error:', err);
+    res.redirect(`${DASHBOARD_URL}?oauth_error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+// Step 2 — Callback: provider redirects here with code
+app.get('/oauth/callback/:slug', async (req, res) => {
+  try {
+    const { slug } = req.params;
+    const { code, state, error } = req.query;
+
+    if (error) {
+      logger.warn(`OAuth callback error for ${slug}: ${error}`);
+      return res.redirect(`${DASHBOARD_URL}?oauth_error=${encodeURIComponent(error)}&slug=${slug}`);
+    }
+
+    if (!code || !state) {
+      return res.redirect(`${DASHBOARD_URL}?oauth_error=missing_code&slug=${slug}`);
+    }
+
+    const result = await handleCallback(slug, code, state);
+    logger.info(`✅ OAuth success: ${result.connector}`);
+
+    // Redirect back to dashboard Customize page with success flag
+    res.redirect(`${DASHBOARD_URL}?oauth_success=${slug}&connector=${encodeURIComponent(result.connector)}`);
+  } catch (err) {
+    logger.error('OAuth callback error:', err);
+    res.redirect(`${DASHBOARD_URL}?oauth_error=${encodeURIComponent(err.message)}&slug=${req.params.slug}`);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
 // GHL INBOUND SMS/EMAIL WEBHOOK
-// When the OWNER (Kimberly) replies to Sarah's text, GHL fires this.
-// The reply enters Sarah's brain as a real message in the owner session.
-// GHL Workflow setup: Trigger = "Inbound Message" → Custom Webhook POST here
-// Webhook URL: https://autonomous-sarah-rodriguez-production.up.railway.app/webhook/ghl-inbound
+// Receives ALL inbound texts to BLOOM's GHL number.
+// Routes each message to the correct Bloomie based on who is texting.
+//
+// Routing logic:
+//   1. Look up incomingContactId in organizations.owner_ghl_contact_id
+//   2. Find which org owns that contact → get their agent_id
+//   3. Route message to that agent's session
+//
+// Example:
+//   Dad texts in → matches YES School org → routes to Jonathan
+//   Kimberly texts in → matches BLOOM org → routes to Sarah
+//   Unknown contact → routes to BLOOM default agent (Sarah)
+//
+// GHL Workflow: Trigger = "Inbound Message" → Webhook POST to:
+// https://autonomous-sarah-rodriguez-production.up.railway.app/webhook/ghl-inbound
 // ═══════════════════════════════════════════════════════════════
 app.post('/webhook/ghl-inbound', async (req, res) => {
   try {
-    // GHL sends different payloads — normalize them
     const body = req.body;
-    logger.info('📱 GHL inbound message received', { 
-      type: body.type, 
-      contactId: body.contactId || body.contact_id,
-      from: body.from || body.phone
-    });
 
-    // Only process messages from the owner
-    const ownerContactId = process.env.OWNER_GHL_CONTACT_ID;
-    const incomingContactId = body.contactId || body.contact_id || body.id;
-    
-    // Extract the actual message text (GHL uses different field names)
-    const messageText = body.message || body.body || body.text || body.messageText || '';
-    const contactName = body.contactName || body.contact?.name || 'Owner';
-    const contactPhone = body.phone || body.contact?.phone || '';
+    // Normalize GHL payload — they use different field names depending on trigger type
+    const incomingContactId = body.contactId || body.contact_id || body.contact?.id || '';
+    const messageText       = body.message || body.body || body.text || body.messageText || '';
+    const contactName       = body.contactName || body.contact?.name || 'Unknown';
+    const contactPhone      = body.phone || body.contact?.phone || '';
+
+    logger.info('📱 GHL inbound message received', { incomingContactId, contactName, preview: messageText.slice(0, 60) });
 
     if (!messageText) {
       logger.warn('GHL inbound: no message text found', { body: JSON.stringify(body).slice(0, 200) });
       return res.json({ success: true, skipped: 'no message text' });
     }
 
-    // Route this through Sarah's REAL chat pipeline
-    // Owner session is persistent — Sarah remembers the full conversation
-    const ownerSessionId = `owner-sms-${ownerContactId || 'kimberly'}`;
-    const port = process.env.PORT || 3000;
+    // ── ROUTE TO CORRECT BLOOMIE ──────────────────────────────────────────
+    // Look up which org this contact belongs to, then get that org's agent
+    let agentId   = process.env.AGENT_UUID || 'c3000000-0000-0000-0000-000000000003'; // default: Sarah
+    let orgId     = process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001';
+    let agentName = 'Sarah';
 
-    logger.info('📱 Routing owner reply to Sarah pipeline', { 
-      sessionId: ownerSessionId, 
-      messagePreview: messageText.slice(0, 80) 
-    });
+    if (incomingContactId) {
+      try {
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+
+        // Find org whose owner matches this contact ID
+        const { data: org } = await supabase
+          .from('organizations')
+          .select('id, name, owner_ghl_contact_id')
+          .eq('owner_ghl_contact_id', incomingContactId)
+          .single();
+
+        if (org) {
+          // Found matching org — get their assigned agent
+          const { data: agent } = await supabase
+            .from('agents')
+            .select('id, name')
+            .eq('organization_id', org.id)
+            .single();
+
+          if (agent) {
+            agentId   = agent.id;
+            agentName = agent.name;
+            orgId     = org.id;
+            logger.info(`📱 Routed to ${agentName} for org: ${org.name}`, { agentId, orgId });
+          }
+        } else {
+          logger.info('📱 No matching org found for contact — routing to default agent (Sarah)', { incomingContactId });
+        }
+      } catch (e) {
+        logger.warn('📱 Supabase routing lookup failed — using default agent', { error: e.message });
+      }
+    }
+
+    // ── SEND TO AGENT'S CHAT PIPELINE ─────────────────────────────────────
+    // Each owner gets their own persistent SMS session per agent
+    const sessionId = `sms-${agentId}-${incomingContactId || contactPhone}`;
+    const port      = process.env.PORT || 3000;
 
     const messageRes = await fetch(`http://localhost:${port}/api/chat/message`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        message: `[📱 SMS from ${contactName}]: ${messageText}`,
-        sessionId: ownerSessionId,
+        message:   `[📱 SMS from ${contactName}]: ${messageText}`,
+        sessionId,
+        agentId,
+        orgId,
       }),
     });
 
     const result = await messageRes.json();
 
-    // Sarah's response goes back to owner via GHL automatically
-    // (Sarah will call notify_owner in her pipeline if she needs to reply)
-    logger.info('📱 Owner message processed', { 
-      sessionId: ownerSessionId,
+    logger.info('📱 Inbound SMS processed', { 
+      agent: agentName, sessionId, 
       responseLength: result.response?.length 
     });
 
-    return res.json({ success: true, sessionId: ownerSessionId });
+    return res.json({ success: true, sessionId, agent: agentName });
 
   } catch (error) {
     logger.error('GHL inbound webhook failed:', error);
