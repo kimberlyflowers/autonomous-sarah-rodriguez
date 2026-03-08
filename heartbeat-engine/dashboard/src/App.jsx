@@ -2872,9 +2872,11 @@ function App() {
                     <p style={{fontSize:mob?13:15,color:c.so,marginBottom:28}}>Give her tasks, check her work, or ask what's going on</p>
                     <div style={{position:"relative",marginBottom:20}}>
                       <div style={{display:"flex",alignItems:"flex-end",gap:8,padding:mob?"12px":"14px 16px",borderRadius:20,border:"1.5px solid "+(vcRec?c.ac:c.ln),background:c.inp,transition:"border-color .2s"}}>
-                        <button onClick={()=>setShowPlusMenu(p=>!p)} title="Attach file" style={{width:36,height:36,borderRadius:10,border:"none",cursor:"pointer",background:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginBottom:2}}>
-                          <span style={{fontSize:20,color:c.so,fontWeight:300,lineHeight:1}}>+</span>
-                        </button>
+                        <div ref={plusMenuRef} style={{position:"relative",flexShrink:0,marginBottom:2}}>
+                          <button onClick={()=>setShowPlusMenu(p=>!p)} title="Add" style={{width:36,height:36,borderRadius:10,border:"none",cursor:"pointer",background:showPlusMenu?c.sf:"transparent",display:"flex",alignItems:"center",justifyContent:"center",transition:"background .15s"}}>
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={showPlusMenu?c.ac:c.so} strokeWidth="2" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                          </button>
+                        </div>
                         <textarea value={tx} onChange={e=>setTx(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();doSend();}}} placeholder={vcRec?"Listening…":"Ask anything..."} rows={1} style={{flex:1,padding:"10px 0",border:"none",fontSize:15,fontFamily:"inherit",background:"transparent",color:c.tx,resize:"none",lineHeight:1.4,maxHeight:120,overflowY:"auto",outline:"none"}}/>
                         <button onClick={toggleVoice} style={{width:36,height:36,borderRadius:10,border:"none",cursor:"pointer",background:vcRec?c.ac+"18":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,position:"relative",marginBottom:2}}>
                           {vcRec&&<span style={{position:"absolute",inset:-4,borderRadius:14,border:"2px solid "+c.ac,animation:"pulse 1.2s ease infinite",opacity:0.4}}/>}
@@ -4299,7 +4301,12 @@ function App() {
                               <button onClick={e=>e.stopPropagation()} style={{fontSize:10,color:c.fa,background:"none",border:"none",cursor:"pointer",padding:"2px 4px"}}>Disconnect</button>
                             </div>
                           ):(
-                            <button onClick={e=>{e.stopPropagation();const orgId="a1000000-0000-0000-0000-000000000001";window.location.href=`/oauth/connect/${item.slug}?orgId=${orgId}`;}} style={{padding:"7px 14px",borderRadius:8,border:"1.5px solid "+c.ac,background:"transparent",color:c.ac,fontSize:12,fontWeight:700,cursor:"pointer",flexShrink:0,whiteSpace:"nowrap",transition:"all .15s"}} onMouseEnter={e=>{e.currentTarget.style.background="linear-gradient(135deg,#F4A261,#E76F8B)";e.currentTarget.style.borderColor="transparent";e.currentTarget.style.color="#fff";}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.borderColor=c.ac;e.currentTarget.style.color=c.ac;}}>Connect</button>
+                            <button onClick={e=>{e.stopPropagation();const orgId="a1000000-0000-0000-0000-000000000001";window.location.href=`/oauth/connect/${item.slug}?orgId=${orgId}`;}}
+                              style={{padding:"7px 14px",borderRadius:8,border:"1.5px solid #F4A261",background:"transparent",cursor:"pointer",flexShrink:0,whiteSpace:"nowrap",transition:"all .15s",fontSize:12,fontWeight:700}}
+                              onMouseEnter={e=>{e.currentTarget.style.background="linear-gradient(135deg,#F4A261,#E76F8B)";e.currentTarget.style.borderColor="transparent";e.currentTarget.querySelector("span").style.WebkitTextFillColor="#fff";e.currentTarget.querySelector("span").style.backgroundImage="none";}}
+                              onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.borderColor="#F4A261";e.currentTarget.querySelector("span").style.WebkitTextFillColor="transparent";e.currentTarget.querySelector("span").style.backgroundImage="linear-gradient(135deg,#F4A261,#E76F8B)";}}>
+                              <span style={{background:"linear-gradient(135deg,#F4A261,#E76F8B)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",backgroundClip:"text",fontWeight:700,fontSize:12}}>Connect</span>
+                            </button>
                           )}
                         </div>
                       ))}
