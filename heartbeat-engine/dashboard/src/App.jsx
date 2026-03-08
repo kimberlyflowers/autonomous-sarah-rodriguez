@@ -2508,11 +2508,12 @@ function App() {
             <span style={{width:6,height:6,borderRadius:"50%",background:connected?c.gr:"#ef4444",animation:connected?"pulse 1.5s ease infinite":"none"}}/>
             <span style={{fontSize:10,fontWeight:600,color:connected?c.gr:"#dc2626"}}>{connected?"Connected":"Offline"}</span>
           </div>
-          <a href={`https://app.gohighlevel.com`} target="_blank" rel="noopener" style={{display:"flex",alignItems:"center",gap:5,padding:"4px 10px",borderRadius:8,border:"1px solid "+c.ln,background:c.cd,fontSize:10,fontWeight:600,color:c.ac,textDecoration:"none",cursor:"pointer"}}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <a href={`https://app.gohighlevel.com`} target="_blank" rel="noopener" style={{display:"flex",alignItems:"center",gap:5,padding:"4px 10px",borderRadius:8,border:"1.5px solid transparent",backgroundImage:"linear-gradient("+c.cd+","+c.cd+"), linear-gradient(135deg,#F4A261,#E76F8B)",backgroundOrigin:"border-box",backgroundClip:"padding-box, border-box",fontSize:10,fontWeight:700,textDecoration:"none",cursor:"pointer",background:c.cd}}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="url(#crmGrad)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <defs><linearGradient id="crmGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#F4A261"/><stop offset="100%" stopColor="#E76F8B"/></linearGradient></defs>
               <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
             </svg>
-            BLOOM CRM
+            <span style={{background:"linear-gradient(135deg,#F4A261,#E76F8B)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",backgroundClip:"text"}}>BLOOM CRM</span>
           </a>
         </div>
 
@@ -3124,9 +3125,9 @@ function App() {
                                     </div>
                                   </div>
                                 ))}
-                                <button onClick={()=>{setPg("customize");setShowPlusMenu(false);}} style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"9px 14px",border:"none",background:"transparent",cursor:"pointer",color:c.ac,fontSize:13,textAlign:"left",fontWeight:600,transition:"background .12s"}} onMouseEnter={e=>e.currentTarget.style.background=c.hv} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
-                                  Manage connectors
+                                <button onClick={()=>{setPg("customize");setShowPlusMenu(false);}} style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"9px 14px",border:"none",background:"transparent",cursor:"pointer",fontSize:13,textAlign:"left",fontWeight:700,transition:"background .12s"}} onMouseEnter={e=>e.currentTarget.style.background=c.hv} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="url(#mgGrad)" strokeWidth="2" strokeLinecap="round"><defs><linearGradient id="mgGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#F4A261"/><stop offset="100%" stopColor="#E76F8B"/></linearGradient></defs><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+                                  <span style={{background:"linear-gradient(135deg,#F4A261,#E76F8B)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",backgroundClip:"text"}}>Manage connectors</span>
                                 </button>
                               </div>
                             </>
