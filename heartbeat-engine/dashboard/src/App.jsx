@@ -3009,11 +3009,11 @@ function App() {
                               {m.files&&m.files.length>0&&(
                                 <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:m.t?8:4}}>
                                   {m.files.map((f,fi)=>(
-                                    f.type?.startsWith("image/")
+                                    f.type?.startsWith("image/") && f.dataUrl
                                       ? <img key={fi} src={f.dataUrl} alt={f.name} style={{maxWidth:220,maxHeight:160,borderRadius:8,objectFit:"cover",border:"1px solid rgba(255,255,255,0.15)"}}/>
                                       : <div key={fi} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 10px",borderRadius:8,background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.15)"}}>
-                                          <span style={{fontSize:18}}>{null}</span>
-                                          <span style={{fontSize:11,fontWeight:600,color:m.b?c.tx:"#fff",maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</span>
+                                          <span style={{fontSize:14}}>{f.type?.startsWith('image/') ? '🖼' : '📎'}</span>
+                                          <span style={{fontSize:11,fontWeight:600,color:m.b?c.tx:'#fff',maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{f.name}</span>
                                         </div>
                                   ))}
                                 </div>
