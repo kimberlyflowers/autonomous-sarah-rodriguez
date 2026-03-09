@@ -2436,24 +2436,30 @@ function App() {
   const takeScreenshot=async()=>{
     setShowPlusMenu(false);
     try {
-      // html2canvas is loaded via CDN script tag in index.html
-      if(typeof window.html2canvas !== 'function') {
-        console.warn('html2canvas not loaded yet');
-        return;
-      }
-      const canvas = await window.html2canvas(document.body, { useCORS: true, scale: 1, logging: false });
+      // Browser shows native share picker (screen / window / tab) — user picks one
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+      const track = stream.getVideoTracks()[0];
+      // Grab a single frame using ImageCapture
+      const imageCapture = new ImageCapture(track);
+      const bitmap = await imageCapture.grabFrame();
+      // Stop sharing immediately — no recording
+      track.stop();
+      // Draw bitmap to canvas → dataURL
+      const canvas = document.createElement('canvas');
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      canvas.getContext('2d').drawImage(bitmap, 0, 0);
       const dataUrl = canvas.toDataURL('image/png');
       const base64 = dataUrl.split(',')[1];
-      // Inject as a pending file so user can see it before sending
       const file = new File(
         [Uint8Array.from(atob(base64), c => c.charCodeAt(0))],
         'screenshot.png',
         { type: 'image/png' }
       );
-      const preview = { file, dataUrl, name: 'screenshot.png' };
-      setPendingFiles(prev => [...prev, preview]);
+      setPendingFiles(prev => [...prev, { file, dataUrl, name: 'screenshot.png' }]);
     } catch(err) {
-      console.error('Screenshot failed:', err);
+      // User cancelled the picker — silent fail
+      if(err.name !== 'NotAllowedError') console.error('Screenshot failed:', err);
     }
   };
 
