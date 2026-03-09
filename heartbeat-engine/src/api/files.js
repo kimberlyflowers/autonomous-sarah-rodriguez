@@ -144,7 +144,7 @@ router.post('/artifacts', async (req, res) => {
 async function saveArtifactToSupabaseAndShield({ artifact, fileId, name, description, fileType, mimeType, contentText, sessionId }) {
   try {
     const { createClient } = await import('@supabase/supabase-js');
-    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
 
     const orgId = process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001';
     const userId = process.env.BLOOM_OWNER_USER_ID || '823e2fb5-2f8f-4279-9c84-c8f4bf78bcce';

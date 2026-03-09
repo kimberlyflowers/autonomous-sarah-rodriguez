@@ -13,7 +13,7 @@ if (!supabaseUrl || !supabaseKey) {
   logger.error('Missing SUPABASE_URL or SUPABASE_SERVICE_KEY environment variables');
 }
 
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabase = createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
 
 /**
  * GET /api/projects

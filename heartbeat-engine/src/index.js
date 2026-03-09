@@ -298,7 +298,7 @@ app.post('/webhook/ghl-inbound', async (req, res) => {
     if (incomingContactId) {
       try {
         const { createClient } = await import('@supabase/supabase-js');
-        const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+        const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
 
         // Find org whose owner matches this contact ID
         const { data: org } = await supabase

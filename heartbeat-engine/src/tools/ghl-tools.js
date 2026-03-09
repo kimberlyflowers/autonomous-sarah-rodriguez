@@ -953,7 +953,7 @@ export const ghlExecutors = {
     let ownerContactId = process.env.OWNER_GHL_CONTACT_ID; // fallback for legacy
     try {
       const { createClient } = await import('@supabase/supabase-js');
-      const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+      const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
       const orgId = process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001';
       const { data: org } = await supabase
         .from('organizations')
