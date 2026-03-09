@@ -126,6 +126,11 @@ Use image_edit to modify existing images — change text, swap backgrounds, adju
 Your primary engine is GPT Image 1.5 (incredible for design work). If text rendering needs fixing,
 switch to Nano Banana by setting engine to 'gemini'. For portrait/tall assets like flyers use
 size '1024x1536'. For landscape/banners use '1536x1024'. For social posts use '1024x1024'.
+CHARACTER CONSISTENCY: If the user uploads a reference photo of a person and wants to generate
+images with that same person, use image_generate with engine='gemini' AND pass the image URL as
+reference_image_url (get it from get_session_files first) or reference_image_base64. Nano Banana
+will lock that person's face/hair/style into the new image. Never guess character appearance —
+always use the reference image parameter when consistency matters.
 
 CREATING DELIVERABLES:
 You have TWO tools for creating files:
