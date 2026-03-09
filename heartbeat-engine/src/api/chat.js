@@ -1731,7 +1731,7 @@ IMPORTANT: Since a brand kit is configured, DO NOT ask the user about colors, fo
       // Write token usage to Supabase usage_metrics (fire and forget — never block response)
       try {
         const { createClient } = await import('@supabase/supabase-js');
-        const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+        const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
         const today = new Date().toISOString().split('T')[0];
         const orgId = process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001';
         const agentId = process.env.AGENT_UUID || 'c3000000-0000-0000-0000-000000000003';
@@ -2147,7 +2147,7 @@ router.get('/sessions', async (req, res) => {
 router.get('/sessions/:id', async (req, res) => {
   try {
     const { createClient } = await import('@supabase/supabase-js');
-    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
     const { data, error } = await supabase
       .from('messages')
       .select('id, role, content, files, created_at')

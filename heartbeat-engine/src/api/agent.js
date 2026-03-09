@@ -12,7 +12,7 @@ const BLOOM_ORG_ID   = 'a1000000-0000-0000-0000-000000000001';
 
 async function getSupabase() {
   const { createClient } = await import('@supabase/supabase-js');
-  return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+  return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
 }
 
 // Helper: frequency → cron expression
