@@ -2284,21 +2284,18 @@ router.post('/upload', async (req, res) => {
     for (const f of files) {
       const mediaType = f.type || 'application/octet-stream';
       if (mediaType.startsWith('image/')) {
-        // Resize large images to prevent context explosion — use jimp (pure JS, no native deps)
+        // Frontend already caps screenshots at 1920px wide before encoding.
+        // Skip Jimp resize — just validate the base64 and send directly.
+        // Jimp failures were silently swallowed and still sending oversized originals to Anthropic.
         try {
-          const Jimp = (await import('jimp')).default;
           const buf = Buffer.from(f.data, 'base64');
-          const image = await Jimp.read(buf);
-          // scaleToFit maintains aspect ratio and never upscales
-          image.scaleToFit(1024, 1024).quality(80);
-          const resizedBuf = await image.getBufferAsync(Jimp.MIME_JPEG);
-          const resizedB64 = resizedBuf.toString('base64');
-          logger.info(`Image resized`, { original: buf.length, resized: resizedBuf.length, reduction: Math.round((1 - resizedBuf.length/buf.length) * 100) + '%' });
-          userContent.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: resizedB64 } });
-        } catch (resizeErr) {
-          // If resize fails, send original
-          logger.warn('Image resize failed, sending original:', resizeErr.message);
+          logger.info(`Image received`, { name: f.name, mediaType, bufferBytes: buf.length, base64Chars: f.data.length });
+          if (!buf.length) throw new Error('Image buffer is empty after base64 decode');
+          // Send as-is — Anthropic accepts JPEG/PNG up to ~5MB after the frontend resize
           userContent.push({ type: 'image', source: { type: 'base64', media_type: mediaType, data: f.data } });
+        } catch (imgErr) {
+          logger.error('Image processing failed', { name: f.name, error: imgErr.message });
+          // Don't push broken image — just skip it and let text message go through
         }
       } else if (mediaType === 'application/pdf') {
         userContent.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: f.data } });
@@ -2350,7 +2347,12 @@ router.post('/upload', async (req, res) => {
 
     return res.json({ response, sessionId });
   } catch (error) {
-    logger.error('Upload chat error', { error: error.message });
+    logger.error('Upload chat error', { 
+      error: error.message, 
+      stack: error.stack,
+      status: error.status,
+      anthropicError: error.error || error.body || null
+    });
     return res.status(500).json({ error: 'Failed to process upload', response: "Sorry, I had trouble with that file. Please try again." });
   }
 });
