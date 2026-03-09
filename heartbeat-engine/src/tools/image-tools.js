@@ -19,7 +19,7 @@ function getGeminiKey() { return process.env.GEMINI_API_KEY || ""; }
 export const imageToolDefinitions = {
   image_generate: {
     name: "image_generate",
-    description: "Generate an image from a text description. Perfect for creating flyers, social media posts, banners, book covers, logos, product mockups, brand assets, and any visual content. Be very specific and detailed in your prompt for the best results. Include exact text you want in the image, colors, layout details, and style preferences.",
+    description: "Generate an image from a text description. Perfect for creating flyers, social media posts, banners, book covers, logos, product mockups, brand assets, and any visual content. Be very specific and detailed in your prompt for the best results. Include exact text you want in the image, colors, layout details, and style preferences. For character consistency (same person across multiple images), set engine to gemini and pass reference_image_url or reference_image_base64 — Nano Banana will lock the character's identity from the reference photo.",
     parameters: {
       type: "object",
       properties: {
@@ -50,6 +50,14 @@ export const imageToolDefinitions = {
           enum: ["auto", "gpt", "gemini"],
           description: "Which image engine to use. 'auto' picks the best one (default). 'gpt' forces GPT Image 1.5. 'gemini' forces Nano Banana / Imagen for text-heavy work.",
           default: "auto"
+        },
+        reference_image_url: {
+          type: "string",
+          description: "URL of a reference image for character consistency. Nano Banana will match the character's face, hair, clothing, and style from this image while applying your prompt. Use when the user uploads a character photo or wants to match a previous generated image."
+        },
+        reference_image_base64: {
+          type: "string",
+          description: "Base64-encoded reference image for character consistency (alternative to reference_image_url)."
         }
       },
       required: ["prompt"]
@@ -132,7 +140,7 @@ export const imageToolExecutors = {
         throw e;
       }
     } else if (useEngine === 'gemini') {
-      return await generateWithGemini(prompt, size);
+      return await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64);
     }
 
     return { success: false, error: `Unknown engine: ${useEngine}` };
@@ -347,14 +355,14 @@ async function editWithGPTImage(prompt, imageUrl, imageBase64, size, quality) {
 
 // ── NANO BANANA / IMAGEN (Google Gemini) ─────────────────────────────────
 
-async function generateWithGemini(prompt, size) {
+async function generateWithGemini(prompt, size, referenceImageUrl, referenceImageBase64) {
   try {
     logger.info('Generating image with Gemini');
 
     // Try Nano Banana FIRST (free tier — gemini-3.1-flash-image-preview native image gen)
     try {
       logger.info('Trying Nano Banana (free tier)');
-      const result = await generateWithNanoBanana(prompt, size);
+      const result = await generateWithNanoBanana(prompt, size, referenceImageUrl, referenceImageBase64);
       if (result.success) return result;
     } catch(e) {
       logger.warn('Nano Banana failed, trying Imagen 4', { error: e.message });
@@ -384,7 +392,7 @@ async function generateWithGemini(prompt, size) {
     if (!response.ok) {
       // Try Nano Banana (Gemini flash image model) as alternative
       logger.info('Imagen 4 failed, trying Nano Banana 2 (Gemini 3.1 Flash Image)');
-      return await generateWithNanoBanana(prompt, size);
+      return await generateWithNanoBanana(prompt, size, referenceImageUrl, referenceImageBase64);
     }
 
     const data = await response.json();
@@ -414,7 +422,7 @@ async function generateWithGemini(prompt, size) {
   }
 }
 
-async function generateWithNanoBanana(prompt, size) {
+async function generateWithNanoBanana(prompt, size, referenceImageUrl, referenceImageBase64) {
   try {
     // Use Gemini 2.5 Flash Image (stable) instead of 3.1 preview (currently broken/hanging)
     // See: https://discuss.ai.google.dev/t/gemini-3-pro-image-preview-persistent-timeout-issues
@@ -427,18 +435,39 @@ async function generateWithNanoBanana(prompt, size) {
     if (size === '1024x1536') aspectRatio = '2:3'; // portrait
     if (size === '1536x1024') aspectRatio = '3:2'; // landscape
     
+    // Build parts array — add reference image first if provided (Nano Banana uses it for character consistency)
+    const parts = [];
+    if (referenceImageBase64) {
+      parts.push({ inlineData: { mimeType: 'image/jpeg', data: referenceImageBase64 } });
+      logger.info('Nano Banana: reference image added for character consistency (base64)');
+    } else if (referenceImageUrl) {
+      // Fetch reference image and convert to base64
+      try {
+        const refResp = await fetch(referenceImageUrl);
+        const refBuf = await refResp.arrayBuffer();
+        const refB64 = Buffer.from(refBuf).toString('base64');
+        const refMime = refResp.headers.get('content-type') || 'image/jpeg';
+        parts.push({ inlineData: { mimeType: refMime, data: refB64 } });
+        logger.info('Nano Banana: reference image fetched and added for character consistency (url)');
+      } catch(refErr) {
+        logger.warn('Nano Banana: failed to fetch reference image, proceeding without it', { error: refErr.message });
+      }
+    }
+    parts.push({ text: referenceImageBase64 || referenceImageUrl
+      ? `Using the person/character in the reference image above for visual consistency, ${prompt}`
+      : prompt
+    });
+
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${getGeminiKey()}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          contents: [{
-            parts: [{ text: prompt }]
-          }],
+          contents: [{ parts }],
           generationConfig: {
-            responseModalities: ["IMAGE"], // Only return image (not TEXT+IMAGE)
-            imageConfig: {  // Correct field name per Google API docs
+            responseModalities: ["IMAGE"],
+            imageConfig: {
               aspectRatio: aspectRatio
             }
           },
