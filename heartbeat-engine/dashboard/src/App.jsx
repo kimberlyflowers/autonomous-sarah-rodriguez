@@ -2462,10 +2462,18 @@ function App() {
       const imageCapture = new ImageCapture(track);
       const bitmap = await imageCapture.grabFrame();
       track.stop();
+      // Cap at 1920px wide — 4K screenshots balloon to 20MB+ as PNG
+      const MAX_W = 1920;
+      let drawW = bitmap.width;
+      let drawH = bitmap.height;
+      if (drawW > MAX_W) {
+        drawH = Math.round(drawH * MAX_W / drawW);
+        drawW = MAX_W;
+      }
       const canvas = document.createElement('canvas');
-      canvas.width = bitmap.width;
-      canvas.height = bitmap.height;
-      canvas.getContext('2d').drawImage(bitmap, 0, 0);
+      canvas.width = drawW;
+      canvas.height = drawH;
+      canvas.getContext('2d').drawImage(bitmap, 0, 0, drawW, drawH);
       // toBlob is async and waits for full render — toDataURL can silently return corrupt data
       canvas.toBlob(blob => {
         if (!blob) return;

@@ -49,7 +49,7 @@ app.use(helmet({
   }
 }));
 app.use(cors());
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '50mb' }));
 
 // Increase max listeners — Winston registers listeners per logger instance,
 // and we have many route modules each calling createLogger() at load time.
