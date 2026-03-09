@@ -2457,26 +2457,27 @@ function App() {
   const takeScreenshot=async()=>{
     setShowPlusMenu(false);
     try {
-      // Browser shows native share picker (screen / window / tab) — user picks one
       const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
       const track = stream.getVideoTracks()[0];
-      // Grab a single frame using ImageCapture
       const imageCapture = new ImageCapture(track);
       const bitmap = await imageCapture.grabFrame();
-      // Stop sharing immediately — no recording
       track.stop();
-      // Draw bitmap to canvas → dataURL
       const canvas = document.createElement('canvas');
       canvas.width = bitmap.width;
       canvas.height = bitmap.height;
       canvas.getContext('2d').drawImage(bitmap, 0, 0);
-      const dataUrl = canvas.toDataURL('image/png');
-      const base64 = dataUrl.split(',')[1];
-      // Store base64 directly — bypasses FileReader roundtrip
-      // preview key matches what the tray renders: {pf.preview ? <img src={pf.preview}/> : ...}
-      setPendingFiles(prev => [...prev, { name: 'screenshot.png', type: 'image/png', preview: dataUrl, base64 }]);
+      // toBlob is async and waits for full render — toDataURL can silently return corrupt data
+      canvas.toBlob(blob => {
+        if (!blob) return;
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const dataUrl = reader.result;
+          const base64 = dataUrl.split(',')[1];
+          setPendingFiles(prev => [...prev, { name: 'screenshot.png', type: 'image/png', preview: dataUrl, base64 }]);
+        };
+        reader.readAsDataURL(blob);
+      }, 'image/png');
     } catch(err) {
-      // User cancelled the picker — silent fail
       if(err.name !== 'NotAllowedError') console.error('Screenshot failed:', err);
     }
   };
