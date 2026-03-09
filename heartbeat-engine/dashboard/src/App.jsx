@@ -2433,6 +2433,30 @@ function App() {
     return()=>document.removeEventListener("click",h);
   },[umO]);
 
+  const takeScreenshot=async()=>{
+    setShowPlusMenu(false);
+    try {
+      // html2canvas is loaded via CDN script tag in index.html
+      if(typeof window.html2canvas !== 'function') {
+        console.warn('html2canvas not loaded yet');
+        return;
+      }
+      const canvas = await window.html2canvas(document.body, { useCORS: true, scale: 1, logging: false });
+      const dataUrl = canvas.toDataURL('image/png');
+      const base64 = dataUrl.split(',')[1];
+      // Inject as a pending file so user can see it before sending
+      const file = new File(
+        [Uint8Array.from(atob(base64), c => c.charCodeAt(0))],
+        'screenshot.png',
+        { type: 'image/png' }
+      );
+      const preview = { file, dataUrl, name: 'screenshot.png' };
+      setPendingFiles(prev => [...prev, preview]);
+    } catch(err) {
+      console.error('Screenshot failed:', err);
+    }
+  };
+
   const doSend=async()=>{
     if((!tx.trim()&&pendingFiles.length===0)||loading) return;
     const text=tx.trim(); setTx(""); setNew(false);
@@ -2883,7 +2907,7 @@ function App() {
                                 <div style={{padding:"6px 14px 4px",fontSize:11,fontWeight:700,color:c.fa,letterSpacing:"0.06em",textTransform:"uppercase"}}>Files</div>
                                 {[
                                   {icon:<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>, label:"Add files or photos", action:()=>{fRef.current?.click();setShowPlusMenu(false);}},
-                                  {icon:<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>, label:"Take a screenshot", action:()=>{setShowPlusMenu(false);}},
+                                  {icon:<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>, label:"Take a screenshot", action:takeScreenshot},
                                 ].map((item,i)=>(
                                   <button key={i} onClick={item.action} style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"9px 14px",border:"none",background:"transparent",cursor:"pointer",color:c.tx,fontSize:13,textAlign:"left",transition:"background .12s"}} onMouseEnter={e=>e.currentTarget.style.background=c.hv} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                                     <span style={{color:c.so,flexShrink:0}}>{item.icon}</span>{item.label}
@@ -3166,7 +3190,7 @@ function App() {
                                 <div style={{padding:"6px 14px 4px",fontSize:11,fontWeight:700,color:c.fa,letterSpacing:"0.06em",textTransform:"uppercase"}}>Files</div>
                                 {[
                                   {icon:<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>, label:"Add files or photos", action:()=>{fRef.current?.click();setShowPlusMenu(false);}},
-                                  {icon:<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>, label:"Take a screenshot", action:()=>{setShowPlusMenu(false);}},
+                                  {icon:<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>, label:"Take a screenshot", action:takeScreenshot},
                                 ].map((item,i)=>(
                                   <button key={i} onClick={item.action} style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"9px 14px",border:"none",background:"transparent",cursor:"pointer",color:c.tx,fontSize:13,textAlign:"left",transition:"background .12s"}} onMouseEnter={e=>e.currentTarget.style.background=c.hv} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                                     <span style={{color:c.so,flexShrink:0}}>{item.icon}</span>{item.label}
