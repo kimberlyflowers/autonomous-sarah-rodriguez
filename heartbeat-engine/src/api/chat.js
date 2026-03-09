@@ -2284,18 +2284,26 @@ router.post('/upload', async (req, res) => {
     for (const f of files) {
       const mediaType = f.type || 'application/octet-stream';
       if (mediaType.startsWith('image/')) {
-        // Frontend already caps screenshots at 1920px wide before encoding.
-        // Skip Jimp resize — just validate the base64 and send directly.
-        // Jimp failures were silently swallowed and still sending oversized originals to Anthropic.
+        // Anthropic limits: 5MB max, 8000px max dimension (2000px if many images in conversation).
+        // We MUST use Jimp to resize AND convert to JPEG — then declare media_type as image/jpeg.
+        // The previous bug: Jimp was converting to JPEG bytes but media_type stayed 'image/png',
+        // causing Anthropic 400: "image does not match provided media type".
         try {
+          const Jimp = (await import('jimp')).default;
           const buf = Buffer.from(f.data, 'base64');
-          logger.info(`Image received`, { name: f.name, mediaType, bufferBytes: buf.length, base64Chars: f.data.length });
+          logger.info(`Image received`, { name: f.name, mediaType, bufferBytes: buf.length });
           if (!buf.length) throw new Error('Image buffer is empty after base64 decode');
-          // Send as-is — Anthropic accepts JPEG/PNG up to ~5MB after the frontend resize
-          userContent.push({ type: 'image', source: { type: 'base64', media_type: mediaType, data: f.data } });
+          const image = await Jimp.read(buf);
+          // Cap at 1600px — stays under 2000px limit even when conversation has multiple images
+          image.scaleToFit(1600, 1600).quality(85);
+          const resizedBuf = await image.getBufferAsync(Jimp.MIME_JPEG);
+          const resizedB64 = resizedBuf.toString('base64');
+          logger.info(`Image resized+converted to JPEG`, { original: buf.length, resized: resizedBuf.length });
+          // media_type MUST be image/jpeg to match the JPEG bytes Jimp outputs
+          userContent.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: resizedB64 } });
         } catch (imgErr) {
-          logger.error('Image processing failed', { name: f.name, error: imgErr.message });
-          // Don't push broken image — just skip it and let text message go through
+          logger.error('Image processing failed', { name: f.name, error: imgErr.message, stack: imgErr.stack });
+          // Don't push broken image — skip it so the text message still goes through
         }
       } else if (mediaType === 'application/pdf') {
         userContent.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: f.data } });
