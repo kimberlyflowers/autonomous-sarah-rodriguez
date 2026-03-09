@@ -378,7 +378,28 @@ function useSarahChat() {
     } finally { setLoading(false); }
   };
 
-  return {messages,setMessages,send,sendFiles,loading,workingStatus,sessions,currentSessionId,newSession,loadSession,deleteSession,fetchSessions,stopSarah,sid};
+  // sendFilesEncoded — same as sendFiles but skips FileReader (base64 already encoded, e.g. screenshots)
+  const sendFilesEncoded = async (encoded, text='') => {
+    const ts = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
+    setLoading(true);
+    try {
+      setMessages(p=>[...p,{id:Date.now(),b:false,t:text||'',tm:ts,files:encoded}]);
+      if(!sid.current){ const id="session-"+Date.now(); sid.current=id; setCurrentSessionId(id); }
+      const uploadHeaders = await getAuthHeaders();
+      const resp = await fetch("/api/chat/upload",{method:"POST",headers:uploadHeaders,body:JSON.stringify({message:text,sessionId:sid.current,files:encoded})});
+      const data = await resp.json();
+      const ts2 = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
+      setMessages(p=>[...p,{id:Date.now(),b:true,t:data.response||data.message||"Got it.",tm:ts2}]);
+      fetchSessions();
+      return true;
+    } catch {
+      const ts2 = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
+      setMessages(p=>[...p,{id:Date.now(),b:true,t:"Couldn't process that file. Please try again.",tm:ts2}]);
+      return false;
+    } finally { setLoading(false); }
+  };
+
+  return {messages,setMessages,send,sendFiles,sendFilesEncoded,loading,workingStatus,sessions,currentSessionId,newSession,loadSession,deleteSession,fetchSessions,stopSarah,sid};
 }
 
 
@@ -2217,7 +2238,7 @@ function App() {
   const sse=useSSE();
   const agentOnline=useAgentOnline();
   const {crmUrl,contactsUrl}=useCRMLink();
-  const {messages,setMessages,send,sendFiles,loading,workingStatus,sessions,currentSessionId,newSession,loadSession,deleteSession,fetchSessions,stopSarah,sid}=useSarahChat();
+  const {messages,setMessages,send,sendFiles,sendFilesEncoded,loading,workingStatus,sessions,currentSessionId,newSession,loadSession,deleteSession,fetchSessions,stopSarah,sid}=useSarahChat();
   // Periodically refresh session titles (AI title generates async after first message)
   useEffect(()=>{ const t=setInterval(fetchSessions,8000); return()=>clearInterval(t); },[]);
   const connected=agentOnline; // true online/offline from health poll
@@ -2451,12 +2472,9 @@ function App() {
       canvas.getContext('2d').drawImage(bitmap, 0, 0);
       const dataUrl = canvas.toDataURL('image/png');
       const base64 = dataUrl.split(',')[1];
-      const file = new File(
-        [Uint8Array.from(atob(base64), c => c.charCodeAt(0))],
-        'screenshot.png',
-        { type: 'image/png' }
-      );
-      setPendingFiles(prev => [...prev, { file, dataUrl, name: 'screenshot.png' }]);
+      // Store base64 directly — bypasses FileReader roundtrip
+      // preview key matches what the tray renders: {pf.preview ? <img src={pf.preview}/> : ...}
+      setPendingFiles(prev => [...prev, { name: 'screenshot.png', type: 'image/png', preview: dataUrl, base64 }]);
     } catch(err) {
       // User cancelled the picker — silent fail
       if(err.name !== 'NotAllowedError') console.error('Screenshot failed:', err);
@@ -2468,9 +2486,29 @@ function App() {
     const text=tx.trim(); setTx(""); setNew(false);
     if(pendingFiles.length > 0) {
       // Send files + message together
-      const files = pendingFiles.map(p => p.file);
+      // Some files (screenshots) already have base64 encoded — pass them directly
+      // Others (file picker) have a File object — FileReader will encode them
+      const hasPreEncoded = pendingFiles.some(p => p.base64);
       setPendingFiles([]);
-      await sendFiles(files, text);
+      if(hasPreEncoded) {
+        // Build encoded array directly, mixing pre-encoded and File-based entries
+        const encoded = await Promise.all(pendingFiles.map(async p => {
+          if(p.base64) {
+            return { name: p.name, type: p.type || 'image/png', data: p.base64, dataUrl: p.preview };
+          }
+          return new Promise((res, rej) => {
+            const r = new FileReader();
+            r.onload = () => res({ name: p.file.name, type: p.file.type, data: r.result.split(',')[1], dataUrl: r.result });
+            r.onerror = rej;
+            r.readAsDataURL(p.file);
+          });
+        }));
+        // Call sendFiles with pre-encoded — pass encoded array directly via sendFilesEncoded
+        await sendFilesEncoded(encoded, text);
+      } else {
+        const files = pendingFiles.map(p => p.file);
+        await sendFiles(files, text);
+      }
     } else {
       await send(text);
     }
