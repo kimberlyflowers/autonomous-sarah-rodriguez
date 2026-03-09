@@ -2284,19 +2284,19 @@ router.post('/upload', async (req, res) => {
     for (const f of files) {
       const mediaType = f.type || 'application/octet-stream';
       if (mediaType.startsWith('image/')) {
-        // Resize large images to prevent context explosion (232K tokens → 20K tokens)
+        // Resize large images to prevent context explosion — use jimp (pure JS, no native deps)
         try {
-          const sharp = await import('sharp');
+          const Jimp = (await import('jimp')).default;
           const buf = Buffer.from(f.data, 'base64');
-          const resized = await sharp.default(buf)
-            .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
-            .jpeg({ quality: 80 })
-            .toBuffer();
-          const resizedB64 = resized.toString('base64');
-          logger.info(`Image resized`, { original: buf.length, resized: resized.length, reduction: Math.round((1 - resized.length/buf.length) * 100) + '%' });
+          const image = await Jimp.read(buf);
+          // scaleToFit maintains aspect ratio and never upscales
+          image.scaleToFit(1024, 1024).quality(80);
+          const resizedBuf = await image.getBufferAsync(Jimp.MIME_JPEG);
+          const resizedB64 = resizedBuf.toString('base64');
+          logger.info(`Image resized`, { original: buf.length, resized: resizedBuf.length, reduction: Math.round((1 - resizedBuf.length/buf.length) * 100) + '%' });
           userContent.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: resizedB64 } });
         } catch (resizeErr) {
-          // If resize fails, send original (might fail later, but at least we tried)
+          // If resize fails, send original
           logger.warn('Image resize failed, sending original:', resizeErr.message);
           userContent.push({ type: 'image', source: { type: 'base64', media_type: mediaType, data: f.data } });
         }
