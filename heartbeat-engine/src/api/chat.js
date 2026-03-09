@@ -1695,7 +1695,8 @@ IMPORTANT: Since a brand kit is configured, DO NOT ask the user about colors, fo
 
   // Detect multi-step requests — use Sonnet to preserve context across tool calls
   const multiStepKeywords = /\b(and (then|also|after|send|text|email|post|share|save|upload)|then (send|text|email|post|share|save)|after (that|you|creating|making|generating)|also (send|text|email)|as well|too\b.*\b(send|text|email))/i;
-  const isMultiStep = multiStepKeywords.test(userMessage) || userMessage.split(/\band\b/i).length > 2;
+  const messageText = Array.isArray(userMessage) ? userMessage.filter(b => b.type === 'text').map(b => b.text).join(' ') : userMessage;
+  const isMultiStep = multiStepKeywords.test(messageText) || messageText.split(/\band\b/i).length > 2;
   const chatModel = isMultiStep
     ? 'claude-sonnet-4-5-20250929'
     : (process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001');
