@@ -357,4 +357,89 @@ router.post('/artifacts/:fileId/unpublish', async (req, res) => {
   }
 });
 
+// ── PARSE HTML for structured editor — extract text blocks, images, colors ──
+router.get('/artifacts/:fileId/parse-editable', async (req, res) => {
+  try {
+    const supabase = sb();
+    const { data: art } = await supabase.from('artifacts').select('id, name, content').eq('id', req.params.fileId).single();
+    if (!art?.content) return res.status(404).json({ error: 'Artifact not found or has no content' });
+
+    const html = art.content;
+    const regions = [];
+
+    // Extract text regions using regex — headings, paragraphs, buttons
+    const textPatterns = [
+      { type: 'h1', regex: /<h1[^>]*>([^<]{3,200})<\/h1>/gi },
+      { type: 'h2', regex: /<h2[^>]*>([^<]{3,200})<\/h2>/gi },
+      { type: 'h3', regex: /<h3[^>]*>([^<]{3,200})<\/h3>/gi },
+      { type: 'p',  regex: /<p[^>]*>([^<]{10,400})<\/p>/gi },
+      { type: 'button', regex: /<button[^>]*>([^<]{2,100})<\/button>/gi },
+    ];
+
+    for (const { type, regex } of textPatterns) {
+      let m;
+      regex.lastIndex = 0;
+      while ((m = regex.exec(html)) !== null) {
+        const text = m[1].trim();
+        if (text && !text.includes('{') && !text.includes('null')) {
+          regions.push({ type: 'text', tag: type, original: m[0], text, index: m.index });
+        }
+      }
+    }
+
+    // Extract images
+    const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*(?:alt=["']([^"']*)["'])?[^>]*>/gi;
+    let im;
+    while ((im = imgRegex.exec(html)) !== null) {
+      const src = im[1];
+      if (!src.includes('data:') && src.length < 500) {
+        regions.push({ type: 'image', original: im[0], src, alt: im[2] || '', index: im.index });
+      }
+    }
+
+    // Extract background colors from CSS custom properties and inline styles
+    const colors = [];
+    const colorRegex = /(?:background(?:-color)?|--primary|--accent|--dark)\s*:\s*(#[0-9a-fA-F]{3,8}|rgba?\([^)]+\))/g;
+    let cm;
+    while ((cm = colorRegex.exec(html)) !== null) {
+      if (!colors.find(c => c.value === cm[1])) {
+        colors.push({ property: cm[1].startsWith('--') ? cm[0].split(':')[0].trim() : 'color', value: cm[1] });
+      }
+    }
+
+    // Sort by position in document
+    regions.sort((a, b) => a.index - b.index);
+
+    return res.json({ success: true, artifactId: art.id, name: art.name, regions: regions.slice(0, 40), colors: colors.slice(0, 12) });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+// ── APPLY structured edits to HTML artifact ──
+router.post('/artifacts/:fileId/apply-edits', async (req, res) => {
+  try {
+    const { edits } = req.body; // [{original, replacement}]
+    if (!Array.isArray(edits) || !edits.length) return res.status(400).json({ error: 'edits array required' });
+    const supabase = sb();
+    const { data: art } = await supabase.from('artifacts').select('id, content').eq('id', req.params.fileId).single();
+    if (!art?.content) return res.status(404).json({ error: 'Artifact not found' });
+    let updated = art.content;
+    let applied = 0;
+    for (const { original, replacement } of edits) {
+      if (original && replacement !== undefined && updated.includes(original)) {
+        updated = updated.split(original).join(replacement);
+        applied++;
+      }
+    }
+    if (applied === 0) return res.status(400).json({ error: 'No edits matched — content may have changed' });
+    const { error } = await supabase.from('artifacts').update({ content: updated, updated_at: new Date().toISOString() }).eq('id', art.id);
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json({ success: true, applied });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+
 export default router;

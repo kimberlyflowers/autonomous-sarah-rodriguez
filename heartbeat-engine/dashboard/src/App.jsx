@@ -1485,6 +1485,128 @@ function SessionFilesPanel({c, sessionId, setActiveArtifact}){
   );
 }
 
+// ── ArtifactPane — Claude-style code/preview panel in right sidebar ──────────
+function ArtifactPane({ art, c, onClose, onRequestChanges }) {
+  const [artView, setArtView] = React.useState('preview'); // 'preview' | 'code'
+  const [publishing, setPublishing] = React.useState(false);
+  const [publishSlug, setPublishSlug] = React.useState('');
+  const [publishOpen, setPublishOpen] = React.useState(false);
+  const [publishedUrl, setPublishedUrl] = React.useState(art.slug ? window.location.origin+'/p/'+art.slug : null);
+  const [artContent, setArtContent] = React.useState(art.content || '');
+  const isHtml = art.name?.endsWith('.html');
+
+  // If content wasn't loaded yet, fetch it
+  React.useEffect(() => {
+    if (!art.content && art.fileId) {
+      fetch(`/api/files/preview/${art.fileId}`)
+        .then(r => r.json())
+        .then(d => { if (d.content) setArtContent(d.content); })
+        .catch(() => {});
+    } else {
+      setArtContent(art.content || '');
+    }
+    setPublishedUrl(art.slug ? window.location.origin+'/p/'+art.slug : null);
+    setPublishSlug(art.name?.replace(/\.[^.]+$/, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || '');
+  }, [art.fileId, art.slug]);
+
+  const doPublish = async () => {
+    if (!publishSlug.trim()) return;
+    setPublishing(true);
+    try {
+      const r = await fetch(`/api/files/artifacts/${art.fileId}/publish`, {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ slug: publishSlug.trim() })
+      });
+      const d = await r.json();
+      if (d.success) {
+        setPublishedUrl(window.location.origin + '/p/' + d.slug);
+        setPublishOpen(false);
+      }
+    } catch {}
+    setPublishing(false);
+  };
+
+  return (
+    <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
+      {/* Header */}
+      <div style={{padding:'10px 14px',borderBottom:'1px solid '+c.ln,background:c.cd,display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
+        <button onClick={onClose} style={{width:22,height:22,borderRadius:5,border:'1px solid '+c.ln,background:'transparent',cursor:'pointer',fontSize:11,color:c.so,display:'flex',alignItems:'center',justifyContent:'center'}}>←</button>
+        <div style={{flex:1,minWidth:0,fontSize:12,fontWeight:700,color:c.tx,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{art.name}</div>
+        {/* Code / Preview tabs — only for HTML */}
+        {isHtml && (
+          <div style={{display:'flex',gap:1,background:c.bg,borderRadius:7,padding:2,border:'1px solid '+c.ln,flexShrink:0}}>
+            <button onClick={()=>setArtView('preview')} style={{padding:'3px 10px',borderRadius:5,border:'none',fontSize:10,fontWeight:700,cursor:'pointer',background:artView==='preview'?c.cd:'transparent',color:artView==='preview'?c.tx:c.so,fontFamily:'inherit',transition:'all .15s'}}>Preview</button>
+            <button onClick={()=>setArtView('code')} style={{padding:'3px 10px',borderRadius:5,border:'none',fontSize:10,fontWeight:700,cursor:'pointer',background:artView==='code'?c.cd:'transparent',color:artView==='code'?c.tx:c.so,fontFamily:'inherit',transition:'all .15s'}}>Code</button>
+          </div>
+        )}
+        {/* Publish button */}
+        {isHtml && art.fileId && (
+          publishedUrl ? (
+            <a href={publishedUrl} target="_blank" rel="noopener noreferrer" style={{padding:'3px 9px',borderRadius:6,border:'1px solid #34a853',background:'rgba(52,168,83,0.1)',fontSize:10,fontWeight:700,color:'#34a853',textDecoration:'none',flexShrink:0}}>✓ Live ↗</a>
+          ) : (
+            <button onClick={()=>setPublishOpen(p=>!p)} style={{padding:'3px 9px',borderRadius:6,border:'1px solid '+c.ac,background:c.ac+'15',fontSize:10,fontWeight:700,color:c.ac,cursor:'pointer',fontFamily:'inherit',flexShrink:0}}>Publish</button>
+          )
+        )}
+        {art.fileId && <a href={`/api/files/download/${art.fileId}`} download style={{padding:'3px 9px',borderRadius:6,border:'1px solid '+c.ln,background:c.cd,fontSize:10,fontWeight:600,color:c.ac,textDecoration:'none',flexShrink:0}}>↓</a>}
+        <button onClick={onClose} style={{width:22,height:22,borderRadius:5,border:'1px solid '+c.ln,background:'transparent',cursor:'pointer',fontSize:12,color:c.so,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>✕</button>
+      </div>
+
+      {/* Publish slug input */}
+      {publishOpen && (
+        <div style={{padding:'10px 14px',background:c.sf,borderBottom:'1px solid '+c.ln,display:'flex',gap:6,alignItems:'center',flexShrink:0}}>
+          <span style={{fontSize:11,color:c.so,whiteSpace:'nowrap'}}>/p/</span>
+          <input value={publishSlug} onChange={e=>setPublishSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g,''))}
+            placeholder="url-slug" style={{flex:1,padding:'5px 8px',borderRadius:6,border:'1px solid '+c.ln,background:c.cd,color:c.tx,fontSize:11,fontFamily:'monospace',outline:'none'}}
+            onKeyDown={e=>e.key==='Enter'&&doPublish()}/>
+          <button onClick={doPublish} disabled={publishing||!publishSlug.trim()} style={{padding:'5px 12px',borderRadius:6,border:'none',background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:'inherit',opacity:publishing?0.6:1}}>
+            {publishing?'...':'Go Live'}
+          </button>
+          <button onClick={()=>setPublishOpen(false)} style={{padding:'5px 8px',borderRadius:6,border:'1px solid '+c.ln,background:'transparent',cursor:'pointer',fontSize:11,color:c.so,fontFamily:'inherit'}}>✕</button>
+        </div>
+      )}
+
+      {/* Content */}
+      <div style={{flex:1,overflow:'hidden',position:'relative'}}>
+        {isHtml ? (
+          artView === 'preview' ? (
+            <iframe srcDoc={artContent} style={{width:'100%',height:'100%',border:'none',background:'#fff'}} sandbox="allow-scripts allow-same-origin" title={art.name}/>
+          ) : (
+            <div style={{height:'100%',overflow:'auto',background:'#1a1a2e'}}>
+              <pre style={{margin:0,padding:'14px 16px',fontSize:11,lineHeight:1.6,color:'#e8e8f0',fontFamily:'monospace',whiteSpace:'pre-wrap',wordBreak:'break-all'}}>{artContent}</pre>
+            </div>
+          )
+        ) : art.name?.match(/\.(docx|pdf|xlsx|pptx)$/) ? (
+          <div style={{height:'100%',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:12,padding:32,textAlign:'center'}}>
+            <div style={{fontSize:13,color:c.so}}>This file type can't be previewed</div>
+            <a href={art.fileId?`/api/files/download/${art.fileId}`:'#'} download style={{padding:'10px 24px',borderRadius:10,background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',textDecoration:'none',fontSize:13,fontWeight:700}}>
+              Download {art.name?.split('.').pop()?.toUpperCase()}
+            </a>
+          </div>
+        ) : (
+          <div style={{height:'100%',overflowY:'auto',padding:'14px 18px',fontSize:13,lineHeight:1.8,color:c.tx}}
+            dangerouslySetInnerHTML={{__html:(artContent||'')
+              .replace(/^# (.+)$/gm,'<h1 style="font-size:20px;font-weight:700;margin:14px 0 8px">$1</h1>')
+              .replace(/^## (.+)$/gm,'<h2 style="font-size:16px;font-weight:700;margin:12px 0 6px">$1</h2>')
+              .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+              .replace(/\*(.+?)\*/g,'<em>$1</em>')
+              .replace(/^- (.+)$/gm,'<li style="margin-left:16px;margin-bottom:4px">$1</li>')
+              .replace(/\n\n/g,'<br/><br/>')
+              .replace(/\n/g,'<br/>')
+            }}/>
+        )}
+      </div>
+
+      {/* Footer actions */}
+      <div style={{padding:'10px 14px',borderTop:'1px solid '+c.ln,background:c.cd,display:'flex',gap:6,flexShrink:0}}>
+        <button onClick={()=>onRequestChanges(art.name)} style={{flex:1,padding:'8px 0',borderRadius:8,border:'1px solid '+c.ln,background:c.cd,cursor:'pointer',fontSize:12,fontWeight:600,color:c.tx,fontFamily:'inherit'}}>Request Changes</button>
+        {isHtml && art.fileId && (
+          <button onClick={()=>{window.open(`/api/files/publish/${art.fileId}`,'_blank');}} style={{padding:'8px 12px',borderRadius:8,border:'1px solid '+c.ac,background:c.ac+'12',cursor:'pointer',fontSize:12,fontWeight:600,color:c.ac,fontFamily:'inherit'}}>↗ Full Screen</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ArtifactCard({ name, c, onOpenSide, mob }) {
   const [artData, setArtData] = useState(null);
 
@@ -2521,6 +2643,9 @@ function App() {
   const [filesSearch,setFilesSearch]=useState('');
   const [filesRefresh,setFilesRefresh]=useState(0);
   const [previewFile,setPreviewFile]=useState(null); // {name, content, fileId}
+  const [structuredEditor,setStructuredEditor]=useState(null); // {fileId, name, regions, colors}
+  const [structEdits,setStructEdits]=useState({}); // {index: newValue}
+  const [structSaving,setStructSaving]=useState(false);
   const [editMode,setEditMode]=useState(false);
   const [editContent,setEditContent]=useState('');
   const [editSaving,setEditSaving]=useState(false);
@@ -3266,56 +3391,12 @@ function App() {
                           {/* ── Files tab ── */}
                           {rightTab==="artifact"&&(
                             activeArtifact?(
-                              <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
-                                <div style={{padding:"12px 16px",borderBottom:"1px solid "+c.ln,background:c.cd,display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
-                                  <button onClick={()=>setActiveArtifact(null)} style={{width:24,height:24,borderRadius:6,border:"1px solid "+c.ln,background:"transparent",cursor:"pointer",fontSize:11,color:c.so,display:"flex",alignItems:"center",justifyContent:"center"}}>←</button>
-                                  <div style={{flex:1,minWidth:0}}>
-                                    <div style={{fontSize:13,fontWeight:700,color:c.tx,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{activeArtifact.name}</div>
-                                  </div>
-                                  {activeArtifact.fileId&&activeArtifact.name?.endsWith('.html')&&<a href={`/api/files/publish/${activeArtifact.fileId}`} target="_blank" rel="noopener noreferrer" style={{padding:"4px 10px",borderRadius:6,border:"1px solid "+c.ac,background:c.ac+"12",fontSize:11,fontWeight:600,color:c.ac,textDecoration:"none"}}>↗ Full Screen</a>}
-                                  {activeArtifact.fileId&&<a href={`/api/files/download/${activeArtifact.fileId}`} download style={{padding:"4px 10px",borderRadius:6,border:"1px solid "+c.ln,background:c.cd,fontSize:11,fontWeight:600,color:c.ac,textDecoration:"none"}}>↓</a>}
-                                  <button onClick={()=>setActiveArtifact(null)} style={{width:26,height:26,borderRadius:6,border:"1px solid "+c.ln,background:"transparent",cursor:"pointer",fontSize:13,color:c.so,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
-                                </div>
-                                <div style={{flex:1,overflow:"hidden",position:"relative"}}>
-                                  {activeArtifact.name?.endsWith('.html')?(
-                                    <iframe
-                                      srcDoc={activeArtifact.content||''}
-                                      style={{width:"100%",height:"100%",border:"none",background:"#fff"}}
-                                      sandbox="allow-scripts allow-same-origin"
-                                      title={activeArtifact.name}
-                                    />
-                                  ):activeArtifact.name?.endsWith('.docx')||activeArtifact.name?.endsWith('.pdf')||activeArtifact.name?.endsWith('.xlsx')?(
-                                    <div style={{height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:40,textAlign:"center"}}>
-                                      <div style={{fontSize:48,marginBottom:16}}>
-                                        null
-                                      </div>
-                                      <div style={{fontSize:16,fontWeight:700,color:c.tx,marginBottom:8}}>{activeArtifact.name}</div>
-                                      <div style={{fontSize:13,color:c.so,marginBottom:20}}>Click the download button below to view this file</div>
-                                      <a href={activeArtifact.fileId?`/api/files/download/${activeArtifact.fileId}`:"#"} download 
-                                        style={{padding:"12px 32px",borderRadius:10,background:"linear-gradient(135deg,#34a853,#2d9248)",color:"#fff",textDecoration:"none",fontSize:14,fontWeight:700}}>
-                                        ↓ Download {activeArtifact.name?.endsWith('.pdf')?'PDF':activeArtifact.name?.endsWith('.xlsx')?'Excel':'Word Doc'}
-                                      </a>
-                                    </div>
-                                  ):(
-                                    <div style={{height:"100%",overflowY:"auto",padding:"16px 20px",fontSize:14,lineHeight:1.8,color:c.tx}}
-                                      dangerouslySetInnerHTML={{__html: (activeArtifact.content||'')
-                                        .replace(/^# (.+)$/gm, '<h1 style="font-size:22px;font-weight:700;margin:18px 0 10px">$1</h1>')
-                                        .replace(/^## (.+)$/gm, '<h2 style="font-size:18px;font-weight:700;margin:14px 0 8px">$1</h2>')
-                                        .replace(/^### (.+)$/gm, '<h3 style="font-size:16px;font-weight:600;margin:12px 0 6px">$1</h3>')
-                                        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-                                        .replace(/\*(.+?)\*/g, '<em>$1</em>')
-                                        .replace(/^- (.+)$/gm, '<li style="margin-left:20px;margin-bottom:6px">$1</li>')
-                                        .replace(/^(\d+)\. (.+)$/gm, '<li style="margin-left:20px;margin-bottom:6px"><strong>$1.</strong> $2</li>')
-                                        .replace(/\n\n/g, '<br/><br/>')
-                                        .replace(/\n/g, '<br/>')
-                                      }}/>
-                                  )}
-                                </div>
-                                <div style={{padding:"12px 16px",borderTop:"1px solid "+c.ln,background:c.cd,display:"flex",gap:8,flexShrink:0}}>
-                                  <button onClick={()=>{setRightTab("browser");setTx("I want to make some changes to "+activeArtifact.name);}} style={{flex:1,padding:"10px 0",borderRadius:10,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:13,fontWeight:600,color:c.tx}}>Request Changes</button>
-                                  <a href={activeArtifact.fileId?`/api/files/download/${activeArtifact.fileId}`:"#"} download style={{flex:1,padding:"10px 0",borderRadius:10,border:"none",background:"linear-gradient(135deg,#34a853,#2d9248)",cursor:"pointer",fontSize:13,fontWeight:700,color:"#fff",textDecoration:"none",textAlign:"center",display:"block"}}>↓ Download</a>
-                                </div>
-                              </div>
+                              <ArtifactPane
+                                art={activeArtifact}
+                                c={c}
+                                onClose={()=>setActiveArtifact(null)}
+                                onRequestChanges={(name)=>{setRightTab("browser");setTx("I want to make changes to "+name);}}
+                              />
                             ):(
                               sid.current ? (
                                 <SessionFilesPanel c={c} sessionId={sid.current} setActiveArtifact={setActiveArtifact}/>
@@ -4206,6 +4287,14 @@ function App() {
                               :
                                 <button onClick={async(e)=>{e.stopPropagation();const slug=prompt('Choose a URL slug for this page:\n\nyoursite.com/p/___',f.name?.replace(/\.[^.]+$/,'').toLowerCase().replace(/[^a-z0-9]+/g,'-'));if(!slug)return;const r=await fetch(`/api/files/artifacts/${f.fileId}/publish`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({slug})});const d=await r.json();if(d.success){setFiles(p=>p.map(x=>x.fileId===f.fileId?{...x,slug:d.slug,published:true}:x));window.open(`/p/${d.slug}`,'_blank');}else{setOauthToast({type:'error',msg:d.error||'Publish failed'}); setTimeout(()=>setOauthToast(null),4000);}}} style={{padding:"4px 10px",borderRadius:6,border:"1px solid "+c.ac,background:c.ac+"12",cursor:"pointer",fontSize:11,fontWeight:700,color:c.ac,fontFamily:"inherit"}}>Publish</button>
                               )}
+                              {ext==='html'&&<button onClick={async(e)=>{e.stopPropagation();
+                                try{
+                                  const r=await fetch(`/api/files/artifacts/${f.fileId}/parse-editable`);
+                                  const d=await r.json();
+                                  if(d.success){setStructuredEditor({fileId:f.fileId,name:f.name,regions:d.regions,colors:d.colors});setStructEdits({});}
+                                  else{setOauthToast({type:'error',msg:'Could not parse page'});setTimeout(()=>setOauthToast(null),3000);}
+                                }catch{setOauthToast({type:'error',msg:'Parse failed'});setTimeout(()=>setOauthToast(null),3000);}
+                              }} style={{padding:"4px 10px",borderRadius:6,border:"1px solid "+c.ac,background:c.ac+"12",cursor:"pointer",fontSize:11,fontWeight:700,color:c.ac,fontFamily:"inherit"}}>Edit Page</button>}
                               <a href={`/api/files/download/${f.fileId}`} download style={{padding:"4px 10px",borderRadius:6,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:11,fontWeight:600,color:c.ac,textDecoration:"none"}}>↓ Download</a>
                               <button onClick={async()=>{
                                 if(confirm('Remove this file?')){
@@ -4793,7 +4882,120 @@ function App() {
         </div>
       )}
 
-      {/* ══ FILE PREVIEW MODAL ══ */}
+      {/* ══ STRUCTURED PAGE EDITOR MODAL (GHL-style) ══ */}
+      {structuredEditor&&(
+        <div onClick={()=>setStructuredEditor(null)} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.6)',zIndex:300,display:'flex',alignItems:'center',justifyContent:'center',padding:mob?8:20}}>
+          <div onClick={e=>e.stopPropagation()} style={{width:'100%',maxWidth:760,height:'90vh',background:c.cd,borderRadius:16,border:'1px solid '+c.ln,display:'flex',flexDirection:'column',overflow:'hidden',boxShadow:'0 20px 60px rgba(0,0,0,.4)'}}>
+            {/* Header */}
+            <div style={{padding:'14px 20px',borderBottom:'1px solid '+c.ln,display:'flex',alignItems:'center',gap:10,background:c.sf,flexShrink:0}}>
+              <div style={{flex:1}}>
+                <div style={{fontSize:15,fontWeight:700,color:c.tx}}>Edit Page</div>
+                <div style={{fontSize:11,color:c.so}}>{structuredEditor.name}</div>
+              </div>
+              <button onClick={async()=>{
+                const edits=Object.entries(structEdits).map(([idx,newVal])=>{
+                  const region=structuredEditor.regions[parseInt(idx)];
+                  if(!region)return null;
+                  if(region.type==='text'){
+                    const newTag=region.original.replace(/>([^<]+)<\//, `>${newVal}</`);
+                    return {original:region.original,replacement:newTag};
+                  }
+                  if(region.type==='image'){
+                    const newImg=region.original.replace(/src=["'][^"']*["']/, `src="${newVal}"`);
+                    return {original:region.original,replacement:newImg};
+                  }
+                  return null;
+                }).filter(Boolean);
+                if(!edits.length)return setStructuredEditor(null);
+                setStructSaving(true);
+                try{
+                  const r=await fetch(`/api/files/artifacts/${structuredEditor.fileId}/apply-edits`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({edits})});
+                  const d=await r.json();
+                  if(d.success){setOauthToast({type:'success',msg:`Saved ${d.applied} change(s)`});setTimeout(()=>setOauthToast(null),3000);setStructuredEditor(null);}
+                  else setOauthToast({type:'error',msg:d.error||'Save failed'});
+                  setTimeout(()=>setOauthToast(null),4000);
+                }catch{}
+                setStructSaving(false);
+              }} disabled={structSaving||Object.keys(structEdits).length===0} style={{padding:'7px 18px',borderRadius:8,border:'none',background:Object.keys(structEdits).length>0?'linear-gradient(135deg,#F4A261,#E76F8B)':'#555',color:'#fff',fontSize:12,fontWeight:700,cursor:Object.keys(structEdits).length>0?'pointer':'not-allowed',fontFamily:'inherit'}}>
+                {structSaving?'Saving...':'Save Changes'}
+              </button>
+              <button onClick={()=>setStructuredEditor(null)} style={{width:30,height:30,borderRadius:8,border:'1px solid '+c.ln,background:'transparent',cursor:'pointer',fontSize:14,color:c.so,display:'flex',alignItems:'center',justifyContent:'center'}}>✕</button>
+            </div>
+
+            {/* Sections */}
+            <div style={{flex:1,overflowY:'auto',padding:'16px 20px',display:'flex',flexDirection:'column',gap:14}}>
+
+              {/* Text regions */}
+              {structuredEditor.regions.filter(r=>r.type==='text').length>0&&(
+                <div>
+                  <div style={{fontSize:11,fontWeight:700,color:c.fa,letterSpacing:'0.08em',textTransform:'uppercase',marginBottom:8}}>Text Content</div>
+                  <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                    {structuredEditor.regions.map((region,idx)=>region.type!=='text'?null:(
+                      <div key={idx} style={{background:c.sf,borderRadius:10,padding:'10px 14px',border:'1px solid '+c.ln}}>
+                        <div style={{fontSize:10,fontWeight:700,color:c.ac,textTransform:'uppercase',marginBottom:6,letterSpacing:'0.05em'}}>{region.tag}</div>
+                        <textarea
+                          value={structEdits[idx]!==undefined?structEdits[idx]:region.text}
+                          onChange={e=>setStructEdits(p=>({...p,[idx]:e.target.value}))}
+                          style={{width:'100%',padding:'7px 10px',borderRadius:7,border:'1px solid '+(structEdits[idx]!==undefined?c.ac:c.ln),background:c.cd,color:c.tx,fontSize:13,fontFamily:'inherit',resize:'none',outline:'none',lineHeight:1.5,minHeight:region.tag==='p'?60:36,boxSizing:'border-box',transition:'border-color .15s'}}
+                          rows={region.tag==='p'?3:1}
+                        />
+                        {structEdits[idx]!==undefined&&<div style={{fontSize:10,color:c.ac,marginTop:2}}>Modified</div>}
+                      </div>
+                    )).filter(Boolean)}
+                  </div>
+                </div>
+              )}
+
+              {/* Image regions */}
+              {structuredEditor.regions.filter(r=>r.type==='image').length>0&&(
+                <div>
+                  <div style={{fontSize:11,fontWeight:700,color:c.fa,letterSpacing:'0.08em',textTransform:'uppercase',marginBottom:8}}>Images</div>
+                  <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'1fr 1fr',gap:10}}>
+                    {structuredEditor.regions.map((region,idx)=>region.type!=='image'?null:(
+                      <div key={idx} style={{background:c.sf,borderRadius:10,padding:'10px',border:'1px solid '+c.ln}}>
+                        <img src={structEdits[idx]||region.src} alt={region.alt||'image'} style={{width:'100%',height:100,objectFit:'cover',borderRadius:7,marginBottom:8,background:c.bg}}
+                          onError={e=>{e.target.style.display='none';}} />
+                        <div style={{fontSize:10,color:c.so,marginBottom:6,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{region.alt||'Image'}</div>
+                        <div style={{display:'flex',gap:6}}>
+                          <input
+                            value={structEdits[idx]!==undefined?structEdits[idx]:region.src}
+                            onChange={e=>setStructEdits(p=>({...p,[idx]:e.target.value}))}
+                            placeholder="Paste new image URL..."
+                            style={{flex:1,padding:'5px 8px',borderRadius:6,border:'1px solid '+(structEdits[idx]!==undefined?c.ac:c.ln),background:c.cd,color:c.tx,fontSize:11,fontFamily:'monospace',outline:'none'}}
+                          />
+                          <button onClick={()=>{
+                            // Ask Sarah to generate a replacement image
+                            const prompt=window.prompt(`Describe the new image for "${region.alt||'this spot'}":`);
+                            if(prompt){setStructuredEditor(null);setPg('chat');setTx(`Replace the image "${region.alt||''}" on the page "${structuredEditor.name}" with a new image of: ${prompt}`);};
+                          }} style={{padding:'5px 8px',borderRadius:6,border:'1px solid '+c.ac,background:c.ac+'12',cursor:'pointer',fontSize:10,fontWeight:700,color:c.ac,fontFamily:'inherit',whiteSpace:'nowrap'}}>Ask Sarah</button>
+                        </div>
+                      </div>
+                    )).filter(Boolean)}
+                  </div>
+                </div>
+              )}
+
+              {/* Color regions */}
+              {structuredEditor.colors?.length>0&&(
+                <div>
+                  <div style={{fontSize:11,fontWeight:700,color:c.fa,letterSpacing:'0.08em',textTransform:'uppercase',marginBottom:8}}>Brand Colors</div>
+                  <div style={{fontSize:12,color:c.so,marginBottom:8}}>To change colors, ask Sarah: "Change the primary color on [page] to [color]"</div>
+                  <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                    {structuredEditor.colors.map((col,i)=>(
+                      <div key={i} style={{display:'flex',alignItems:'center',gap:6,padding:'6px 10px',borderRadius:8,background:c.sf,border:'1px solid '+c.ln}}>
+                        <div style={{width:18,height:18,borderRadius:4,background:col.value,border:'1px solid rgba(0,0,0,0.1)',flexShrink:0}}/>
+                        <span style={{fontSize:11,fontFamily:'monospace',color:c.tx}}>{col.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+            {/* ══ FILE PREVIEW MODAL ══ */}
       {previewFile&&(
         <div onClick={()=>{setPreviewFile(null);setEditMode(false);setEditorFullscreen(false);}} style={{position:"fixed",inset:0,background:editorFullscreen?"transparent":"rgba(0,0,0,0.6)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:editorFullscreen?0:mob?8:20}}>
           <div onClick={e=>e.stopPropagation()} style={{width:editorFullscreen?"100%":"100%",maxWidth:editorFullscreen?"100%":previewFile.name?.endsWith('.html')?1100:800,height:editorFullscreen?"100vh":"90vh",background:c.cd,borderRadius:editorFullscreen?0:16,border:editorFullscreen?"none":"1px solid "+c.ln,display:"flex",flexDirection:"column",overflow:"hidden",boxShadow:editorFullscreen?"none":"0 20px 60px rgba(0,0,0,.4)",margin:editorFullscreen?0:"auto"}}>
