@@ -1207,7 +1207,32 @@ function parseMessageCards(text) {
 }
 
 // ── SESSION FILES PANEL — right panel shows files from current chat ──────────
+function ImageLightbox({src, alt, onClose}) {
+  useEffect(()=>{
+    const h = e => { if(e.key==='Escape') onClose(); };
+    document.addEventListener('keydown', h);
+    return ()=>document.removeEventListener('keydown', h);
+  }, [onClose]);
+  return (
+    <div onClick={onClose} style={{
+      position:'fixed',inset:0,zIndex:9999,
+      background:'rgba(0,0,0,0.88)',
+      display:'flex',alignItems:'center',justifyContent:'center',
+      cursor:'zoom-out',
+      backdropFilter:'blur(6px)',WebkitBackdropFilter:'blur(6px)'
+    }}>
+      <img src={src} alt={alt||''} onClick={e=>e.stopPropagation()} style={{
+        maxWidth:'90vw',maxHeight:'90vh',
+        borderRadius:12,objectFit:'contain',
+        boxShadow:'0 32px 96px rgba(0,0,0,0.8)',
+        cursor:'default',userSelect:'none'
+      }}/>
+    </div>
+  );
+}
+
 function SessionFilesPanel({c, sessionId, setActiveArtifact}){
+  const [lightbox,setLightbox]=useState(null);
   const [files,setFiles]=useState([]);
   const [uploads,setUploads]=useState([]);
   const [loading,setLoading]=useState(true);
@@ -1281,6 +1306,7 @@ function SessionFilesPanel({c, sessionId, setActiveArtifact}){
   );
 
   return(
+    <>
     <div style={{flex:1,overflowY:"auto",padding:12}}>
       {/* ── Bloomie created ── */}
       {files.length>0&&<>
@@ -1422,7 +1448,7 @@ function SessionFilesPanel({c, sessionId, setActiveArtifact}){
               onMouseLeave={e=>{e.currentTarget.style.borderColor=c.ln;e.currentTarget.style.transform="translateY(0)";}}>
                 <div style={{width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center',background:isImage?'#000':c.bg,overflow:'hidden'}}>
                   {isImage
-                    ? <img src={u.previewUrl||`/api/chat/uploads/preview/${u.uploadId}`} alt={u.name} style={{width:'100%',height:'100%',objectFit:'cover'}}/>
+                    ? <img src={u.previewUrl||`/api/chat/uploads/preview/${u.uploadId}`} alt={u.name} onClick={e=>{e.stopPropagation();setLightbox({src:u.previewUrl||`/api/chat/uploads/preview/${u.uploadId}`,alt:u.name});}} style={{width:'100%',height:'100%',objectFit:'cover',cursor:'zoom-in'}}/>
                     : <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke={c.so} strokeWidth="1.5" opacity="0.4"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                   }
                 </div>
@@ -1435,6 +1461,8 @@ function SessionFilesPanel({c, sessionId, setActiveArtifact}){
         </div>
       </>}
     </div>
+    {lightbox&&<ImageLightbox src={lightbox.src} alt={lightbox.alt} onClose={()=>setLightbox(null)}/>}
+    </>
   );
 }
 
@@ -2105,6 +2133,7 @@ function BusinessProfilePage({c,mob,userImg,setUserImg}){
           <div style={{fontSize:13,color:c.so}}>Set GHL_API_KEY and GHL_LOCATION_ID to sync your business profile.</div>
         </div>
       )}
+    {chatLightbox&&<ImageLightbox src={chatLightbox.src} alt={chatLightbox.alt} onClose={()=>setChatLightbox(null)}/>}
     </div>
   );
 }
@@ -2376,6 +2405,7 @@ function App() {
   const [scrM,setScrM]=useState("docked");
   const [rightTab,setRightTab]=useState("browser"); // "browser" | "artifact"
   const [activeArtifact,setActiveArtifact]=useState(null); // {name, content, fileId}
+  const [chatLightbox,setChatLightbox]=useState(null);
 
   // Auto-open Files panel when Sarah creates an artifact
   useEffect(()=>{
@@ -3082,7 +3112,7 @@ function App() {
                                 <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:m.t?8:4}}>
                                   {m.files.map((f,fi)=>(
                                     f.type?.startsWith("image/") && f.dataUrl
-                                      ? <img key={fi} src={f.dataUrl} alt={f.name} style={{maxWidth:220,maxHeight:160,borderRadius:8,objectFit:"cover",border:"1px solid rgba(255,255,255,0.15)"}}/>
+                                      ? <img key={fi} src={f.dataUrl} alt={f.name} onClick={()=>setChatLightbox({src:f.dataUrl,alt:f.name})} style={{maxWidth:220,maxHeight:160,borderRadius:8,objectFit:"cover",border:"1px solid rgba(255,255,255,0.15)",cursor:"zoom-in"}}/>
                                       : <div key={fi} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 10px",borderRadius:8,background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.15)"}}>
                                           <span style={{fontSize:14}}>{f.type?.startsWith('image/') ? '🖼' : '📎'}</span>
                                           <span style={{fontSize:11,fontWeight:600,color:m.b?c.tx:'#fff',maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{f.name}</span>
@@ -5064,6 +5094,7 @@ function App() {
           </div>
         </div>
       )}
+    {chatLightbox&&<ImageLightbox src={chatLightbox.src} alt={chatLightbox.alt} onClose={()=>setChatLightbox(null)}/>}
     </div>
   );
 }
