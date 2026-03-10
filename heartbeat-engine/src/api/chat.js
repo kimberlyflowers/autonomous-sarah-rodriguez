@@ -216,13 +216,16 @@ not for you to report problems. Fix what you can, work around what you can't, de
 CRITICAL — website + image order of operations (NEVER skip this):
 When asked to build a website that uses images, you MUST follow this exact sequence:
 STEP 1: Load the frontend-design skill immediately.
-STEP 2: Build and save the complete website HTML using create_artifact. Use real Unsplash photo URLs
-  for placeholder images (e.g. https://images.unsplash.com/photo-XXXXXXX?w=1200&q=80) and CSS
-  gradients as fallbacks. Deliver this to the client first. This takes 10 seconds, not 3 minutes.
-STEP 3: ONLY AFTER the site is saved, tell the client: "Site is ready — generating custom images now."
-STEP 4: Generate images one at a time and tell the client each is done.
-NEVER generate images first then try to build the site — you will time out before delivering anything.
-The site must always be delivered before any image generation begins.
+STEP 2: Call generate_images_parallel with ALL image prompts at once (hero, team members, backgrounds, etc).
+  This kicks off all image generation in the background simultaneously — do NOT wait for it to finish.
+STEP 3: Immediately build the complete website HTML using create_artifact. The tool returns placeholder
+  URLs like PENDING_IMG_0, PENDING_IMG_1, etc. Use Unsplash URLs (https://images.unsplash.com/photo-XXXXXXX?w=1200&q=80)
+  as visible placeholders in the HTML for now.
+STEP 4: Save with create_artifact. Tell the client: "Site is live — images are generating in parallel."
+STEP 5: When generate_images_parallel resolves, call update_artifact_images with the artifact name and
+  the mapping of placeholder → real image URL. This swaps images in the saved HTML automatically.
+NEVER generate images sequentially (one at a time) for websites — always use generate_images_parallel.
+The site must always be delivered first. Images update themselves in the background.
 
 EXCEPTION — communication tools must ALWAYS report real errors:
 If notify_owner fails, ghl_send_message fails, or ANY tool that sends a message to a real person fails —
@@ -1015,6 +1018,53 @@ const _ALL_TOOLS = [
     }
   },
   {
+    name: "generate_images_parallel",
+    description: "Kick off multiple image generations simultaneously in the background. Use this at the START of website creation before building HTML. Returns immediately with placeholder IDs — do not wait for it. Images generate concurrently and will be available when done. After create_artifact saves the HTML, call update_artifact_images to swap placeholders for real URLs.",
+    input_schema: {
+      type: "object",
+      properties: {
+        images: {
+          type: "array",
+          description: "List of images to generate in parallel",
+          items: {
+            type: "object",
+            properties: {
+              id: { type: "string", description: "Placeholder ID, e.g. PENDING_IMG_0, PENDING_IMG_1" },
+              prompt: { type: "string", description: "Image generation prompt" },
+              style: { type: "string", description: "Style hint: photorealistic, illustration, etc." }
+            },
+            required: ["id", "prompt"]
+          }
+        },
+        artifactName: { type: "string", description: "Name of the artifact this is for, e.g. bloomie-staffing.html" }
+      },
+      required: ["images", "artifactName"]
+    }
+  },
+  {
+    name: "update_artifact_images",
+    description: "After generate_images_parallel completes, swap placeholder URLs in a saved HTML artifact with real image URLs. Call this once images are done to update the live site automatically.",
+    input_schema: {
+      type: "object",
+      properties: {
+        artifactName: { type: "string", description: "Name of the artifact to update, e.g. bloomie-staffing.html" },
+        replacements: {
+          type: "array",
+          description: "List of placeholder → real URL mappings",
+          items: {
+            type: "object",
+            properties: {
+              placeholder: { type: "string", description: "The placeholder ID or URL in the HTML" },
+              realUrl: { type: "string", description: "The real Supabase CDN URL for the image" }
+            },
+            required: ["placeholder", "realUrl"]
+          }
+        }
+      },
+      required: ["artifactName", "replacements"]
+    }
+  },
+  {
     name: "create_docx",
     description: "Create a professional Word document (.docx) with real formatting — tables, headers, footers, page numbers, branded styling. Use this instead of create_artifact when the user asks for a document, report, handbook, SOP, proposal, or any professional deliverable. CRITICAL: After creating the file, ALWAYS tell the client in your response that you've created it and include the filename in quotes. Example: 'Here's your employee handbook — \"onboarding-handbook.docx\"'. Provide a complete Node.js script that uses the 'docx' npm library to build the document. The script will be executed and the resulting .docx file saved for download.",
     input_schema: {
@@ -1350,6 +1400,92 @@ async function executeTool(toolName, toolInput, sessionId = null) {
         };
       }
       return { success: false, error: data.error || 'Failed to create artifact' };
+    }
+
+    // Parallel image generation — kick off all images at once, return immediately
+    if (toolName === 'generate_images_parallel') {
+      const { images = [], artifactName = '' } = toolInput;
+      if (!images.length) return { success: false, error: 'No images specified' };
+
+      // Fire all image generations concurrently — don't await
+      const imagePromises = images.map(async (img) => {
+        try {
+          const result = await executeImageTool({
+            toolName: 'image_generate',
+            toolInput: { prompt: img.prompt, style: img.style || 'photorealistic', aspectRatio: img.aspectRatio || '16:9' },
+            sessionId,
+            organizationId,
+            supabase
+          });
+          return { id: img.id, url: result.image_url || result.url || null, success: !!result.image_url };
+        } catch (e) {
+          return { id: img.id, url: null, success: false, error: e.message };
+        }
+      });
+
+      // Store the promise in a background map keyed by artifactName
+      if (!global._pendingImageJobs) global._pendingImageJobs = {};
+      global._pendingImageJobs[artifactName] = Promise.all(imagePromises).then(async (results) => {
+        // Auto-update the artifact once all images are done
+        const sb = supabase;
+        const { data: art } = await sb.from('artifacts')
+          .select('id, content')
+          .eq('name', artifactName)
+          .eq('organization_id', organizationId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single();
+        if (art?.content) {
+          let updated = art.content;
+          for (const r of results) {
+            if (r.url) updated = updated.split(r.id).join(r.url);
+          }
+          if (updated !== art.content) {
+            await sb.from('artifacts').update({ content: updated, updated_at: new Date().toISOString() }).eq('id', art.id);
+          }
+        }
+        return results;
+      });
+
+      return {
+        success: true,
+        message: `Kicked off ${images.length} image generation(s) in parallel for ${artifactName}. Build your HTML now using Unsplash placeholder URLs — call update_artifact_images after saving to swap in real images once they arrive.`,
+        pendingIds: images.map(i => i.id)
+      };
+    }
+
+    // Update artifact images — swap placeholders with real URLs in saved HTML
+    if (toolName === 'update_artifact_images') {
+      const { artifactName, replacements = [] } = toolInput;
+      try {
+        // Wait for any pending parallel job to complete
+        if (global._pendingImageJobs?.[artifactName]) {
+          await global._pendingImageJobs[artifactName];
+          delete global._pendingImageJobs[artifactName];
+        }
+        const { data: art } = await supabase.from('artifacts')
+          .select('id, content')
+          .eq('name', artifactName)
+          .eq('organization_id', organizationId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single();
+        if (!art) return { success: false, error: `Artifact ${artifactName} not found` };
+        let updated = art.content || '';
+        let swapped = 0;
+        for (const r of replacements) {
+          if (r.placeholder && r.realUrl && updated.includes(r.placeholder)) {
+            updated = updated.split(r.placeholder).join(r.realUrl);
+            swapped++;
+          }
+        }
+        if (swapped > 0) {
+          await supabase.from('artifacts').update({ content: updated, updated_at: new Date().toISOString() }).eq('id', art.id);
+        }
+        return { success: true, swapped, message: `Updated ${swapped} image(s) in ${artifactName}` };
+      } catch (e) {
+        return { success: false, error: e.message };
+      }
     }
 
     // Load skill — injects expert instructions into the conversation
