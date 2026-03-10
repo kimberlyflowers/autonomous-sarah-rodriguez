@@ -1209,34 +1209,34 @@ function parseMessageCards(text) {
 // ── SESSION FILES PANEL — right panel shows files from current chat ──────────
 function SessionFilesPanel({c, sessionId, setActiveArtifact}){
   const [files,setFiles]=useState([]);
+  const [uploads,setUploads]=useState([]);
   const [loading,setLoading]=useState(true);
 
-  useEffect(()=>{
-    if(!sessionId){setLoading(false);return;}
-    fetch(`/api/files/artifacts?sessionId=${sessionId}&limit=20`)
-      .then(r=>r.json())
-      .then(d=>{setFiles(d.artifacts||[]);setLoading(false);})
-      .catch(()=>setLoading(false));
-  },[sessionId]);
+  const fetchAll = ()=>{
+    if(!sessionId) return;
+    Promise.all([
+      fetch(`/api/files/artifacts?sessionId=${sessionId}&limit=20`).then(r=>r.json()).catch(()=>({})),
+      fetch(`/api/chat/uploads/list?sessionId=${sessionId}`).then(r=>r.json()).catch(()=>({}))
+    ]).then(([artifactsData, uploadsData])=>{
+      setFiles(artifactsData.artifacts||[]);
+      setUploads(uploadsData.uploads||[]);
+      setLoading(false);
+    });
+  };
 
-  // Refetch when session changes or new artifact might be created
+  useEffect(()=>{ fetchAll(); },[sessionId]);
+
+  // Poll for new artifacts every 5s
   useEffect(()=>{
-    const interval=setInterval(()=>{
-      if(!sessionId)return;
-      fetch(`/api/files/artifacts?sessionId=${sessionId}&limit=20`)
-        .then(r=>r.json())
-        .then(d=>{if(d.artifacts?.length!==files.length)setFiles(d.artifacts||[]);})
-        .catch(()=>{});
-    },5000);
+    const interval=setInterval(fetchAll, 5000);
     return()=>clearInterval(interval);
-  },[sessionId,files.length]);
+  },[sessionId]);
 
   if(loading) return <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",color:c.so,fontSize:12}}>Loading...</div>;
 
-  if(files.length===0) return(
+  if(files.length===0 && uploads.length===0) return(
     <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",textAlign:"center",padding:30}}>
       <div>
-        
         <div style={{fontSize:13,color:c.so,marginBottom:4}}>No files in this chat</div>
         <div style={{fontSize:11,color:c.fa}}>Ask Sarah to create content — blogs, websites, emails, docs — and they'll appear here</div>
       </div>
@@ -1273,10 +1273,19 @@ function SessionFilesPanel({c, sessionId, setActiveArtifact}){
     );
   };
 
+  const SectionLabel = ({label, count}) => (
+    <div style={{fontSize:11,fontWeight:700,color:c.so,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:10,marginTop:4,padding:"0 4px",display:"flex",alignItems:"center",gap:6}}>
+      {label}
+      <span style={{fontSize:10,fontWeight:600,color:c.fa,background:c.ln,padding:"1px 6px",borderRadius:10}}>{count}</span>
+    </div>
+  );
+
   return(
     <div style={{flex:1,overflowY:"auto",padding:12}}>
-      <div style={{fontSize:11,fontWeight:700,color:c.so,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:12,padding:"0 4px"}}>Files in this chat ({files.length})</div>
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(180px, 1fr))',gap:12}}>
+      {/* ── Bloomie created ── */}
+      {files.length>0&&<>
+        <SectionLabel label="Created by Bloomie" count={files.length}/>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(160px, 1fr))',gap:10,marginBottom:20}}>
         {files.map(f=>{
           const ext=(f.name||'').split('.').pop()?.toLowerCase()||'';
           const isImage = ['png','jpg','jpeg','gif','webp'].includes(ext);
@@ -1393,7 +1402,38 @@ function SessionFilesPanel({c, sessionId, setActiveArtifact}){
             </div>
           );
         })}
-      </div>
+        </div>
+      </>}
+
+      {/* ── Uploaded by you ── */}
+      {uploads.length>0&&<>
+        <SectionLabel label="Uploaded by you" count={uploads.length}/>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(160px, 1fr))',gap:10}}>
+          {uploads.map(u=>{
+            const ext=(u.name||'').split('.').pop()?.toLowerCase()||'';
+            const isImage=['png','jpg','jpeg','gif','webp'].includes(ext);
+            return(
+              <div key={u.uploadId} style={{
+                position:'relative',borderRadius:12,border:"1px solid "+c.ln,
+                background:c.cd,overflow:'hidden',aspectRatio:'1',
+                transition:"all .2s"
+              }}
+              onMouseEnter={e=>{e.currentTarget.style.borderColor=c.ac;e.currentTarget.style.transform="translateY(-2px)";}}
+              onMouseLeave={e=>{e.currentTarget.style.borderColor=c.ln;e.currentTarget.style.transform="translateY(0)";}}>
+                <div style={{width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center',background:isImage?'#000':c.bg,overflow:'hidden'}}>
+                  {isImage
+                    ? <img src={`/api/chat/uploads/preview/${u.uploadId}`} alt={u.name} style={{width:'100%',height:'100%',objectFit:'cover'}}/>
+                    : <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke={c.so} strokeWidth="1.5" opacity="0.4"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                  }
+                </div>
+                <div style={{position:'absolute',bottom:0,left:0,right:0,padding:'8px 10px',background:'linear-gradient(to top, rgba(0,0,0,0.8), transparent)',color:'#fff'}}>
+                  <div style={{fontSize:11,fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{u.name}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </>}
     </div>
   );
 }
