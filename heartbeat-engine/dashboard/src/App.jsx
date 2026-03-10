@@ -4497,7 +4497,7 @@ function App() {
                     const sizeStr=f.fileSize>1048576?`${(f.fileSize/1048576).toFixed(1)}MB`:f.fileSize>1024?`${(f.fileSize/1024).toFixed(1)}KB`:`${f.fileSize||0}B`;
                     const date=f.approvedAt?new Date(f.approvedAt).toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'';
                     return (
-                      <div key={f.fileId} style={{background:c.cd,borderRadius:14,border:"1px solid "+c.ln,overflow:"hidden",transition:"border-color .15s"}}
+                      <div key={f.fileId} style={{background:c.cd,borderRadius:14,border:"1px solid "+c.ln,transition:"border-color .15s"}}
                         onMouseEnter={e=>e.currentTarget.style.borderColor=c.ac}
                         onMouseLeave={e=>e.currentTarget.style.borderColor=c.ln}>
                         {/* Preview area */}
@@ -4578,7 +4578,7 @@ function App() {
                           <div style={{position:"absolute",top:8,right:8,padding:"3px 8px",borderRadius:6,background:"rgba(0,0,0,0.5)",color:"#fff",fontSize:10,fontWeight:600}}>{ext.toUpperCase()}</div>
                         </div>
                         {/* Info */}
-                        <div style={{padding:"12px 14px"}}>
+                        <div style={{padding:"12px 14px 14px"}}>
                           <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
                             <div style={{fontSize:13,fontWeight:600,color:c.tx,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{f.name}</div>
                             <span style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:4,background:f.status==='approved'?"rgba(52,168,83,0.15)":"rgba(244,162,97,0.15)",color:f.status==='approved'?c.gr:c.ac}}>{f.status==='approved'?'APPROVED':'PENDING'}</span>
