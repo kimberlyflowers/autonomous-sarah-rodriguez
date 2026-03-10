@@ -1244,15 +1244,41 @@ async function executeTool(toolName, toolInput, sessionId = null) {
           description: row.description,
           fileType: row.file_type,
           createdAt: row.created_at,
-          // storage_path is the Supabase CDN URL for images, or use content for text files
           url: row.storage_path || null,
-          hasContent: !!row.content
+          hasContent: !!row.content,
+          source: 'bloomie'
         }));
+
+        // Also include user-uploaded images from chat_uploads (reference images)
+        let userUploads = [];
+        try {
+          const uploadsRes = await pool.query(
+            `SELECT upload_id, name, mime_type, supabase_url, file_path, created_at
+             FROM chat_uploads WHERE session_id = $1 ORDER BY created_at DESC LIMIT 20`,
+            [sid]
+          );
+          userUploads = uploadsRes.rows
+            .filter(r => r.supabase_url || r.file_path)
+            .map(r => ({
+              fileId: r.upload_id,
+              name: r.name,
+              fileType: 'image',
+              createdAt: r.created_at,
+              // Prefer Supabase CDN URL (works anywhere), fallback to Railway serve
+              url: r.supabase_url || `/api/chat/uploads/preview/${r.upload_id}`,
+              hasContent: false,
+              source: 'user_upload'
+            }));
+        } catch (upErr) {
+          logger.warn('get_session_files: could not fetch user uploads', { error: upErr.message });
+        }
+
+        const allFiles = [...files, ...userUploads];
 
         return {
           success: true,
-          files,
-          message: `Found ${files.length} file(s) from this session. Use the 'url' field to reference or edit images, or 'hasContent: true' means text content is stored for documents.`
+          files: allFiles,
+          message: `Found ${allFiles.length} file(s) from this session (${files.length} created by Bloomie, ${userUploads.length} uploaded by user). Use the 'url' field to reference or edit images, or 'hasContent: true' means text content is stored for documents.`
         };
       } catch (err) {
         logger.error('get_session_files failed:', err.message);
@@ -2368,12 +2394,32 @@ router.post('/upload', async (req, res) => {
           const filePath = path.join(UPLOAD_STORAGE, `${uploadId}${ext}`);
           const buf = Buffer.from(f.data, 'base64');
           fs.writeFileSync(filePath, buf);
+
+          // Also push to Supabase Storage so Sarah can use as reference_image_url
+          let supabaseUrl = null;
+          try {
+            const { createClient } = await import('@supabase/supabase-js');
+            const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+            const storagePath = `chat-uploads/${sessionId}/${uploadId}${ext}`;
+            const { error: upErr } = await supabase.storage
+              .from('bloom-images')
+              .upload(storagePath, buf, { contentType: f.type || 'image/jpeg', upsert: true });
+            if (!upErr) {
+              const { data: urlData } = supabase.storage.from('bloom-images').getPublicUrl(storagePath);
+              supabaseUrl = urlData?.publicUrl || null;
+            } else {
+              logger.warn('Supabase storage upload failed', { error: upErr.message });
+            }
+          } catch (storErr) {
+            logger.warn('Supabase storage error (non-fatal)', { error: storErr.message });
+          }
+
           await pool.query(`
-            INSERT INTO chat_uploads (upload_id, session_id, user_id, name, mime_type, file_size, file_path)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            INSERT INTO chat_uploads (upload_id, session_id, user_id, name, mime_type, file_size, file_path, supabase_url)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             ON CONFLICT (upload_id) DO NOTHING
-          `, [uploadId, sessionId, userId || null, f.name || 'upload.jpg', f.type || 'image/jpeg', buf.length, filePath]);
-          uploadedFiles.push({ name: f.name, uploadId, previewUrl: `/api/chat/uploads/preview/${uploadId}` });
+          `, [uploadId, sessionId, userId || null, f.name || 'upload.jpg', f.type || 'image/jpeg', buf.length, filePath, supabaseUrl]);
+          uploadedFiles.push({ name: f.name, uploadId, previewUrl: `/api/chat/uploads/preview/${uploadId}`, supabaseUrl });
         } catch (saveErr) {
           logger.warn('Failed to save chat upload', { name: f.name, error: saveErr.message });
         }
