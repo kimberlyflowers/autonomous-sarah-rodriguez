@@ -19,36 +19,42 @@ export default function PageEditor({ editor: editorData, onClose, onSaved }) {
       editor.setComponents(editorData.content);
     }
 
-    // ── Add href/target traits to <button> elements ──────────────────
-    // The buttons in this page are plain <button type="button"> tags.
-    // GrapesJS shows Text + Type by default but no URL field.
-    // We add href + target as real attributes so users can set a link.
-    // On save, buildFullHtml will have these as data attributes;
-    // a small script in the page converts them to proper navigation.
-    editor.Components.addType('button', {
-      extend: 'default',
-      isComponent: el => el.tagName === 'BUTTON',
-      model: {
-        defaults: {
-          traits: [
-            {
-              type: 'text',
-              name: 'data-href',
-              label: 'Link URL',
-              placeholder: 'https://example.com or #section',
-            },
-            {
-              type: 'select',
-              name: 'data-target',
-              label: 'Open in',
-              options: [
-                { id: '',       label: 'Same window' },
-                { id: '_blank', label: 'New tab' },
+    // ── Append href/target traits to button type after editor loads ────
+    // grapesjs-plugin-forms already owns 'button' type with Text+Type.
+    // addType() is ignored because forms plugin registers first.
+    // Correct approach: get the existing type and push new traits onto it.
+    editor.on('load', () => {
+      try {
+        const btnType = editor.Components.getType('button');
+        if (btnType) {
+          const proto = btnType.model.prototype;
+          const existing = (proto.defaults && proto.defaults.traits) || [];
+          const alreadyHasHref = existing.some(t => (t.name || t) === 'data-href');
+          if (!alreadyHasHref) {
+            proto.defaults = {
+              ...proto.defaults,
+              traits: [
+                ...existing,
+                {
+                  type: 'text',
+                  name: 'data-href',
+                  label: 'Link URL',
+                  placeholder: 'https://example.com or #section',
+                },
+                {
+                  type: 'select',
+                  name: 'data-target',
+                  label: 'Open in',
+                  options: [
+                    { id: '',       label: 'Same window' },
+                    { id: '_blank', label: 'New tab' },
+                  ],
+                },
               ],
-            },
-          ],
-        },
-      },
+            };
+          }
+        }
+      } catch(e) { console.warn('button trait extend failed:', e); }
     });
 
     // ── On selection: auto-select parent <a> if clicked child; switch panel ─
