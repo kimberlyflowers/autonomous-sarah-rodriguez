@@ -2457,13 +2457,19 @@ function App() {
   const takeScreenshot=async()=>{
     setShowPlusMenu(false);
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+      // CaptureController.setFocusBehavior("no-focus-change") prevents browser from
+      // switching focus to the captured tab/window — keeps user on dashboard
+      const controller = typeof CaptureController !== 'undefined' ? new CaptureController() : null;
+      const streamOptions = controller ? { controller, video: true, audio: false } : { video: true, audio: false };
+      const stream = await navigator.mediaDevices.getDisplayMedia(streamOptions);
       const track = stream.getVideoTracks()[0];
+      // Immediately lock focus to capturing app (must be called right after promise resolves)
+      if (controller) {
+        try { controller.setFocusBehavior('no-focus-change'); } catch(e) { /* monitor surface throws — ignore */ }
+      }
       const imageCapture = new ImageCapture(track);
       const bitmap = await imageCapture.grabFrame();
       track.stop();
-      // Snap focus back to dashboard — delay gives browser time to finish capture first
-      setTimeout(() => window.focus(), 100);
       // Cap at 1920px wide — 4K screenshots balloon to 20MB+ as PNG
       const MAX_W = 1920;
       let drawW = bitmap.width;
