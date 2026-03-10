@@ -4590,15 +4590,22 @@ function App() {
                           </div>
                           {ext==='html'&&(
                             <div style={{display:'flex',gap:6,marginTop:8}}>
-                              <button onClick={async(e)=>{e.stopPropagation();try{const r=await fetch(`/api/files/artifacts/${f.fileId}/parse-editable`);const d=await r.json();if(d.success){
+                              <button onClick={async(e)=>{e.stopPropagation();
+                                try{
+                                  const r=await fetch('/api/files/artifacts/'+f.fileId+'/parse-editable');
+                                  if(!r.ok){const txt=await r.text();throw new Error('Server '+r.status+': '+txt.substring(0,80));}
+                                  const d=await r.json();
+                                  if(d.success){
                                     setSelectedRegion(null);setLiveHtml('');setEditorTab('general');setStructEdits({});
-                                    // If content not in list response, fetch it directly
-                                    let htmlContent = f.content;
-                                    if(!htmlContent){
-                                      try{const cr=await fetch('/api/files/publish/'+f.fileId);if(cr.ok){htmlContent=await cr.text();}}catch{}
-                                    }
+                                    let htmlContent=f.content;
+                                    if(!htmlContent){try{const cr=await fetch('/api/files/publish/'+f.fileId);if(cr.ok){htmlContent=await cr.text();}}catch{}}
                                     setStructuredEditor({fileId:f.fileId,name:f.name,regions:d.regions,colors:d.colors,content:htmlContent||''});
-                                  }else{setOauthToast({type:'error',msg:'Could not parse page'});setTimeout(()=>setOauthToast(null),3000);}}catch{setOauthToast({type:'error',msg:'Parse failed'});setTimeout(()=>setOauthToast(null),3000);}}} style={{flex:1,padding:'7px 0',borderRadius:8,border:'none',background:'linear-gradient(135deg,#F4A261,#E76F8B)',cursor:'pointer',fontSize:11,fontWeight:700,color:'#fff',fontFamily:'inherit'}}>Edit Page</button>
+                                  }else{setOauthToast({type:'error',msg:d.error||'Parse failed'});setTimeout(()=>setOauthToast(null),4000);}
+                                }catch(err){
+                                  console.error('Edit Page failed:',err);
+                                  setOauthToast({type:'error',msg:'Edit Page: '+(err.message||'Server unreachable')});
+                                  setTimeout(()=>setOauthToast(null),5000);
+                                }}} style={{flex:1,padding:'7px 0',borderRadius:8,border:'none',background:'linear-gradient(135deg,#F4A261,#E76F8B)',cursor:'pointer',fontSize:11,fontWeight:700,color:'#fff',fontFamily:'inherit'}}>Edit Page</button>
                               {f.slug?<a href={`/p/${f.slug}`} target="_blank" rel="noopener noreferrer" style={{flex:1,padding:'7px 0',borderRadius:8,border:'1px solid '+c.gr,background:c.gr+'12',fontSize:11,fontWeight:700,color:c.gr,textDecoration:'none',textAlign:'center',display:'block'}}>↗ Live</a>:<button onClick={async(e)=>{e.stopPropagation();const slug=prompt('URL slug:\nyoursite.com/p/___',f.name?.replace(/\.[^.]+$/,'').toLowerCase().replace(/[^a-z0-9]+/g,'-'));if(!slug)return;const r=await fetch(`/api/files/artifacts/${f.fileId}/publish`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({slug})});const d=await r.json();if(d.success){setFiles(p=>p.map(x=>x.fileId===f.fileId?{...x,slug:d.slug,published:true}:x));window.open(`/p/${d.slug}`,'_blank');}else{setOauthToast({type:'error',msg:d.error||'Publish failed'});setTimeout(()=>setOauthToast(null),4000);}}} style={{flex:1,padding:'7px 0',borderRadius:8,border:'1px solid '+c.ac,background:c.ac+'12',cursor:'pointer',fontSize:11,fontWeight:700,color:c.ac,fontFamily:'inherit'}}>Publish</button>}
                               <a href={`/api/files/download/${f.fileId}`} download style={{padding:'7px 10px',borderRadius:8,border:'1px solid '+c.ln,background:c.cd,fontSize:13,color:c.so,textDecoration:'none',display:'flex',alignItems:'center'}}>↓</a>
                             </div>
