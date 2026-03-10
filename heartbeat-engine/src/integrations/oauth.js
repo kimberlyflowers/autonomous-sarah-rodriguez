@@ -147,7 +147,7 @@ export async function handleCallback(slug, code, stateB64) {
     .upsert({
       connector_id: connectorRow.id,
       organization_id: orgId,
-      connected_by: userId || null,
+      connected_by: userId || process.env.BLOOM_OWNER_USER_ID || '823e2fb5-2f8f-4279-9c84-c8f4bf78bcce',
       access_token: tokens.access_token,
       refresh_token: tokens.refresh_token || null,
       token_expires_at: expiresAt,
