@@ -46,6 +46,36 @@ export const CONNECTORS = {
     ],
     extraParams: { access_type: 'offline', prompt: 'consent' },
   },
+  'hubspot': {
+    name: 'HubSpot',
+    authType: 'oauth2',
+    clientId: process.env.HUBSPOT_CLIENT_ID,
+    clientSecret: process.env.HUBSPOT_CLIENT_SECRET,
+    authUrl: 'https://app.hubspot.com/oauth/authorize',
+    tokenUrl: 'https://api.hubapi.com/oauth/v1/token',
+    scopes: ['crm.objects.contacts.read', 'crm.objects.contacts.write', 'crm.objects.deals.read', 'crm.objects.deals.write'],
+    extraParams: {},
+  },
+  'notion': {
+    name: 'Notion',
+    authType: 'oauth2',
+    clientId: process.env.NOTION_CLIENT_ID,
+    clientSecret: process.env.NOTION_CLIENT_SECRET,
+    authUrl: 'https://api.notion.com/v1/oauth/authorize',
+    tokenUrl: 'https://api.notion.com/v1/oauth/token',
+    scopes: [],
+    extraParams: { owner: 'user' },
+  },
+  'slack': {
+    name: 'Slack',
+    authType: 'oauth2',
+    clientId: process.env.SLACK_CLIENT_ID,
+    clientSecret: process.env.SLACK_CLIENT_SECRET,
+    authUrl: 'https://slack.com/oauth/v2/authorize',
+    tokenUrl: 'https://slack.com/api/oauth.v2.access',
+    scopes: ['channels:read', 'chat:write', 'files:read', 'users:read'],
+    extraParams: {},
+  },
   'google-drive': {
     name: 'Google Drive',
     authType: 'oauth2',
@@ -59,12 +89,107 @@ export const CONNECTORS = {
     ],
     extraParams: { access_type: 'offline', prompt: 'consent' },
   },
+  'salesforce': {
+    name: 'Salesforce',
+    authType: 'oauth2',
+    clientId: process.env.SALESFORCE_CLIENT_ID,
+    clientSecret: process.env.SALESFORCE_CLIENT_SECRET,
+    authUrl: 'https://login.salesforce.com/services/oauth2/authorize',
+    tokenUrl: 'https://login.salesforce.com/services/oauth2/token',
+    scopes: ['api', 'refresh_token', 'offline_access'],
+    extraParams: {},
+  },
+  'instagram': {
+    name: 'Instagram',
+    authType: 'oauth2',
+    clientId: process.env.META_APP_ID,
+    clientSecret: process.env.META_APP_SECRET,
+    authUrl: 'https://api.instagram.com/oauth/authorize',
+    tokenUrl: 'https://api.instagram.com/oauth/access_token',
+    scopes: ['instagram_basic', 'instagram_content_publish', 'instagram_manage_insights'],
+    extraParams: {},
+  },
+  'facebook': {
+    name: 'Facebook',
+    authType: 'oauth2',
+    clientId: process.env.META_APP_ID,
+    clientSecret: process.env.META_APP_SECRET,
+    authUrl: 'https://www.facebook.com/v18.0/dialog/oauth',
+    tokenUrl: 'https://graph.facebook.com/v18.0/oauth/access_token',
+    scopes: ['pages_manage_posts', 'pages_read_engagement', 'ads_management'],
+    extraParams: {},
+  },
+  'linkedin': {
+    name: 'LinkedIn',
+    authType: 'oauth2',
+    clientId: process.env.LINKEDIN_CLIENT_ID,
+    clientSecret: process.env.LINKEDIN_CLIENT_SECRET,
+    authUrl: 'https://www.linkedin.com/oauth/v2/authorization',
+    tokenUrl: 'https://www.linkedin.com/oauth/v2/accessToken',
+    scopes: ['openid', 'profile', 'w_member_social', 'r_organization_social'],
+    extraParams: {},
+  },
+  'tiktok': {
+    name: 'TikTok',
+    authType: 'oauth2',
+    clientId: process.env.TIKTOK_CLIENT_ID,
+    clientSecret: process.env.TIKTOK_CLIENT_SECRET,
+    authUrl: 'https://www.tiktok.com/v2/auth/authorize/',
+    tokenUrl: 'https://open.tiktokapis.com/v2/oauth/token/',
+    scopes: ['user.info.basic', 'video.list', 'video.publish'],
+    extraParams: {},
+  },
+  'airtable': {
+    name: 'Airtable',
+    authType: 'oauth2',
+    clientId: process.env.AIRTABLE_CLIENT_ID,
+    clientSecret: process.env.AIRTABLE_CLIENT_SECRET,
+    authUrl: 'https://airtable.com/oauth2/v1/authorize',
+    tokenUrl: 'https://airtable.com/oauth2/v1/token',
+    scopes: ['data.records:read', 'data.records:write', 'schema.bases:read'],
+    extraParams: { code_challenge_method: 'S256' },
+  },
+  'canva': {
+    name: 'Canva',
+    authType: 'oauth2',
+    clientId: process.env.CANVA_CLIENT_ID,
+    clientSecret: process.env.CANVA_CLIENT_SECRET,
+    authUrl: 'https://www.canva.com/api/oauth/authorize',
+    tokenUrl: 'https://api.canva.com/rest/v1/oauth/token',
+    scopes: ['asset:read', 'asset:write', 'design:content:read', 'design:content:write'],
+    extraParams: {},
+  },
+  'shopify': {
+    name: 'Shopify',
+    authType: 'oauth2',
+    clientId: process.env.SHOPIFY_CLIENT_ID,
+    clientSecret: process.env.SHOPIFY_CLIENT_SECRET,
+    authUrl: `https://${process.env.SHOPIFY_SHOP || 'your-store'}.myshopify.com/admin/oauth/authorize`,
+    tokenUrl: `https://${process.env.SHOPIFY_SHOP || 'your-store'}.myshopify.com/admin/oauth/access_token`,
+    scopes: ['read_orders', 'write_orders', 'read_products', 'write_products', 'read_customers'],
+    extraParams: {},
+  },
+  'stripe': {
+    name: 'Stripe',
+    authType: 'oauth2',
+    clientId: process.env.STRIPE_CLIENT_ID,
+    clientSecret: process.env.STRIPE_SECRET_KEY,
+    authUrl: 'https://connect.stripe.com/oauth/authorize',
+    tokenUrl: 'https://connect.stripe.com/oauth/token',
+    scopes: ['read_write'],
+    extraParams: { response_type: 'code' },
+  },
 };
 
 // ── STEP 1: Build the authorization URL ──────────────────────────────────────
 export function buildAuthUrl(slug, orgId) {
   const connector = CONNECTORS[slug];
   if (!connector) throw new Error(`Unknown connector: ${slug}`);
+
+  // If the connector's credentials aren't configured yet, throw a friendly error
+  if (!connector.clientId || !connector.clientSecret) {
+    throw new Error(`${connector.name} integration coming soon — API credentials not yet configured`);
+  }
 
   const baseUrl = process.env.RAILWAY_PUBLIC_DOMAIN
     ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`

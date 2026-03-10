@@ -2520,7 +2520,10 @@ function App() {
       loadActiveConnectors();
       setTimeout(()=>setOauthToast(null),5000);
     } else if(error){
-      setOauthToast({type:'error',msg:`Connection failed: ${decodeURIComponent(error)}`});
+      const errMsg = decodeURIComponent(error);
+      // Show friendly message for coming-soon connectors
+      const displayMsg = errMsg.includes('coming soon') ? errMsg : `Connection failed: ${errMsg}`;
+      setOauthToast({type:'error',msg:displayMsg});
       setPg('customize');
       window.history.replaceState({},'',window.location.pathname);
       setTimeout(()=>setOauthToast(null),6000);
