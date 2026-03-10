@@ -4613,14 +4613,14 @@ function App() {
                   <div key={cat} style={{marginBottom:28}}>
                     <div style={{fontSize:11,fontWeight:700,color:c.fa,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:10}}>{cat}</div>
                     <div style={{display:"grid",gridTemplateColumns:mob?"1fr":"repeat(auto-fill,minmax(280px,1fr))",gap:10}}>
-                      {items.map(item=>(
-                        <div key={item.slug} style={{display:"flex",alignItems:"center",gap:14,padding:"14px 16px",borderRadius:12,border:"1.5px solid "+(item.connected?c.ac+"55":c.ln),background:item.connected?c.ac+"08":c.cd,transition:"all .2s"}} onMouseEnter={e=>{if(!item.connected)e.currentTarget.style.borderColor=c.ac+"44";}} onMouseLeave={e=>{if(!item.connected)e.currentTarget.style.borderColor=item.connected?c.ac+"55":c.ln;}}>
-                          <div style={{width:40,height:40,borderRadius:10,background:item.connected?"linear-gradient(135deg,#F4A261,#E76F8B)":c.sf,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,color:item.connected?"#fff":c.so,overflow:"hidden"}}>{item.icon}</div>
+                      {items.map(item=>{ const isConn=!!(activeConnectors[item.slug]); return (
+                        <div key={item.slug} style={{display:"flex",alignItems:"center",gap:14,padding:"14px 16px",borderRadius:12,border:"1.5px solid "+(isConn?c.ac+"55":c.ln),background:isConn?c.ac+"08":c.cd,transition:"all .2s"}} onMouseEnter={e=>{if(!isConn)e.currentTarget.style.borderColor=c.ac+"44";}} onMouseLeave={e=>{if(!isConn)e.currentTarget.style.borderColor=isConn?c.ac+"55":c.ln;}}>
+                          <div style={{width:40,height:40,borderRadius:10,background:isConn?"linear-gradient(135deg,#F4A261,#E76F8B)":c.sf,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,color:isConn?"#fff":c.so,overflow:"hidden"}}>{item.icon}</div>
                           <div style={{flex:1,minWidth:0}}>
                             <div style={{fontSize:13,fontWeight:700,color:c.tx,marginBottom:2}}>{item.name}</div>
                             <div style={{fontSize:11,color:c.so,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{item.desc}</div>
                           </div>
-                          {item.connected?(
+                          {isConn?(
                             <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4,flexShrink:0}}>
                               <div style={{fontSize:10,fontWeight:700,color:c.ac,background:c.ac+"18",padding:"2px 8px",borderRadius:20}}>Connected</div>
                               <button onClick={e=>e.stopPropagation()} style={{fontSize:10,color:c.fa,background:"none",border:"none",cursor:"pointer",padding:"2px 4px"}}>Disconnect</button>
@@ -4634,7 +4634,7 @@ function App() {
                             </button>
                           )}
                         </div>
-                      ))}
+                      ); })}
                     </div>
                   </div>
                 ))}
