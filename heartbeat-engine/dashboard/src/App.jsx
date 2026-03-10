@@ -1332,6 +1332,10 @@ function SessionFilesPanel({c, sessionId, setActiveArtifact}){
           
           return(
             <div key={f.fileId} onClick={async()=>{
+              if(isImage){
+                setLightbox({src:f.storagePath||f.previewUrl||`/api/files/preview/${f.fileId}`,alt:f.name});
+                return;
+              }
               try{
                 const pr=await fetch(`/api/files/preview/${f.fileId}`);
                 if(pr.headers.get('content-type')?.includes('json')){
@@ -1373,14 +1377,15 @@ function SessionFilesPanel({c, sessionId, setActiveArtifact}){
                 position: 'relative',
                 overflow: 'hidden'
               }}>
-                {isImage && f.thumbnail_base64 ? (
+                {isImage && (f.storagePath || f.previewUrl) ? (
                   <img 
-                    src={`data:image/png;base64,${f.thumbnail_base64}`}
+                    src={f.storagePath || f.previewUrl}
                     alt={f.name}
                     style={{
                       width: '100%',
                       height: '100%',
-                      objectFit: 'cover'
+                      objectFit: 'cover',
+                      cursor: 'zoom-in'
                     }}
                   />
                 ) : ext==='html' ? (
