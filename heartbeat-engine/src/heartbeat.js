@@ -8,13 +8,14 @@ import { think } from './agent/think.js';
 import { act } from './agent/act.js';
 import { escalate } from './agent/escalate.js';
 import { lettaClient } from './memory/letta-client.js';
-import { logHeartbeat, logAction, logRejection, logHandoff } from './logging/index.js';
+import { logHeartbeat, logAction, logRejection, logHandoff, initCycleRow } from './logging/index.js';
 import { isWithinScope } from './config/autonomy-levels.js';
 
 const logger = createLogger('heartbeat');
 
 export async function runHeartbeat(agentConfig, trigger = {}) {
   const cycleId = `cycle_${uuidv4().substring(0, 8)}`;
+  await initCycleRow(cycleId, agentConfig.agentId); // pre-register FK row
   const startTime = Date.now();
 
   logger.info(`🔄 Starting heartbeat cycle ${cycleId}`, {

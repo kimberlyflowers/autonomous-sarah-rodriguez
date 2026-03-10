@@ -333,6 +333,11 @@ async function executeUpdatePipeline(decision, agentConfig) {
 async function executeLogInteraction(decision, agentConfig) {
   const { contact_id, interaction_type, details } = decision.input_data;
 
+  if (!contact_id || contact_id === 'undefined') {
+    logger.warn('log_interaction skipped: contact_id is missing', { interaction_type });
+    return { success: false, skipped: true, reason: 'contact_id missing' };
+  }
+
   logger.info('Logging interaction...', {
     contactId: contact_id,
     type: interaction_type
