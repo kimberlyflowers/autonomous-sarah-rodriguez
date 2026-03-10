@@ -353,6 +353,24 @@ async function createBasicSchema(pool) {
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id, created_at ASC)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_chat_sessions_updated ON chat_sessions(updated_at DESC)`);
 
+  // Chat uploads — user-provided images/files (separate from Bloomie artifacts)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS chat_uploads (
+      id SERIAL PRIMARY KEY,
+      upload_id VARCHAR(64) UNIQUE NOT NULL,
+      session_id VARCHAR(128),
+      user_id UUID,
+      name VARCHAR(500) NOT NULL,
+      mime_type VARCHAR(128),
+      file_size INTEGER DEFAULT 0,
+      file_path VARCHAR(500),
+      supabase_url TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_chat_uploads_session ON chat_uploads(session_id)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_chat_uploads_upload_id ON chat_uploads(upload_id)`);
+
   // Agent profile — Sarah's job title, description, and avatar
   await pool.query(`
     CREATE TABLE IF NOT EXISTS agent_profile (
