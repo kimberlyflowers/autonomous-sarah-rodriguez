@@ -4958,18 +4958,35 @@ function App() {
                     title={previewFile.name}
                   />
                 ):(
-                  <div style={{flex:1,overflowY:"auto",padding:"20px 24px",fontSize:15,lineHeight:1.8,color:c.tx}}
-                    dangerouslySetInnerHTML={{__html: (previewFile.content||'')
-                      .replace(/^# (.+)$/gm, '<h1 style="font-size:24px;font-weight:700;margin:20px 0 10px">$1</h1>')
-                      .replace(/^## (.+)$/gm, '<h2 style="font-size:20px;font-weight:700;margin:16px 0 8px">$1</h2>')
-                      .replace(/^### (.+)$/gm, '<h3 style="font-size:17px;font-weight:600;margin:14px 0 6px">$1</h3>')
-                      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-                      .replace(/\*(.+?)\*/g, '<em>$1</em>')
-                      .replace(/^- (.+)$/gm, '<li style="margin-left:20px;margin-bottom:6px">$1</li>')
-                      .replace(/^(\d+)\. (.+)$/gm, '<li style="margin-left:20px;margin-bottom:6px"><strong>$1.</strong> $2</li>')
-                      .replace(/\n\n/g, '<br/><br/>')
-                      .replace(/\n/g, '<br/>')
-                    }}/>
+                  <div style={{flex:1,overflowY:"auto",padding:"40px 56px",boxSizing:"border-box"}}>
+                    <div style={{maxWidth:720,margin:"0 auto"}}>
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        h1:({children})=><h1 style={{fontSize:28,fontWeight:800,color:c.tx,margin:"0 0 20px",paddingBottom:12,borderBottom:"2px solid "+c.ln,lineHeight:1.3}}>{children}</h1>,
+                        h2:({children})=><h2 style={{fontSize:22,fontWeight:700,color:c.tx,margin:"32px 0 10px",lineHeight:1.4}}>{children}</h2>,
+                        h3:({children})=><h3 style={{fontSize:17,fontWeight:600,color:c.tx,margin:"24px 0 8px",lineHeight:1.4}}>{children}</h3>,
+                        h4:({children})=><h4 style={{fontSize:15,fontWeight:600,color:c.tx,margin:"16px 0 6px"}}>{children}</h4>,
+                        p:({children})=><p style={{margin:"0 0 14px",fontSize:15,lineHeight:1.85,color:c.tx}}>{children}</p>,
+                        strong:({children})=><strong style={{fontWeight:700}}>{children}</strong>,
+                        em:({children})=><em style={{fontStyle:"italic"}}>{children}</em>,
+                        ul:({children})=><ul style={{margin:"0 0 14px",paddingLeft:24}}>{children}</ul>,
+                        ol:({children})=><ol style={{margin:"0 0 14px",paddingLeft:24}}>{children}</ol>,
+                        li:({children})=><li style={{margin:"0 0 5px",fontSize:15,lineHeight:1.75,color:c.tx}}>{children}</li>,
+                        blockquote:({children})=><blockquote style={{margin:"16px 0",padding:"12px 20px",borderLeft:"4px solid "+c.ac,background:c.sf,borderRadius:"0 8px 8px 0",color:c.so,fontStyle:"italic"}}>{children}</blockquote>,
+                        code:({inline,children})=>inline
+                          ?<code style={{background:c.sf,border:"1px solid "+c.ln,padding:"2px 6px",borderRadius:4,fontSize:13,fontFamily:"ui-monospace,SFMono-Regular,Menlo,monospace",color:c.ac}}>{children}</code>
+                          :<pre style={{background:c.bg,border:"1px solid "+c.ln,borderRadius:10,padding:"16px 20px",margin:"16px 0",overflowX:"auto",fontSize:13,lineHeight:1.6,fontFamily:"ui-monospace,SFMono-Regular,Menlo,monospace"}}><code>{children}</code></pre>,
+                        hr:()=><hr style={{border:"none",borderTop:"1px solid "+c.ln,margin:"28px 0"}}/>,
+                        a:({href,children})=><a href={href} target="_blank" rel="noopener noreferrer" style={{color:c.ac,textDecoration:"underline",textUnderlineOffset:3}}>{children}</a>,
+                        table:({children})=><div style={{overflowX:"auto",margin:"16px 0"}}><table style={{borderCollapse:"collapse",width:"100%",fontSize:14}}>{children}</table></div>,
+                        th:({children})=><th style={{border:"1px solid "+c.ln,padding:"8px 14px",fontWeight:700,textAlign:"left",background:c.sf,color:c.tx}}>{children}</th>,
+                        td:({children})=><td style={{border:"1px solid "+c.ln,padding:"8px 14px",color:c.tx}}>{children}</td>,
+                        img:({src,alt})=><img src={src} alt={alt||""} onClick={()=>setChatLightbox({src,alt:alt||""})} style={{maxWidth:"100%",height:"auto",borderRadius:8,margin:"16px 0",display:"block",cursor:"zoom-in"}}/>,
+                      }}
+                    >{previewFile.content}</ReactMarkdown>
+                    </div>
+                  </div>
                 )}
 
                 {/* Publish bar */}
