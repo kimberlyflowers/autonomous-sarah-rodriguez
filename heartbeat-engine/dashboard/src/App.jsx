@@ -4116,6 +4116,10 @@ function App() {
                         {/* Preview area */}
                         <div style={{height:120,background:c.sf,display:"flex",alignItems:"center",justifyContent:"center",borderBottom:"1px solid "+c.ln,cursor:"pointer",position:"relative",overflow:"hidden"}}
                           onClick={async()=>{
+                            if(f.fileType==='image'){
+                              setChatLightbox({src:f.storagePath||f.previewUrl||`/api/files/preview/${f.fileId}`,alt:f.name});
+                              return;
+                            }
                             try{
                               const pr=await fetch(`/api/files/preview/${f.fileId}`);
                               if(pr.headers.get('content-type')?.includes('json')){
@@ -4127,7 +4131,7 @@ function App() {
                             }catch{setPreviewFile({name:f.name,content:'Failed to load preview',fileId:f.fileId});}
                           }}>
                           {f.fileType==='image' ? (
-                            <img src={`/api/files/preview/${f.fileId}`} alt={f.name} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                            <img src={f.storagePath||`/api/files/preview/${f.fileId}`} alt={f.name} style={{width:"100%",height:"100%",objectFit:"cover",cursor:"zoom-in"}}/>
                           ) : ext==='html' ? (
                             /* Website preview iframe */
                             <iframe
