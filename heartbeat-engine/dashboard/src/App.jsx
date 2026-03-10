@@ -2457,16 +2457,12 @@ function App() {
   const takeScreenshot=async()=>{
     setShowPlusMenu(false);
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: { displaySurface: 'browser' },
-        audio: false,
-        preferCurrentTab: true,  // Chrome 107+ — captures current tab without navigating away
-        selfBrowserSurface: 'include',
-      });
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
       const track = stream.getVideoTracks()[0];
       const imageCapture = new ImageCapture(track);
       const bitmap = await imageCapture.grabFrame();
       track.stop();
+      window.focus(); // Return focus to dashboard after capture
       // Cap at 1920px wide — 4K screenshots balloon to 20MB+ as PNG
       const MAX_W = 1920;
       let drawW = bitmap.width;
