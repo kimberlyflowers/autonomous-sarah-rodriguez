@@ -1221,6 +1221,20 @@ function ImageLightbox({src, alt, onClose}) {
       cursor:'zoom-out',
       backdropFilter:'blur(6px)',WebkitBackdropFilter:'blur(6px)'
     }}>
+      <button onClick={onClose} style={{
+        position:'fixed',top:20,right:24,
+        background:'rgba(255,255,255,0.15)',
+        border:'1px solid rgba(255,255,255,0.25)',
+        borderRadius:'50%',
+        width:40,height:40,
+        display:'flex',alignItems:'center',justifyContent:'center',
+        cursor:'pointer',color:'#fff',fontSize:20,lineHeight:1,
+        backdropFilter:'blur(4px)',
+        transition:'background .15s'
+      }}
+      onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.28)'}
+      onMouseLeave={e=>e.currentTarget.style.background='rgba(255,255,255,0.15)'}
+      >×</button>
       <img src={src} alt={alt||''} onClick={e=>e.stopPropagation()} style={{
         maxWidth:'90vw',maxHeight:'90vh',
         borderRadius:12,objectFit:'contain',
