@@ -1328,6 +1328,7 @@ async function executeTool(toolName, toolInput, sessionId = null) {
     // Artifact creation — save deliverables for client review
     if (toolName === 'create_artifact') {
       const mimeMap = { text: 'text/plain', html: 'text/html', code: 'text/javascript', markdown: 'text/markdown' };
+      const port = process.env.PORT || 3000;
       const resp = await fetch(`http://localhost:${port}/api/files/artifacts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
