@@ -86,7 +86,7 @@ export async function logAction(cycleId, decision, result) {
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
     `, [
       cycleId,
-      decision.agentId || process.env.AGENT_ID || 'bloomie-sarah-rodriguez',
+      decision.agentId || process.env.AGENT_UUID || 'c3000000-0000-0000-0000-000000000003',
       decision.action_type,
       decision.description,
       decision.target_system,
@@ -131,7 +131,7 @@ export async function logRejection(cycleId, candidate, reason, confidence, reaso
       ) VALUES ($1, $2, $3, $4, $5, $6)
     `, [
       cycleId,
-      process.env.AGENT_ID || 'bloomie-sarah-rodriguez',
+      process.env.AGENT_UUID || 'c3000000-0000-0000-0000-000000000003',
       candidate,
       reason,
       reasonCode,
@@ -175,7 +175,7 @@ export async function logHandoff(cycleId, decision) {
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
     `, [
       cycleId,
-      process.env.AGENT_ID || 'bloomie-sarah-rodriguez',
+      process.env.AGENT_UUID || 'c3000000-0000-0000-0000-000000000003',
       decision.issue,
       decision.analysis || null,
       JSON.stringify(decision.hypotheses_tested || {}),
@@ -271,5 +271,18 @@ export async function getAgentMetrics(agentId, hours = 24) {
   } catch (error) {
     logger.error('Failed to get agent metrics:', error);
     return {};
+  }
+}
+// Pre-register cycle row so action_log FK constraint is satisfied before logAction calls
+export async function initCycleRow(cycleId, agentId) {
+  try {
+    const dbPool = await getPool();
+    await dbPool.query(
+      `INSERT INTO heartbeat_cycles (cycle_id, agent_id, started_at, status)
+       VALUES ($1, $2, $3, $4) ON CONFLICT (cycle_id) DO NOTHING`,
+      [cycleId, agentId || 'c3000000-0000-0000-0000-000000000003', new Date(), 'running']
+    );
+  } catch (error) {
+    logger.warn('initCycleRow failed (non-fatal):', { cycleId, error: error.message });
   }
 }
