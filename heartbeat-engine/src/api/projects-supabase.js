@@ -92,6 +92,7 @@ router.post('/', async (req, res) => {
       .from('projects')
       .insert({
         user_id: userId,
+        organization_id: process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001',
         name: name.trim(),
         description: description?.trim() || null
       })
