@@ -2071,8 +2071,8 @@ router.post('/message', async (req, res) => {
     if (!message?.trim()) return res.status(400).json({ error: 'Message required' });
 
     const userId = await getUserId(req);
-    await ensureSession(pool, sessionId, userId);
-    const history = await loadHistory(pool, sessionId);
+    await ensureSession(null, sessionId, userId);
+    const history = await loadHistory(null, sessionId);
     const agentConfig = await loadAgentConfig();
 
     // Auto-fetch Google Docs/Sheets/Slides if URL detected in message
@@ -2114,7 +2114,7 @@ router.post('/message', async (req, res) => {
     const response = await chatWithSarah(enrichedMessage, history, agentConfig, sessionId);
     logger.info(`💬 Chat [${sessionId}] User: ${message.slice(0, 100)}${message.length > 100 ? '...' : ''}`);
     logger.info(`💬 Chat [${sessionId}] Sarah: ${response.replace(/\[Session context[\s\S]*$/, '').slice(0, 100)}${response.length > 100 ? '...' : ''}`);
-    await saveMessages(pool, sessionId, message, response, null, userId);
+    await saveMessages(null, sessionId, message, response, null, userId);
 
     // Strip internal session context before sending to client
     const cleanResponse = response.replace(/\s*\[Session context[\s\S]*$/g, '').trim();
@@ -2143,8 +2143,8 @@ router.post('/upload', async (req, res) => {
     }
 
     const userId = await getUserId(req);
-    await ensureSession(pool, sessionId, userId);
-    const history = await loadHistory(pool, sessionId);
+    await ensureSession(null, sessionId, userId);
+    const history = await loadHistory(null, sessionId);
     const agentConfig = await loadAgentConfig();
 
     // Build multipart content blocks for Anthropic
@@ -2275,7 +2275,7 @@ router.post('/upload', async (req, res) => {
       ? `[Files: ${files.map(f => f.name).join(', ')}]${textMsg ? ' ' + textMsg : ''}`
       : textMsg;
     const filesMeta = files.map(f => ({ name: f.name, type: f.type }));
-    await saveMessages(pool, sessionId, historyLabel, response, filesMeta, userId);
+    await saveMessages(null, sessionId, historyLabel, response, filesMeta, userId);
 
     // Generate smart title on first message (same as text endpoint)
     if (history.length === 0) {
