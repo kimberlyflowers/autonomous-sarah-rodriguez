@@ -1487,16 +1487,16 @@ function SessionFilesPanel({c, sessionId, setActiveArtifact}){
 
 // ── ArtifactPane — Claude-style code/preview panel in right sidebar ──────────
 function ArtifactPane({ art, c, onClose, onRequestChanges }) {
-  const [artView, setArtView] = React.useState('preview'); // 'preview' | 'code'
-  const [publishing, setPublishing] = React.useState(false);
-  const [publishSlug, setPublishSlug] = React.useState('');
-  const [publishOpen, setPublishOpen] = React.useState(false);
-  const [publishedUrl, setPublishedUrl] = React.useState(art.slug ? window.location.origin+'/p/'+art.slug : null);
-  const [artContent, setArtContent] = React.useState(art.content || '');
+  const [artView, setArtView] = useState('preview'); // 'preview' | 'code'
+  const [publishing, setPublishing] = useState(false);
+  const [publishSlug, setPublishSlug] = useState('');
+  const [publishOpen, setPublishOpen] = useState(false);
+  const [publishedUrl, setPublishedUrl] = useState(art.slug ? window.location.origin+'/p/'+art.slug : null);
+  const [artContent, setArtContent] = useState(art.content || '');
   const isHtml = art.name?.endsWith('.html');
 
   // If content wasn't loaded yet, fetch it
-  React.useEffect(() => {
+  useEffect(() => {
     if (!art.content && art.fileId) {
       fetch(`/api/files/preview/${art.fileId}`)
         .then(r => r.json())

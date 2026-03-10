@@ -168,7 +168,7 @@ router.get('/artifacts', async (req, res) => {
       fileSize: r.file_size,
       status: 'approved',
       storagePath: r.storage_path,
-      hasContent: !!r.content,
+      content: (r.file_type === 'html' || r.file_type === 'markdown' || r.file_type === 'text' || r.file_type === 'code') ? (r.content || null) : null,
       createdAt: r.created_at,
       slug: r.slug || null,
       published: r.published || false,
