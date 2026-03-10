@@ -367,50 +367,103 @@ router.get('/artifacts/:fileId/parse-editable', async (req, res) => {
     const html = art.content;
     const regions = [];
 
-    // Extract text regions using regex — headings, paragraphs, buttons
+    // Helper: extract inline style property
+    const getStyleProp = (tag, prop) => {
+      const m = tag.match(new RegExp(prop + '\\s*:\\s*([^;}"']+)', 'i'));
+      return m ? m[1].trim() : null;
+    };
+
+    // Extract text regions WITH their computed styles
     const textPatterns = [
-      { type: 'h1', regex: /<h1[^>]*>([^<]{3,200})<\/h1>/gi },
-      { type: 'h2', regex: /<h2[^>]*>([^<]{3,200})<\/h2>/gi },
-      { type: 'h3', regex: /<h3[^>]*>([^<]{3,200})<\/h3>/gi },
-      { type: 'p',  regex: /<p[^>]*>([^<]{10,400})<\/p>/gi },
-      { type: 'button', regex: /<button[^>]*>([^<]{2,100})<\/button>/gi },
+      { type: 'h1', regex: /<h1([^>]*)>([^<]{3,200})<\/h1>/gi },
+      { type: 'h2', regex: /<h2([^>]*)>([^<]{3,200})<\/h2>/gi },
+      { type: 'h3', regex: /<h3([^>]*)>([^<]{3,200})<\/h3>/gi },
+      { type: 'p',  regex: /<p([^>]*)>([^<]{3,400})<\/p>/gi },
+      { type: 'button', regex: /<button([^>]*)>([^<]{2,100})<\/button>/gi },
+      { type: 'a', regex: /<a([^>]*)>([^<]{2,100})<\/a>/gi },
     ];
 
     for (const { type, regex } of textPatterns) {
       let m;
       regex.lastIndex = 0;
       while ((m = regex.exec(html)) !== null) {
-        const text = m[1].trim();
-        if (text && !text.includes('{') && !text.includes('null')) {
-          regions.push({ type: 'text', tag: type, original: m[0], text, index: m.index });
+        const attrs = m[1] || '';
+        const text = m[2].trim();
+        if (text && !text.includes('{') && !text.includes('null') && !text.includes('<')) {
+          const color = getStyleProp(attrs, 'color');
+          const bg = getStyleProp(attrs, 'background(?:-color)?');
+          const fontSize = getStyleProp(attrs, 'font-size');
+          const fontFamily = getStyleProp(attrs, 'font-family');
+          const fontWeight = getStyleProp(attrs, 'font-weight');
+          const textAlign = getStyleProp(attrs, 'text-align');
+          const padding = getStyleProp(attrs, 'padding(?!-[a-z])');
+          const margin = getStyleProp(attrs, 'margin(?!-[a-z])');
+          const borderRadius = getStyleProp(attrs, 'border-radius');
+          regions.push({
+            type: 'text', tag: type, original: m[0], text, index: m.index,
+            styles: { color, background: bg, fontSize, fontFamily, fontWeight, textAlign, padding, margin, borderRadius }
+          });
         }
       }
     }
 
     // Extract images
-    const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*(?:alt=["']([^"']*)["'])?[^>]*>/gi;
+    const imgRegex = /<img([^>]+)>/gi;
     let im;
     while ((im = imgRegex.exec(html)) !== null) {
-      const src = im[1];
-      if (!src.includes('data:') && src.length < 500) {
-        regions.push({ type: 'image', original: im[0], src, alt: im[2] || '', index: im.index });
+      const attrs = im[1];
+      const srcM = attrs.match(/src=["']([^"']+)["']/i);
+      const altM = attrs.match(/alt=["']([^"']*)["']/i);
+      const src = srcM ? srcM[1] : null;
+      if (src && !src.includes('data:') && src.length < 500) {
+        const width = getStyleProp(attrs, 'width') || (attrs.match(/width=["']?([\d%]+)/i) || [])[1];
+        const height = getStyleProp(attrs, 'height') || (attrs.match(/height=["']?([\d%]+)/i) || [])[1];
+        const borderRadius = getStyleProp(attrs, 'border-radius');
+        regions.push({ type: 'image', original: im[0], src, alt: altM ? altM[1] : '', index: im.index, styles: { width, height, borderRadius } });
       }
     }
 
-    // Extract background colors from CSS custom properties and inline styles
+    // Extract ALL colors from HTML (CSS vars, inline styles, hex values)
     const colors = [];
-    const colorRegex = /(?:background(?:-color)?|--primary|--accent|--dark)\s*:\s*(#[0-9a-fA-F]{3,8}|rgba?\([^)]+\))/g;
+    const colorRegex = /(?:background(?:-color)?|color|--[a-z-]+)\s*:\s*(#[0-9a-fA-F]{3,8}|rgba?\([^)]+\))/g;
     let cm;
     while ((cm = colorRegex.exec(html)) !== null) {
-      if (!colors.find(c => c.value === cm[1])) {
-        colors.push({ property: cm[1].startsWith('--') ? cm[0].split(':')[0].trim() : 'color', value: cm[1] });
+      const val = cm[1];
+      if (!colors.find(c => c.value === val)) {
+        const prop = cm[0].split(':')[0].trim();
+        colors.push({ property: prop, value: val });
       }
+    }
+
+    // Extract font families used in the page
+    const fonts = [];
+    const fontRegex = /font-family\s*:\s*([^;}"']+)/gi;
+    let fm;
+    while ((fm = fontRegex.exec(html)) !== null) {
+      const fam = fm[1].trim().replace(/['"]/g, '').split(',')[0].trim();
+      if (fam && !fonts.includes(fam) && fam.length < 60) fonts.push(fam);
     }
 
     // Sort by position in document
     regions.sort((a, b) => a.index - b.index);
 
-    return res.json({ success: true, artifactId: art.id, name: art.name, regions: regions.slice(0, 40), colors: colors.slice(0, 12) });
+    return res.json({ success: true, artifactId: art.id, name: art.name, regions: regions.slice(0, 50), colors: colors.slice(0, 20), fonts });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+// ── SAVE raw HTML content directly (visual editor) ──
+router.post('/artifacts/:fileId/apply-raw', async (req, res) => {
+  try {
+    const { content: newContent } = req.body;
+    if (!newContent) return res.status(400).json({ error: 'content required' });
+    const supabase = sb();
+    const { error } = await supabase.from('artifacts')
+      .update({ content: newContent, file_size: Buffer.byteLength(newContent, 'utf8'), updated_at: new Date().toISOString() })
+      .eq('id', req.params.fileId);
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json({ success: true });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
