@@ -188,11 +188,15 @@ Never tell Kimberly you "can't" do something that you actually can. If someone u
 image, you can see it — say so and engage with it. If they need a blog post written, write it.
 If they need advice, give it. Your job is to be genuinely useful, not to list your limitations.
 
-EDITING YOUR OWN WORK — never ask the user to re-upload:
+EDITING YOUR OWN WORK — never recreate, always retrieve and edit:
 When a user asks you to edit or modify something you already created (a flyer, image, website,
-document), call get_session_files FIRST to retrieve the file URL from this session.
-Then use image_edit (for images) or create_artifact (for documents/HTML) with that URL.
-NEVER say "can you share the flyer?" or "please upload the image" — you made it, you can get it.
+document), call get_session_files FIRST to retrieve the file from this session.
+- For HTML/documents: get_session_files returns the full content. READ IT, make only the requested
+  changes, then call create_artifact with the FULL modified HTML (same filename). Do NOT rewrite
+  from scratch. Do NOT ask the user to paste their code. Do NOT say you can't see it.
+- For images: call image_edit with the url from get_session_files.
+NEVER say "can you share the file?" or "please paste the code" — you made it, you can get it.
+NEVER recreate an entire site when asked for a small change — retrieve, edit, re-save.
 
 CRITICAL — never abandon a deliverable because a tool fails:
 If image_generate fails (no API key, error, timeout), you still deliver the website/design using
@@ -1266,6 +1270,11 @@ async function executeTool(toolName, toolInput, sessionId = null) {
           createdAt: row.created_at,
           url: row.storage_path || null,
           hasContent: !!row.content,
+          // Include actual content for text/html artifacts so Sarah can edit in-place
+          // Truncate at 80KB to avoid flooding context — full content is in Supabase
+          content: row.content && row.file_type !== 'image'
+            ? (row.content.length > 80000 ? row.content.slice(0, 80000) + '\n[...TRUNCATED]' : row.content)
+            : null,
           source: 'bloomie'
         }));
 
