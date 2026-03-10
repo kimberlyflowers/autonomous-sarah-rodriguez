@@ -304,8 +304,8 @@ function useSarahChat() {
     // Abortable fetch
     const controller = new AbortController();
     abortRef.current = controller;
-    // Auto-timeout after 2 minutes
-    const timeoutId = setTimeout(()=>controller.abort(), 180000); // 3 min timeout
+    // Auto-timeout after 8 minutes (website + image generation can take 5-6 min)
+    const timeoutId = setTimeout(()=>controller.abort(), 480000); // 8 min timeout
     
     try {
       const authHeaders = await getAuthHeaders();
@@ -338,8 +338,8 @@ function useSarahChat() {
         const ts2 = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
         if(ackId) setMessages(p=>p.filter(m=>m.id!==ackId));
         const elapsed = Math.round((Date.now()-startTime)/1000);
-        const msg = elapsed >= 175 
-          ? "Sarah took too long to respond (timed out after 3 minutes). Try again or simplify the request."
+        const msg = elapsed >= 470 
+          ? "Sarah took too long to respond (timed out after 8 minutes). Try again or simplify the request."
           : "Stopped. What would you like me to do instead?";
         setMessages(p=>[...p,{id:Date.now(),b:true,t:msg,tm:ts2,isSystem:true}]);
         return false;
