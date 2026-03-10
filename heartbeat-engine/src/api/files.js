@@ -69,26 +69,31 @@ router.post('/artifacts', async (req, res) => {
     const floralId = `bloom-${fileId}`;
     const supabase = sb();
 
-    // Upsert: if same name + session already exists, update it (in-place edit, no duplicates)
-    const { data: artifact, error: insertErr } = await supabase.from('artifacts').upsert({
-      organization_id: ORG_ID(),
-      created_by_user_id: USER_ID(),
-      agent_id: AGENT_ID(),
-      session_id: sessionId || null,
-      name,
-      description,
-      file_type: fileType,
-      mime_type: mimeType,
-      content: contentText || null,
-      storage_path: storagePath || filePath || null,
-      file_size: fileSize,
-      floral_id: floralId,
-      bloomshield_registered: false,
-      published: false
-    }, { onConflict: 'organization_id,name,session_id', ignoreDuplicates: false }).select('id').single();
+    // Check if same name + session already exists — update in place, no duplicates
+    let artifact, insertErr;
+    if (sessionId) {
+      const { data: existing } = await supabase.from('artifacts')
+        .select('id').eq('organization_id', ORG_ID()).eq('name', name).eq('session_id', sessionId).maybeSingle();
+      if (existing) {
+        const { data: updated, error: updateErr } = await supabase.from('artifacts')
+          .update({ description, content: contentText || null, storage_path: storagePath || filePath || null,
+            file_size: fileSize, file_type: fileType, mime_type: mimeType })
+          .eq('id', existing.id).select('id').single();
+        artifact = updated; insertErr = updateErr;
+      }
+    }
+    if (!artifact && !insertErr) {
+      const { data: inserted, error: err } = await supabase.from('artifacts').insert({
+        organization_id: ORG_ID(), created_by_user_id: USER_ID(), agent_id: AGENT_ID(),
+        session_id: sessionId || null, name, description, file_type: fileType, mime_type: mimeType,
+        content: contentText || null, storage_path: storagePath || filePath || null,
+        file_size: fileSize, floral_id: floralId, bloomshield_registered: false, published: false
+      }).select('id').single();
+      artifact = inserted; insertErr = err;
+    }
 
     if (insertErr) {
-      logger.error('Supabase artifact insert failed', { error: insertErr.message });
+      logger.error('Supabase artifact save failed', { error: insertErr.message });
       return res.status(500).json({ error: 'Failed to save artifact: ' + insertErr.message });
     }
 
