@@ -1309,7 +1309,7 @@ async function executeTool(toolName, toolInput, sessionId = null) {
         return {
           success: true,
           files: allFiles,
-          message: `Found ${allFiles.length} file(s) from this session (${files.length} created by Bloomie, ${userUploads.length} uploaded by user). Use the 'url' field to reference or edit images, or 'hasContent: true' means text content is stored for documents.`
+          message: `Found ${allFiles.length} file(s) from this session. For HTML/text files, the full content is in the 'content' field — read it, apply only the requested changes, then call create_artifact with the complete modified content using the SAME filename to update in place. For images, use the 'url' field with image_edit.`
         };
       } catch (err) {
         logger.error('get_session_files failed:', err.message);

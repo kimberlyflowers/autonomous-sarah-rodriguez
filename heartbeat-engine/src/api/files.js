@@ -69,7 +69,8 @@ router.post('/artifacts', async (req, res) => {
     const floralId = `bloom-${fileId}`;
     const supabase = sb();
 
-    const { data: artifact, error: insertErr } = await supabase.from('artifacts').insert({
+    // Upsert: if same name + session already exists, update it (in-place edit, no duplicates)
+    const { data: artifact, error: insertErr } = await supabase.from('artifacts').upsert({
       organization_id: ORG_ID(),
       created_by_user_id: USER_ID(),
       agent_id: AGENT_ID(),
@@ -84,7 +85,7 @@ router.post('/artifacts', async (req, res) => {
       floral_id: floralId,
       bloomshield_registered: false,
       published: false
-    }).select('id').single();
+    }, { onConflict: 'organization_id,name,session_id', ignoreDuplicates: false }).select('id').single();
 
     if (insertErr) {
       logger.error('Supabase artifact insert failed', { error: insertErr.message });
