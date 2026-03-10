@@ -19,28 +19,33 @@ export default function PageEditor({ editor: editorData, onClose, onSaved }) {
       editor.setComponents(editorData.content);
     }
 
-    // ── Switch to Style Manager panel when a component is selected ───
-    // CORRECT API: editor.Panels.getButton() — NOT editor.runCommand()
-    // runCommand('open-sm') throws "this.sender.get is not a function"
-    editor.on('component:selected', () => {
+    // ── On selection: switch panel + auto-select parent <a> if needed ─
+    editor.on('component:selected', (component) => {
+      // If a <button> or <span> inside an <a> is selected, bubble up to
+      // the <a> so the href/target traits are immediately visible.
       try {
-        const btn = editor.Panels.getButton('views', 'open-sm');
-        if (btn) btn.set('active', true);
-      } catch (e) {
-        // silently ignore if panel not ready
-      }
-    });
+        const tag = component.get('tagName') || '';
+        if (['button', 'span', 'i', 'strong'].includes(tag.toLowerCase())) {
+          const parent = component.parent();
+          if (parent && (parent.get('tagName') || '').toLowerCase() === 'a') {
+            // Select the parent <a> instead — it has href/target traits
+            editor.select(parent);
+            return; // component:selected will fire again for the <a>
+          }
+        }
+      } catch (e) { /* ignore */ }
 
-    // ── DO NOT override built-in component types ─────────────────────
-    // addType('image') breaks the built-in double-click → Asset Manager
-    // addType('link') breaks the built-in href/target traits
-    // addType('text') breaks double-click → RTE (Rich Text Editor)
-    //
-    // GrapesJS built-in behaviors that work out of the box:
-    //   - Double-click image  → opens Asset Manager to pick/replace image
-    //   - Double-click text   → opens RTE to edit text inline
-    //   - Click any element   → Style Manager shows General/Typography/Decorations/etc.
-    //   - Link components     → Traits panel has href, target, title fields
+      // Switch right panel to Component Settings (gear) if it's a link,
+      // otherwise show Style Manager (paintbrush)
+      try {
+        const tag = (component.get('tagName') || '').toLowerCase();
+        const isLink = tag === 'a' || component.get('type') === 'link';
+        const panelBtn = isLink
+          ? editor.Panels.getButton('views', 'open-tm')   // gear = traits
+          : editor.Panels.getButton('views', 'open-sm');  // paintbrush = styles
+        if (panelBtn) panelBtn.set('active', true);
+      } catch (e) { /* ignore */ }
+    });
   };
 
   const handleSave = async () => {
