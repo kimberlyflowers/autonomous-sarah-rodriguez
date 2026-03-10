@@ -1,26 +1,155 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import grapesjs from 'grapesjs';
 import 'grapesjs/dist/css/grapes.min.css';
 import GjsEditor from '@grapesjs/react';
 import gjsBlocksBasic from 'grapesjs-blocks-basic';
 import gjsPresetWebpage from 'grapesjs-preset-webpage';
 import gjsPluginForms from 'grapesjs-plugin-forms';
-import { useState } from 'react';
 
 export default function PageEditor({ editor: editorData, onClose, onSaved }) {
-  // editorData = { fileId, name, content }
-  const gjsRef = useRef(null);
-  const [saving, setSaving] = useState(false);
+  const gjsRef  = useRef(null);
+  const [saving,  setSaving]  = useState(false);
   const [saveMsg, setSaveMsg] = useState(null);
 
-  // Called once GrapesJS is fully initialised
   const onEditor = (editor) => {
     gjsRef.current = editor;
 
-    // Load the existing HTML into the canvas
+    // ── Load existing HTML ───────────────────────────────────────────
     if (editorData.content) {
       editor.setComponents(editorData.content);
     }
+
+    // ── Auto-switch to Traits panel when any component is selected ───
+    // open-tm = Traits/Settings, open-sm = Style Manager
+    editor.on('component:selected', () => {
+      editor.runCommand('open-tm');
+    });
+
+    // ── Enhance traits for common element types ──────────────────────
+
+    // LINK component — add href, target, and visible text
+    editor.Components.addType('link', {
+      extend: 'link',
+      model: {
+        defaults: {
+          traits: [
+            {
+              type: 'text',
+              name: 'content',
+              label: 'Button / Link Text',
+              changeProp: true,
+            },
+            {
+              type: 'text',
+              name: 'href',
+              label: 'Link URL',
+              placeholder: 'https://example.com or #section',
+            },
+            {
+              type: 'select',
+              name: 'target',
+              label: 'Open in',
+              options: [
+                { id: '', label: 'Same window' },
+                { id: '_blank', label: 'New tab' },
+              ],
+            },
+            { name: 'title', label: 'Tooltip' },
+          ],
+        },
+        // Sync the "content" prop to the inner text when it changes
+        init() {
+          this.on('change:content', this.onContentChange);
+        },
+        onContentChange() {
+          const val = this.get('content') || '';
+          this.components(val);
+        },
+      },
+    });
+
+    // BUTTON component — same treatment
+    editor.Components.addType('button', {
+      isComponent: (el) =>
+        el.tagName === 'BUTTON' ||
+        (el.tagName === 'A' && el.className && String(el.className).includes('btn')),
+      model: {
+        defaults: {
+          traits: [
+            {
+              type: 'text',
+              name: 'content',
+              label: 'Button Text',
+              changeProp: true,
+            },
+            {
+              type: 'text',
+              name: 'href',
+              label: 'Link URL',
+              placeholder: 'https://example.com',
+            },
+            {
+              type: 'select',
+              name: 'target',
+              label: 'Open in',
+              options: [
+                { id: '', label: 'Same window' },
+                { id: '_blank', label: 'New tab' },
+              ],
+            },
+            {
+              type: 'select',
+              name: 'type',
+              label: 'Button type',
+              options: [
+                { id: 'button', label: 'Button' },
+                { id: 'submit', label: 'Submit' },
+                { id: 'reset',  label: 'Reset'  },
+              ],
+            },
+          ],
+        },
+        init() {
+          this.on('change:content', this.onContentChange);
+        },
+        onContentChange() {
+          const val = this.get('content') || '';
+          this.components(val);
+        },
+      },
+    });
+
+    // IMAGE component — surface src and alt as traits
+    editor.Components.addType('image', {
+      extend: 'image',
+      model: {
+        defaults: {
+          traits: [
+            {
+              type: 'text',
+              name: 'src',
+              label: 'Image URL',
+              placeholder: 'https://example.com/image.jpg',
+            },
+            {
+              type: 'text',
+              name: 'alt',
+              label: 'Alt text',
+              placeholder: 'Describe the image',
+            },
+            {
+              type: 'text',
+              name: 'href',
+              label: 'Link URL (optional)',
+              placeholder: 'https://example.com',
+            },
+          ],
+        },
+      },
+    });
+
+    // TEXT / default — keep id + title but add a hint label
+    // (inline double-click editing handles text content for text nodes)
   };
 
   const handleSave = async () => {
@@ -29,14 +158,14 @@ export default function PageEditor({ editor: editorData, onClose, onSaved }) {
     setSaving(true);
     setSaveMsg(null);
     try {
-      const html = editor.getHtml();
-      const css  = editor.getCss();
+      const html     = editor.getHtml();
+      const css      = editor.getCss();
       const fullHtml = buildFullHtml(html, css, editorData.name);
 
       const r = await fetch(`/api/files/artifacts/${editorData.fileId}/apply-raw`, {
-        method: 'POST',
+        method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: fullHtml }),
+        body:    JSON.stringify({ content: fullHtml }),
       });
       if (!r.ok) {
         const txt = await r.text();
@@ -46,7 +175,7 @@ export default function PageEditor({ editor: editorData, onClose, onSaved }) {
       if (onSaved) onSaved(editorData.fileId, fullHtml);
       setTimeout(() => setSaveMsg(null), 3000);
     } catch (err) {
-      console.error('PageEditor save error:', err);
+      console.error('PageEditor save:', err);
       setSaveMsg({ type: 'err', text: err.message || 'Save failed' });
       setTimeout(() => setSaveMsg(null), 5000);
     } finally {
@@ -60,7 +189,7 @@ export default function PageEditor({ editor: editorData, onClose, onSaved }) {
       display: 'flex', flexDirection: 'column',
       background: '#1a1a2e', fontFamily: "'Inter', system-ui, sans-serif",
     }}>
-      {/* ── Top Toolbar ── */}
+      {/* ── Toolbar ── */}
       <div style={{
         height: 52, minHeight: 52, flexShrink: 0,
         background: '#16213e',
@@ -68,7 +197,6 @@ export default function PageEditor({ editor: editorData, onClose, onSaved }) {
         display: 'flex', alignItems: 'center',
         justifyContent: 'space-between', padding: '0 14px', gap: 12,
       }}>
-        {/* Left */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <button onClick={onClose} style={{
             width: 32, height: 32, borderRadius: 8,
@@ -84,7 +212,6 @@ export default function PageEditor({ editor: editorData, onClose, onSaved }) {
           }}>{editorData.name}</span>
         </div>
 
-        {/* Right */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {saveMsg && (
             <span style={{
@@ -94,21 +221,17 @@ export default function PageEditor({ editor: editorData, onClose, onSaved }) {
               {saveMsg.type === 'ok' ? '✓ ' : '✕ '}{saveMsg.text}
             </span>
           )}
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            style={{
-              height: 34, padding: '0 20px', borderRadius: 8, border: 'none',
-              background: saving ? '#555' : 'linear-gradient(135deg,#F4A261,#E76F8B)',
-              color: '#fff', fontWeight: 700, fontSize: 13,
-              cursor: saving ? 'default' : 'pointer',
-              fontFamily: 'inherit', letterSpacing: 0.3,
-            }}
-          >{saving ? 'Saving…' : 'Save'}</button>
+          <button onClick={handleSave} disabled={saving} style={{
+            height: 34, padding: '0 20px', borderRadius: 8, border: 'none',
+            background: saving ? '#555' : 'linear-gradient(135deg,#F4A261,#E76F8B)',
+            color: '#fff', fontWeight: 700, fontSize: 13,
+            cursor: saving ? 'default' : 'pointer',
+            fontFamily: 'inherit', letterSpacing: 0.3,
+          }}>{saving ? 'Saving…' : 'Save'}</button>
         </div>
       </div>
 
-      {/* ── GrapesJS (Default UI mode — keeps all built-in panels) ── */}
+      {/* ── GrapesJS Default UI ── */}
       <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
         <GjsEditor
           grapesjs={grapesjs}
@@ -142,7 +265,6 @@ export default function PageEditor({ editor: editorData, onClose, onSaved }) {
   );
 }
 
-// ── Assemble full HTML document ───────────────────────────────────────────
 function buildFullHtml(body, css, title) {
   return `<!DOCTYPE html>
 <html lang="en">
@@ -168,6 +290,6 @@ function buildFullHtml(body, css, title) {
 
 function escapeHtml(str) {
   return String(str)
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
