@@ -362,11 +362,23 @@ function useSarahChat() {
         r.readAsDataURL(f);
       })));
       // Show outgoing message with file previews
-      setMessages(p=>[...p,{id:Date.now(),b:false,t:text||'',tm:ts,files:encoded}]);
+      const msgId = Date.now();
+      setMessages(p=>[...p,{id:msgId,b:false,t:text||'',tm:ts,files:encoded}]);
       if(!sid.current){ const id="session-"+Date.now(); sid.current=id; setCurrentSessionId(id); }
       const uploadHeaders = await getAuthHeaders();
       const resp = await fetch("/api/chat/upload",{method:"POST",headers:uploadHeaders,body:JSON.stringify({message:text,sessionId:sid.current,files:encoded})});
       const data = await resp.json();
+      // Replace blob/dataUrl previews with stable server URLs so images work on any computer
+      if(data.uploadedFiles?.length) {
+        setMessages(p=>p.map(m=>{
+          if(m.id!==msgId||!m.files) return m;
+          const updated=m.files.map(f=>{
+            const match=data.uploadedFiles.find(u=>u.name===f.name);
+            return match ? {...f, dataUrl: match.previewUrl, preview: match.previewUrl} : f;
+          });
+          return {...m,files:updated};
+        }));
+      }
       const ts2 = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
       setMessages(p=>[...p,{id:Date.now(),b:true,t:data.response||data.message||"Got it.",tm:ts2}]);
       fetchSessions();
@@ -383,11 +395,23 @@ function useSarahChat() {
     const ts = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
     setLoading(true);
     try {
-      setMessages(p=>[...p,{id:Date.now(),b:false,t:text||'',tm:ts,files:encoded}]);
+      const msgId2 = Date.now();
+      setMessages(p=>[...p,{id:msgId2,b:false,t:text||'',tm:ts,files:encoded}]);
       if(!sid.current){ const id="session-"+Date.now(); sid.current=id; setCurrentSessionId(id); }
       const uploadHeaders = await getAuthHeaders();
       const resp = await fetch("/api/chat/upload",{method:"POST",headers:uploadHeaders,body:JSON.stringify({message:text,sessionId:sid.current,files:encoded})});
       const data = await resp.json();
+      // Replace blob/dataUrl previews with stable server URLs
+      if(data.uploadedFiles?.length) {
+        setMessages(p=>p.map(m=>{
+          if(m.id!==msgId2||!m.files) return m;
+          const updated=m.files.map(f=>{
+            const match=data.uploadedFiles.find(u=>u.name===f.name);
+            return match ? {...f, dataUrl: match.previewUrl, preview: match.previewUrl} : f;
+          });
+          return {...m,files:updated};
+        }));
+      }
       const ts2 = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
       setMessages(p=>[...p,{id:Date.now(),b:true,t:data.response||data.message||"Got it.",tm:ts2}]);
       fetchSessions();
