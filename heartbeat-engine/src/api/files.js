@@ -369,7 +369,7 @@ router.get('/artifacts/:fileId/parse-editable', async (req, res) => {
 
     // Helper: extract inline style property
     const getStyleProp = (tag, prop) => {
-      const m = tag.match(new RegExp(prop + '\\s*:\\s*([^;}"']+)', 'i'));
+      const m = tag.match(new RegExp(prop + '[\\s]*:[\\s]*([^;}"\'`]+)', 'i'));
       return m ? m[1].trim() : null;
     };
 
