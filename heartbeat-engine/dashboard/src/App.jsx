@@ -2457,7 +2457,12 @@ function App() {
   const takeScreenshot=async()=>{
     setShowPlusMenu(false);
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { displaySurface: 'browser' },
+        audio: false,
+        preferCurrentTab: true,  // Chrome 107+ — captures current tab without navigating away
+        selfBrowserSurface: 'include',
+      });
       const track = stream.getVideoTracks()[0];
       const imageCapture = new ImageCapture(track);
       const bitmap = await imageCapture.grabFrame();
