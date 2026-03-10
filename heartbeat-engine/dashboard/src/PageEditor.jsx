@@ -19,137 +19,28 @@ export default function PageEditor({ editor: editorData, onClose, onSaved }) {
       editor.setComponents(editorData.content);
     }
 
-    // ── Auto-switch to Traits panel when any component is selected ───
-    // open-tm = Traits/Settings, open-sm = Style Manager
+    // ── Switch to Style Manager panel when a component is selected ───
+    // CORRECT API: editor.Panels.getButton() — NOT editor.runCommand()
+    // runCommand('open-sm') throws "this.sender.get is not a function"
     editor.on('component:selected', () => {
-      editor.runCommand('open-tm');
+      try {
+        const btn = editor.Panels.getButton('views', 'open-sm');
+        if (btn) btn.set('active', true);
+      } catch (e) {
+        // silently ignore if panel not ready
+      }
     });
 
-    // ── Enhance traits for common element types ──────────────────────
-
-    // LINK component — add href, target, and visible text
-    editor.Components.addType('link', {
-      extend: 'link',
-      model: {
-        defaults: {
-          traits: [
-            {
-              type: 'text',
-              name: 'content',
-              label: 'Button / Link Text',
-              changeProp: true,
-            },
-            {
-              type: 'text',
-              name: 'href',
-              label: 'Link URL',
-              placeholder: 'https://example.com or #section',
-            },
-            {
-              type: 'select',
-              name: 'target',
-              label: 'Open in',
-              options: [
-                { id: '', label: 'Same window' },
-                { id: '_blank', label: 'New tab' },
-              ],
-            },
-            { name: 'title', label: 'Tooltip' },
-          ],
-        },
-        // Sync the "content" prop to the inner text when it changes
-        init() {
-          this.on('change:content', this.onContentChange);
-        },
-        onContentChange() {
-          const val = this.get('content') || '';
-          this.components(val);
-        },
-      },
-    });
-
-    // BUTTON component — same treatment
-    editor.Components.addType('button', {
-      isComponent: (el) =>
-        el.tagName === 'BUTTON' ||
-        (el.tagName === 'A' && el.className && String(el.className).includes('btn')),
-      model: {
-        defaults: {
-          traits: [
-            {
-              type: 'text',
-              name: 'content',
-              label: 'Button Text',
-              changeProp: true,
-            },
-            {
-              type: 'text',
-              name: 'href',
-              label: 'Link URL',
-              placeholder: 'https://example.com',
-            },
-            {
-              type: 'select',
-              name: 'target',
-              label: 'Open in',
-              options: [
-                { id: '', label: 'Same window' },
-                { id: '_blank', label: 'New tab' },
-              ],
-            },
-            {
-              type: 'select',
-              name: 'type',
-              label: 'Button type',
-              options: [
-                { id: 'button', label: 'Button' },
-                { id: 'submit', label: 'Submit' },
-                { id: 'reset',  label: 'Reset'  },
-              ],
-            },
-          ],
-        },
-        init() {
-          this.on('change:content', this.onContentChange);
-        },
-        onContentChange() {
-          const val = this.get('content') || '';
-          this.components(val);
-        },
-      },
-    });
-
-    // IMAGE component — surface src and alt as traits
-    editor.Components.addType('image', {
-      extend: 'image',
-      model: {
-        defaults: {
-          traits: [
-            {
-              type: 'text',
-              name: 'src',
-              label: 'Image URL',
-              placeholder: 'https://example.com/image.jpg',
-            },
-            {
-              type: 'text',
-              name: 'alt',
-              label: 'Alt text',
-              placeholder: 'Describe the image',
-            },
-            {
-              type: 'text',
-              name: 'href',
-              label: 'Link URL (optional)',
-              placeholder: 'https://example.com',
-            },
-          ],
-        },
-      },
-    });
-
-    // TEXT / default — keep id + title but add a hint label
-    // (inline double-click editing handles text content for text nodes)
+    // ── DO NOT override built-in component types ─────────────────────
+    // addType('image') breaks the built-in double-click → Asset Manager
+    // addType('link') breaks the built-in href/target traits
+    // addType('text') breaks double-click → RTE (Rich Text Editor)
+    //
+    // GrapesJS built-in behaviors that work out of the box:
+    //   - Double-click image  → opens Asset Manager to pick/replace image
+    //   - Double-click text   → opens RTE to edit text inline
+    //   - Click any element   → Style Manager shows General/Typography/Decorations/etc.
+    //   - Link components     → Traits panel has href, target, title fields
   };
 
   const handleSave = async () => {
