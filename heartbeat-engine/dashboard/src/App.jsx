@@ -4958,31 +4958,40 @@ function App() {
                     title={previewFile.name}
                   />
                 ):(
-                  <div style={{flex:1,overflowY:"auto",padding:"40px 56px",boxSizing:"border-box"}}>
-                    <div style={{maxWidth:720,margin:"0 auto"}}>
+                  <div style={{flex:1,overflowY:"auto",background:dark?undefined:"#fff"}}>
+                    <div style={{
+                      maxWidth:"65ch",
+                      margin:"0 auto",
+                      padding:"3rem 2rem",
+                      fontSize:"1rem",
+                      lineHeight:1.75,
+                      color:c.tx,
+                      fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Oxygen,Ubuntu,sans-serif",
+                    }}>
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
                       components={{
-                        h1:({children})=><h1 style={{fontSize:28,fontWeight:800,color:c.tx,margin:"0 0 20px",paddingBottom:12,borderBottom:"2px solid "+c.ln,lineHeight:1.3}}>{children}</h1>,
-                        h2:({children})=><h2 style={{fontSize:22,fontWeight:700,color:c.tx,margin:"32px 0 10px",lineHeight:1.4}}>{children}</h2>,
-                        h3:({children})=><h3 style={{fontSize:17,fontWeight:600,color:c.tx,margin:"24px 0 8px",lineHeight:1.4}}>{children}</h3>,
-                        h4:({children})=><h4 style={{fontSize:15,fontWeight:600,color:c.tx,margin:"16px 0 6px"}}>{children}</h4>,
-                        p:({children})=><p style={{margin:"0 0 14px",fontSize:15,lineHeight:1.85,color:c.tx}}>{children}</p>,
-                        strong:({children})=><strong style={{fontWeight:700}}>{children}</strong>,
-                        em:({children})=><em style={{fontStyle:"italic"}}>{children}</em>,
-                        ul:({children})=><ul style={{margin:"0 0 14px",paddingLeft:24}}>{children}</ul>,
-                        ol:({children})=><ol style={{margin:"0 0 14px",paddingLeft:24}}>{children}</ol>,
-                        li:({children})=><li style={{margin:"0 0 5px",fontSize:15,lineHeight:1.75,color:c.tx}}>{children}</li>,
-                        blockquote:({children})=><blockquote style={{margin:"16px 0",padding:"12px 20px",borderLeft:"4px solid "+c.ac,background:c.sf,borderRadius:"0 8px 8px 0",color:c.so,fontStyle:"italic"}}>{children}</blockquote>,
+                        h1:({children})=><h1 style={{fontSize:"2.25em",fontWeight:800,color:c.tx,lineHeight:1.1111111,marginTop:0,marginBottom:"0.8888889em"}}>{children}</h1>,
+                        h2:({children})=><h2 style={{fontSize:"1.5em",fontWeight:700,color:c.tx,lineHeight:1.3333333,marginTop:"2em",marginBottom:"1em"}}>{children}</h2>,
+                        h3:({children})=><h3 style={{fontSize:"1.25em",fontWeight:600,color:c.tx,lineHeight:1.6,marginTop:"1.6em",marginBottom:"0.6em"}}>{children}</h3>,
+                        h4:({children})=><h4 style={{fontWeight:600,color:c.tx,lineHeight:1.5,marginTop:"1.5em",marginBottom:"0.5em"}}>{children}</h4>,
+                        p:({children})=><p style={{marginTop:"1.25em",marginBottom:"1.25em"}}>{children}</p>,
+                        strong:({children})=><strong style={{fontWeight:600,color:c.tx}}>{children}</strong>,
+                        em:({children})=><em>{children}</em>,
+                        ul:({children})=><ul style={{listStyleType:"disc",marginTop:"1.25em",marginBottom:"1.25em",paddingInlineStart:"1.625em"}}>{children}</ul>,
+                        ol:({children})=><ol style={{listStyleType:"decimal",marginTop:"1.25em",marginBottom:"1.25em",paddingInlineStart:"1.625em"}}>{children}</ol>,
+                        li:({children})=><li style={{marginTop:"0.5em",marginBottom:"0.5em"}}>{children}</li>,
+                        blockquote:({children})=><blockquote style={{fontWeight:500,fontStyle:"italic",color:c.so,borderInlineStartWidth:"0.25rem",borderInlineStartStyle:"solid",borderInlineStartColor:c.ac,paddingInlineStart:"1em",marginTop:"1.6em",marginBottom:"1.6em"}}>{children}</blockquote>,
                         code:({inline,children})=>inline
-                          ?<code style={{background:c.sf,border:"1px solid "+c.ln,padding:"2px 6px",borderRadius:4,fontSize:13,fontFamily:"ui-monospace,SFMono-Regular,Menlo,monospace",color:c.ac}}>{children}</code>
-                          :<pre style={{background:c.bg,border:"1px solid "+c.ln,borderRadius:10,padding:"16px 20px",margin:"16px 0",overflowX:"auto",fontSize:13,lineHeight:1.6,fontFamily:"ui-monospace,SFMono-Regular,Menlo,monospace"}}><code>{children}</code></pre>,
-                        hr:()=><hr style={{border:"none",borderTop:"1px solid "+c.ln,margin:"28px 0"}}/>,
-                        a:({href,children})=><a href={href} target="_blank" rel="noopener noreferrer" style={{color:c.ac,textDecoration:"underline",textUnderlineOffset:3}}>{children}</a>,
-                        table:({children})=><div style={{overflowX:"auto",margin:"16px 0"}}><table style={{borderCollapse:"collapse",width:"100%",fontSize:14}}>{children}</table></div>,
-                        th:({children})=><th style={{border:"1px solid "+c.ln,padding:"8px 14px",fontWeight:700,textAlign:"left",background:c.sf,color:c.tx}}>{children}</th>,
-                        td:({children})=><td style={{border:"1px solid "+c.ln,padding:"8px 14px",color:c.tx}}>{children}</td>,
-                        img:({src,alt})=><img src={src} alt={alt||""} onClick={()=>setChatLightbox({src,alt:alt||""})} style={{maxWidth:"100%",height:"auto",borderRadius:8,margin:"16px 0",display:"block",cursor:"zoom-in"}}/>,
+                          ?<code style={{fontSize:"0.875em",fontWeight:600,color:c.tx,background:c.sf,padding:"0.1em 0.3em",borderRadius:"0.25em"}}>{children}</code>
+                          :<pre style={{fontSize:"0.875em",lineHeight:1.7142857,marginTop:"1.7142857em",marginBottom:"1.7142857em",borderRadius:"0.375rem",padding:"0.8571429em 1.1428571em",background:c.bg,border:"1px solid "+c.ln,overflowX:"auto"}}><code style={{fontFamily:"ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace",fontWeight:400}}>{children}</code></pre>,
+                        hr:()=><hr style={{borderColor:c.ln,borderTopWidth:1,borderStyle:"solid",marginTop:"3em",marginBottom:"3em"}}/>,
+                        a:({href,children})=><a href={href} target="_blank" rel="noopener noreferrer" style={{color:c.tx,textDecoration:"underline",fontWeight:500}}>{children}</a>,
+                        table:({children})=><div style={{overflowX:"auto",marginTop:"2em",marginBottom:"2em"}}><table style={{width:"100%",tableLayout:"auto",fontSize:"0.875em",lineHeight:1.7142857,borderCollapse:"collapse"}}>{children}</table></div>,
+                        thead:({children})=><thead style={{borderBottomWidth:2,borderBottomStyle:"solid",borderBottomColor:c.ln}}>{children}</thead>,
+                        th:({children})=><th style={{fontWeight:600,color:c.tx,paddingInlineEnd:"0.5714286em",paddingBottom:"0.5714286em",paddingInlineStart:"0.5714286em",textAlign:"left"}}>{children}</th>,
+                        td:({children})=><td style={{padding:"0.5714286em",borderBottomWidth:1,borderBottomStyle:"solid",borderBottomColor:c.ln}}>{children}</td>,
+                        img:({src,alt})=><img src={src} alt={alt||""} onClick={()=>setChatLightbox({src,alt:alt||""})} style={{maxWidth:"100%",height:"auto",borderRadius:4,marginTop:"2em",marginBottom:"2em",display:"block",cursor:"zoom-in"}}/>,
                       }}
                     >{previewFile.content}</ReactMarkdown>
                     </div>
