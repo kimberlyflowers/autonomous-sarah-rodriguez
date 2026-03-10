@@ -1,136 +1,111 @@
 // BLOOM Files API — artifact storage, file serving, and deliverables library
-// Workflow: Sarah creates artifact → appears in chat → user approves → moves to Files tab
+// Source of truth: Supabase artifacts table + Supabase Storage (bloom-artifacts bucket)
+// Railway disk used only as write-through cache for content_text and binary files
 
 import { Router } from 'express';
 import { createLogger } from '../logging/logger.js';
-import pg from 'pg';
 import crypto from 'crypto';
 import path from 'path';
 import fs from 'fs';
+import { createClient } from '@supabase/supabase-js';
 
 const logger = createLogger('files-api');
 const router = Router();
 
-// File storage — use Railway volume if available, fallback to app directory (survives within deploy)
 const FILE_STORAGE = process.env.FILE_STORAGE_PATH || path.join(process.cwd(), 'bloom-files');
 if (!fs.existsSync(FILE_STORAGE)) fs.mkdirSync(FILE_STORAGE, { recursive: true });
 
-async function getPool() {
-  const { getSharedPool } = await import('../database/pool.js');
-  return getSharedPool();
+const ORG_ID    = () => process.env.BLOOM_ORG_ID        || 'a1000000-0000-0000-0000-000000000001';
+const USER_ID   = () => process.env.BLOOM_OWNER_USER_ID || '823e2fb5-2f8f-4279-9c84-c8f4bf78bcce';
+const AGENT_ID  = () => process.env.AGENT_UUID          || 'c3000000-0000-0000-0000-000000000003';
+
+function sb() {
+  return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+  });
 }
 
-// Auto-create artifacts table
-async function ensureTable(pool) {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS artifacts (
-      id SERIAL PRIMARY KEY,
-      file_id VARCHAR(64) UNIQUE NOT NULL,
-      session_id VARCHAR(128),
-      name VARCHAR(500) NOT NULL,
-      description TEXT,
-      file_type VARCHAR(50) NOT NULL,
-      mime_type VARCHAR(128),
-      content_text TEXT,
-      file_path VARCHAR(500),
-      file_size INTEGER DEFAULT 0,
-      thumbnail_base64 TEXT,
-      status VARCHAR(20) DEFAULT 'pending',
-      published BOOLEAN DEFAULT false,
-      slug VARCHAR(200) UNIQUE,
-      created_by VARCHAR(100) DEFAULT 'sarah',
-      created_at TIMESTAMPTZ DEFAULT NOW(),
-      approved_at TIMESTAMPTZ,
-      metadata JSONB DEFAULT '{}'
-    );
-    CREATE INDEX IF NOT EXISTS idx_artifacts_status ON artifacts(status);
-    CREATE INDEX IF NOT EXISTS idx_artifacts_session ON artifacts(session_id);
-    CREATE INDEX IF NOT EXISTS idx_artifacts_file_id ON artifacts(file_id);
-  `);
-  // Add columns if they don't exist (migration for existing tables)
-  try { await pool.query(`ALTER TABLE artifacts ADD COLUMN IF NOT EXISTS slug VARCHAR(200) UNIQUE`); } catch {}
-  try { await pool.query(`ALTER TABLE artifacts ADD COLUMN IF NOT EXISTS published BOOLEAN DEFAULT false`); } catch {}
-  try { await pool.query(`CREATE INDEX IF NOT EXISTS idx_artifacts_slug ON artifacts(slug)`); } catch {}
-}
-
-// ── CREATE ARTIFACT ─────────────────────────────────────────────────────────
-// Called by Sarah's tool execution when she creates content
-// POST /api/files/artifacts
+// ── CREATE ARTIFACT ──────────────────────────────────────────────────────────
 router.post('/artifacts', async (req, res) => {
-  const pool = await getPool();
   try {
-    await ensureTable(pool);
-    const {
-      name,
-      description = '',
-      fileType = 'text',    // text, html, image, document, code
-      mimeType = 'text/plain',
-      content,              // text content OR base64 data
-      sessionId = null,
-      metadata = {}
-    } = req.body;
-
-    if (!name || !content) {
-      return res.status(400).json({ error: 'name and content required' });
-    }
+    const { name, description = '', fileType = 'text', mimeType = 'text/plain', content, sessionId = null, metadata = {} } = req.body;
+    if (!name || !content) return res.status(400).json({ error: 'name and content required' });
 
     const fileId = `art_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
-    let filePath = null;
-    let fileSize = 0;
-    let thumbnailBase64 = null;
-    let contentText = null;
+    let filePath = null, fileSize = 0, contentText = null, storagePath = null;
 
-    // Handle different content types
     if (fileType === 'image') {
-      // Save base64 image to disk
       const buffer = Buffer.from(content, 'base64');
       const ext = mimeType.includes('png') ? '.png' : mimeType.includes('gif') ? '.gif' : '.jpg';
       filePath = path.join(FILE_STORAGE, `${fileId}${ext}`);
       fs.writeFileSync(filePath, buffer);
       fileSize = buffer.length;
-      // Use a smaller version as thumbnail (or just the first 50KB)
-      thumbnailBase64 = buffer.length > 50000 ? content.substring(0, 66666) : content;
+
+      // Upload to Supabase Storage for permanent CDN URL
+      try {
+        const supabase = sb();
+        const storageKey = `artifacts/${fileId}${ext}`;
+        const { error: upErr } = await supabase.storage.from('bloom-artifacts').upload(storageKey, buffer, { contentType: mimeType, upsert: true });
+        if (!upErr) {
+          const { data: urlData } = supabase.storage.from('bloom-artifacts').getPublicUrl(storageKey);
+          storagePath = urlData?.publicUrl || null;
+        }
+      } catch (e) { logger.warn('Supabase Storage upload failed', { error: e.message }); }
+
     } else if (fileType === 'document' || fileType === 'pdf') {
-      // Binary file — save to disk
       const buffer = Buffer.from(content, 'base64');
       const ext = mimeType.includes('pdf') ? '.pdf' : mimeType.includes('word') ? '.docx' : '.bin';
       filePath = path.join(FILE_STORAGE, `${fileId}${ext}`);
       fs.writeFileSync(filePath, buffer);
       fileSize = buffer.length;
     } else {
-      // Text-based content (text, html, code, markdown)
       contentText = content;
       fileSize = Buffer.byteLength(content, 'utf8');
-      // Also save to disk for download
       const ext = fileType === 'html' ? '.html' : fileType === 'code' ? '.js' : '.md';
       filePath = path.join(FILE_STORAGE, `${fileId}${ext}`);
       fs.writeFileSync(filePath, content, 'utf8');
     }
 
-    const result = await pool.query(`
-      INSERT INTO artifacts (file_id, session_id, name, description, file_type, mime_type, content_text, file_path, file_size, thumbnail_base64, status, metadata)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'approved', $11)
-      RETURNING id, file_id, name, status, created_at
-    `, [fileId, sessionId, name, description, fileType, mimeType, contentText, filePath, fileSize, thumbnailBase64, JSON.stringify(metadata)]);
+    const floralId = `bloom-${fileId}`;
+    const supabase = sb();
 
-    const artifact = result.rows[0];
-    logger.info('Artifact created', { fileId, name, fileType, fileSize });
+    const { data: artifact, error: insertErr } = await supabase.from('artifacts').insert({
+      organization_id: ORG_ID(),
+      created_by_user_id: USER_ID(),
+      agent_id: AGENT_ID(),
+      session_id: sessionId || null,
+      name,
+      description,
+      file_type: fileType,
+      mime_type: mimeType,
+      content: contentText || null,
+      storage_path: storagePath || filePath || null,
+      file_size: fileSize,
+      floral_id: floralId,
+      bloomshield_registered: false,
+      published: false
+    }).select('id').single();
 
-    // Save to Supabase artifacts table + trigger BLOOMSHIELD registration (async, non-blocking)
-    saveArtifactToSupabaseAndShield({ artifact, fileId, name, description, fileType, mimeType, contentText, sessionId }).catch(err => {
-      logger.warn('Supabase/BLOOMSHIELD artifact sync failed (non-fatal)', { error: err.message });
-    });
+    if (insertErr) {
+      logger.error('Supabase artifact insert failed', { error: insertErr.message });
+      return res.status(500).json({ error: 'Failed to save artifact: ' + insertErr.message });
+    }
+
+    logger.info('Artifact created in Supabase', { fileId, supabaseId: artifact.id, name, fileType });
+
+    // Async: BLOOMSHIELD registration
+    queueBloomshield({ supabaseId: artifact.id, floralId, contentText, name, mimeType }).catch(() => {});
 
     return res.json({
       success: true,
       artifact: {
         id: artifact.id,
-        fileId: artifact.file_id,
-        name: artifact.name,
-        status: artifact.status,
-        createdAt: artifact.created_at,
-        downloadUrl: `/api/files/download/${artifact.file_id}`,
-        previewUrl: `/api/files/preview/${artifact.file_id}`,
+        fileId,
+        name,
+        status: 'approved',
+        createdAt: new Date().toISOString(),
+        downloadUrl: `/api/files/download/${fileId}`,
+        previewUrl: `/api/files/preview/${fileId}`,
         bloomshieldPending: true
       }
     });
@@ -140,122 +115,60 @@ router.post('/artifacts', async (req, res) => {
   }
 });
 
-// Async helper: save artifact to Supabase + register with BLOOMSHIELD
-async function saveArtifactToSupabaseAndShield({ artifact, fileId, name, description, fileType, mimeType, contentText, sessionId }) {
+async function queueBloomshield({ supabaseId, floralId, contentText, name, mimeType }) {
   try {
-    const { createClient } = await import('@supabase/supabase-js');
-    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
-
-    const orgId = process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001';
-    const userId = process.env.BLOOM_OWNER_USER_ID || '823e2fb5-2f8f-4279-9c84-c8f4bf78bcce';
-    const agentId = process.env.AGENT_UUID; // Sarah's UUID from agents table
-
-    // Generate a unique floral_id for BLOOMSHIELD tracking
-    const floralId = `bloom-${fileId}`;
-
-    // 1. Save to Supabase artifacts table
-    const { data: supaArtifact, error: insertErr } = await supabase
-      .from('artifacts')
-      .insert({
-        organization_id: orgId,
-        created_by_user_id: userId,
-        agent_id: agentId || null,
-        session_id: sessionId || null,
-        name,
-        description,
-        file_type: fileType,
-        mime_type: mimeType,
-        content: contentText || null,
-        floral_id: floralId,
-        bloomshield_registered: false,
-        published: false
-      })
-      .select('id')
-      .single();
-
-    if (insertErr) {
-      logger.warn('Supabase artifact insert failed', { error: insertErr.message });
-      return;
-    }
-
-    logger.info('Artifact saved to Supabase', { supabaseId: supaArtifact.id, floralId });
-
-    // 2. Generate content hash for BLOOMSHIELD
-    const crypto = await import('crypto');
-    const contentToHash = contentText || name;
-    const contentHash = crypto.default.createHash('sha256').update(contentToHash).digest('hex');
-
-    // 3. Insert BLOOMSHIELD registration record (pending)
-    const { data: shieldReg, error: shieldErr } = await supabase
-      .from('bloomshield_registrations')
-      .insert({
-        artifact_id: supaArtifact.id,
-        owner_org_id: orgId,
-        owner_wallet_address: process.env.BLOOM_WALLET_ADDRESS || 'pending',
-        floral_id: floralId,
-        content_hash: contentHash,
-        registration_status: 'pending'
-      })
-      .select('id')
-      .single();
-
-    if (shieldErr) {
-      logger.warn('BLOOMSHIELD registration insert failed', { error: shieldErr.message });
-      return;
-    }
-
-    // 4. Update artifact to link back to registration
-    await supabase
-      .from('artifacts')
-      .update({
-        bloomshield_registered: true,
-        bloomshield_registration_id: shieldReg.id
-      })
-      .eq('id', supaArtifact.id);
-
-    logger.info('BLOOMSHIELD registration queued', { floralId, registrationId: shieldReg.id });
-
-  } catch (err) {
-    logger.warn('saveArtifactToSupabaseAndShield error', { error: err.message });
-  }
+    const supabase = sb();
+    const contentHash = crypto.createHash('sha256').update(contentText || name).digest('hex');
+    const { data: shieldReg, error } = await supabase.from('bloomshield_registrations').insert({
+      artifact_id: supabaseId,
+      owner_org_id: ORG_ID(),
+      owner_wallet_address: process.env.BLOOM_WALLET_ADDRESS || 'pending',
+      floral_id: floralId,
+      content_hash: contentHash,
+      registration_status: 'pending'
+    }).select('id').single();
+    if (error) { logger.warn('BLOOMSHIELD insert failed', { error: error.message }); return; }
+    await supabase.from('artifacts').update({ bloomshield_registered: true, bloomshield_registration_id: shieldReg.id }).eq('id', supabaseId);
+    logger.info('BLOOMSHIELD queued', { floralId, registrationId: shieldReg.id });
+  } catch (e) { logger.warn('queueBloomshield error', { error: e.message }); }
 }
 
-// ── LIST ARTIFACTS ──────────────────────────────────────────────────────────
-// GET /api/files/artifacts?status=approved&limit=50
+// ── LIST ARTIFACTS ───────────────────────────────────────────────────────────
 router.get('/artifacts', async (req, res) => {
-  const pool = await getPool();
   try {
-    await ensureTable(pool);
     const { status, limit = 50, sessionId } = req.query;
-    let query = 'SELECT id, file_id, session_id, name, description, file_type, mime_type, file_size, status, created_by, created_at, approved_at, metadata, slug, published FROM artifacts';
-    const conditions = [];
-    const params = [];
+    const supabase = sb();
 
-    if (status) { conditions.push(`status = $${params.length + 1}`); params.push(status); }
-    if (sessionId) { conditions.push(`session_id = $${params.length + 1}`); params.push(sessionId); }
-    if (conditions.length) query += ' WHERE ' + conditions.join(' AND ');
-    query += ` ORDER BY created_at DESC LIMIT $${params.length + 1}`;
-    params.push(parseInt(limit));
+    let query = supabase.from('artifacts')
+      .select('id, name, description, file_type, mime_type, file_size, storage_path, content, floral_id, published, slug, created_at, bloomshield_registered, session_id')
+      .order('created_at', { ascending: false })
+      .limit(parseInt(limit));
 
-    const result = await pool.query(query, params);
-    const artifacts = result.rows.map(r => ({
+    // All artifacts are auto-approved now — no status filter needed unless explicitly requested
+    if (status) query = query.eq('published', status === 'approved');
+    if (sessionId) query = query.eq('session_id', sessionId);
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    const artifacts = (data || []).map(r => ({
       id: r.id,
-      fileId: r.file_id,
+      fileId: r.id,           // use Supabase uuid as fileId
       sessionId: r.session_id,
       name: r.name,
       description: r.description,
       fileType: r.file_type,
       mimeType: r.mime_type,
       fileSize: r.file_size,
-      status: r.status,
-      createdBy: r.created_by,
+      status: 'approved',
+      storagePath: r.storage_path,
+      hasContent: !!r.content,
       createdAt: r.created_at,
-      approvedAt: r.approved_at,
-      metadata: r.metadata,
       slug: r.slug || null,
       published: r.published || false,
-      downloadUrl: `/api/files/download/${r.file_id}`,
-      previewUrl: `/api/files/preview/${r.file_id}`,
+      bloomshieldRegistered: r.bloomshield_registered,
+      downloadUrl: `/api/files/download/${r.id}`,
+      previewUrl: r.storage_path || `/api/files/preview/${r.id}`,
       publishUrl: r.slug ? `/p/${r.slug}` : null
     }));
 
@@ -266,108 +179,67 @@ router.get('/artifacts', async (req, res) => {
   }
 });
 
-// ── APPROVE / REJECT ARTIFACT ───────────────────────────────────────────────
-// PATCH /api/files/artifacts/:fileId — status changes (approve/reject)
-router.patch('/artifacts/:fileId', async (req, res) => {
-  let pool;
+// ── PREVIEW FILE ─────────────────────────────────────────────────────────────
+router.get('/preview/:fileId', async (req, res) => {
   try {
-    pool = await getPool();
-    await ensureTable(pool);
     const { fileId } = req.params;
-    const { status } = req.body;
+    const supabase = sb();
+    const { data: file, error } = await supabase.from('artifacts')
+      .select('name, file_type, mime_type, content, storage_path, slug, published')
+      .eq('id', fileId)
+      .single();
 
-    if (!['approved', 'rejected'].includes(status)) {
-      return res.status(400).json({ error: 'status must be approved or rejected' });
+    if (error || !file) return res.status(404).json({ error: 'File not found' });
+
+    // Images — redirect to Supabase CDN if available
+    if (file.file_type === 'image') {
+      if (file.storage_path) return res.redirect(302, file.storage_path);
+      return res.status(404).json({ error: 'Image not available' });
     }
 
-    const result = await pool.query(
-      `UPDATE artifacts SET status = $1 WHERE file_id = $2 RETURNING id, file_id, name, status`,
-      [status, fileId]
-    );
-
-    if (!result.rows.length) return res.status(404).json({ error: 'Artifact not found' });
-
-    if (status === 'approved') {
-      await pool.query(`UPDATE artifacts SET approved_at = NOW() WHERE file_id = $1`, [fileId]);
+    // Text content — return as JSON for the editor/viewer
+    if (file.content) {
+      return res.json({
+        name: file.name, fileType: file.file_type, mimeType: file.mime_type,
+        content: file.content, slug: file.slug || null, published: file.published || false
+      });
     }
 
-    return res.json({ success: true, artifact: result.rows[0] });
+    // Binary with storage_path — redirect
+    if (file.storage_path) return res.redirect(302, file.storage_path);
+
+    return res.json({ name: file.name, fileType: file.file_type, mimeType: file.mime_type, preview: 'binary' });
   } catch (error) {
-    return res.status(500).json({ error: 'Failed to update artifact: ' + error.message });
+    logger.error('Preview error', { error: error.message });
+    return res.status(500).json({ error: 'Preview failed' });
   }
 });
 
-// PUT /api/files/artifacts/:fileId — update file content (edit mode)
-router.put('/artifacts/:fileId', async (req, res) => {
-  try {
-    const pool = await getPool();
-    await ensureTable(pool);
-    const { fileId } = req.params;
-    const { content, name } = req.body;
-
-    if (!content && !name) return res.status(400).json({ error: 'content or name required' });
-
-    const updates = [];
-    const params = [];
-    if (content !== undefined) {
-      updates.push(`content_text = $${params.length + 1}`);
-      params.push(content);
-      updates.push(`file_size = $${params.length + 1}`);
-      params.push(Buffer.byteLength(content, 'utf8'));
-    }
-    if (name) {
-      updates.push(`name = $${params.length + 1}`);
-      params.push(name);
-    }
-    params.push(fileId);
-
-    const result = await pool.query(
-      `UPDATE artifacts SET ${updates.join(', ')} WHERE file_id = $${params.length} RETURNING file_id, name, file_size`,
-      params
-    );
-
-    if (!result.rows.length) return res.status(404).json({ error: 'Artifact not found' });
-
-    // Also update the file on disk if it exists
-    try {
-      const pathRes = await pool.query('SELECT file_path FROM artifacts WHERE file_id = $1', [fileId]);
-      if (pathRes.rows[0]?.file_path && content) {
-        fs.writeFileSync(pathRes.rows[0].file_path, content, 'utf8');
-      }
-    } catch {}
-
-    logger.info('Artifact content updated', { fileId, name: result.rows[0].name });
-    return res.json({ success: true, artifact: result.rows[0] });
-  } catch (error) {
-    return res.status(500).json({ error: 'Failed to update: ' + error.message });
-  }
-});
-
-// ── DOWNLOAD FILE ───────────────────────────────────────────────────────────
-// GET /api/files/download/:fileId
+// ── DOWNLOAD FILE ─────────────────────────────────────────────────────────────
 router.get('/download/:fileId', async (req, res) => {
-  const pool = await getPool();
   try {
-    await ensureTable(pool);
     const { fileId } = req.params;
-    const result = await pool.query(
-      'SELECT name, file_type, mime_type, content_text, file_path FROM artifacts WHERE file_id = $1', [fileId]
-    );
-    if (!result.rows.length) return res.status(404).json({ error: 'File not found' });
+    const supabase = sb();
+    const { data: file, error } = await supabase.from('artifacts')
+      .select('name, file_type, mime_type, content, storage_path')
+      .eq('id', fileId)
+      .single();
 
-    const file = result.rows[0];
+    if (error || !file) return res.status(404).json({ error: 'File not found' });
+
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
 
-    if (file.file_path && fs.existsSync(file.file_path)) {
+    // Binary stored in Supabase Storage — redirect to CDN for download
+    if (file.storage_path && file.file_type === 'image') {
       res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
-      res.setHeader('Content-Type', file.mime_type || 'application/octet-stream');
-      return fs.createReadStream(file.file_path).pipe(res);
+      return res.redirect(302, file.storage_path);
     }
 
-    if (file.content_text) {
+    // Text content — send directly
+    if (file.content) {
       res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
       res.setHeader('Content-Type', file.mime_type || 'text/plain');
-      return res.send(file.content_text);
+      return res.send(file.content);
     }
 
     return res.status(404).json({ error: 'File content not available' });
@@ -377,104 +249,69 @@ router.get('/download/:fileId', async (req, res) => {
   }
 });
 
-// ── PREVIEW FILE ────────────────────────────────────────────────────────────
-// GET /api/files/preview/:fileId
-router.get('/preview/:fileId', async (req, res) => {
-  const pool = await getPool();
-  try {
-    await ensureTable(pool);
-    const { fileId } = req.params;
-    const result = await pool.query(
-      'SELECT name, file_type, mime_type, content_text, thumbnail_base64, file_path, slug, published FROM artifacts WHERE file_id = $1', [fileId]
-    );
-    if (!result.rows.length) return res.status(404).json({ error: 'File not found' });
-
-    const file = result.rows[0];
-
-    // For images — serve from filesystem if available
-    if (file.file_type === 'image' && file.file_path && fs.existsSync(file.file_path)) {
-      res.setHeader('Content-Type', file.mime_type || 'image/png');
-      return fs.createReadStream(file.file_path).pipe(res);
-    }
-
-    // For images — serve from base64 if stored in thumbnail_base64
-    if (file.file_type === 'image' && file.thumbnail_base64) {
-      const base64Data = file.thumbnail_base64.replace(/^data:image\/\w+;base64,/, '');
-      const buffer = Buffer.from(base64Data, 'base64');
-      res.setHeader('Content-Type', file.mime_type || 'image/png');
-      res.setHeader('Content-Length', buffer.length);
-      return res.send(buffer);
-    }
-
-    // For text content — return as JSON for rendering
-    if (file.content_text) {
-      return res.json({
-        name: file.name,
-        fileType: file.file_type,
-        mimeType: file.mime_type,
-        content: file.content_text,
-        slug: file.slug || null,
-        published: file.published || false
-      });
-    }
-
-    // For binary files — return metadata only
-    return res.json({ name: file.name, fileType: file.file_type, mimeType: file.mime_type, preview: 'binary' });
-  } catch (error) {
-    logger.error('Preview error', { error: error.message });
-    return res.status(500).json({ error: 'Preview failed' });
-  }
-});
-
-// ── FULL-SCREEN PUBLISH PREVIEW ─────────────────────────────────────────────
-// GET /api/files/publish/:fileId — serves HTML directly for full-screen viewing
+// ── FULL-SCREEN PUBLISH PREVIEW ───────────────────────────────────────────────
 router.get('/publish/:fileId', async (req, res) => {
-  const pool = await getPool();
   try {
-    await ensureTable(pool);
-    const result = await pool.query(
-      'SELECT name, file_type, content_text, file_path FROM artifacts WHERE file_id = $1', [req.params.fileId]
-    );
-    if (!result.rows.length) return res.status(404).send('File not found');
-    const file = result.rows[0];
+    const supabase = sb();
+    const { data: file, error } = await supabase.from('artifacts')
+      .select('name, file_type, content, storage_path')
+      .eq('id', req.params.fileId)
+      .single();
 
-    if (file.file_type === 'html' && file.content_text) {
+    if (error || !file) return res.status(404).send('File not found');
+
+    if (file.file_type === 'html' && file.content) {
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
-      return res.send(file.content_text);
+      return res.send(file.content);
     }
-    if (file.file_type === 'markdown' && file.content_text) {
-      const md = file.content_text
-        .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-        .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-        .replace(/^# (.+)$/gm, '<h1>$1</h1>')
-        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-        .replace(/\*(.+?)\*/g, '<em>$1</em>')
-        .replace(/^- (.+)$/gm, '<li>$1</li>')
-        .replace(/\n\n/g, '<br/><br/>')
-        .replace(/\n/g, '<br/>');
-      res.setHeader('Content-Type', 'text/html; charset=utf-8');
-      return res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${file.name}</title><style>body{max-width:800px;margin:40px auto;padding:0 20px;font-family:Georgia,serif;line-height:1.8;color:#1a1a1a}h1,h2,h3{font-family:system-ui,sans-serif}h1{font-size:2em;border-bottom:2px solid #eee;padding-bottom:8px}</style></head><body>${md}</body></html>`);
-    }
+    if (file.storage_path) return res.redirect(302, file.storage_path);
     return res.redirect(`/api/files/download/${req.params.fileId}`);
   } catch { return res.status(500).send('Preview failed'); }
 });
 
-// ── DELETE ARTIFACT ─────────────────────────────────────────────────────────
-// DELETE /api/files/artifacts/:fileId
-router.delete('/artifacts/:fileId', async (req, res) => {
-  const pool = await getPool();
+// ── PATCH — approve/reject ────────────────────────────────────────────────────
+router.patch('/artifacts/:fileId', async (req, res) => {
   try {
-    await ensureTable(pool);
     const { fileId } = req.params;
-    const result = await pool.query(
-      'DELETE FROM artifacts WHERE file_id = $1 RETURNING file_path', [fileId]
-    );
-    if (!result.rows.length) return res.status(404).json({ error: 'Artifact not found' });
+    const { status } = req.body;
+    if (!['approved', 'rejected'].includes(status)) return res.status(400).json({ error: 'status must be approved or rejected' });
+    const supabase = sb();
+    const updates = { published: status === 'approved' };
+    if (status === 'approved') updates.approved_at = new Date().toISOString();
+    const { data, error } = await supabase.from('artifacts').update(updates).eq('id', fileId).select('id, name').single();
+    if (error || !data) return res.status(404).json({ error: 'Artifact not found' });
+    return res.json({ success: true, artifact: data });
+  } catch (error) {
+    return res.status(500).json({ error: 'Failed to update artifact: ' + error.message });
+  }
+});
 
-    // Clean up file on disk
-    const filePath = result.rows[0].file_path;
-    if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
+// ── PUT — edit content ────────────────────────────────────────────────────────
+router.put('/artifacts/:fileId', async (req, res) => {
+  try {
+    const { fileId } = req.params;
+    const { content, name } = req.body;
+    if (!content && !name) return res.status(400).json({ error: 'content or name required' });
+    const supabase = sb();
+    const updates = {};
+    if (content !== undefined) { updates.content = content; updates.file_size = Buffer.byteLength(content, 'utf8'); }
+    if (name) updates.name = name;
+    const { data, error } = await supabase.from('artifacts').update(updates).eq('id', fileId).select('id, name, file_size').single();
+    if (error || !data) return res.status(404).json({ error: 'Artifact not found' });
+    logger.info('Artifact content updated', { fileId, name: data.name });
+    return res.json({ success: true, artifact: data });
+  } catch (error) {
+    return res.status(500).json({ error: 'Failed to update: ' + error.message });
+  }
+});
 
+// ── DELETE ────────────────────────────────────────────────────────────────────
+router.delete('/artifacts/:fileId', async (req, res) => {
+  try {
+    const { fileId } = req.params;
+    const supabase = sb();
+    const { error } = await supabase.from('artifacts').delete().eq('id', fileId);
+    if (error) return res.status(404).json({ error: 'Artifact not found' });
     return res.json({ success: true, deleted: fileId });
   } catch (error) {
     logger.error('Delete artifact error', { error: error.message });
@@ -482,126 +319,35 @@ router.delete('/artifacts/:fileId', async (req, res) => {
   }
 });
 
-// ── PUBLISH TO SITE — set a slug for clean public URL ───────────────────────
-// POST /api/files/publish-site/:fileId
-router.post('/publish-site/:fileId', async (req, res) => {
-  const pool = await getPool();
-  try {
-    await ensureTable(pool);
-    const { fileId } = req.params;
-    let { slug } = req.body;
-
-    if (!slug) return res.status(400).json({ error: 'slug required' });
-
-    // Sanitize slug: lowercase, alphanumeric + hyphens only
-    slug = slug.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').slice(0, 100);
-    if (!slug) return res.status(400).json({ error: 'Invalid slug' });
-
-    // Check if slug is taken by another file
-    const existing = await pool.query('SELECT file_id FROM artifacts WHERE slug = $1 AND file_id != $2', [slug, fileId]);
-    if (existing.rows.length > 0) {
-      return res.status(409).json({ error: `Slug "${slug}" is already taken`, suggestion: `${slug}-${Date.now().toString(36).slice(-4)}` });
-    }
-
-    await pool.query('UPDATE artifacts SET slug = $1, published = true WHERE file_id = $2', [slug, fileId]);
-
-    const baseUrl = process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`;
-    const siteUrl = `${baseUrl}/s/${slug}`;
-
-    return res.json({ success: true, slug, url: siteUrl });
-  } catch (error) {
-    return res.status(500).json({ error: 'Failed to publish: ' + error.message });
-  }
-});
-
-// ── UNPUBLISH — remove slug ─────────────────────────────────────────────────
-router.delete('/publish-site/:fileId', async (req, res) => {
-  const pool = await getPool();
-  try {
-    await ensureTable(pool);
-    await pool.query('UPDATE artifacts SET slug = NULL, published = false WHERE file_id = $1', [req.params.fileId]);
-    return res.json({ success: true });
-  } catch (error) {
-    return res.status(500).json({ error: error.message });
-  }
-});
-
-// ── PUBLISH WITH SLUG ───────────────────────────────────────────────────────
-// POST /api/files/artifacts/:fileId/publish — set slug and make live at /p/:slug
+// ── PUBLISH WITH SLUG ─────────────────────────────────────────────────────────
 router.post('/artifacts/:fileId/publish', async (req, res) => {
   try {
-    const pool = await getPool();
-    await ensureTable(pool);
     const { fileId } = req.params;
     let { slug } = req.body;
-
     if (!slug) return res.status(400).json({ error: 'slug is required' });
-
-    // Sanitize slug: lowercase, alphanumeric + hyphens only
     slug = slug.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').slice(0, 100);
     if (!slug) return res.status(400).json({ error: 'Invalid slug' });
-
-    // Check slug uniqueness (excluding this file)
-    const existing = await pool.query('SELECT file_id FROM artifacts WHERE slug = $1 AND file_id != $2', [slug, fileId]);
-    if (existing.rows.length > 0) {
-      return res.status(409).json({ error: `Slug "${slug}" is already taken`, taken: true });
-    }
-
-    const result = await pool.query(
-      `UPDATE artifacts SET slug = $1, published = true WHERE file_id = $2 RETURNING file_id, name, slug`,
-      [slug, fileId]
-    );
-    if (!result.rows.length) return res.status(404).json({ error: 'Artifact not found' });
-
+    const supabase = sb();
+    // Check uniqueness
+    const { data: existing } = await supabase.from('artifacts').select('id').eq('slug', slug).neq('id', fileId).maybeSingle();
+    if (existing) return res.status(409).json({ error: `Slug "${slug}" is already taken`, taken: true });
+    const { data, error } = await supabase.from('artifacts').update({ slug, published: true }).eq('id', fileId).select('id, name, slug').single();
+    if (error || !data) return res.status(404).json({ error: 'Artifact not found' });
     logger.info('Artifact published', { fileId, slug });
-    return res.json({
-      success: true,
-      slug,
-      url: `/p/${slug}`,
-      artifact: result.rows[0]
-    });
+    return res.json({ success: true, slug, url: `/p/${slug}`, artifact: data });
   } catch (error) {
     return res.status(500).json({ error: 'Publish failed: ' + error.message });
   }
 });
 
-// POST /api/files/artifacts/:fileId/unpublish
 router.post('/artifacts/:fileId/unpublish', async (req, res) => {
   try {
-    const pool = await getPool();
-    const result = await pool.query(
-      `UPDATE artifacts SET published = false WHERE file_id = $1 RETURNING file_id, name, slug`,
-      [req.params.fileId]
-    );
-    if (!result.rows.length) return res.status(404).json({ error: 'Artifact not found' });
+    const supabase = sb();
+    const { error } = await supabase.from('artifacts').update({ published: false }).eq('id', req.params.fileId);
+    if (error) return res.status(404).json({ error: 'Artifact not found' });
     return res.json({ success: true });
   } catch (error) {
     return res.status(500).json({ error: error.message });
-  }
-});
-
-// POST /api/files/migrate-images - Backfill content_text for old images
-router.post('/migrate-images', async (req, res) => {
-  try {
-    const pool = await getPool();
-    const result = await pool.query(`
-      UPDATE artifacts 
-      SET content_text = thumbnail_base64
-      WHERE file_type = 'image' 
-        AND content_text IS NULL 
-        AND thumbnail_base64 IS NOT NULL
-      RETURNING file_id, name
-    `);
-    
-    logger.info('Image migration completed', { count: result.rowCount });
-    return res.json({ 
-      success: true, 
-      migrated: result.rowCount,
-      files: result.rows 
-    });
-  } catch (error) {
-    logger.error('Migration failed', { error: error.message });
-    return res.status(500).json({ error: 'Migration failed: ' + error.message });
   }
 });
 
