@@ -462,8 +462,15 @@ async function generateWithNanoBanana(prompt, size, referenceImageUrl, reference
       }
     }
 
+    // Use 3.1-flash-image-preview when reference image present (has character consistency support)
+    // Fall back to 2.5-flash-image if 3.1 times out or errors (known instability on preview)
+    const modelId = hasReference
+      ? 'gemini-3.1-flash-image-preview'
+      : 'gemini-2.5-flash-image';
+    logger.info(`Nano Banana: using model ${modelId}${hasReference ? ' (reference image mode)' : ''}`);
+
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${getGeminiKey()}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${getGeminiKey()}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -485,7 +492,34 @@ async function generateWithNanoBanana(prompt, size, referenceImageUrl, reference
 
     if (!response.ok) {
       const err = await response.text();
-      logger.error('Nano Banana API error', { status: response.status, error: err, hasKey: !!getGeminiKey() });
+      logger.error('Nano Banana API error', { status: response.status, error: err, model: modelId });
+      // If 3.1 failed (503/timeout), retry with stable 2.5 model
+      if (hasReference && modelId === 'gemini-3.1-flash-image-preview') {
+        logger.warn('3.1-flash-image-preview failed, retrying with 2.5-flash-image (no character consistency)');
+        const fallbackResp = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${getGeminiKey()}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts }],
+              generationConfig: { responseModalities: ["TEXT", "IMAGE"], imageConfig: { aspectRatio } },
+            }),
+          }
+        );
+        if (!fallbackResp.ok) {
+          const fallbackErr = await fallbackResp.text();
+          throw new Error(`Nano Banana fallback error ${fallbackResp.status}: ${fallbackErr}`);
+        }
+        const fallbackData = await fallbackResp.json();
+        const fbParts = fallbackData.candidates?.[0]?.content?.parts || [];
+        const fbImagePart = fbParts.find(p => p.inlineData?.mimeType?.startsWith('image/'));
+        if (!fbImagePart) throw new Error('No image in Nano Banana fallback response');
+        const fbFilename = `bloom-nanob-${Date.now()}.png`;
+        const fbFilepath = `/tmp/${fbFilename}`;
+        fs.writeFileSync(fbFilepath, Buffer.from(fbImagePart.inlineData.data, 'base64'));
+        return { success: true, engine: 'nano-banana-2.5-fallback', image_base64: fbImagePart.inlineData.data, filepath: fbFilepath, filename: fbFilename, size, message: 'Image generated with Nano Banana 2.5 (3.1 unavailable)' };
+      }
       throw new Error(`Nano Banana API error ${response.status}: ${err}`);
     }
 
