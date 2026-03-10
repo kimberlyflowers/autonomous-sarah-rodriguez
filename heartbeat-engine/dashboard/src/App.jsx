@@ -4219,18 +4219,27 @@ function App() {
                           {f.fileType==='image' ? (
                             <img src={f.storagePath||`/api/files/preview/${f.fileId}`} alt={f.name} style={{width:"100%",height:"100%",objectFit:"cover",cursor:"zoom-in"}}/>
                           ) : ext==='html' ? (
-                            /* Website preview — use content directly so iframe renders */
+                            /* Website preview — scaled iframe thumbnail */
                             f.content ? (
-                              <iframe
-                                srcDoc={f.content}
-                                title={f.name}
-                                sandbox="allow-same-origin"
-                                style={{width:'400%',height:'400%',border:'none',pointerEvents:'none',transform:'scale(0.25)',transformOrigin:'top left',background:'#fff'}}
-                              />
+                              <div style={{position:'absolute',inset:0,overflow:'hidden',background:'#fff'}}>
+                                <iframe
+                                  srcDoc={f.content}
+                                  title={f.name}
+                                  sandbox="allow-same-origin"
+                                  scrolling="no"
+                                  style={{position:'absolute',top:0,left:0,width:'400%',height:'400%',border:'none',pointerEvents:'none',transform:'scale(0.25)',transformOrigin:'top left',background:'#fff'}}
+                                />
+                              </div>
                             ) : (
-                              <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6}}>
-                                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke={c.so} strokeWidth="1.5"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-                                <span style={{fontSize:10,color:c.so}}>HTML Page</span>
+                              /* Content not in list response — fetch it lazily via iframe src */
+                              <div style={{position:'absolute',inset:0,overflow:'hidden',background:'#fff'}}>
+                                <iframe
+                                  src={`/api/files/publish/${f.fileId}`}
+                                  title={f.name}
+                                  sandbox="allow-same-origin"
+                                  scrolling="no"
+                                  style={{position:'absolute',top:0,left:0,width:'400%',height:'400%',border:'none',pointerEvents:'none',transform:'scale(0.25)',transformOrigin:'top left',background:'#fff'}}
+                                />
                               </div>
                             )
                           ) : (
