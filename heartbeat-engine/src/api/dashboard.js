@@ -437,30 +437,31 @@ router.get('/business-profile', async (req, res) => {
 });
 
 // Brand Kits — up to 3 kits, each with name, logo, colors, fonts, voice
-// Stored as JSON array in user_settings key='brand_kits'
+// Stored as jsonb in Supabase user_settings key='brand_kits'
 router.get('/brand-kit', async (req, res) => {
   try {
-    const { getSharedPool } = await import('../database/pool.js');
-    const pool = getSharedPool();
-    await pool.query(`CREATE TABLE IF NOT EXISTS user_settings (key VARCHAR(64) PRIMARY KEY, value TEXT, updated_at TIMESTAMPTZ DEFAULT NOW())`);
-    const r = await pool.query(`SELECT value FROM user_settings WHERE key='brand_kits'`);
-    let kits = r.rows[0]?.value ? JSON.parse(r.rows[0].value) : null;
-    
-    // Migrate old single brand_kit to new array format
+    const { createClient } = await import('@supabase/supabase-js');
+    const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const orgId = process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001';
+
+    const { data: bkRow } = await sb.from('user_settings').select('value').eq('organization_id', orgId).eq('key', 'brand_kits').maybeSingle();
+    // value is jsonb — already parsed by Supabase client
+    let kits = bkRow?.value ? (Array.isArray(bkRow.value) ? bkRow.value : [bkRow.value]) : null;
+
+    // Check legacy single-kit key
     if (!kits) {
-      const old = await pool.query(`SELECT value FROM user_settings WHERE key='brand_kit'`);
-      if (old.rows[0]?.value) {
-        const oldKit = JSON.parse(old.rows[0].value);
+      const { data: oldRow } = await sb.from('user_settings').select('value').eq('organization_id', orgId).eq('key', 'brand_kit').maybeSingle();
+      if (oldRow?.value) {
+        const oldKit = oldRow.value;
         kits = [{ ...oldKit, kitName: oldKit.kitName || 'Primary Brand', active: true }];
-        await pool.query(
-          `INSERT INTO user_settings(key, value, updated_at) VALUES('brand_kits', $1, NOW()) ON CONFLICT(key) DO UPDATE SET value=$1, updated_at=NOW()`,
-          [JSON.stringify(kits)]
-        );
+        // Migrate to new key
+        await sb.from('user_settings').upsert({ organization_id: orgId, key: 'brand_kits', value: kits, updated_at: new Date().toISOString() }, { onConflict: 'organization_id,key' });
       }
     }
-    
+
     res.json({ kits: kits || [], brand: kits?.find(k => k.active) || kits?.[0] || null });
   } catch (e) {
+    logger.warn('brand-kit GET error', { error: e.message });
     res.json({ kits: [], brand: null, error: e.message });
   }
 });
@@ -470,15 +471,17 @@ router.post('/brand-kit', async (req, res) => {
     const { kits } = req.body;
     if (!kits || !Array.isArray(kits)) return res.status(400).json({ error: 'kits array required' });
     if (kits.length > 3) return res.status(400).json({ error: 'Maximum 3 brand kits' });
-    const { getSharedPool } = await import('../database/pool.js');
-    const pool = getSharedPool();
-    await pool.query(`CREATE TABLE IF NOT EXISTS user_settings (key VARCHAR(64) PRIMARY KEY, value TEXT, updated_at TIMESTAMPTZ DEFAULT NOW())`);
-    await pool.query(
-      `INSERT INTO user_settings(key, value, updated_at) VALUES('brand_kits', $1, NOW()) ON CONFLICT(key) DO UPDATE SET value=$1, updated_at=NOW()`,
-      [JSON.stringify(kits)]
+    const { createClient } = await import('@supabase/supabase-js');
+    const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const orgId = process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001';
+    const { error } = await sb.from('user_settings').upsert(
+      { organization_id: orgId, key: 'brand_kits', value: kits, updated_at: new Date().toISOString() },
+      { onConflict: 'organization_id,key' }
     );
+    if (error) throw error;
     res.json({ success: true });
   } catch (e) {
+    logger.warn('brand-kit POST error', { error: e.message });
     res.json({ success: false, error: e.message });
   }
 });
