@@ -2462,7 +2462,8 @@ function App() {
       const imageCapture = new ImageCapture(track);
       const bitmap = await imageCapture.grabFrame();
       track.stop();
-      window.focus(); // Return focus to dashboard after capture
+      // Snap focus back to dashboard — delay gives browser time to finish capture first
+      setTimeout(() => window.focus(), 100);
       // Cap at 1920px wide — 4K screenshots balloon to 20MB+ as PNG
       const MAX_W = 1920;
       let drawW = bitmap.width;
