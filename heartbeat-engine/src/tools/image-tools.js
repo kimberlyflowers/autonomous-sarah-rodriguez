@@ -435,13 +435,21 @@ async function generateWithNanoBanana(prompt, size, referenceImageUrl, reference
     if (size === '1024x1536') aspectRatio = '2:3'; // portrait
     if (size === '1536x1024') aspectRatio = '3:2'; // landscape
     
-    // Build parts array — add reference image first if provided (Nano Banana uses it for character consistency)
+    // Build parts array — text prompt FIRST, reference image SECOND (Google's required order)
+    const hasReference = !!(referenceImageBase64 || referenceImageUrl);
     const parts = [];
+
+    // Text prompt goes first per Google API docs
+    parts.push({ text: hasReference
+      ? `Generate a new image of the person shown in the reference image below. ${prompt}. Preserve the person's face, hair, skin tone, and distinguishing features exactly.`
+      : prompt
+    });
+
+    // Reference image goes after the text
     if (referenceImageBase64) {
       parts.push({ inlineData: { mimeType: 'image/jpeg', data: referenceImageBase64 } });
       logger.info('Nano Banana: reference image added for character consistency (base64)');
     } else if (referenceImageUrl) {
-      // Fetch reference image and convert to base64
       try {
         const refResp = await fetch(referenceImageUrl);
         const refBuf = await refResp.arrayBuffer();
@@ -453,10 +461,6 @@ async function generateWithNanoBanana(prompt, size, referenceImageUrl, reference
         logger.warn('Nano Banana: failed to fetch reference image, proceeding without it', { error: refErr.message });
       }
     }
-    parts.push({ text: referenceImageBase64 || referenceImageUrl
-      ? `Using the person/character in the reference image above for visual consistency, ${prompt}`
-      : prompt
-    });
 
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${getGeminiKey()}`,
@@ -466,7 +470,8 @@ async function generateWithNanoBanana(prompt, size, referenceImageUrl, reference
         body: JSON.stringify({
           contents: [{ parts }],
           generationConfig: {
-            responseModalities: ["IMAGE"],
+            // TEXT+IMAGE required when sending reference images (IMAGE-only ignores input images)
+            responseModalities: hasReference ? ["TEXT", "IMAGE"] : ["IMAGE"],
             imageConfig: {
               aspectRatio: aspectRatio
             }
