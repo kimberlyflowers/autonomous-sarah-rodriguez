@@ -1422,7 +1422,7 @@ function SessionFilesPanel({c, sessionId, setActiveArtifact}){
               onMouseLeave={e=>{e.currentTarget.style.borderColor=c.ln;e.currentTarget.style.transform="translateY(0)";}}>
                 <div style={{width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center',background:isImage?'#000':c.bg,overflow:'hidden'}}>
                   {isImage
-                    ? <img src={`/api/chat/uploads/preview/${u.uploadId}`} alt={u.name} style={{width:'100%',height:'100%',objectFit:'cover'}}/>
+                    ? <img src={u.previewUrl||`/api/chat/uploads/preview/${u.uploadId}`} alt={u.name} style={{width:'100%',height:'100%',objectFit:'cover'}}/>
                     : <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke={c.so} strokeWidth="1.5" opacity="0.4"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                   }
                 </div>

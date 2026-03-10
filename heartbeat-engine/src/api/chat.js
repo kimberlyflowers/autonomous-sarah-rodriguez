@@ -1252,19 +1252,21 @@ async function executeTool(toolName, toolInput, sessionId = null) {
         // Also include user-uploaded images from chat_uploads (reference images)
         let userUploads = [];
         try {
-          const uploadsRes = await pool.query(
-            `SELECT upload_id, name, mime_type, supabase_url, file_path, created_at
-             FROM chat_uploads WHERE session_id = $1 ORDER BY created_at DESC LIMIT 20`,
-            [sid]
-          );
-          userUploads = uploadsRes.rows
+          const { createClient: _sc } = await import('@supabase/supabase-js');
+          const _sb = _sc(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+          const { data: uploadRows } = await _sb
+            .from('chat_uploads')
+            .select('upload_id, name, mime_type, supabase_url, file_path, created_at')
+            .eq('session_id', sid)
+            .order('created_at', { ascending: false })
+            .limit(20);
+          userUploads = (uploadRows || [])
             .filter(r => r.supabase_url || r.file_path)
             .map(r => ({
               fileId: r.upload_id,
               name: r.name,
               fileType: 'image',
               createdAt: r.created_at,
-              // Prefer Supabase CDN URL (works anywhere), fallback to Railway serve
               url: r.supabase_url || `/api/chat/uploads/preview/${r.upload_id}`,
               hasContent: false,
               source: 'user_upload'
@@ -2414,11 +2416,19 @@ router.post('/upload', async (req, res) => {
             logger.warn('Supabase storage error (non-fatal)', { error: storErr.message });
           }
 
-          await pool.query(`
-            INSERT INTO chat_uploads (upload_id, session_id, user_id, name, mime_type, file_size, file_path, supabase_url)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            ON CONFLICT (upload_id) DO NOTHING
-          `, [uploadId, sessionId, userId || null, f.name || 'upload.jpg', f.type || 'image/jpeg', buf.length, filePath, supabaseUrl]);
+          // Save to Supabase (not Railway Postgres)
+          const { createClient: _sc2 } = await import('@supabase/supabase-js');
+          const _sb2 = _sc2(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+          await _sb2.from('chat_uploads').upsert({
+            upload_id: uploadId,
+            session_id: sessionId,
+            user_id: userId || null,
+            name: f.name || 'upload.jpg',
+            mime_type: f.type || 'image/jpeg',
+            file_size: buf.length,
+            file_path: filePath,
+            supabase_url: supabaseUrl
+          }, { onConflict: 'upload_id' });
           uploadedFiles.push({ name: f.name, uploadId, previewUrl: `/api/chat/uploads/preview/${uploadId}`, supabaseUrl });
         } catch (saveErr) {
           logger.warn('Failed to save chat upload', { name: f.name, error: saveErr.message });
@@ -2625,19 +2635,24 @@ router.get('/calls', async (req, res) => {
 
 // GET /api/chat/uploads/list?sessionId=xxx — list uploads for a session (for Files panel)
 router.get('/uploads/list', async (req, res) => {
-  const pool = await getPool();
   try {
     const { sessionId } = req.query;
     if (!sessionId) return res.json({ uploads: [] });
-    const result = await pool.query(
-      'SELECT upload_id, name, mime_type, file_size, created_at FROM chat_uploads WHERE session_id = $1 ORDER BY created_at ASC LIMIT 50',
-      [sessionId]
-    );
-    return res.json({ uploads: result.rows.map(r => ({
+    const { createClient } = await import('@supabase/supabase-js');
+    const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const { data, error } = await sb
+      .from('chat_uploads')
+      .select('upload_id, name, mime_type, file_size, supabase_url, created_at')
+      .eq('session_id', sessionId)
+      .order('created_at', { ascending: true })
+      .limit(50);
+    if (error) throw error;
+    return res.json({ uploads: (data || []).map(r => ({
       uploadId: r.upload_id,
       name: r.name,
       mimeType: r.mime_type,
       fileSize: r.file_size,
+      previewUrl: r.supabase_url || `/api/chat/uploads/preview/${r.upload_id}`,
       createdAt: r.created_at
     }))});
   } catch (err) {
@@ -2646,22 +2661,28 @@ router.get('/uploads/list', async (req, res) => {
   }
 });
 
-// GET /api/chat/uploads/preview/:uploadId — serve user-uploaded images from any computer
+// GET /api/chat/uploads/preview/:uploadId — serve user-uploaded images
+// Redirects to Supabase CDN URL if available (works on any computer), else serves from disk
 router.get('/uploads/preview/:uploadId', async (req, res) => {
-  const pool = await getPool();
   try {
     const { uploadId } = req.params;
-    const result = await pool.query(
-      'SELECT name, mime_type, file_path FROM chat_uploads WHERE upload_id = $1', [uploadId]
-    );
-    if (!result.rows.length) return res.status(404).json({ error: 'Upload not found' });
-    const { name, mime_type, file_path } = result.rows[0];
-    if (file_path && fs.existsSync(file_path)) {
-      res.setHeader('Content-Type', mime_type || 'image/jpeg');
+    const { createClient } = await import('@supabase/supabase-js');
+    const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const { data, error } = await sb
+      .from('chat_uploads')
+      .select('name, mime_type, file_path, supabase_url')
+      .eq('upload_id', uploadId)
+      .single();
+    if (error || !data) return res.status(404).json({ error: 'Upload not found' });
+    // Prefer Supabase CDN — redirect so browser caches it
+    if (data.supabase_url) return res.redirect(302, data.supabase_url);
+    // Fallback: serve from Railway disk
+    if (data.file_path && fs.existsSync(data.file_path)) {
+      res.setHeader('Content-Type', data.mime_type || 'image/jpeg');
       res.setHeader('Cache-Control', 'public, max-age=86400');
-      return fs.createReadStream(file_path).pipe(res);
+      return fs.createReadStream(data.file_path).pipe(res);
     }
-    return res.status(404).json({ error: 'File not on disk' });
+    return res.status(404).json({ error: 'File not available' });
   } catch (err) {
     logger.error('Chat upload preview error', { error: err.message });
     return res.status(500).json({ error: 'Preview failed' });
