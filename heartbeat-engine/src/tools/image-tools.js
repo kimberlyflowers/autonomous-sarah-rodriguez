@@ -487,8 +487,8 @@ async function generateWithNanoBanana(prompt, size, referenceImageUrl, reference
     const data = await response.json();
 
     // Find image part in response
-    const parts = data.candidates?.[0]?.content?.parts || [];
-    const imagePart = parts.find(p => p.inlineData?.mimeType?.startsWith('image/'));
+    const responseParts = data.candidates?.[0]?.content?.parts || [];
+    const imagePart = responseParts.find(p => p.inlineData?.mimeType?.startsWith('image/'));
 
     if (!imagePart) {
       throw new Error('No image in Nano Banana response');
@@ -499,7 +499,7 @@ async function generateWithNanoBanana(prompt, size, referenceImageUrl, reference
     fs.writeFileSync(filepath, Buffer.from(imagePart.inlineData.data, 'base64'));
 
     // Get any text description
-    const textPart = parts.find(p => p.text);
+    const textPart = responseParts.find(p => p.text);
 
     return {
       success: true,
