@@ -741,10 +741,98 @@ function getConnectorList() {
   }));
 }
 
+// ══════════════════════════════════════════════════════════════
+// HIGH-LEVEL WRAPPERS (used by index.js routes)
+// ══════════════════════════════════════════════════════════════
+
+const BASE_URL = process.env.RAILWAY_PUBLIC_DOMAIN
+  ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+  : 'https://autonomous-sarah-rodriguez-production.up.railway.app';
+
+/**
+ * buildAuthUrl — encodes orgId into state, builds redirect URI, returns full auth URL
+ * Called by GET /oauth/connect/:slug
+ */
+function buildAuthUrl(slug, orgId) {
+  const redirectUri = `${BASE_URL}/oauth/callback/${slug}`;
+  const state = Buffer.from(JSON.stringify({ orgId, slug, ts: Date.now() })).toString('base64url');
+  return getAuthUrl(slug, redirectUri, state);
+}
+
+/**
+ * handleCallback — exchanges code for token, saves to Supabase user_connectors
+ * Called by GET /oauth/callback/:slug
+ */
+async function handleCallback(slug, code, state) {
+  const connector = getConnector(slug);
+
+  // Decode state to get orgId
+  let orgId;
+  try {
+    const decoded = JSON.parse(Buffer.from(state, 'base64url').toString('utf8'));
+    orgId = decoded.orgId;
+  } catch {
+    throw new Error(`Invalid OAuth state parameter for ${slug}`);
+  }
+
+  if (!orgId) throw new Error(`Missing orgId in OAuth state for ${slug}`);
+
+  const redirectUri = `${BASE_URL}/oauth/callback/${slug}`;
+  const tokenData = await exchangeCodeForToken(slug, code, redirectUri);
+
+  // Save token to Supabase
+  const { createClient } = await import('@supabase/supabase-js');
+  const supabase = createClient(
+    process.env.SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_KEY,
+    { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } }
+  );
+
+  // Look up connector row by slug
+  const { data: connectorRow, error: connectorErr } = await supabase
+    .from('connectors')
+    .select('id')
+    .eq('slug', slug)
+    .single();
+
+  if (connectorErr || !connectorRow) {
+    throw new Error(`Connector slug "${slug}" not found in connectors table. Add it first.`);
+  }
+
+  const expiresAt = tokenData.expires_in
+    ? new Date(Date.now() + tokenData.expires_in * 1000).toISOString()
+    : null;
+
+  // Upsert into user_connectors (one row per org+connector)
+  const { error: upsertErr } = await supabase
+    .from('user_connectors')
+    .upsert({
+      connector_id: connectorRow.id,
+      organization_id: orgId,
+      access_token: tokenData.access_token,
+      refresh_token: tokenData.refresh_token || null,
+      token_expires_at: expiresAt,
+      granted_scopes: connector.scopes || [],
+      status: 'active',
+      connected_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }, {
+      onConflict: 'connector_id,organization_id',
+    });
+
+  if (upsertErr) {
+    throw new Error(`Failed to save ${connector.name} token: ${upsertErr.message}`);
+  }
+
+  return { connector: connector.name, slug, orgId };
+}
+
 module.exports = {
   CONNECTORS,
   getConnector,
   getAuthUrl,
   exchangeCodeForToken,
   getConnectorList,
+  buildAuthUrl,
+  handleCallback,
 };
