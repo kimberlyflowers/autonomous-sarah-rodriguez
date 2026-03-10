@@ -1160,12 +1160,20 @@ async function executeTool(toolName, toolInput, sessionId = null) {
   try {
     // bloom_log goes to database
     if (toolName === 'bloom_log') {
-      const pool = await getPool();
-      const result = await pool.query(
-        'INSERT INTO action_log (action_type, description, input_data) VALUES ($1, $2, $3) RETURNING *',
-        [toolInput.type, toolInput.message, JSON.stringify(toolInput)]
-      );
-      return { logged: result.rows[0] };
+      try {
+        const { createClient } = await import('@supabase/supabase-js');
+        const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+        const { data } = await sb.from('action_log').insert({
+          action_type: toolInput.type,
+          description: toolInput.message,
+          input_data: toolInput,
+          session_id: sessionId
+        }).select().single();
+        return { logged: data };
+      } catch (err) {
+        logger.warn('bloom_log insert failed', { error: err.message });
+        return { logged: null };
+      }
     }
 
     // All GHL tools + notify_owner route through the unified executor
@@ -1644,17 +1652,14 @@ async function chatWithSarah(userMessage, history, agentConfig, sessionId = null
   
   // Inject brand kit if available
   try {
-    const { getSharedPool } = await import('../database/pool.js');
-    const pool = getSharedPool();
-    const bkRes = await pool.query(`SELECT value FROM user_settings WHERE key='brand_kits'`).catch(()=>({rows:[]}));
+    const { createClient } = await import('@supabase/supabase-js');
+    const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
     let allKits = [];
-    if (bkRes.rows[0]?.value) {
-      allKits = JSON.parse(bkRes.rows[0].value);
-    }
-    // Fallback to old single kit format
+    const { data: bkRow } = await sb.from('user_settings').select('value').eq('key','brand_kits').maybeSingle();
+    if (bkRow?.value) allKits = JSON.parse(bkRow.value);
     if (allKits.length === 0) {
-      const oldRes = await pool.query(`SELECT value FROM user_settings WHERE key='brand_kit'`).catch(()=>({rows:[]}));
-      if (oldRes.rows[0]?.value) allKits = [JSON.parse(oldRes.rows[0].value)];
+      const { data: oldRow } = await sb.from('user_settings').select('value').eq('key','brand_kit').maybeSingle();
+      if (oldRow?.value) allKits = [JSON.parse(oldRow.value)];
     }
     
     logger.info('Brand kit check', { kitsFound: allKits.length, hasColors: allKits[0]?.colors?.length || 0 });
@@ -1837,155 +1842,48 @@ IMPORTANT: Since a brand kit is configured, DO NOT ask the user about colors, fo
 // ROUTES — DB-backed persistent sessions
 
 let _tablesReady = false;
-async function ensureSession(pool, sessionId, userId = null) {
-  if (!_tablesReady) {
-  // Create tables if missing (only runs on first call)
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS chat_sessions (
-      id VARCHAR(64) PRIMARY KEY,
-      agent_id VARCHAR(64) DEFAULT 'bloomie-sarah-rodriguez',
-      title TEXT,
-      created_at TIMESTAMPTZ DEFAULT NOW(),
-      updated_at TIMESTAMPTZ DEFAULT NOW(),
-      message_count INTEGER DEFAULT 0
-    )
-  `);
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS chat_messages (
-      id SERIAL PRIMARY KEY,
-      session_id VARCHAR(64),
-      role VARCHAR(16),
-      content TEXT,
-      files JSONB,
-      created_at TIMESTAMPTZ DEFAULT NOW()
-    )
-  `);
-
-  // Nuclear migration: check if chat_messages has the right schema
-  // If it has old columns (message/sender/timestamp), rename it and create fresh
-  try {
-    const cols = await pool.query(`
-      SELECT column_name FROM information_schema.columns
-      WHERE table_name='chat_messages' AND table_schema='public'
-    `);
-    const colNames = cols.rows.map(r => r.column_name);
-    const hasOldSchema = colNames.includes('message') || colNames.includes('sender');
-    const hasMissingCols = !colNames.includes('role') || !colNames.includes('content');
-
-    if (hasOldSchema || hasMissingCols) {
-      logger.info('chat_messages has legacy schema — migrating to new schema');
-      // Archive old table, create fresh one
-      await pool.query(`ALTER TABLE chat_messages RENAME TO chat_messages_legacy_${Date.now()}`);
-      await pool.query(`
-        CREATE TABLE chat_messages (
-          id SERIAL PRIMARY KEY,
-          session_id VARCHAR(64),
-          role VARCHAR(16),
-          content TEXT,
-          files JSONB,
-          created_at TIMESTAMPTZ DEFAULT NOW()
-        )
-      `);
-      logger.info('chat_messages recreated with correct schema');
-    }
-  } catch(e) {
-    logger.warn('Schema migration check failed (non-critical):', e.message);
-  }
-
-  // Add any missing columns to chat_sessions
-  const sessionMigrations = [
-    `ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS agent_id VARCHAR(64) DEFAULT 'bloomie-sarah-rodriguez'`,
-    `ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS title TEXT`,
-    `ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`,
-    `ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS message_count INTEGER DEFAULT 0`,
-  ];
-  for (const sql of sessionMigrations) {
-    try { await pool.query(sql); } catch(e) { /* already exists */ }
-  }
-  _tablesReady = true;
-  } // end if (!_tablesReady)
-
-  // Ensure session row exists (always runs)
-  await pool.query(
-    `INSERT INTO chat_sessions(id) VALUES($1) ON CONFLICT(id) DO NOTHING`,
-    [sessionId]
-  );
-  
-  // ALSO create session in Supabase (for project organization)
+async function ensureSession(_pool, sessionId, userId = null) {
+  // Supabase only — pool param kept for call-chain compatibility but not used
   try {
     const { createClient } = await import('@supabase/supabase-js');
-    const supabaseUrl = process.env.SUPABASE_URL;
-    const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
-    
-    if (supabaseUrl && supabaseKey) {
-      const supabase = createClient(supabaseUrl, supabaseKey);
-      const resolvedUserId = userId || process.env.BLOOM_OWNER_USER_ID || '823e2fb5-2f8f-4279-9c84-c8f4bf78bcce';
-      
-      // Insert into Supabase sessions table (upsert to handle existing sessions)
-      const { error } = await supabase
-        .from('sessions')
-        .upsert({
-          id: sessionId,
-          user_id: resolvedUserId,
-          organization_id: process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001',
-          agent_id: process.env.AGENT_UUID || 'c3000000-0000-0000-0000-000000000003',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        }, {
-          onConflict: 'id'
-        });
-      
-      if (!error) {
-        logger.info(`Session ${sessionId} synced to Supabase`);
-      }
-    }
+    const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const resolvedUserId = userId || process.env.BLOOM_OWNER_USER_ID || '823e2fb5-2f8f-4279-9c84-c8f4bf78bcce';
+    await sb.from('sessions').upsert({
+      id: sessionId,
+      user_id: resolvedUserId,
+      organization_id: process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001',
+      agent_id: process.env.AGENT_UUID || 'c3000000-0000-0000-0000-000000000003',
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'id', ignoreDuplicates: false });
+    logger.info(`Session ${sessionId} ensured in Supabase`);
   } catch (err) {
-    // Don't fail chat creation if Supabase sync fails - Railway is source of truth for messages
-    logger.warn(`Failed to sync session to Supabase:`, err.message);
+    logger.warn(`ensureSession failed:`, err.message);
   }
 }
 
-async function loadHistory(pool, sessionId) {
-  // Load chat history from SUPABASE (source of truth)
+
+async function loadHistory(_pool, sessionId) {
+  // Supabase only — pool param kept for call-chain compatibility but not used
   try {
     const { createClient } = await import('@supabase/supabase-js');
-    const supabaseUrl = process.env.SUPABASE_URL;
-    const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
-    const supabase = createClient(supabaseUrl, supabaseKey);
-    
-    const { data, error } = await supabase
+    const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const { data, error } = await sb
       .from('messages')
       .select('role, content, created_at')
       .eq('session_id', sessionId)
       .order('created_at', { ascending: true })
       .limit(40);
-    
-    if (error) {
-      logger.warn(`Supabase history load failed, trying Railway fallback:`, error.message);
-      // Fallback to Railway if Supabase fails
-      const res = await pool.query(
-        `SELECT role, content FROM chat_messages WHERE session_id=$1 ORDER BY created_at ASC LIMIT 40`,
-        [sessionId]
-      );
-      return res.rows.map(r => ({ role: r.role, content: r.content }));
-    }
-    
-    // Map Supabase schema — role is already 'user'/'assistant'
+    if (error) throw error;
     return (data || []).map(msg => ({
       role: msg.role === 'sarah' ? 'assistant' : msg.role,
       content: msg.content
     }));
-    
   } catch (err) {
-    logger.error('Failed to load history from Supabase:', err);
-    // Fallback to Railway
-    const res = await pool.query(
-      `SELECT role, content FROM chat_messages WHERE session_id=$1 ORDER BY created_at ASC LIMIT 40`,
-      [sessionId]
-    );
-    return res.rows.map(r => ({ role: r.role, content: r.content }));
+    logger.error('loadHistory failed:', err.message);
+    return [];
   }
 }
+
 
 async function generateSessionTitle(sessionId, userMsg, assistantMsg) {
   try {
@@ -2013,7 +1911,7 @@ Title:`;
   }
 }
 
-async function saveMessages(pool, sessionId, userMsg, assistantMsg, files = null, userId = null) {
+async function saveMessages(_pool, sessionId, userMsg, assistantMsg, files = null, userId = null) {
   const userText = typeof userMsg === 'string' ? userMsg : JSON.stringify(userMsg);
   
   // Save messages to SUPABASE (source of truth for millions of users)
@@ -2048,53 +1946,13 @@ async function saveMessages(pool, sessionId, userMsg, assistantMsg, files = null
         content: assistantMsg
       });
     
-    // Update session metadata — generate title from first user message if not set
-    const titleSnippet = userText.slice(0, 60).replace(/\s+\S*$/, '').trim() || userText.slice(0, 60);
-    await supabase.rpc('update_session_metadata', {
-      p_session_id: sessionId,
-      p_title: titleSnippet,
-      p_updated_at: new Date().toISOString()
-    }).then(async ({ error: rpcError }) => {
-      // Fallback if RPC doesn't exist — use direct update with coalesce logic
-      if (rpcError) {
-        // Only set title if it's currently null
-        const { data: existing } = await supabase
-          .from('sessions')
-          .select('title')
-          .eq('id', sessionId)
-          .single();
-        await supabase
-          .from('sessions')
-          .update({ 
-            updated_at: new Date().toISOString(),
-            title: existing?.title || titleSnippet
-          })
-          .eq('id', sessionId);
-      }
-    });
+    // Update session updated_at only — title is set by generateSessionTitle with Claude
+    await supabase.from('sessions').update({ updated_at: new Date().toISOString() }).eq('id', sessionId);
     
     logger.info(`Messages saved to Supabase for session ${sessionId}`);
     
   } catch (err) {
-    logger.error('Failed to save messages to Supabase:', err);
-    // Fall back to Railway as backup only if Supabase fails
-    await pool.query(
-      `INSERT INTO chat_messages(session_id, role, content, files) VALUES($1,'user',$2,$3)`,
-      [sessionId, userText, files ? JSON.stringify(files) : null]
-    );
-    await pool.query(
-      `INSERT INTO chat_messages(session_id, role, content) VALUES($1,'assistant',$2)`,
-      [sessionId, assistantMsg]
-    );
-    await pool.query(
-      `UPDATE chat_sessions SET
-         updated_at = NOW(),
-         message_count = message_count + 2,
-         title = CASE WHEN title IS NULL THEN LEFT(REGEXP_REPLACE($2, '\s+\S*$', ''), 60) ELSE title END
-       WHERE id = $1`,
-      [sessionId, userText]
-    );
-    logger.warn('Fell back to Railway Postgres for message storage');
+    logger.error('Failed to save messages to Supabase:', err.message);
   }
 }
 
@@ -2124,17 +1982,12 @@ router.get('/sessions', async (req, res) => {
         return res.json({ sessions: [] });
       }
       
-      // Add message_count from Railway if sessions exist there
-      const pool = await getPool();
+      // message_count not stored in Supabase — omit Railway lookup
       const sessionsWithCounts = await Promise.all((data || []).map(async (session) => {
         try {
-          const result = await pool.query(
-            `SELECT message_count FROM chat_sessions WHERE id = $1`,
-            [session.id]
-          );
           return {
             ...session,
-            message_count: result.rows[0]?.message_count || 0
+            message_count: 0
           };
         } catch {
           return { ...session, message_count: 0 };
@@ -2181,17 +2034,7 @@ router.get('/sessions/:id', async (req, res) => {
     res.json({ messages: data || [] });
   } catch (e) {
     logger.error('Session load error', { error: e.message });
-    // Fallback to Railway Postgres for older sessions
-    try {
-      const pool = await getPool();
-      const msgs = await pool.query(
-        `SELECT id, role, content, files, created_at FROM chat_messages WHERE session_id=$1 ORDER BY created_at ASC`,
-        [req.params.id]
-      );
-      res.json({ messages: msgs.rows });
-    } catch {
-      res.json({ messages: [] });
-    }
+    res.json({ messages: [] });
   }
 });
 
@@ -2221,7 +2064,6 @@ router.patch('/sessions/:id/title', async (req, res) => {
 });
 
 router.post('/message', async (req, res) => {
-  const pool = await getPool();
   // Track which skills Sarah loads during this turn — shown as badges in the dashboard
   let skillsUsedThisTurn = [];
   try {
@@ -2294,7 +2136,6 @@ router.post('/message', async (req, res) => {
 
 // POST /api/chat/upload — accept files + optional message, send to Sarah as multipart content
 router.post('/upload', async (req, res) => {
-  const pool = await getPool();
   try {
     const { message = '', sessionId = 'session-' + Date.now(), files = [] } = req.body;
     if (!files.length && !message.trim()) {
@@ -2546,34 +2387,23 @@ router.post('/ingest-call', async (req, res) => {
       transcriptLength: transcript.length,
     });
 
-    // Store call metadata in database
-    const { getSharedPool } = await import('../database/pool.js'); const pool = getSharedPool();
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS call_transcripts (
-        id SERIAL PRIMARY KEY,
-        call_id VARCHAR(128),
-        contact_id VARCHAR(128),
-        contact_name TEXT,
-        contact_phone VARCHAR(32),
-        direction VARCHAR(16),
-        duration INTEGER,
-        transcript TEXT,
-        summary TEXT,
-        session_id VARCHAR(64),
-        status VARCHAR(32) DEFAULT 'received',
-        created_at TIMESTAMPTZ DEFAULT NOW()
-      )
-    `);
+    // Store call metadata in Supabase
+    const { createClient } = await import('@supabase/supabase-js');
+    const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
-    // Find or create a persistent session for this contact's phone conversations
-    // This means all calls from the same person share context — Sarah remembers
     const phoneSessionId = `phone-${contactId || contactPhone || 'unknown'}`;
 
-    const insertResult = await pool.query(
-      `INSERT INTO call_transcripts(call_id, contact_id, contact_name, contact_phone, direction, duration, transcript, summary, session_id)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
-      [callId, contactId, contactName, contactPhone, callDirection, callDuration, transcript, summary, phoneSessionId]
-    );
+    const { data: insertResult } = await sb.from('call_transcripts').insert({
+      call_id: callId,
+      contact_id: contactId,
+      contact_name: contactName,
+      contact_phone: contactPhone,
+      direction: callDirection,
+      duration: callDuration,
+      transcript,
+      summary,
+      session_id: phoneSessionId
+    }).select('id').single();
 
     // Format the transcript as a message FROM the caller
     // This goes through Sarah's normal chat pipeline — same memory, same tools, same context
@@ -2594,10 +2424,9 @@ router.post('/ingest-call', async (req, res) => {
     const messageData = await messageRes.json();
 
     // Update call record with status
-    await pool.query(
-      `UPDATE call_transcripts SET status='processed' WHERE id=$1`,
-      [insertResult.rows[0]?.id]
-    );
+    if (insertResult?.id) {
+      await sb.from('call_transcripts').update({ status: 'processed' }).eq('id', insertResult.id);
+    }
 
     logger.info('📞 Call processed through Sarah pipeline', { 
       contactName, sessionId: phoneSessionId,
@@ -2609,7 +2438,7 @@ router.post('/ingest-call', async (req, res) => {
 
     res.json({ 
       success: true, 
-      callId: insertResult.rows[0]?.id,
+      callId: insertResult?.id,
       sessionId: phoneSessionId,
       response: messageData.response,
     });
@@ -2623,11 +2452,10 @@ router.post('/ingest-call', async (req, res) => {
 // GET /api/chat/calls — list recent calls for dashboard
 router.get('/calls', async (req, res) => {
   try {
-    const { getSharedPool } = await import('../database/pool.js'); const pool = getSharedPool();
-    const result = await pool.query(
-      `SELECT * FROM call_transcripts ORDER BY created_at DESC LIMIT 50`
-    );
-    res.json({ calls: result.rows });
+    const { createClient } = await import('@supabase/supabase-js');
+    const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const { data } = await sb.from('call_transcripts').select('*').order('created_at', { ascending: false }).limit(50);
+    res.json({ calls: data || [] });
   } catch (e) {
     res.json({ calls: [] });
   }
