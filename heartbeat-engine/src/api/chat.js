@@ -13,6 +13,9 @@ try {
   console.warn('Skills failed to load (non-critical):', e.message);
 }
 import { loadAgentConfig } from '../config/agent-profile.js';
+import path from 'path';
+import fs from 'fs';
+import crypto from 'crypto';
 
 const router = express.Router();
 const logger = createLogger('chat-api');
@@ -2349,13 +2352,41 @@ router.post('/upload', async (req, res) => {
     const content = userContent.length === 1 && userContent[0].type === 'text' ? userContent[0].text : userContent;
     const response = await chatWithSarah(content, history, agentConfig, sessionId);
 
+    // Save uploaded images to chat_uploads (separate from artifacts/Files tab)
+    // These are user-provided context images, NOT Bloomie-created deliverables
+    const uploadedFiles = [];
+    const UPLOAD_STORAGE = process.env.FILE_STORAGE_PATH
+      ? path.join(process.env.FILE_STORAGE_PATH, 'chat-uploads')
+      : path.join(process.cwd(), 'bloom-files', 'chat-uploads');
+    fs.mkdirSync(UPLOAD_STORAGE, { recursive: true });
+
+    for (const f of files) {
+      if (f.type?.startsWith('image/') && f.data) {
+        try {
+          const uploadId = `upl_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+          const ext = f.type.includes('png') ? '.png' : '.jpg';
+          const filePath = path.join(UPLOAD_STORAGE, `${uploadId}${ext}`);
+          const buf = Buffer.from(f.data, 'base64');
+          fs.writeFileSync(filePath, buf);
+          await pool.query(`
+            INSERT INTO chat_uploads (upload_id, session_id, user_id, name, mime_type, file_size, file_path)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            ON CONFLICT (upload_id) DO NOTHING
+          `, [uploadId, sessionId, userId || null, f.name || 'upload.jpg', f.type || 'image/jpeg', buf.length, filePath]);
+          uploadedFiles.push({ name: f.name, uploadId, previewUrl: `/api/chat/uploads/preview/${uploadId}` });
+        } catch (saveErr) {
+          logger.warn('Failed to save chat upload', { name: f.name, error: saveErr.message });
+        }
+      }
+    }
+
     const historyLabel = files.length
       ? `[Files: ${files.map(f => f.name).join(', ')}]${textMsg ? ' ' + textMsg : ''}`
       : textMsg;
     const filesMeta = files.map(f => ({ name: f.name, type: f.type }));
     await saveMessages(pool, sessionId, historyLabel, response, filesMeta, userId);
 
-    return res.json({ response, sessionId });
+    return res.json({ response, sessionId, uploadedFiles });
   } catch (error) {
     logger.error('Upload chat error', { 
       error: error.message, 
@@ -2543,6 +2574,28 @@ router.get('/calls', async (req, res) => {
     res.json({ calls: result.rows });
   } catch (e) {
     res.json({ calls: [] });
+  }
+});
+
+// GET /api/chat/uploads/preview/:uploadId — serve user-uploaded images from any computer
+router.get('/uploads/preview/:uploadId', async (req, res) => {
+  const pool = await getPool();
+  try {
+    const { uploadId } = req.params;
+    const result = await pool.query(
+      'SELECT name, mime_type, file_path FROM chat_uploads WHERE upload_id = $1', [uploadId]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Upload not found' });
+    const { name, mime_type, file_path } = result.rows[0];
+    if (file_path && fs.existsSync(file_path)) {
+      res.setHeader('Content-Type', mime_type || 'image/jpeg');
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      return fs.createReadStream(file_path).pipe(res);
+    }
+    return res.status(404).json({ error: 'File not on disk' });
+  } catch (err) {
+    logger.error('Chat upload preview error', { error: err.message });
+    return res.status(500).json({ error: 'Preview failed' });
   }
 });
 
