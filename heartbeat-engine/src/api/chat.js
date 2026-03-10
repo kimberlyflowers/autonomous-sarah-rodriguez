@@ -1987,12 +1987,12 @@ async function loadHistory(pool, sessionId) {
   }
 }
 
-async function generateSessionTitle(pool, sessionId, userMsg, assistantMsg) {
+async function generateSessionTitle(sessionId, userMsg, assistantMsg) {
   try {
-    const prompt = `Based on this conversation exchange, generate a short, specific chat title (4-6 words max). 
-No punctuation at the end. No quotes. Just the title itself — like Claude does it.
+    const msgText = typeof userMsg === 'string' ? userMsg : JSON.stringify(userMsg);
+    const prompt = `Based on this conversation, generate a short specific chat title (4-6 words max). No punctuation at the end. No quotes. Just the title.
 
-User: ${userMsg.slice(0, 300)}
+User: ${msgText.slice(0, 300)}
 Assistant: ${assistantMsg.slice(0, 300)}
 
 Title:`;
@@ -2001,29 +2001,15 @@ Title:`;
       max_tokens: 20,
       messages: [{ role: 'user', content: prompt }]
     });
-    const title = result.content[0]?.text?.trim().replace(/^["']|["']$/g, '').slice(0, 60);
+    const title = result.content[0]?.text?.trim().replace(/^["'']|["'']$/g, '').slice(0, 60);
     if (title) {
-      await pool.query(`UPDATE chat_sessions SET title=$1 WHERE id=$2`, [title, sessionId]);
-      
-      // Also update title in Supabase
-      try {
-        const { createClient } = await import('@supabase/supabase-js');
-        const supabaseUrl = process.env.SUPABASE_URL;
-        const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
-        
-        if (supabaseUrl && supabaseKey) {
-          const supabase = createClient(supabaseUrl, supabaseKey);
-          await supabase
-            .from('sessions')
-            .update({ title, updated_at: new Date().toISOString() })
-            .eq('id', sessionId);
-        }
-      } catch (err) {
-        logger.warn(`Failed to sync title to Supabase:`, err.message);
-      }
+      const { createClient } = await import('@supabase/supabase-js');
+      const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+      await sb.from('sessions').update({ title, updated_at: new Date().toISOString() }).eq('id', sessionId);
+      logger.info(`Session title set: "${title}"`, { sessionId });
     }
   } catch (e) {
-    // Non-critical — title stays as first-message truncation fallback
+    // Non-critical
   }
 }
 
@@ -2162,14 +2148,19 @@ router.get('/sessions', async (req, res) => {
     }
   }
   
-  // Otherwise, query Railway Postgres (legacy)
-  const pool = await getPool();
+  // Default: query Supabase sessions for this user
   try {
-    const result = await pool.query(
-      `SELECT id, title, message_count, created_at, updated_at
-       FROM chat_sessions ORDER BY updated_at DESC LIMIT 50`
-    );
-    res.json({ sessions: result.rows });
+    const { createClient } = await import('@supabase/supabase-js');
+    const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const resolvedUserId = process.env.BLOOM_OWNER_USER_ID || '823e2fb5-2f8f-4279-9c84-c8f4bf78bcce';
+    const { data, error } = await sb
+      .from('sessions')
+      .select('id, title, created_at, updated_at')
+      .eq('user_id', resolvedUserId)
+      .order('updated_at', { ascending: false })
+      .limit(50);
+    if (error) throw error;
+    res.json({ sessions: data || [] });
   } catch (e) {
     logger.error('Sessions fetch error', { error: e.message });
     res.json({ sessions: [] });
@@ -2206,9 +2197,11 @@ router.get('/sessions/:id', async (req, res) => {
 
 // DELETE /api/chat/sessions/:id
 router.delete('/sessions/:id', async (req, res) => {
-  const pool = await getPool();
   try {
-    await pool.query(`DELETE FROM chat_sessions WHERE id=$1`, [req.params.id]);
+    const { createClient } = await import('@supabase/supabase-js');
+    const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    await sb.from('messages').delete().eq('session_id', req.params.id);
+    await sb.from('sessions').delete().eq('id', req.params.id);
     res.json({ success: true });
   } catch (e) {
     res.json({ success: false });
@@ -2217,9 +2210,10 @@ router.delete('/sessions/:id', async (req, res) => {
 
 // PATCH /api/chat/sessions/:id/title
 router.patch('/sessions/:id/title', async (req, res) => {
-  const pool = await getPool();
   try {
-    await pool.query(`UPDATE chat_sessions SET title=$1 WHERE id=$2`, [req.body.title, req.params.id]);
+    const { createClient } = await import('@supabase/supabase-js');
+    const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    await sb.from('sessions').update({ title: req.body.title, updated_at: new Date().toISOString() }).eq('id', req.params.id);
     res.json({ success: true });
   } catch (e) {
     res.json({ success: false });
@@ -2285,7 +2279,7 @@ router.post('/message', async (req, res) => {
 
     // Generate a smart title after the first message (history was empty = first exchange)
     if (history.length === 0) {
-      generateSessionTitle(pool, sessionId, message, cleanResponse).catch(() => {});
+      generateSessionTitle(sessionId, message, cleanResponse).catch(() => {});
     }
 
     return res.json({ response: cleanResponse, sessionId, skillsUsed: skillsUsedThisTurn });
@@ -2441,6 +2435,12 @@ router.post('/upload', async (req, res) => {
       : textMsg;
     const filesMeta = files.map(f => ({ name: f.name, type: f.type }));
     await saveMessages(pool, sessionId, historyLabel, response, filesMeta, userId);
+
+    // Generate smart title on first message (same as text endpoint)
+    if (history.length === 0) {
+      const titleMsg = textMsg || (files.length ? `Uploaded ${files.map(f=>f.name).join(', ')}` : 'Shared files');
+      generateSessionTitle(sessionId, titleMsg, response).catch(() => {});
+    }
 
     return res.json({ response, sessionId, uploadedFiles });
   } catch (error) {
