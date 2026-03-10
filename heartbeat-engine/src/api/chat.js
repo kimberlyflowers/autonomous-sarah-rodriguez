@@ -1193,7 +1193,7 @@ async function executeTool(toolName, toolInput, sessionId = null) {
     if (toolName.startsWith('image_')) {
       try {
         const { executeImageTool } = await import('../tools/image-tools.js');
-        const result = await executeImageTool(toolName, toolInput);
+        const result = await executeImageTool(toolName, { ...toolInput, sessionId: toolInput.sessionId || sessionId });
         if (result.success) return result;
         // Image failed — give Sarah a clean fallback instruction
         return {
