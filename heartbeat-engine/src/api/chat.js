@@ -1164,10 +1164,11 @@ async function executeTool(toolName, toolInput, sessionId = null) {
         const { createClient } = await import('@supabase/supabase-js');
         const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
         const { data } = await sb.from('action_log').insert({
-          action_type: toolInput.type,
-          description: toolInput.message,
+          action_type: toolInput.type || 'log',
+          description: toolInput.message || '',
           input_data: toolInput,
-          session_id: sessionId
+          agent_id: process.env.AGENT_UUID || 'c3000000-0000-0000-0000-000000000003',
+          organization_id: process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001'
         }).select().single();
         return { logged: data };
       } catch (err) {
@@ -1656,10 +1657,11 @@ async function chatWithSarah(userMessage, history, agentConfig, sessionId = null
     const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
     let allKits = [];
     const { data: bkRow } = await sb.from('user_settings').select('value').eq('key','brand_kits').maybeSingle();
-    if (bkRow?.value) allKits = JSON.parse(bkRow.value);
+    // value is jsonb — Supabase returns it already parsed, no JSON.parse needed
+    if (bkRow?.value) allKits = Array.isArray(bkRow.value) ? bkRow.value : [bkRow.value];
     if (allKits.length === 0) {
       const { data: oldRow } = await sb.from('user_settings').select('value').eq('key','brand_kit').maybeSingle();
-      if (oldRow?.value) allKits = [JSON.parse(oldRow.value)];
+      if (oldRow?.value) allKits = [oldRow.value];
     }
     
     logger.info('Brand kit check', { kitsFound: allKits.length, hasColors: allKits[0]?.colors?.length || 0 });
@@ -2399,7 +2401,7 @@ router.post('/ingest-call', async (req, res) => {
       contact_name: contactName,
       contact_phone: contactPhone,
       direction: callDirection,
-      duration: callDuration,
+      duration_seconds: callDuration,
       transcript,
       summary,
       session_id: phoneSessionId
