@@ -381,16 +381,20 @@ app.use('/api/voice', voiceRoutes);
 // ── PUBLIC SITES — clean URLs for published pages (/p/summer-camp) ──────────
 const servePublishedPage = async (req, res) => {
   try {
-    const { getSharedPool } = await import('./database/pool.js');
-    const pool = getSharedPool();
-    const result = await pool.query(
-      'SELECT name, file_type, content_text FROM artifacts WHERE slug = $1 AND published = true',
-      [req.params.slug]
-    );
-    if (!result.rows.length) {
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+    });
+    const { data, error } = await supabase
+      .from('artifacts')
+      .select('name, file_type, content, storage_path')
+      .eq('slug', req.params.slug)
+      .eq('published', true)
+      .maybeSingle();
+    if (error || !data) {
       return res.status(404).send(`<html><body style="font-family:system-ui;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#1a1a1a;color:#fff;margin:0"><div style="text-align:center"><h1 style="font-size:48px;margin:0">404</h1><p style="color:#888;margin-top:8px">This page doesn't exist or has been unpublished.</p></div></body></html>`);
     }
-    const file = result.rows[0];
+    const file = { name: data.name, file_type: data.file_type, content_text: data.content };
     if (file.file_type === 'html' && file.content_text) {
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
       return res.send(file.content_text);
