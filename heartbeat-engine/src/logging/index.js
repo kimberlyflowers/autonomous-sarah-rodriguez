@@ -147,13 +147,13 @@ export async function logRejection(cycleId, candidate, reason, confidence, reaso
 
     // Backup to Supabase
     await backupToSupabase('rejection_log', {
-      cycle_id: cycleId,
-      agent_id: process.env.AGENT_ID,
+      ...(cycleId && cycleId.includes('-') ? { cycle_id: cycleId } : {}),
+      agent_id:         process.env.AGENT_ID || process.env.AGENT_UUID || 'c3000000-0000-0000-0000-000000000003',
+      organization_id:  process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001',
       candidate_action: candidate,
       reason,
-      reason_code: reasonCode,
-      confidence,
-      timestamp: new Date().toISOString()
+      reason_code:      reasonCode,
+      confidence
     });
 
   } catch (error) {
@@ -192,14 +192,14 @@ export async function logHandoff(cycleId, decision) {
 
     // Backup to Supabase
     await backupToSupabase('handoff_log', {
-      cycle_id: cycleId,
-      agent_id: process.env.AGENT_ID,
-      issue: decision.issue,
-      analysis_path: decision.analysis,
-      recommendation: decision.recommendation,
-      confidence: decision.confidence,
-      urgency: decision.urgency || 'MEDIUM',
-      timestamp: new Date().toISOString()
+      ...(cycleId && cycleId.includes('-') ? { cycle_id: cycleId } : {}),
+      agent_id:        process.env.AGENT_ID || process.env.AGENT_UUID || 'c3000000-0000-0000-0000-000000000003',
+      organization_id: process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001',
+      issue:           decision.issue,
+      analysis:        decision.analysis,       // column is 'analysis', not 'analysis_path'
+      recommendation:  decision.recommendation,
+      confidence:      decision.confidence,
+      urgency:         decision.urgency || 'MEDIUM'
     });
 
   } catch (error) {
