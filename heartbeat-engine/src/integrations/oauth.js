@@ -827,7 +827,7 @@ async function handleCallback(slug, code, state) {
   return { connector: connector.name, slug, orgId };
 }
 
-module.exports = {
+export {
   CONNECTORS,
   getConnector,
   getAuthUrl,
