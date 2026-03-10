@@ -2577,6 +2577,29 @@ router.get('/calls', async (req, res) => {
   }
 });
 
+// GET /api/chat/uploads/list?sessionId=xxx — list uploads for a session (for Files panel)
+router.get('/uploads/list', async (req, res) => {
+  const pool = await getPool();
+  try {
+    const { sessionId } = req.query;
+    if (!sessionId) return res.json({ uploads: [] });
+    const result = await pool.query(
+      'SELECT upload_id, name, mime_type, file_size, created_at FROM chat_uploads WHERE session_id = $1 ORDER BY created_at ASC LIMIT 50',
+      [sessionId]
+    );
+    return res.json({ uploads: result.rows.map(r => ({
+      uploadId: r.upload_id,
+      name: r.name,
+      mimeType: r.mime_type,
+      fileSize: r.file_size,
+      createdAt: r.created_at
+    }))});
+  } catch (err) {
+    logger.error('Chat uploads list error', { error: err.message });
+    return res.json({ uploads: [] });
+  }
+});
+
 // GET /api/chat/uploads/preview/:uploadId — serve user-uploaded images from any computer
 router.get('/uploads/preview/:uploadId', async (req, res) => {
   const pool = await getPool();
