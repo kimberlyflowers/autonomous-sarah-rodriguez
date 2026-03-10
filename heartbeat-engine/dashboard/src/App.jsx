@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, Component } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { supabase } from "./supabase.js";
+import PageEditor from "./PageEditor.jsx";
 
 // Get auth headers for API calls
 async function getAuthHeaders() {
@@ -2646,12 +2647,7 @@ function App() {
   const [filesSearch,setFilesSearch]=useState('');
   const [filesRefresh,setFilesRefresh]=useState(0);
   const [previewFile,setPreviewFile]=useState(null); // {name, content, fileId}
-  const [structuredEditor,setStructuredEditor]=useState(null); // {fileId, name, regions, colors}
-  const [structEdits,setStructEdits]=useState({}); // {index: newValue}
-  const [structSaving,setStructSaving]=useState(false);
-  const [editorTab,setEditorTab]=useState('general');   // 'general'|'styles'|'animations'
-  const [selectedRegion,setSelectedRegion]=useState(null); // index into structuredEditor.regions
-  const [liveHtml,setLiveHtml]=useState('');            // live-preview HTML
+  const [pageEditor,setPageEditor]=useState(null); // {fileId, name, content} — GrapesJS editor
   const [editMode,setEditMode]=useState(false);
   const [editContent,setEditContent]=useState('');
   const [editSaving,setEditSaving]=useState(false);
@@ -4297,15 +4293,9 @@ function App() {
                             <div style={{display:'flex',gap:6,marginTop:8}}>
                               <button onClick={async(e)=>{e.stopPropagation();
                                 try{
-                                  const r=await fetch('/api/files/artifacts/'+f.fileId+'/parse-editable');
-                                  if(!r.ok){const txt=await r.text();throw new Error('Server '+r.status+': '+txt.substring(0,80));}
-                                  const d=await r.json();
-                                  if(d.success){
-                                    setSelectedRegion(null);setLiveHtml('');setEditorTab('general');setStructEdits({});
-                                    let htmlContent=f.content;
-                                    if(!htmlContent){try{const cr=await fetch('/api/files/publish/'+f.fileId);if(cr.ok){htmlContent=await cr.text();}}catch{}}
-                                    setStructuredEditor({fileId:f.fileId,name:f.name,regions:d.regions,colors:d.colors,content:htmlContent||''});
-                                  }else{setOauthToast({type:'error',msg:d.error||'Parse failed'});setTimeout(()=>setOauthToast(null),4000);}
+                                  let htmlContent=f.content;
+                                  if(!htmlContent){try{const cr=await fetch('/api/files/publish/'+f.fileId);if(cr.ok){htmlContent=await cr.text();}}catch{}}
+                                  setPageEditor({fileId:f.fileId,name:f.name,content:htmlContent||''});
                                 }catch(err){
                                   console.error('Edit Page failed:',err);
                                   setOauthToast({type:'error',msg:'Edit Page: '+(err.message||'Server unreachable')});
@@ -5248,302 +5238,15 @@ function App() {
           </div>
         </div>
       )}
-{/* ══ GHL-STYLE VISUAL PAGE EDITOR ══ */}
-      {structuredEditor&&(()=>{
-        /* Helper — apply a style change to structEdits and update liveHtml */
-        const region = selectedRegion!==null ? structuredEditor.regions[selectedRegion] : null;
-        const GOOGLE_FONTS = ['Inter','Roboto','Open Sans','Lato','Poppins','Montserrat','Raleway','Nunito','Playfair Display','Merriweather','Source Sans Pro','DM Sans','Outfit','Space Grotesk'];
-        const tagColors = {h1:'#F4A261',h2:'#E76F8B',h3:'#a78bfa',p:'#60a5fa',button:'#34d399',a:'#f472b6'};
-
-        const applyStyleEdit = (regIdx, styleKey, val) => {
-          setStructEdits(prev => {
-            const existing = prev[regIdx] || {};
-            const updated = {...prev, [regIdx]: {...existing, [styleKey]: val}};
-            // Rebuild live html
-            let html = structuredEditor.content || '';
-            Object.entries(updated).forEach(([idx, changes]) => {
-              const r = structuredEditor.regions[parseInt(idx)];
-              if (!r) return;
-              let newTag = r.original;
-              if (changes._text !== undefined) {
-                newTag = newTag.replace(/>([^<]*)<\//, '>' + changes._text + '</');
-              }
-              // Build updated style string
-              const styleChanges = Object.entries(changes).filter(([k])=>k!=='_text'&&k!=='_src');
-              if (styleChanges.length) {
-                const styleStr = styleChanges.map(([k,v])=>k.replace(/_/g,'-')+':'+v).join(';');
-                if (/style=["']/.test(newTag)) {
-                  newTag = newTag.replace(/style=["'][^"']*["']/, `style="${styleStr}"`);
-                } else {
-                  newTag = newTag.replace(/^<(\w+)/, `<$1 style="${styleStr}"`);
-                }
-              }
-              if (changes._src !== undefined) {
-                newTag = newTag.replace(/src=["'][^"']*["']/, `src="${changes._src}"`);
-              }
-              html = html.split(r.original).join(newTag);
-            });
-            setLiveHtml(html);
-            return updated;
-          });
-        };
-
-        const applyTextEdit = (regIdx, val) => applyStyleEdit(regIdx, '_text', val);
-        const applySrcEdit  = (regIdx, val) => applyStyleEdit(regIdx, '_src', val);
-
-        return (
-        <div style={{position:'fixed',inset:0,background:'#0f0f0f',zIndex:300,display:'flex',flexDirection:'column',fontFamily:'Inter,sans-serif'}}>
-
-          {/* ── Top bar ── */}
-          <div style={{height:48,background:'#181818',borderBottom:'1px solid #2a2a2a',display:'flex',alignItems:'center',gap:10,padding:'0 16px',flexShrink:0}}>
-            <button onClick={()=>{setStructuredEditor(null);setSelectedRegion(null);setLiveHtml('');setEditorTab('general');}} style={{width:30,height:30,borderRadius:7,border:'1px solid #333',background:'transparent',cursor:'pointer',color:'#888',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center'}}>←</button>
-            <div style={{width:1,height:20,background:'#2a2a2a'}}/>
-            <div style={{fontSize:13,fontWeight:600,color:'#ccc',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{structuredEditor.name}</div>
-            {Object.keys(structEdits).length>0&&<span style={{fontSize:11,color:'#F4A261',fontWeight:600,background:'rgba(244,162,97,0.1)',padding:'3px 8px',borderRadius:20}}>{Object.keys(structEdits).length} change{Object.keys(structEdits).length!==1?'s':''}</span>}
-            <button onClick={()=>{
-              const changes=Object.entries(structEdits).map(([idx,vals])=>{
-                const r=structuredEditor.regions[parseInt(idx)];
-                if(!r) return null;
-                return Object.entries(vals).map(([k,v])=>'- '+r.tag+' "'+r.text.substring(0,30)+'": set '+(k==='_text'?'text':k==='_src'?'image src':k)+' to "'+v+'"').join('\n');
-              }).filter(Boolean).join('\n');
-              setStructuredEditor(null);setSelectedRegion(null);setLiveHtml('');
-              setPg('chat');setTx('Please update the page "'+structuredEditor.name+'" with these changes:\n'+changes);
-            }} style={{padding:'6px 14px',borderRadius:8,border:'1px solid #F4A261',background:'transparent',cursor:'pointer',fontSize:12,fontWeight:600,color:'#F4A261'}}>Ask Sarah</button>
-            <button onClick={async()=>{
-              setStructSaving(true);
-              const htmlToSave = liveHtml || structuredEditor.content || '';
-              try{
-                const r=await fetch('/api/files/artifacts/'+structuredEditor.fileId+'/apply-raw',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:htmlToSave})});
-                const d=await r.json();
-                if(d.success){setOauthToast({type:'success',msg:'Page saved'});setTimeout(()=>setOauthToast(null),3000);setStructuredEditor(null);setSelectedRegion(null);setLiveHtml('');}
-                else{setOauthToast({type:'error',msg:d.error||'Save failed'});setTimeout(()=>setOauthToast(null),4000);}
-              }catch{}
-              setStructSaving(false);
-            }} disabled={structSaving||Object.keys(structEdits).length===0} style={{padding:'6px 20px',borderRadius:8,border:'none',background:Object.keys(structEdits).length>0?'linear-gradient(135deg,#F4A261,#E76F8B)':'#2a2a2a',color:Object.keys(structEdits).length>0?'#fff':'#555',fontSize:12,fontWeight:700,cursor:Object.keys(structEdits).length>0?'pointer':'default'}}>
-              {structSaving?'Saving...':'Save'}
-            </button>
-          </div>
-
-          {/* ── Body ── */}
-          <div style={{flex:1,display:'flex',overflow:'hidden'}}>
-
-            {/* Left: element list */}
-            <div style={{width:200,background:'#141414',borderRight:'1px solid #222',display:'flex',flexDirection:'column',overflow:'hidden',flexShrink:0}}>
-              <div style={{padding:'10px 12px 6px',fontSize:10,fontWeight:700,color:'#555',letterSpacing:'0.1em',textTransform:'uppercase',flexShrink:0}}>Elements</div>
-              <div style={{flex:1,overflowY:'auto'}}>
-                {structuredEditor.regions.map((r,i)=>(
-                  <div key={i} onClick={()=>{setSelectedRegion(i);setEditorTab('general');}} style={{padding:'7px 12px',cursor:'pointer',borderLeft:'3px solid '+(selectedRegion===i?tagColors[r.tag]||'#F4A261':'transparent'),background:selectedRegion===i?'rgba(255,255,255,0.04)':'transparent',transition:'all .1s'}}>
-                    <div style={{display:'flex',alignItems:'center',gap:6}}>
-                      <span style={{fontSize:8,fontWeight:800,color:tagColors[r.tag]||'#666',letterSpacing:'0.1em',textTransform:'uppercase',minWidth:22,background:((tagColors[r.tag]||'#666')+'18'),padding:'2px 4px',borderRadius:3}}>{r.tag}</span>
-                      <span style={{fontSize:11,color:selectedRegion===i?'#ddd':'#666',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.type==='image'?(r.alt||'Image'):(r.text||'').substring(0,20)}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Center: live iframe preview */}
-            <div style={{flex:1,position:'relative',background:'#fff',overflow:'hidden'}}>
-              <iframe
-                key={structuredEditor.fileId}
-                srcDoc={liveHtml||structuredEditor.content||''}
-                style={{width:'100%',height:'100%',border:'none'}}
-                sandbox="allow-scripts allow-same-origin"
-                title="Live Preview"
-              />
-              <div style={{position:'absolute',bottom:12,left:'50%',transform:'translateX(-50%)',padding:'6px 14px',borderRadius:20,background:'rgba(0,0,0,0.6)',color:'#aaa',fontSize:11,pointerEvents:'none',backdropFilter:'blur(6px)',whiteSpace:'nowrap'}}>
-                Live preview — select element in left panel
-              </div>
-            </div>
-
-            {/* Right: GHL-style 3-tab properties panel */}
-            {region&&(
-              <div style={{width:280,background:'#181818',borderLeft:'1px solid #222',display:'flex',flexDirection:'column',overflow:'hidden',flexShrink:0}}>
-
-                {/* Tab bar */}
-                <div style={{display:'flex',borderBottom:'1px solid #222',flexShrink:0}}>
-                  {['general','styles','animations'].map(t=>(
-                    <button key={t} onClick={()=>setEditorTab(t)} style={{flex:1,padding:'10px 0',border:'none',background:'transparent',cursor:'pointer',fontSize:11,fontWeight:700,color:editorTab===t?'#fff':'#555',borderBottom:'2px solid '+(editorTab===t?'#F4A261':'transparent'),textTransform:'capitalize',transition:'all .15s'}}>
-                      {t.charAt(0).toUpperCase()+t.slice(1)}
-                    </button>
-                  ))}
-                </div>
-
-                <div style={{flex:1,overflowY:'auto',padding:'12px'}}>
-
-                  {/* ── GENERAL TAB ── */}
-                  {editorTab==='general'&&(
-                    <div style={{display:'flex',flexDirection:'column',gap:12}}>
-                      <div style={{fontSize:10,fontWeight:700,color:'#555',letterSpacing:'0.1em',textTransform:'uppercase'}}>Element Name</div>
-                      <div style={{padding:'6px 10px',borderRadius:6,background:'#111',border:'1px solid #2a2a2a',color:'#aaa',fontSize:12}}>{region.tag.toUpperCase()} — {(region.text||region.alt||'Image').substring(0,30)}</div>
-
-                      {region.type==='text'&&(
-                        <>
-                          <div style={{fontSize:10,fontWeight:700,color:'#555',letterSpacing:'0.1em',textTransform:'uppercase',marginTop:4}}>Content</div>
-                          <textarea
-                            value={(structEdits[selectedRegion]?._text)!==undefined?(structEdits[selectedRegion]._text):(region.text||'')}
-                            onChange={e=>applyTextEdit(selectedRegion,e.target.value)}
-                            style={{width:'100%',padding:'8px',borderRadius:6,border:'1px solid #333',background:'#111',color:'#e0e0e0',fontSize:12,fontFamily:'inherit',resize:'vertical',minHeight:60,outline:'none',lineHeight:1.5,boxSizing:'border-box'}}
-                          />
-                        </>
-                      )}
-
-                      {region.type==='image'&&(
-                        <>
-                          <div style={{fontSize:10,fontWeight:700,color:'#555',letterSpacing:'0.1em',textTransform:'uppercase',marginTop:4}}>Image URL</div>
-                          <img src={(structEdits[selectedRegion]?._src)||region.src} alt={region.alt} style={{width:'100%',height:80,objectFit:'cover',borderRadius:6,background:'#111',marginBottom:4}} onError={e=>e.target.style.opacity='0.2'}/>
-                          <input value={(structEdits[selectedRegion]?._src)!==undefined?(structEdits[selectedRegion]._src):(region.src||'')} onChange={e=>applySrcEdit(selectedRegion,e.target.value)} placeholder="Paste image URL..." style={{width:'100%',padding:'7px 10px',borderRadius:6,border:'1px solid #333',background:'#111',color:'#ccc',fontSize:11,fontFamily:'monospace',outline:'none',boxSizing:'border-box'}}/>
-                          <div style={{fontSize:10,fontWeight:700,color:'#555',letterSpacing:'0.1em',textTransform:'uppercase'}}>Alt Text</div>
-                          <input value={region.alt||''} readOnly style={{width:'100%',padding:'7px 10px',borderRadius:6,border:'1px solid #222',background:'#0d0d0d',color:'#666',fontSize:11,outline:'none',boxSizing:'border-box'}}/>
-                          <button onClick={()=>{setStructuredEditor(null);setPg('chat');setTx('Generate a new image for the spot "'+region.alt+'" on the page "'+structuredEditor.name+'". Make it professional and high quality.');}} style={{width:'100%',padding:'8px',borderRadius:6,border:'1px solid #F4A261',background:'transparent',cursor:'pointer',fontSize:11,fontWeight:700,color:'#F4A261'}}>Ask Sarah to Generate Image</button>
-                        </>
-                      )}
-                    </div>
-                  )}
-
-                  {/* ── STYLES TAB ── */}
-                  {editorTab==='styles'&&region.type==='text'&&(()=>{
-                    const cur = k => (structEdits[selectedRegion]?.[k]) ?? (region.styles?.[k] ?? '');
-                    const set = (k,v) => applyStyleEdit(selectedRegion, k, v);
-                    return (
-                      <div style={{display:'flex',flexDirection:'column',gap:14}}>
-
-                        {/* Typography */}
-                        <div>
-                          <div style={{fontSize:10,fontWeight:700,color:'#555',letterSpacing:'0.1em',textTransform:'uppercase',marginBottom:8}}>Typography</div>
-                          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}}>
-                            <div>
-                              <div style={{fontSize:10,color:'#555',marginBottom:3}}>Font Size</div>
-                              <input value={cur('font-size')} onChange={e=>set('font-size',e.target.value)} placeholder="e.g. 32px" style={{width:'100%',padding:'6px 8px',borderRadius:5,border:'1px solid #2a2a2a',background:'#111',color:'#ccc',fontSize:11,outline:'none',boxSizing:'border-box'}}/>
-                            </div>
-                            <div>
-                              <div style={{fontSize:10,color:'#555',marginBottom:3}}>Font Weight</div>
-                              <select value={cur('font-weight')} onChange={e=>set('font-weight',e.target.value)} style={{width:'100%',padding:'6px 8px',borderRadius:5,border:'1px solid #2a2a2a',background:'#111',color:'#ccc',fontSize:11,outline:'none'}}>
-                                {['','300','400','500','600','700','800','900'].map(w=><option key={w} value={w}>{w||'Default'}</option>)}
-                              </select>
-                            </div>
-                            <div style={{gridColumn:'1/-1'}}>
-                              <div style={{fontSize:10,color:'#555',marginBottom:3}}>Font Family</div>
-                              <select value={cur('font-family')} onChange={e=>set('font-family',e.target.value)} style={{width:'100%',padding:'6px 8px',borderRadius:5,border:'1px solid #2a2a2a',background:'#111',color:'#ccc',fontSize:11,outline:'none'}}>
-                                <option value=''>Default</option>
-                                {['Inter','Roboto','Open Sans','Lato','Poppins','Montserrat','Raleway','Nunito','Playfair Display','Merriweather','Space Grotesk','DM Sans'].map(f=><option key={f} value={f}>{f}</option>)}
-                              </select>
-                            </div>
-                            <div style={{gridColumn:'1/-1'}}>
-                              <div style={{fontSize:10,color:'#555',marginBottom:3}}>Text Align</div>
-                              <div style={{display:'flex',gap:4}}>
-                                {['left','center','right'].map(a=>(
-                                  <button key={a} onClick={()=>set('text-align',a)} style={{flex:1,padding:'5px',borderRadius:5,border:'1px solid '+(cur('text-align')===a?'#F4A261':'#2a2a2a'),background:cur('text-align')===a?'rgba(244,162,97,0.15)':'#111',cursor:'pointer',fontSize:10,color:cur('text-align')===a?'#F4A261':'#555',fontWeight:600}}>
-                                    {a.charAt(0).toUpperCase()+a.slice(1)}
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Colors */}
-                        <div>
-                          <div style={{fontSize:10,fontWeight:700,color:'#555',letterSpacing:'0.1em',textTransform:'uppercase',marginBottom:8}}>Color</div>
-                          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}}>
-                            {[['Text Color','color'],['Background','background-color']].map(([label,prop])=>(
-                              <div key={prop}>
-                                <div style={{fontSize:10,color:'#555',marginBottom:3}}>{label}</div>
-                                <div style={{display:'flex',gap:4,alignItems:'center'}}>
-                                  <input type="color" value={cur(prop)||'#000000'} onChange={e=>set(prop,e.target.value)} style={{width:28,height:28,padding:0,border:'1px solid #2a2a2a',borderRadius:5,background:'none',cursor:'pointer',flexShrink:0}}/>
-                                  <input value={cur(prop)||''} onChange={e=>set(prop,e.target.value)} placeholder="#000" style={{flex:1,padding:'5px 6px',borderRadius:5,border:'1px solid #2a2a2a',background:'#111',color:'#ccc',fontSize:10,fontFamily:'monospace',outline:'none',minWidth:0}}/>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Spacing */}
-                        <div>
-                          <div style={{fontSize:10,fontWeight:700,color:'#555',letterSpacing:'0.1em',textTransform:'uppercase',marginBottom:8}}>Spacing</div>
-                          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}}>
-                            {[['Padding','padding'],['Margin','margin']].map(([label,prop])=>(
-                              <div key={prop}>
-                                <div style={{fontSize:10,color:'#555',marginBottom:3}}>{label}</div>
-                                <input value={cur(prop)||''} onChange={e=>set(prop,e.target.value)} placeholder="e.g. 12px 24px" style={{width:'100%',padding:'6px 8px',borderRadius:5,border:'1px solid #2a2a2a',background:'#111',color:'#ccc',fontSize:11,outline:'none',boxSizing:'border-box'}}/>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Border */}
-                        <div>
-                          <div style={{fontSize:10,fontWeight:700,color:'#555',letterSpacing:'0.1em',textTransform:'uppercase',marginBottom:8}}>Border</div>
-                          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}}>
-                            <div>
-                              <div style={{fontSize:10,color:'#555',marginBottom:3}}>Border Radius</div>
-                              <input value={cur('border-radius')||''} onChange={e=>set('border-radius',e.target.value)} placeholder="e.g. 8px" style={{width:'100%',padding:'6px 8px',borderRadius:5,border:'1px solid #2a2a2a',background:'#111',color:'#ccc',fontSize:11,outline:'none',boxSizing:'border-box'}}/>
-                            </div>
-                            <div>
-                              <div style={{fontSize:10,color:'#555',marginBottom:3}}>Border</div>
-                              <input value={cur('border')||''} onChange={e=>set('border',e.target.value)} placeholder="1px solid #ccc" style={{width:'100%',padding:'6px 8px',borderRadius:5,border:'1px solid #2a2a2a',background:'#111',color:'#ccc',fontSize:11,outline:'none',boxSizing:'border-box'}}/>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })()}
-
-                  {/* Styles tab for images */}
-                  {editorTab==='styles'&&region.type==='image'&&(()=>{
-                    const cur = k => (structEdits[selectedRegion]?.[k]) ?? (region.styles?.[k] ?? '');
-                    const set = (k,v) => applyStyleEdit(selectedRegion, k, v);
-                    return (
-                      <div style={{display:'flex',flexDirection:'column',gap:14}}>
-                        <div>
-                          <div style={{fontSize:10,fontWeight:700,color:'#555',letterSpacing:'0.1em',textTransform:'uppercase',marginBottom:8}}>Size</div>
-                          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}}>
-                            {[['Width','width'],['Height','height']].map(([label,prop])=>(
-                              <div key={prop}>
-                                <div style={{fontSize:10,color:'#555',marginBottom:3}}>{label}</div>
-                                <input value={cur(prop)||''} onChange={e=>set(prop,e.target.value)} placeholder="auto" style={{width:'100%',padding:'6px 8px',borderRadius:5,border:'1px solid #2a2a2a',background:'#111',color:'#ccc',fontSize:11,outline:'none',boxSizing:'border-box'}}/>
-                              </div>
-                            ))}
-                            <div style={{gridColumn:'1/-1'}}>
-                              <div style={{fontSize:10,color:'#555',marginBottom:3}}>Border Radius</div>
-                              <input value={cur('border-radius')||''} onChange={e=>set('border-radius',e.target.value)} placeholder="e.g. 8px" style={{width:'100%',padding:'6px 8px',borderRadius:5,border:'1px solid #2a2a2a',background:'#111',color:'#ccc',fontSize:11,outline:'none',boxSizing:'border-box'}}/>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })()}
-
-                  {/* ── ANIMATIONS TAB ── */}
-                  {editorTab==='animations'&&(
-                    <div style={{display:'flex',flexDirection:'column',gap:12}}>
-                      <div style={{fontSize:10,fontWeight:700,color:'#555',letterSpacing:'0.1em',textTransform:'uppercase'}}>Entrance Animation</div>
-                      {[['none','None'],['fadeIn','Fade In'],['slideUp','Slide Up'],['slideLeft','Slide Left'],['zoomIn','Zoom In'],['bounce','Bounce']].map(([val,label])=>(
-                        <button key={val} onClick={()=>applyStyleEdit(selectedRegion,'animation',val==='none'?'':''+val+' 0.6s ease forwards')} style={{padding:'8px 12px',borderRadius:6,border:'1px solid '+(((structEdits[selectedRegion]?.animation||'').includes(val)&&val!=='none')||(val==='none'&&!structEdits[selectedRegion]?.animation)?'#F4A261':'#2a2a2a'),background:((structEdits[selectedRegion]?.animation||'').includes(val)&&val!=='none')?'rgba(244,162,97,0.1)':'transparent',cursor:'pointer',fontSize:11,fontWeight:600,color:'#ccc',textAlign:'left',transition:'all .1s'}}>
-                          {label}
-                        </button>
-                      ))}
-                      <div style={{fontSize:10,color:'#444',marginTop:4}}>Animations are applied via CSS class on the element</div>
-                    </div>
-                  )}
-
-                </div>
-              </div>
-            )}
-
-            {/* Placeholder when nothing selected */}
-            {!region&&(
-              <div style={{width:280,background:'#181818',borderLeft:'1px solid #222',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-                <div style={{textAlign:'center',padding:24}}>
-                  <div style={{fontSize:28,marginBottom:8,opacity:0.3}}>←</div>
-                  <div style={{fontSize:12,color:'#444',fontWeight:500}}>Select an element<br/>from the left panel</div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-        );
-      })()}
+      {pageEditor&&(
+        <PageEditor
+          editor={pageEditor}
+          onClose={()=>setPageEditor(null)}
+          onSaved={(fileId,html)=>{
+            setFiles(prev=>prev.map(x=>x.fileId===fileId?{...x,content:html}:x));
+          }}
+        />
+      )}
 
     {chatLightbox&&<ImageLightbox src={chatLightbox.src} alt={chatLightbox.alt} onClose={()=>setChatLightbox(null)}/>}
     </div>
