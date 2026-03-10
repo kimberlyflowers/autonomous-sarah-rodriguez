@@ -2488,21 +2488,24 @@ function App() {
   const [showPlusMenu,setShowPlusMenu]=useState(false);
   const plusMenuRef=useRef(null);
   const [oauthToast,setOauthToast]=useState(null);
-  const [activeConnectors,setActiveConnectors]=useState({gohighlevel:true});
+  const [activeConnectors,setActiveConnectors]=useState({ghl:true});
 
-  useEffect(()=>{
+  // Extracted so it can be called both on mount and after OAuth success
+  const loadActiveConnectors = () => {
     const orgId='a1000000-0000-0000-0000-000000000001';
     fetch(`/api/connectors/active?orgId=${orgId}`)
       .then(r=>r.ok?r.json():null)
       .then(data=>{
         if(data?.connectors){
-          const map={gohighlevel:true};
+          const map={ghl:true};
           data.connectors.forEach(c=>{ map[c.slug]=true; });
           setActiveConnectors(map);
         }
       })
       .catch(()=>{});
-  },[]);
+  };
+
+  useEffect(()=>{ loadActiveConnectors(); },[]);
 
   useEffect(()=>{
     const params=new URLSearchParams(window.location.search);
@@ -2513,6 +2516,8 @@ function App() {
       setOauthToast({type:'success',msg:`${connector||success} connected!`});
       setPg('customize');
       window.history.replaceState({},'',window.location.pathname);
+      // Re-fetch connector status so the UI updates immediately
+      loadActiveConnectors();
       setTimeout(()=>setOauthToast(null),5000);
     } else if(error){
       setOauthToast({type:'error',msg:`Connection failed: ${decodeURIComponent(error)}`});
