@@ -3148,7 +3148,7 @@ function App() {
                                       ul:({children})=><div style={{margin:"6px 0",paddingLeft:4}}>{children}</div>,
                                       ol:({children})=><div style={{margin:"6px 0",paddingLeft:4}}>{children}</div>,
                                       li:({children,index,ordered})=><div style={{display:"flex",gap:8,margin:"3px 0"}}><span style={{color:c.ac,flexShrink:0}}>{ordered?`${(index||0)+1}.`:"•"}</span><span>{children}</span></div>,
-                                      img:({src,alt})=><img src={src} alt={alt} style={{maxWidth:"100%",height:"auto",borderRadius:8,margin:"10px 0",display:"block"}}/>,
+                                      img:({src,alt})=><img src={src} alt={alt} onClick={()=>setChatLightbox({src,alt:alt||''})} style={{maxWidth:"100%",height:"auto",borderRadius:8,margin:"10px 0",display:"block",cursor:"zoom-in"}}/>,
                                       code:({inline,className,children})=>{
                                         if(inline) return <code style={{background:c.bg,border:"1px solid "+c.ln,padding:"1px 6px",borderRadius:4,fontSize:"12.5px",fontFamily:"ui-monospace,SFMono-Regular,Menlo,monospace"}}>{children}</code>;
                                         return <pre style={{background:c.bg,border:"1px solid "+c.ln,borderRadius:8,padding:"12px 16px",margin:"10px 0",overflowX:"auto",fontSize:"12.5px",lineHeight:1.5,fontFamily:"ui-monospace,SFMono-Regular,Menlo,monospace"}}><code>{children}</code></pre>;
