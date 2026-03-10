@@ -59,14 +59,15 @@ export async function logHeartbeat(cycleId, data) {
 
     // Also backup to Supabase if configured
     await backupToSupabase('heartbeat_cycles', {
-      cycle_id: cycleId,
-      agent_id: data.agentId,
-      duration_ms: data.duration,
-      actions_count: data.actionsCount || 0,
+      // Supabase schema uses uuid PK 'id' (auto-generated), not cycle_id
+      agent_id:        data.agentId,
+      organization_id: process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001',
+      duration_ms:     data.duration,
+      actions_count:   data.actionsCount || 0,
       rejections_count: data.rejectionsCount || 0,
-      handoffs_count: data.handoffsCount || 0,
-      status: data.status,
-      timestamp: new Date().toISOString()
+      handoffs_count:  data.handoffsCount || 0,
+      status:          data.status || 'completed',
+      started_at:      new Date().toISOString()
     });
 
   } catch (error) {
@@ -102,13 +103,14 @@ export async function logAction(cycleId, decision, result) {
 
     // Backup to Supabase
     await backupToSupabase('action_log', {
-      cycle_id: cycleId,
-      agent_id: decision.agentId || process.env.AGENT_ID,
-      action_type: decision.action_type,
-      description: decision.description,
+      // cycle_id is uuid in Supabase — only send if it looks like a uuid, else omit
+      ...(cycleId && cycleId.includes('-') ? { cycle_id: cycleId } : {}),
+      agent_id:      decision.agentId || process.env.AGENT_ID || process.env.AGENT_UUID || 'c3000000-0000-0000-0000-000000000003',
+      organization_id: process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001',
+      action_type:   decision.action_type || 'unknown',
+      description:   decision.description || '',
       target_system: decision.target_system,
-      success: result?.success || false,
-      timestamp: new Date().toISOString()
+      success:       result?.success || false
     });
 
   } catch (error) {
