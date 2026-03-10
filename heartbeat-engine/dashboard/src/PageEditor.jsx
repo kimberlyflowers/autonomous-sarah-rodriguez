@@ -19,30 +19,59 @@ export default function PageEditor({ editor: editorData, onClose, onSaved }) {
       editor.setComponents(editorData.content);
     }
 
-    // ── On selection: switch panel + auto-select parent <a> if needed ─
+    // ── Add href/target traits to <button> elements ──────────────────
+    // The buttons in this page are plain <button type="button"> tags.
+    // GrapesJS shows Text + Type by default but no URL field.
+    // We add href + target as real attributes so users can set a link.
+    // On save, buildFullHtml will have these as data attributes;
+    // a small script in the page converts them to proper navigation.
+    editor.Components.addType('button', {
+      extend: 'default',
+      isComponent: el => el.tagName === 'BUTTON',
+      model: {
+        defaults: {
+          traits: [
+            {
+              type: 'text',
+              name: 'data-href',
+              label: 'Link URL',
+              placeholder: 'https://example.com or #section',
+            },
+            {
+              type: 'select',
+              name: 'data-target',
+              label: 'Open in',
+              options: [
+                { id: '',       label: 'Same window' },
+                { id: '_blank', label: 'New tab' },
+              ],
+            },
+          ],
+        },
+      },
+    });
+
+    // ── On selection: auto-select parent <a> if clicked child; switch panel ─
     editor.on('component:selected', (component) => {
-      // If a <button> or <span> inside an <a> is selected, bubble up to
-      // the <a> so the href/target traits are immediately visible.
+      // Bubble up to parent <a> if clicked a child element inside one
       try {
-        const tag = component.get('tagName') || '';
-        if (['button', 'span', 'i', 'strong'].includes(tag.toLowerCase())) {
+        const tag = (component.get('tagName') || '').toLowerCase();
+        if (['span', 'i', 'strong', 'em'].includes(tag)) {
           const parent = component.parent();
           if (parent && (parent.get('tagName') || '').toLowerCase() === 'a') {
-            // Select the parent <a> instead — it has href/target traits
             editor.select(parent);
-            return; // component:selected will fire again for the <a>
+            return;
           }
         }
       } catch (e) { /* ignore */ }
 
-      // Switch right panel to Component Settings (gear) if it's a link,
-      // otherwise show Style Manager (paintbrush)
+      // Switch to Traits (gear) for <a> and <button>, Styles for everything else
       try {
         const tag = (component.get('tagName') || '').toLowerCase();
-        const isLink = tag === 'a' || component.get('type') === 'link';
-        const panelBtn = isLink
-          ? editor.Panels.getButton('views', 'open-tm')   // gear = traits
-          : editor.Panels.getButton('views', 'open-sm');  // paintbrush = styles
+        const showTraits = tag === 'a' || tag === 'button' || component.get('type') === 'link';
+        const panelBtn = showTraits
+          ? editor.Panels.getButton('views', 'open-tm')
+          : editor.Panels.getButton('views', 'open-sm');
         if (panelBtn) panelBtn.set('active', true);
       } catch (e) { /* ignore */ }
     });
@@ -180,6 +209,14 @@ function buildFullHtml(body, css, title) {
 </head>
 <body>
   ${body || ''}
+  <script>
+    // Convert data-href buttons to real navigating buttons
+    document.querySelectorAll('button[data-href]').forEach(btn => {
+      const url = btn.getAttribute('data-href');
+      const target = btn.getAttribute('data-target') || '_self';
+      if (url) btn.addEventListener('click', () => window.open(url, target));
+    });
+  </script>
 </body>
 </html>`;
 }
