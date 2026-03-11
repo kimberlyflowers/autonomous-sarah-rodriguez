@@ -147,10 +147,17 @@ router.post('/close', async (req, res) => {
 // POST /api/browser/push-screenshot — receives screenshots from sidecar, pushes to SSE stream
 router.post('/push-screenshot', express.json({ limit: '10mb' }), (req, res) => {
   try {
-    const { data, url } = req.body;
-    if (!data) return res.status(400).json({ error: 'No screenshot data' });
+    const { data, url, idle } = req.body;
 
     const browser = getBrowserService();
+
+    // Idle signal — desktop app is closed or stopped capture
+    if (idle || !data) {
+      browser.isRunning = false;
+      browser.emit('status', { type: 'status', live: false, url: null });
+      return res.json({ success: true, idle: true });
+    }
+
     browser.isRunning = true;
     browser.currentUrl = url || browser.currentUrl;
     browser.lastScreenshot = data;
