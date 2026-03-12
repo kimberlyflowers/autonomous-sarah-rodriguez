@@ -389,32 +389,30 @@ class LettaClient {
     };
   }
 
-  // Store memory in fallback system (database)
+  // Store memory in fallback system (Supabase memory_snapshots table)
   async storeFallbackMemory(memoryData) {
     try {
-      // Store in memory_snapshots table
-      const { getSharedPool } = await import('../../database/pool.js');
-      const pool = getSharedPool();
+      const { createClient } = await import('@supabase/supabase-js');
+      const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
+        auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+      });
 
-      await pool.query(`
-        INSERT INTO memory_snapshots (agent_id, cycle_id, memory_type, content, relevance_score)
-        VALUES ($1, $2, $3, $4, $5)
-      `, [
-        memoryData.agentId,
-        memoryData.cycleId,
-        'cycle_summary',
-        JSON.stringify({
+      const { error } = await supabase.from('memory_snapshots').insert({
+        agent_id: memoryData.agentId,
+        organization_id: process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001',
+        cycle_id: (memoryData.cycleId && memoryData.cycleId.includes('-')) ? memoryData.cycleId : null,
+        memory_type: 'cycle_summary',
+        content: {
           actions: memoryData.actions,
           rejections: memoryData.rejections,
           handoffs: memoryData.handoffs,
           environmentSnapshot: memoryData.environmentSnapshot
-        }),
-        0.8
-      ]);
+        },
+        relevance_score: 0.8
+      });
 
-
-      logger.info('✅ Memory stored in fallback database');
-
+      if (error) throw new Error(error.message);
+      logger.info('✅ Memory stored in Supabase fallback database');
     } catch (error) {
       logger.error('Failed to store fallback memory:', error.message);
     }

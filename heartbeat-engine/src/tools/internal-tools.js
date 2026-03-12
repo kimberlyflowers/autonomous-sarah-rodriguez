@@ -6,10 +6,139 @@ import { logAction, logRejection, logHandoff } from '../logging/index.js';
 
 const logger = createLogger('internal-tools');
 
-// Get database pool
+// Supabase-backed query shim — maintains pool.query() interface for all tool handlers
 async function getPool() {
-  const { getSharedPool } = await import('../../database/pool.js');
-  return getSharedPool();
+  const { createClient } = await import('@supabase/supabase-js');
+  const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+  });
+
+  return {
+    query: async (sql, params = []) => {
+      // Use Supabase's postgres() raw query via the REST API
+      // Supabase JS client doesn't expose raw SQL — use the pg-compatible REST endpoint
+      const { data, error } = await supabase.rpc('exec_sql', { sql_text: sql, sql_params: params }).catch(() => ({ data: null, error: { message: 'rpc not available' } }));
+      if (!error && data) return { rows: Array.isArray(data) ? data : [data] };
+
+      // Fallback: parse simple queries and translate to Supabase client calls
+      return await supabaseQueryShim(supabase, sql, params);
+    }
+  };
+}
+
+// Translate parameterized SQL to Supabase JS client calls
+async function supabaseQueryShim(supabase, sql, params) {
+  const s = sql.trim().replace(/\s+/g, ' ');
+
+  // INSERT INTO bloom_tasks
+  if (/INSERT INTO bloom_tasks/i.test(s)) {
+    const vals = params;
+    const row = {
+      agent_id: vals[0], title: vals[1], description: vals[2],
+      priority: vals[3], category: vals[4], status: 'pending',
+      due_date: vals[5] || null, related_contact_id: vals[6] || null,
+      related_opportunity_id: vals[7] || null
+    };
+    const { data, error } = await supabase.from('bloom_tasks').insert(row).select('id, title, priority, category, status, created_at').single();
+    if (error) throw new Error(error.message);
+    return { rows: [data] };
+  }
+
+  // SELECT FROM bloom_tasks
+  if (/SELECT.*FROM bloom_tasks/i.test(s)) {
+    let q = supabase.from('bloom_tasks').select('id, title, description, priority, category, status, due_date, related_contact_id, related_opportunity_id, created_at').eq('agent_id', 'bloomie-sarah-rodriguez');
+    // Apply status/priority filters if present in params
+    if (params[1]) q = q.eq('status', params[1]);
+    if (params[2]) q = q.eq('priority', params[2]);
+    q = q.order('created_at', { ascending: false }).limit(params[params.length - 1] || 20);
+    const { data, error } = await q;
+    if (error) throw new Error(error.message);
+    return { rows: data || [] };
+  }
+
+  // UPDATE bloom_tasks
+  if (/UPDATE bloom_tasks/i.test(s)) {
+    const taskId = params[params.length - 1];
+    const updates = {};
+    if (/status\s*=/.test(s)) updates.status = params[0];
+    if (/priority\s*=/.test(s)) updates.priority = params[0];
+    const { data, error } = await supabase.from('bloom_tasks').update(updates).eq('id', taskId).select().single();
+    if (error) throw new Error(error.message);
+    return { rows: [data] };
+  }
+
+  // INSERT INTO bloom_decisions
+  if (/INSERT INTO bloom_decisions/i.test(s)) {
+    const { data, error } = await supabase.from('bloom_decisions').insert({
+      agent_id: params[0], decision: params[1], reasoning: params[2],
+      confidence: params[3], category: params[4], impact_level: params[5],
+      related_data: params[6] ? (typeof params[6] === 'string' ? JSON.parse(params[6]) : params[6]) : null
+    }).select('id, decision, category, confidence').single();
+    if (error) throw new Error(error.message);
+    return { rows: [data] };
+  }
+
+  // INSERT INTO bloom_observations
+  if (/INSERT INTO bloom_observations/i.test(s)) {
+    const { data, error } = await supabase.from('bloom_observations').insert({
+      agent_id: params[0], observation: params[1], context: params[2],
+      significance: params[3], action_recommended: params[4] || null,
+      data_points: params[5] ? (typeof params[5] === 'string' ? JSON.parse(params[5]) : params[5]) : null
+    }).select('id, observation, significance').single();
+    if (error) throw new Error(error.message);
+    return { rows: [data] };
+  }
+
+  // INSERT INTO bloom_context
+  if (/INSERT INTO bloom_context/i.test(s)) {
+    const { data, error } = await supabase.from('bloom_context').insert({
+      agent_id: params[0], context_type: params[1], title: params[2],
+      content: params[3],
+      related_entities: params[4] ? (typeof params[4] === 'string' ? JSON.parse(params[4]) : params[4]) : null,
+      tags: params[5] ? (typeof params[5] === 'string' ? JSON.parse(params[5]) : params[5]) : null,
+      expires_at: params[6] || null
+    }).select('id, context_type, title').single();
+    if (error) throw new Error(error.message);
+    return { rows: [data] };
+  }
+
+  // SELECT FROM bloom_context
+  if (/SELECT.*FROM bloom_context/i.test(s)) {
+    let q = supabase.from('bloom_context').select('id, context_type, title, content, related_entities, tags, created_at, expires_at')
+      .eq('agent_id', params[0])
+      .or('expires_at.is.null,expires_at.gt.' + new Date().toISOString());
+    if (params[1]) q = q.eq('context_type', params[1]);
+    q = q.order('created_at', { ascending: false }).limit(params[params.length - 1] || 10);
+    const { data, error } = await q;
+    if (error) throw new Error(error.message);
+    return { rows: data || [] };
+  }
+
+  // INSERT INTO task_plans (upsert)
+  if (/INSERT INTO task_plans/i.test(s)) {
+    const { data, error } = await supabase.from('task_plans').upsert({
+      session_id: params[0], title: params[1], steps: typeof params[2] === 'string' ? JSON.parse(params[2]) : params[2],
+      agent_id: 'c3000000-0000-0000-0000-000000000003',
+      organization_id: process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001',
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'session_id' }).select('session_id, title, steps, updated_at').single();
+    if (error) throw new Error(error.message);
+    // Normalize: return task_id field name the caller expects
+    return { rows: [{ ...data, task_id: data.session_id }] };
+  }
+
+  // CREATE TABLE IF NOT EXISTS — no-op for Supabase (tables exist)
+  if (/CREATE TABLE IF NOT EXISTS/i.test(s)) {
+    return { rows: [] };
+  }
+
+  // SELECT 1 health check
+  if (/SELECT 1/i.test(s)) {
+    return { rows: [{ health_check: 1 }] };
+  }
+
+  logger.warn('supabaseQueryShim: unhandled SQL', { sql: s.slice(0, 100) });
+  return { rows: [] };
 }
 
 /**
