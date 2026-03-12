@@ -8,11 +8,20 @@ import { loadAgentConfig, getAgentStatus } from '../config/agent-profile.js';
 const router = express.Router();
 const logger = createLogger('dashboard-api');
 
-// Get database pool - using the same pattern as existing code
-async function getPool() {
-  const { getSharedPool } = await import('../database/pool.js');
-  return getSharedPool();
+// Get Supabase client
+let _supabase = null;
+async function getSupabase() {
+  if (!_supabase) {
+    const { createClient } = await import('@supabase/supabase-js');
+    _supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+    });
+  }
+  return _supabase;
 }
+
+const AGENT_ID = process.env.AGENT_UUID || process.env.AGENT_ID || 'c3000000-0000-0000-0000-000000000003';
+const ORG_ID = process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001';
 
 // GET /api/dashboard/status - Agent status and configuration
 router.get('/status', async (req, res) => {
@@ -30,38 +39,27 @@ router.get('/cycles', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 50;
     const offset = parseInt(req.query.offset) || 0;
-    const agentId = req.query.agentId || process.env.AGENT_ID || 'bloomie-sarah-rodriguez';
+    const agentId = req.query.agentId || AGENT_ID;
 
-    const pool = await getPool();
+    const supabase = await getSupabase();
 
-    const result = await pool.query(`
-      SELECT
-        cycle_id,
-        started_at,
-        completed_at,
-        duration_ms,
-        actions_count,
-        rejections_count,
-        handoffs_count,
-        status,
-        environment_snapshot
-      FROM heartbeat_cycles
-      WHERE agent_id = $1
-      ORDER BY started_at DESC
-      LIMIT $2 OFFSET $3
-    `, [agentId, limit, offset]);
+    const { data: cycles, error: cycleErr } = await supabase
+      .from('heartbeat_cycles')
+      .select('id, agent_id, started_at, completed_at, duration_ms, actions_count, rejections_count, handoffs_count, status, environment_snapshot')
+      .eq('agent_id', agentId)
+      .order('started_at', { ascending: false })
+      .range(offset, offset + limit - 1);
 
-    const totalResult = await pool.query(`
-      SELECT COUNT(*) as total
-      FROM heartbeat_cycles
-      WHERE agent_id = $1
-    `, [agentId]);
+    if (cycleErr) throw new Error(cycleErr.message);
 
-    
+    const { count, error: countErr } = await supabase
+      .from('heartbeat_cycles')
+      .select('id', { count: 'exact', head: true })
+      .eq('agent_id', agentId);
 
     res.json({
-      cycles: result.rows.map(row => ({
-        cycleId: row.cycle_id,
+      cycles: (cycles || []).map(row => ({
+        cycleId: row.id,
         startedAt: row.started_at,
         completedAt: row.completed_at,
         duration: row.duration_ms,
@@ -74,10 +72,10 @@ router.get('/cycles', async (req, res) => {
         environment: row.environment_snapshot || {}
       })),
       pagination: {
-        total: parseInt(totalResult.rows[0].total),
+        total: count || 0,
         limit,
         offset,
-        hasMore: (offset + limit) < parseInt(totalResult.rows[0].total)
+        hasMore: (offset + limit) < (count || 0)
       }
     });
   } catch (error) {
@@ -91,43 +89,29 @@ router.get('/actions', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 100;
     const offset = parseInt(req.query.offset) || 0;
-    const agentId = req.query.agentId || process.env.AGENT_ID || 'bloomie-sarah-rodriguez';
+    const agentId = req.query.agentId || AGENT_ID;
 
-    const pool = await getPool();
+    const supabase = await getSupabase();
+    const { data, error } = await supabase
+      .from('action_log')
+      .select('id, cycle_id, action_type, description, target_system, input_data, result, success, created_at')
+      .eq('agent_id', agentId)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
 
-    const result = await pool.query(`
-      SELECT
-        a.id,
-        a.cycle_id,
-        a.action_type,
-        a.description,
-        a.target_system,
-        a.input_data,
-        a.result,
-        a.success,
-        a.timestamp,
-        h.started_at as cycle_started
-      FROM action_log a
-      LEFT JOIN heartbeat_cycles h ON a.cycle_id = h.cycle_id
-      WHERE a.agent_id = $1
-      ORDER BY a.timestamp DESC
-      LIMIT $2 OFFSET $3
-    `, [agentId, limit, offset]);
-
-    
+    if (error) throw new Error(error.message);
 
     res.json({
-      actions: result.rows.map(row => ({
+      actions: (data || []).map(row => ({
         id: row.id,
         cycleId: row.cycle_id,
-        cycleStarted: row.cycle_started,
         type: row.action_type,
         description: row.description,
         targetSystem: row.target_system,
         inputData: row.input_data || {},
         result: row.result || {},
         success: row.success,
-        timestamp: row.timestamp
+        timestamp: row.created_at
       })),
       pagination: { limit, offset }
     });
@@ -142,41 +126,28 @@ router.get('/rejections', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 100;
     const offset = parseInt(req.query.offset) || 0;
-    const agentId = req.query.agentId || process.env.AGENT_ID || 'bloomie-sarah-rodriguez';
+    const agentId = req.query.agentId || AGENT_ID;
 
-    const pool = await getPool();
+    const supabase = await getSupabase();
+    const { data, error } = await supabase
+      .from('rejection_log')
+      .select('id, cycle_id, candidate_action, reason, reason_code, confidence, alternative_suggested, created_at')
+      .eq('agent_id', agentId)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
 
-    const result = await pool.query(`
-      SELECT
-        r.id,
-        r.cycle_id,
-        r.candidate_action,
-        r.reason,
-        r.reason_code,
-        r.confidence,
-        r.alternative_suggested,
-        r.timestamp,
-        h.started_at as cycle_started
-      FROM rejection_log r
-      LEFT JOIN heartbeat_cycles h ON r.cycle_id = h.cycle_id
-      WHERE r.agent_id = $1
-      ORDER BY r.timestamp DESC
-      LIMIT $2 OFFSET $3
-    `, [agentId, limit, offset]);
-
-    
+    if (error) throw new Error(error.message);
 
     res.json({
-      rejections: result.rows.map(row => ({
+      rejections: (data || []).map(row => ({
         id: row.id,
         cycleId: row.cycle_id,
-        cycleStarted: row.cycle_started,
         candidateAction: row.candidate_action,
         reason: row.reason,
         reasonCode: row.reason_code,
         confidence: parseFloat(row.confidence) || 0,
         alternativeSuggested: row.alternative_suggested,
-        timestamp: row.timestamp
+        timestamp: row.created_at
       })),
       pagination: { limit, offset }
     });
@@ -191,49 +162,31 @@ router.get('/handoffs', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 100;
     const offset = parseInt(req.query.offset) || 0;
-    const agentId = req.query.agentId || process.env.AGENT_ID || 'bloomie-sarah-rodriguez';
+    const agentId = req.query.agentId || AGENT_ID;
 
-    const pool = await getPool();
+    const supabase = await getSupabase();
+    const { data, error } = await supabase
+      .from('handoff_log')
+      .select('id, cycle_id, issue, analysis, recommendation, confidence, urgency, human_notified, human_response, resolved, created_at')
+      .eq('agent_id', agentId)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
 
-    const result = await pool.query(`
-      SELECT
-        h.id,
-        h.cycle_id,
-        h.issue,
-        h.analysis_path,
-        h.hypotheses_tested,
-        h.recommendation,
-        h.confidence,
-        h.urgency,
-        h.human_notified,
-        h.human_response,
-        h.resolved,
-        h.timestamp,
-        c.started_at as cycle_started
-      FROM handoff_log h
-      LEFT JOIN heartbeat_cycles c ON h.cycle_id = c.cycle_id
-      WHERE h.agent_id = $1
-      ORDER BY h.timestamp DESC
-      LIMIT $2 OFFSET $3
-    `, [agentId, limit, offset]);
-
-    
+    if (error) throw new Error(error.message);
 
     res.json({
-      handoffs: result.rows.map(row => ({
+      handoffs: (data || []).map(row => ({
         id: row.id,
         cycleId: row.cycle_id,
-        cycleStarted: row.cycle_started,
         issue: row.issue,
-        analysisPath: row.analysis_path,
-        hypothesesTested: row.hypotheses_tested || {},
+        analysisPath: row.analysis,
         recommendation: row.recommendation,
         confidence: parseFloat(row.confidence) || 0,
         urgency: row.urgency,
         humanNotified: row.human_notified,
         humanResponse: row.human_response,
         resolved: row.resolved,
-        timestamp: row.timestamp
+        timestamp: row.created_at
       })),
       pagination: { limit, offset }
     });
@@ -246,39 +199,26 @@ router.get('/handoffs', async (req, res) => {
 // GET /api/dashboard/metrics - Trust metrics and graduation progress
 router.get('/metrics', async (req, res) => {
   try {
-    const agentId = req.query.agentId || process.env.AGENT_ID || 'bloomie-sarah-rodriguez';
-    const hours = parseInt(req.query.hours) || 24; // Default to last 24 hours
+    const agentId = req.query.agentId || AGENT_ID;
+    const hours = parseInt(req.query.hours) || 24;
 
-    const pool = await getPool();
+    const supabase = await getSupabase();
+    const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
 
-    // Get recent metrics
-    const metricsResult = await pool.query(`
-      SELECT
-        COUNT(*) as total_cycles,
-        SUM(actions_count) as total_actions,
-        SUM(rejections_count) as total_rejections,
-        SUM(handoffs_count) as total_handoffs,
-        AVG(duration_ms) as avg_cycle_duration,
-        COUNT(CASE WHEN status = 'completed' THEN 1 END) as successful_cycles,
-        COUNT(CASE WHEN status = 'error' THEN 1 END) as failed_cycles
-      FROM heartbeat_cycles
-      WHERE agent_id = $1 AND started_at > NOW() - INTERVAL '${hours} hours'
-    `, [agentId]);
+    const { data: cycleRows } = await supabase
+      .from('heartbeat_cycles')
+      .select('actions_count, rejections_count, handoffs_count, duration_ms, status')
+      .eq('agent_id', agentId)
+      .gte('started_at', since);
 
-    // Get latest trust metrics from trust_metrics table
-    const trustResult = await pool.query(`
-      SELECT
-        approval_rate,
-        action_success_rate,
-        escalation_appropriateness,
-        calculated_at
-      FROM trust_metrics
-      WHERE agent_id = $1
-      ORDER BY calculated_at DESC
-      LIMIT 1
-    `, [agentId]);
+    const { data: trustRow } = await supabase
+      .from('trust_metrics')
+      .select('approval_rate, action_success_rate, escalation_appropriateness, calculated_at')
+      .eq('agent_id', agentId)
+      .order('calculated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-    // Check graduation eligibility (import from autonomy levels)
     let graduationStatus = null;
     try {
       const { checkGraduationEligibility } = await import('../config/autonomy-levels.js');
@@ -288,46 +228,33 @@ router.get('/metrics', async (req, res) => {
       logger.warn('Could not check graduation eligibility:', error.message);
     }
 
-    
-
-    const metrics = metricsResult.rows[0];
-    const trust = trustResult.rows[0] || {};
+    const rows = cycleRows || [];
+    const trust = trustRow || {};
 
     res.json({
       period: `Last ${hours} hours`,
       cycles: {
-        total: parseInt(metrics.total_cycles) || 0,
-        successful: parseInt(metrics.successful_cycles) || 0,
-        failed: parseInt(metrics.failed_cycles) || 0,
-        successRate: metrics.total_cycles > 0 ?
-          ((parseInt(metrics.successful_cycles) || 0) / parseInt(metrics.total_cycles) * 100).toFixed(1) :
-          '0.0'
+        total: rows.length,
+        successful: rows.filter(r => r.status === 'completed').length,
+        failed: rows.filter(r => r.status === 'error').length,
+        successRate: rows.length > 0
+          ? ((rows.filter(r => r.status === 'completed').length / rows.length) * 100).toFixed(1)
+          : '0.0'
       },
       actions: {
-        total: parseInt(metrics.total_actions) || 0,
-        successRate: trust.action_success_rate ?
-          parseFloat(trust.action_success_rate).toFixed(1) :
-          'N/A'
+        total: rows.reduce((s, r) => s + (r.actions_count || 0), 0),
+        successRate: trust.action_success_rate ? parseFloat(trust.action_success_rate).toFixed(1) : 'N/A'
       },
       decisions: {
-        rejections: parseInt(metrics.total_rejections) || 0,
-        handoffs: parseInt(metrics.total_handoffs) || 0,
-        escalationAppropriate: trust.escalation_appropriateness ?
-          parseFloat(trust.escalation_appropriateness).toFixed(1) :
-          'N/A'
+        rejections: rows.reduce((s, r) => s + (r.rejections_count || 0), 0),
+        handoffs: rows.reduce((s, r) => s + (r.handoffs_count || 0), 0),
+        escalationAppropriate: trust.escalation_appropriateness ? parseFloat(trust.escalation_appropriateness).toFixed(1) : 'N/A'
       },
       performance: {
-        avgCycleDuration: metrics.avg_cycle_duration ?
-          Math.round(parseFloat(metrics.avg_cycle_duration)) :
-          0,
-        approvalRate: trust.approval_rate ?
-          parseFloat(trust.approval_rate).toFixed(1) :
-          'N/A'
+        avgCycleDuration: rows.length ? Math.round(rows.reduce((s, r) => s + (r.duration_ms || 0), 0) / rows.length) : 0,
+        approvalRate: trust.approval_rate ? parseFloat(trust.approval_rate).toFixed(1) : 'N/A'
       },
-      graduation: graduationStatus || {
-        eligible: false,
-        reason: 'Status check unavailable'
-      },
+      graduation: graduationStatus || { eligible: false, reason: 'Status check unavailable' },
       lastUpdated: new Date().toISOString()
     });
   } catch (error) {
@@ -336,23 +263,12 @@ router.get('/metrics', async (req, res) => {
   }
 });
 
-// User avatar — persist across sessions
+// User avatar — persist across sessions via Supabase user_settings
 router.post('/user-avatar', async (req, res) => {
   try {
     const { avatar } = req.body;
-    const { getSharedPool } = await import('../database/pool.js');
-    const pool = getSharedPool();
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS user_settings (
-        key VARCHAR(64) PRIMARY KEY,
-        value TEXT,
-        updated_at TIMESTAMPTZ DEFAULT NOW()
-      )
-    `);
-
     let valueToStore = avatar;
 
-    // If it's a data URL (base64), upload to Supabase Storage for a real URL
     if (avatar && avatar.startsWith('data:image')) {
       try {
         const { uploadImage, isConfigured } = await import('../storage/supabase-storage.js');
@@ -361,18 +277,17 @@ router.post('/user-avatar', async (req, res) => {
           const ext = avatar.includes('png') ? 'png' : 'jpg';
           const fname = `avatars/user-${Date.now()}.${ext}`;
           const upload = await uploadImage(base64, fname, `image/${ext}`);
-          if (upload.success && upload.url) {
-            valueToStore = upload.url;
-          }
+          if (upload.success && upload.url) valueToStore = upload.url;
         }
       } catch (e) { /* fallback to storing data URL */ }
     }
 
-    await pool.query(
-      `INSERT INTO user_settings(key, value, updated_at) VALUES('user_avatar', $1, NOW()) 
-       ON CONFLICT(key) DO UPDATE SET value=$1, updated_at=NOW()`,
-      [valueToStore]
+    const supabase = await getSupabase();
+    const { error } = await supabase.from('user_settings').upsert(
+      { organization_id: ORG_ID, key: 'user_avatar', value: valueToStore, updated_at: new Date().toISOString() },
+      { onConflict: 'organization_id,key' }
     );
+    if (error) throw new Error(error.message);
     res.json({ success: true, url: valueToStore });
   } catch (e) {
     res.json({ success: false, error: e.message });
@@ -381,11 +296,13 @@ router.post('/user-avatar', async (req, res) => {
 
 router.get('/user-avatar', async (req, res) => {
   try {
-    const { getSharedPool } = await import('../database/pool.js');
-    const pool = getSharedPool();
-    await pool.query(`CREATE TABLE IF NOT EXISTS user_settings (key VARCHAR(64) PRIMARY KEY, value TEXT, updated_at TIMESTAMPTZ DEFAULT NOW())`);
-    const r = await pool.query(`SELECT value FROM user_settings WHERE key='user_avatar'`);
-    res.json({ avatar: r.rows[0]?.value || null });
+    const supabase = await getSupabase();
+    const { data } = await supabase.from('user_settings')
+      .select('value')
+      .eq('organization_id', ORG_ID)
+      .eq('key', 'user_avatar')
+      .maybeSingle();
+    res.json({ avatar: data?.value || null });
   } catch {
     res.json({ avatar: null });
   }

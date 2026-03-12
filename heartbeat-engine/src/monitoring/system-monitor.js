@@ -142,14 +142,17 @@ export class SystemMonitor {
       name: 'Database Connection',
       check: async () => {
         try {
-          const { getSharedPool } = await import('../database/pool.js');
-          const pool = getSharedPool();
-          const result = await pool.query('SELECT 1 as health_check');
+          const { createClient } = await import('@supabase/supabase-js');
+          const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
+            auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+          });
+          const { error } = await supabase.from('agents').select('id').limit(1);
+          if (error) throw new Error(error.message);
 
           return {
             healthy: true,
             metrics: { connectionTime: Date.now() },
-            message: 'Database connection healthy'
+            message: 'Supabase connection healthy'
           };
         } catch (error) {
           return {

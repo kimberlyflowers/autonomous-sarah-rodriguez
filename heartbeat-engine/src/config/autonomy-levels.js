@@ -198,20 +198,22 @@ export async function checkDailyActionLimit(agentId, currentLevel) {
   }
 
   try {
-    // Get today's action count
-    const { getSharedPool } = await import('../../database/pool.js');
-    const pool = getSharedPool();
+    // Get today's action count from Supabase
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+    });
 
-    const result = await pool.query(`
-      SELECT COUNT(*) as action_count
-      FROM action_log
-      WHERE agent_id = $1
-        AND timestamp >= CURRENT_DATE
-        AND timestamp < CURRENT_DATE + INTERVAL '1 day'
-    `, [agentId]);
+    const startOfDay = new Date(); startOfDay.setHours(0,0,0,0);
+    const endOfDay = new Date(); endOfDay.setHours(23,59,59,999);
+    const { count } = await supabase
+      .from('action_log')
+      .select('id', { count: 'exact', head: true })
+      .eq('agent_id', agentId)
+      .gte('created_at', startOfDay.toISOString())
+      .lte('created_at', endOfDay.toISOString());
 
-
-    const todayActions = parseInt(result.rows[0].action_count);
+    const todayActions = count || 0;
     const limitReached = todayActions >= level.maxDailyActions;
 
     if (limitReached) {
@@ -292,42 +294,45 @@ export async function checkGraduationEligibility(agentId, currentLevel) {
 
 // Calculate metrics for graduation assessment
 async function calculateGraduationMetrics(agentId, timeInLevelStr) {
-  const { getSharedPool } = await import('../../database/pool.js');
-  const pool = getSharedPool();
+  const { createClient } = await import('@supabase/supabase-js');
+  const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+  });
 
   const timeInLevelDays = parseDurationDays(timeInLevelStr);
-  const sinceDate = new Date(Date.now() - timeInLevelDays * 24 * 60 * 60 * 1000);
+  const sinceDate = new Date(Date.now() - timeInLevelDays * 24 * 60 * 60 * 1000).toISOString();
 
-  // Get heartbeat cycle metrics
-  const cycleResult = await pool.query(`
-    SELECT
-      COUNT(*) as total_cycles,
-      COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed_cycles,
-      AVG(duration_ms) as avg_duration
-    FROM heartbeat_cycles
-    WHERE agent_id = $1 AND started_at >= $2
-  `, [agentId, sinceDate]);
+  const { data: cycleRows } = await supabase
+    .from('heartbeat_cycles')
+    .select('status, duration_ms')
+    .eq('agent_id', agentId)
+    .gte('started_at', sinceDate);
 
-  // Get action metrics
-  const actionResult = await pool.query(`
-    SELECT
-      COUNT(*) as total_actions,
-      COUNT(CASE WHEN success = true THEN 1 END) as successful_actions
-    FROM action_log
-    WHERE agent_id = $1 AND timestamp >= $2
-  `, [agentId, sinceDate]);
+  const { data: actionRows } = await supabase
+    .from('action_log')
+    .select('success')
+    .eq('agent_id', agentId)
+    .gte('created_at', sinceDate);
 
-  // Get escalation metrics
-  const escalationResult = await pool.query(`
-    SELECT COUNT(*) as total_escalations
-    FROM handoff_log
-    WHERE agent_id = $1 AND timestamp >= $2
-  `, [agentId, sinceDate]);
+  const { count: totalEscalations } = await supabase
+    .from('handoff_log')
+    .select('id', { count: 'exact', head: true })
+    .eq('agent_id', agentId)
+    .gte('created_at', sinceDate);
 
+  const cycleData = cycleRows || [];
+  const actionData = actionRows || [];
 
-  const cycles = cycleResult.rows[0];
-  const actions = actionResult.rows[0];
-  const escalations = escalationResult.rows[0];
+  const cycles = {
+    total_cycles: cycleData.length,
+    completed_cycles: cycleData.filter(r => r.status === 'completed').length,
+    avg_duration: cycleData.length ? cycleData.reduce((s, r) => s + (r.duration_ms || 0), 0) / cycleData.length : 0
+  };
+  const actions = {
+    total_actions: actionData.length,
+    successful_actions: actionData.filter(r => r.success).length
+  };
+  const escalations = { total_escalations: totalEscalations || 0 };
 
   return {
     totalCycles: parseInt(cycles.total_cycles),

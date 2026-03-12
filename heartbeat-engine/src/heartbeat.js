@@ -247,23 +247,21 @@ export async function runHeartbeat(agentConfig, trigger = {}) {
 // Helper function to get recent actions for context
 async function getRecentActions(agentId, hours = 24) {
   try {
-    const { getSharedPool } = await import('../database/pool.js');
-    const pool = getSharedPool();
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+    });
+    const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+    const { data, error } = await supabase
+      .from('action_log')
+      .select('action_type, description, target_system, success, created_at')
+      .eq('agent_id', agentId)
+      .gte('created_at', since)
+      .order('created_at', { ascending: false })
+      .limit(50);
 
-    const result = await pool.query(`
-      SELECT
-        action_type,
-        description,
-        target_system,
-        success,
-        timestamp
-      FROM action_log
-      WHERE agent_id = $1 AND timestamp > NOW() - INTERVAL '${hours} hours'
-      ORDER BY timestamp DESC
-      LIMIT 50
-    `, [agentId]);
-
-    return result.rows;
+    if (error) throw new Error(error.message);
+    return (data || []).map(r => ({ ...r, timestamp: r.created_at }));
   } catch (error) {
     logger.error('Failed to get recent actions:', error);
     return [];

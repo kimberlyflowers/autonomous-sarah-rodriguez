@@ -1,251 +1,142 @@
 // BLOOM Heartbeat Engine - Database Logging
-// Stores actions, rejections, and handoffs to PostgreSQL
+// Stores actions, rejections, and handoffs to Supabase (Bloomie Staffing project)
 
 import { createLogger } from './logger.js';
 
 const logger = createLogger('logging');
 
-// Database pool will be imported dynamically to avoid circular deps
-let pool = null;
+const AGENT_ID = process.env.AGENT_UUID || process.env.AGENT_ID || 'c3000000-0000-0000-0000-000000000003';
+const ORG_ID = process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001';
 
-async function getPool() {
-  if (!pool) {
-    const { getSharedPool } = await import('../database/pool.js');
-    pool = getSharedPool();
+let _supabase = null;
+async function getSupabase() {
+  if (!_supabase) {
+    const { createClient } = await import('@supabase/supabase-js');
+    _supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+    });
   }
-  return pool;
+  return _supabase;
 }
 
 // Log heartbeat cycle completion
 export async function logHeartbeat(cycleId, data) {
   try {
-    const dbPool = await getPool();
-    await dbPool.query(`
-      INSERT INTO heartbeat_cycles (
-        cycle_id, agent_id, started_at, completed_at, duration_ms,
-        actions_count, rejections_count, handoffs_count, status, error,
-        environment_snapshot
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-      ON CONFLICT (cycle_id) DO UPDATE SET
-        completed_at = EXCLUDED.completed_at,
-        duration_ms = EXCLUDED.duration_ms,
-        actions_count = EXCLUDED.actions_count,
-        rejections_count = EXCLUDED.rejections_count,
-        handoffs_count = EXCLUDED.handoffs_count,
-        status = EXCLUDED.status,
-        error = EXCLUDED.error,
-        environment_snapshot = EXCLUDED.environment_snapshot
-    `, [
-      cycleId,
-      data.agentId,
-      new Date(Date.now() - (data.duration || 0)),
-      new Date(),
-      data.duration,
-      data.actionsCount || 0,
-      data.rejectionsCount || 0,
-      data.handoffsCount || 0,
-      data.status,
-      data.error || null,
-      JSON.stringify(data.environmentSnapshot || {})
-    ]);
+    const supabase = await getSupabase();
+    const { error } = await supabase.from('heartbeat_cycles').upsert({
+      agent_id:          data.agentId || AGENT_ID,
+      organization_id:   ORG_ID,
+      duration_ms:       data.duration,
+      actions_count:     data.actionsCount || 0,
+      rejections_count:  data.rejectionsCount || 0,
+      handoffs_count:    data.handoffsCount || 0,
+      status:            data.status || 'completed',
+      error:             data.error || null,
+      environment_snapshot: data.environmentSnapshot || {},
+      started_at:        new Date(Date.now() - (data.duration || 0)).toISOString(),
+      completed_at:      new Date().toISOString()
+    }, { onConflict: 'id' });
 
-    logger.info(`Logged heartbeat cycle: ${cycleId}`, {
+    if (error) logger.warn('logHeartbeat Supabase error:', { error: error.message });
+
+    logger.info(`Logged heartbeat cycle`, {
       status: data.status,
       duration: data.duration,
       actions: data.actionsCount,
       rejections: data.rejectionsCount,
       handoffs: data.handoffsCount
     });
-
-    // Also backup to Supabase if configured
-    await backupToSupabase('heartbeat_cycles', {
-      // Supabase schema uses uuid PK 'id' (auto-generated), not cycle_id
-      agent_id:        data.agentId,
-      organization_id: process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001',
-      duration_ms:     data.duration,
-      actions_count:   data.actionsCount || 0,
-      rejections_count: data.rejectionsCount || 0,
-      handoffs_count:  data.handoffsCount || 0,
-      status:          data.status || 'completed',
-      started_at:      new Date().toISOString()
-    });
-
   } catch (error) {
-    logger.error('Failed to log heartbeat:', error, { cycleId });
+    logger.error('Failed to log heartbeat:', error);
   }
 }
 
 // Log agent action execution
 export async function logAction(cycleId, decision, result) {
   try {
-    const dbPool = await getPool();
-    await dbPool.query(`
-      INSERT INTO action_log (
-        cycle_id, agent_id, action_type, description, target_system,
-        input_data, result, success
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-    `, [
-      cycleId,
-      decision.agentId || process.env.AGENT_UUID || 'c3000000-0000-0000-0000-000000000003',
-      decision.action_type,
-      decision.description,
-      decision.target_system,
-      JSON.stringify(decision.input_data || {}),
-      JSON.stringify(result || {}),
-      result?.success || false
-    ]);
+    const supabase = await getSupabase();
+    const { error } = await supabase.from('action_log').insert({
+      ...(cycleId && cycleId.includes('-') ? { cycle_id: cycleId } : {}),
+      agent_id:       decision.agentId || AGENT_ID,
+      organization_id: ORG_ID,
+      action_type:    decision.action_type || 'unknown',
+      description:    decision.description || '',
+      target_system:  decision.target_system,
+      input_data:     decision.input_data || {},
+      result:         result || {},
+      success:        result?.success || false
+    });
+
+    if (error) logger.warn('logAction Supabase error:', { error: error.message });
 
     logger.info(`Logged action: ${decision.action_type}`, {
       cycleId,
       success: result?.success,
       target: decision.target_system
     });
-
-    // Backup to Supabase
-    await backupToSupabase('action_log', {
-      // cycle_id is uuid in Supabase — only send if it looks like a uuid, else omit
-      ...(cycleId && cycleId.includes('-') ? { cycle_id: cycleId } : {}),
-      agent_id:      decision.agentId || process.env.AGENT_ID || process.env.AGENT_UUID || 'c3000000-0000-0000-0000-000000000003',
-      organization_id: process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001',
-      action_type:   decision.action_type || 'unknown',
-      description:   decision.description || '',
-      target_system: decision.target_system,
-      success:       result?.success || false
-    });
-
   } catch (error) {
-    logger.error('Failed to log action:', error, {
-      cycleId,
-      action: decision.action_type
-    });
+    logger.error('Failed to log action:', error);
   }
 }
 
 // Log agent rejection decision
 export async function logRejection(cycleId, candidate, reason, confidence, reasonCode = null) {
   try {
-    const dbPool = await getPool();
-    await dbPool.query(`
-      INSERT INTO rejection_log (
-        cycle_id, agent_id, candidate_action, reason, reason_code, confidence
-      ) VALUES ($1, $2, $3, $4, $5, $6)
-    `, [
-      cycleId,
-      process.env.AGENT_UUID || 'c3000000-0000-0000-0000-000000000003',
-      candidate,
-      reason,
-      reasonCode,
-      confidence
-    ]);
-
-    logger.info(`Logged rejection: ${candidate}`, {
-      cycleId,
-      reason,
-      confidence,
-      reason_code: reasonCode
-    });
-
-    // Backup to Supabase
-    await backupToSupabase('rejection_log', {
+    const supabase = await getSupabase();
+    const { error } = await supabase.from('rejection_log').insert({
       ...(cycleId && cycleId.includes('-') ? { cycle_id: cycleId } : {}),
-      agent_id:         process.env.AGENT_ID || process.env.AGENT_UUID || 'c3000000-0000-0000-0000-000000000003',
-      organization_id:  process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001',
+      agent_id:         AGENT_ID,
+      organization_id:  ORG_ID,
       candidate_action: candidate,
       reason,
       reason_code:      reasonCode,
       confidence
     });
 
+    if (error) logger.warn('logRejection Supabase error:', { error: error.message });
+
+    logger.info(`Logged rejection: ${candidate}`, { cycleId, reason, confidence, reason_code: reasonCode });
   } catch (error) {
-    logger.error('Failed to log rejection:', error, {
-      cycleId,
-      candidate
-    });
+    logger.error('Failed to log rejection:', error);
   }
 }
 
 // Log agent handoff/escalation
 export async function logHandoff(cycleId, decision) {
   try {
-    const dbPool = await getPool();
-    await dbPool.query(`
-      INSERT INTO handoff_log (
-        cycle_id, agent_id, issue, analysis_path, hypotheses_tested,
-        recommendation, confidence, urgency
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-    `, [
-      cycleId,
-      process.env.AGENT_UUID || 'c3000000-0000-0000-0000-000000000003',
-      decision.issue,
-      decision.analysis || null,
-      JSON.stringify(decision.hypotheses_tested || {}),
-      decision.recommendation || null,
-      decision.confidence || null,
-      decision.urgency || 'MEDIUM'
-    ]);
-
-    logger.warn(`Logged handoff: ${decision.issue}`, {
-      cycleId,
-      urgency: decision.urgency,
-      confidence: decision.confidence
-    });
-
-    // Backup to Supabase
-    await backupToSupabase('handoff_log', {
+    const supabase = await getSupabase();
+    const { error } = await supabase.from('handoff_log').insert({
       ...(cycleId && cycleId.includes('-') ? { cycle_id: cycleId } : {}),
-      agent_id:        process.env.AGENT_ID || process.env.AGENT_UUID || 'c3000000-0000-0000-0000-000000000003',
-      organization_id: process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001',
+      agent_id:        AGENT_ID,
+      organization_id: ORG_ID,
       issue:           decision.issue,
-      analysis:        decision.analysis,       // column is 'analysis', not 'analysis_path'
-      recommendation:  decision.recommendation,
-      confidence:      decision.confidence,
+      analysis:        decision.analysis || null,
+      recommendation:  decision.recommendation || null,
+      confidence:      decision.confidence || null,
       urgency:         decision.urgency || 'MEDIUM'
     });
 
+    if (error) logger.warn('logHandoff Supabase error:', { error: error.message });
+
+    logger.warn(`Logged handoff: ${decision.issue}`, { cycleId, urgency: decision.urgency });
   } catch (error) {
-    logger.error('Failed to log handoff:', error, {
-      cycleId,
-      issue: decision.issue
-    });
-  }
-}
-
-// Backup to Supabase for redundancy
-async function backupToSupabase(table, data) {
-  try {
-    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
-      return; // Supabase backup is optional
-    }
-
-    const { createClient } = await import('@supabase/supabase-js');
-    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
-
-    const { error } = await supabase
-      .from(table)
-      .insert(data);
-
-    if (error) {
-      logger.warn('Supabase backup failed:', error, { table });
-    }
-  } catch (error) {
-    logger.warn('Supabase backup error:', error, { table });
+    logger.error('Failed to log handoff:', error);
   }
 }
 
 // Query functions for dashboard/monitoring
 export async function getRecentHeartbeats(agentId, limit = 10) {
   try {
-    const dbPool = await getPool();
-    const result = await dbPool.query(`
-      SELECT cycle_id, started_at, completed_at, duration_ms, status,
-             actions_count, rejections_count, handoffs_count
-      FROM heartbeat_cycles
-      WHERE agent_id = $1
-      ORDER BY started_at DESC
-      LIMIT $2
-    `, [agentId, limit]);
+    const supabase = await getSupabase();
+    const { data, error } = await supabase
+      .from('heartbeat_cycles')
+      .select('id, agent_id, started_at, completed_at, duration_ms, status, actions_count, rejections_count, handoffs_count')
+      .eq('agent_id', agentId || AGENT_ID)
+      .order('started_at', { ascending: false })
+      .limit(limit);
 
-    return result.rows;
+    if (error) throw new Error(error.message);
+    return data || [];
   } catch (error) {
     logger.error('Failed to get recent heartbeats:', error);
     return [];
@@ -254,34 +145,43 @@ export async function getRecentHeartbeats(agentId, limit = 10) {
 
 export async function getAgentMetrics(agentId, hours = 24) {
   try {
-    const dbPool = await getPool();
-    const result = await dbPool.query(`
-      SELECT
-        COUNT(*) as total_cycles,
-        SUM(actions_count) as total_actions,
-        SUM(rejections_count) as total_rejections,
-        SUM(handoffs_count) as total_handoffs,
-        AVG(duration_ms) as avg_cycle_duration,
-        COUNT(CASE WHEN status = 'completed' THEN 1 END) as successful_cycles
-      FROM heartbeat_cycles
-      WHERE agent_id = $1 AND started_at > NOW() - INTERVAL '${hours} hours'
-    `, [agentId]);
+    const supabase = await getSupabase();
+    const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+    const { data, error } = await supabase
+      .from('heartbeat_cycles')
+      .select('duration_ms, actions_count, rejections_count, handoffs_count, status')
+      .eq('agent_id', agentId || AGENT_ID)
+      .gte('started_at', since);
 
-    return result.rows[0] || {};
+    if (error) throw new Error(error.message);
+    const rows = data || [];
+    return {
+      total_cycles:      rows.length,
+      total_actions:     rows.reduce((s, r) => s + (r.actions_count || 0), 0),
+      total_rejections:  rows.reduce((s, r) => s + (r.rejections_count || 0), 0),
+      total_handoffs:    rows.reduce((s, r) => s + (r.handoffs_count || 0), 0),
+      avg_cycle_duration: rows.length ? rows.reduce((s, r) => s + (r.duration_ms || 0), 0) / rows.length : 0,
+      successful_cycles: rows.filter(r => r.status === 'completed').length
+    };
   } catch (error) {
     logger.error('Failed to get agent metrics:', error);
     return {};
   }
 }
-// Pre-register cycle row so action_log FK constraint is satisfied before logAction calls
+
+// Pre-register cycle row (no-op for Supabase — id is auto-generated uuid, not cycle_id string)
 export async function initCycleRow(cycleId, agentId) {
   try {
-    const dbPool = await getPool();
-    await dbPool.query(
-      `INSERT INTO heartbeat_cycles (cycle_id, agent_id, started_at, status)
-       VALUES ($1, $2, $3, $4) ON CONFLICT (cycle_id) DO NOTHING`,
-      [cycleId, agentId || 'c3000000-0000-0000-0000-000000000003', new Date(), 'running']
-    );
+    const supabase = await getSupabase();
+    const { error } = await supabase.from('heartbeat_cycles').insert({
+      agent_id:       agentId || AGENT_ID,
+      organization_id: ORG_ID,
+      started_at:     new Date().toISOString(),
+      status:         'running'
+    });
+    if (error && !error.message.includes('duplicate')) {
+      logger.warn('initCycleRow warning (non-fatal):', { cycleId, error: error.message });
+    }
   } catch (error) {
     logger.warn('initCycleRow failed (non-fatal):', { cycleId, error: error.message });
   }

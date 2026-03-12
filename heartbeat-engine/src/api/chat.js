@@ -37,11 +37,6 @@ async function getUserId(req) {
   return process.env.BLOOM_OWNER_USER_ID || '823e2fb5-2f8f-4279-9c84-c8f4bf78bcce';
 }
 
-// Get database pool - using the same pattern as existing code
-async function getPool() {
-  const { getSharedPool } = await import('../database/pool.js');
-  return getSharedPool();
-}
 
 // SYSTEM PROMPT — goes directly into API "system" parameter
 function buildSystemPrompt(agentConfig) {

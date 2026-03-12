@@ -616,73 +616,62 @@ function setupCronSchedules(agentConfig) {
 
 // ── Scheduled Task Runner ──────────────────────────────────────────────────
 async function runScheduledTasks(agentConfig) {
-  const { getSharedPool } = await import('./database/pool.js');
-  const pool = getSharedPool();
-  if (!pool) return;
+  const { createClient } = await import('@supabase/supabase-js');
+  const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+  });
 
   // Find tasks that are due now
   let dueTasks;
   try {
-    const result = await pool.query(`
-      SELECT * FROM scheduled_tasks
-      WHERE status = 'active'
-        AND next_run_at IS NOT NULL
-        AND next_run_at <= NOW()
-      ORDER BY next_run_at ASC
-      LIMIT 5
-    `);
-    dueTasks = result.rows;
+    const { data, error } = await supabase
+      .from('scheduled_tasks')
+      .select('*')
+      .eq('status', 'active')
+      .not('next_run_at', 'is', null)
+      .lte('next_run_at', new Date().toISOString())
+      .order('next_run_at', { ascending: true })
+      .limit(5);
+    if (error) throw new Error(error.message);
+    dueTasks = data || [];
   } catch (e) {
     logger.debug('Scheduled task query failed:', e.message);
     return;
   }
 
   if (!dueTasks || dueTasks.length === 0) return;
-
   logger.info(`⏰ Running ${dueTasks.length} scheduled task(s)`);
 
   for (const task of dueTasks) {
-    const runId = `run_${Date.now()}`;
     const startedAt = new Date().toISOString();
+
+    // Calculate next_run_at based on frequency
+    const nextRunOffsets = { daily: 86400000, weekdays: 86400000, weekly: 604800000, monthly: 2592000000 };
+    const nextRunAt = new Date(Date.now() + (nextRunOffsets[task.frequency] || 0)).toISOString();
 
     // Mark as running — prevent double-execution
     try {
-      await pool.query(
-        `UPDATE scheduled_tasks SET status = 'active', last_run_at = NOW(),
-          next_run_at = CASE frequency
-            WHEN 'daily'    THEN NOW() + INTERVAL '1 day'
-            WHEN 'weekdays' THEN NOW() + INTERVAL '1 day'
-            WHEN 'weekly'   THEN NOW() + INTERVAL '7 days'
-            WHEN 'monthly'  THEN NOW() + INTERVAL '30 days'
-            ELSE NULL END,
-          run_count = run_count + 1
-        WHERE id = $1`,
-        [task.id]
-      );
+      await supabase.from('scheduled_tasks').update({
+        last_run_at: new Date().toISOString(),
+        next_run_at: nextRunAt,
+        run_count: (task.run_count || 0) + 1
+      }).eq('id', task.id);
     } catch (e) {
       logger.warn('Could not update scheduled task timing:', e.message);
       continue;
     }
 
-    // Execute the task by running it through Sarah's chat endpoint
+    // Execute the task through Sarah's agent executor
     let output = '';
     let success = false;
     try {
       logger.info(`▶ Running task: ${task.name} — "${task.instruction.slice(0, 80)}"`);
-
-      // Import and call the agent executor directly (avoids HTTP round-trip)
       const { AgentExecutor } = await import('./agent/executor.js');
       const executor = new AgentExecutor(agentConfig);
-      const result = await executor.execute(
-        task.instruction,
-        [], // no conversation history for scheduled tasks
-        `scheduled_task_${task.id}`
-      );
-
+      const result = await executor.execute(task.instruction, [], `scheduled_task_${task.id}`);
       output = typeof result === 'string' ? result : result?.response || JSON.stringify(result);
       success = true;
       logger.info(`✅ Task complete: ${task.name}`);
-
     } catch (e) {
       output = `Task failed: ${e.message}`;
       logger.error(`❌ Task failed: ${task.name}`, e.message);
@@ -690,19 +679,16 @@ async function runScheduledTasks(agentConfig) {
 
     // Write result to task_runs
     try {
-      await pool.query(
-        `INSERT INTO task_runs (scheduled_task_id, agent_id, organization_id, status, output, error, started_at, completed_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
-        [
-          task.id,
-          task.agent_id,
-          task.organization_id,
-          success ? 'completed' : 'failed',
-          success ? output : null,
-          success ? null : output,
-          startedAt
-        ]
-      );
+      await supabase.from('task_runs').insert({
+        scheduled_task_id: task.id,
+        agent_id: task.agent_id,
+        organization_id: task.organization_id,
+        status: success ? 'completed' : 'failed',
+        output: success ? output : null,
+        error: success ? null : output,
+        started_at: startedAt,
+        completed_at: new Date().toISOString()
+      });
     } catch (e) {
       logger.warn('Could not write task_run record:', e.message);
     }

@@ -1,102 +1,62 @@
 // BLOOM Heartbeat Engine - Agent Profile Configuration
-// Loads and manages agent configuration from database and environment
+// Loads and manages agent configuration from Supabase (Bloomie Staffing project)
 
 import { createLogger } from '../logging/logger.js';
 
 const logger = createLogger('agent-profile');
 
-// Load agent configuration from database
-export async function loadAgentConfig(agentId = null) {
-  const id = agentId || process.env.AGENT_ID || 'bloomie-sarah-rodriguez';
+const SARAH_AGENT_ID = process.env.SARAH_AGENT_ID || 'c3000000-0000-0000-0000-000000000003';
+const ORG_ID = process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001';
 
-  logger.info('Loading agent configuration...', { agentId: id });
+async function getSupabase() {
+  const { createClient } = await import('@supabase/supabase-js');
+  return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+  });
+}
+
+// Load agent configuration from Supabase
+export async function loadAgentConfig(agentId = null) {
+  const id = agentId || process.env.AGENT_ID || SARAH_AGENT_ID;
+  logger.info('Loading agent configuration from Supabase...', { agentId: id });
 
   try {
-    // Load from database
-    const dbConfig = await loadConfigFromDatabase(id);
+    const supabase = await getSupabase();
+    const { data: row, error } = await supabase
+      .from('agents')
+      .select('id, name, role, autonomy_level, standing_instructions, config, created_at, updated_at')
+      .eq('id', id)
+      .single();
 
-    // Merge with environment variables
+    if (error) throw new Error(`Agent not found in Supabase: ${id} — ${error.message}`);
+
+    const dbConfig = {
+      agentId: row.id,
+      name: row.name,
+      role: row.role,
+      client: 'BLOOM Ecosystem',
+      currentAutonomyLevel: row.autonomy_level || 1,
+      standingInstructions: row.standing_instructions,
+      config: row.config || {},
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    };
+
     const config = mergeWithEnvironment(dbConfig);
-
-    // Validate configuration
     validateConfig(config);
 
-    logger.info('Agent configuration loaded', {
+    logger.info('Agent configuration loaded from Supabase', {
       agentId: config.agentId,
       name: config.name,
-      autonomyLevel: config.currentAutonomyLevel,
-      client: config.client
+      autonomyLevel: config.currentAutonomyLevel
     });
 
     return config;
 
   } catch (error) {
-    logger.error('Failed to load agent configuration:', error);
-
-    // Return default configuration if database load fails
+    logger.error('Failed to load agent config from Supabase:', error);
     logger.warn('Using default agent configuration');
     return getDefaultConfig();
-  }
-}
-
-// Load configuration from database
-async function loadConfigFromDatabase(agentId) {
-  let retries = 5;
-  let delay = 1000; // Start with 1 second
-
-  while (retries > 0) {
-    let pool = null;
-    try {
-      const { getSharedPool } = await import('../database/pool.js');
-      pool = getSharedPool();
-
-      const result = await pool.query(`
-        SELECT
-          id,
-          name,
-          role,
-          client,
-          autonomy_level,
-          standing_instructions,
-          config,
-          created_at,
-          updated_at
-        FROM agents
-        WHERE id = $1
-      `, [agentId]);
-
-      if (result.rows.length === 0) {
-        throw new Error(`Agent configuration not found: ${agentId}`);
-      }
-
-      const row = result.rows[0];
-
-      return {
-        agentId: row.id,
-        name: row.name,
-        role: row.role,
-        client: row.client,
-        currentAutonomyLevel: row.autonomy_level,
-        standingInstructions: row.standing_instructions,
-        config: row.config || {},
-        createdAt: row.created_at,
-        updatedAt: row.updated_at
-      };
-
-    } catch (error) {
-      if (pool) {
-      }
-
-      // Retry only for table not found errors and if we have retries left
-      if (error.code === '42P01' && retries > 1) {
-        logger.warn(`Agents table not found, retrying in ${delay}ms... (${retries - 1} retries left)`);
-        retries--;
-        await new Promise(resolve => setTimeout(resolve, delay));
-        delay *= 2; // Exponential backoff
-        continue;
-      }
-      throw error; // Re-throw for other errors or final retry
-    }
   }
 }
 
@@ -104,22 +64,15 @@ async function loadConfigFromDatabase(agentId) {
 function mergeWithEnvironment(dbConfig) {
   return {
     ...dbConfig,
-
-    // Core identifiers
     agentId: process.env.AGENT_ID || dbConfig.agentId,
     name: process.env.AGENT_NAME || dbConfig.name,
-
-    // Environment-specific overrides
     currentAutonomyLevel: parseInt(process.env.AUTONOMY_LEVEL || dbConfig.currentAutonomyLevel || 1),
-
-    // Integration configurations
     ghlConfig: {
       ...dbConfig.config?.ghlConfig,
       apiKey: process.env.GHL_API_KEY,
       locationId: process.env.GHL_LOCATION_ID || dbConfig.config?.ghlConfig?.locationId,
       userId: process.env.GHL_USER_ID || dbConfig.config?.ghlConfig?.userId
     },
-
     emailConfig: {
       ...dbConfig.config?.emailConfig,
       smtpHost: process.env.SMTP_HOST,
@@ -127,7 +80,6 @@ function mergeWithEnvironment(dbConfig) {
       smtpPassword: process.env.SMTP_PASSWORD,
       fromEmail: process.env.FROM_EMAIL || dbConfig.config?.emailConfig?.fromEmail
     },
-
     humanContact: {
       ...dbConfig.config?.humanContact,
       name: process.env.HUMAN_CONTACT_NAME || dbConfig.config?.humanContact?.name,
@@ -135,94 +87,45 @@ function mergeWithEnvironment(dbConfig) {
       phone: process.env.HUMAN_CONTACT_PHONE || dbConfig.config?.humanContact?.phone,
       ghlUserId: process.env.HUMAN_GHL_USER_ID || dbConfig.config?.humanContact?.ghlUserId
     },
-
-    // API configurations
     anthropicApiKey: process.env.ANTHROPIC_API_KEY,
     lettaServerUrl: process.env.LETTA_SERVER_URL,
-
-    // Backup configurations
     supabase: {
       url: process.env.SUPABASE_URL,
       serviceKey: process.env.SUPABASE_SERVICE_KEY
     },
-
-    // Operational settings
     notificationEmail: process.env.NOTIFICATION_EMAIL || 'notifications@bloomiestaffing.com',
     defaultCalendarId: process.env.DEFAULT_CALENDAR_ID || dbConfig.config?.defaultCalendarId,
     timezone: process.env.TIMEZONE || 'America/New_York'
   };
 }
 
-// Validate configuration completeness
 function validateConfig(config) {
-  const required = [
-    'agentId',
-    'name',
-    'currentAutonomyLevel',
-    'standingInstructions'
-  ];
-
+  const required = ['agentId', 'name', 'currentAutonomyLevel', 'standingInstructions'];
   const missing = required.filter(key => !config[key]);
-
-  if (missing.length > 0) {
-    throw new Error(`Missing required configuration: ${missing.join(', ')}`);
-  }
-
-  // Validate API keys
-  if (!config.anthropicApiKey) {
-    throw new Error('ANTHROPIC_API_KEY is required');
-  }
-
-  if (!config.ghlConfig?.apiKey) {
-    logger.warn('GHL_API_KEY not configured - GHL integration will be limited');
-  }
-
-  if (!config.humanContact?.email) {
-    logger.warn('Human contact email not configured - escalations may fail');
-  }
-
-  // Validate autonomy level
+  if (missing.length > 0) throw new Error(`Missing required configuration: ${missing.join(', ')}`);
+  if (!config.anthropicApiKey) throw new Error('ANTHROPIC_API_KEY is required');
+  if (!config.ghlConfig?.apiKey) logger.warn('GHL_API_KEY not configured');
+  if (!config.humanContact?.email) logger.warn('Human contact email not configured');
   if (config.currentAutonomyLevel < 1 || config.currentAutonomyLevel > 4) {
     throw new Error(`Invalid autonomy level: ${config.currentAutonomyLevel}`);
   }
 }
 
-// Default configuration fallback
 function getDefaultConfig() {
   return {
-    agentId: 'bloomie-sarah-rodriguez',
+    agentId: SARAH_AGENT_ID,
     name: 'Sarah Rodriguez',
     role: 'Content & Digital Marketing Executive',
     client: 'BLOOM Ecosystem',
-    currentAutonomyLevel: 1, // Start at Observer level
+    currentAutonomyLevel: 1,
     standingInstructions: getDefaultInstructions(),
     config: {},
-
-    ghlConfig: {
-      apiKey: process.env.GHL_API_KEY,
-      locationId: process.env.GHL_LOCATION_ID,
-      userId: null
-    },
-
-    emailConfig: {
-      fromEmail: 'sarah@bloomiestaffing.com'
-    },
-
-    humanContact: {
-      name: 'Kimberly Flowers',
-      email: process.env.HUMAN_CONTACT_EMAIL || 'kimberly@bloomiestaffing.com',
-      phone: null,
-      method: 'email'
-    },
-
+    ghlConfig: { apiKey: process.env.GHL_API_KEY, locationId: process.env.GHL_LOCATION_ID, userId: null },
+    emailConfig: { fromEmail: 'sarah@bloomiestaffing.com' },
+    humanContact: { name: 'Kimberly Flowers', email: process.env.HUMAN_CONTACT_EMAIL || 'kimberly@bloomiestaffing.com', phone: null, method: 'email' },
     anthropicApiKey: process.env.ANTHROPIC_API_KEY,
     lettaServerUrl: process.env.LETTA_SERVER_URL,
-
-    supabase: {
-      url: process.env.SUPABASE_URL,
-      serviceKey: process.env.SUPABASE_SERVICE_KEY
-    },
-
+    supabase: { url: process.env.SUPABASE_URL, serviceKey: process.env.SUPABASE_SERVICE_KEY },
     notificationEmail: 'notifications@bloomiestaffing.com',
     timezone: 'America/New_York',
     createdAt: new Date(),
@@ -230,9 +133,8 @@ function getDefaultConfig() {
   };
 }
 
-// Default standing instructions
 function getDefaultInstructions() {
-  return `You are Sarah Rodriguez, an autonomous operations agent for BLOOM Ecosystem.
+  return `You are Sarah Rodriguez, an autonomous AI employee (a "Bloomie") built and deployed by BLOOM Ecosystem. You work directly for Kimberly Flowers, Founder & CEO of BLOOM Ecosystem.
 
 Every heartbeat cycle, you should:
 1. Check for new client inquiries in GHL and respond within scope
@@ -249,88 +151,41 @@ Log everything: what you did, what you chose not to do (and why), and what you
 escalated. Your logs are how trust is built.`;
 }
 
-// Update agent configuration in database
+// Update agent configuration in Supabase
 export async function updateAgentConfig(agentId, updates) {
-  logger.info('Updating agent configuration...', {
-    agentId,
-    updates: Object.keys(updates)
-  });
-
-  const { getSharedPool } = await import('../database/pool.js');
-  const pool = getSharedPool();
+  logger.info('Updating agent configuration in Supabase...', { agentId, updates: Object.keys(updates) });
 
   try {
-    // Build dynamic update query
-    const updateFields = [];
-    const values = [];
-    let paramIndex = 1;
+    const supabase = await getSupabase();
+    const supabaseUpdates = { updated_at: new Date().toISOString() };
+    if (updates.name)                 supabaseUpdates.name = updates.name;
+    if (updates.role)                 supabaseUpdates.role = updates.role;
+    if (updates.autonomy_level)       supabaseUpdates.autonomy_level = updates.autonomy_level;
+    if (updates.standing_instructions) supabaseUpdates.standing_instructions = updates.standing_instructions;
+    if (updates.config)               supabaseUpdates.config = updates.config;
 
-    if (updates.name) {
-      updateFields.push(`name = $${paramIndex++}`);
-      values.push(updates.name);
-    }
+    const { data, error } = await supabase
+      .from('agents')
+      .update(supabaseUpdates)
+      .eq('id', agentId)
+      .select()
+      .single();
 
-    if (updates.role) {
-      updateFields.push(`role = $${paramIndex++}`);
-      values.push(updates.role);
-    }
+    if (error) throw new Error(error.message);
 
-    if (updates.client) {
-      updateFields.push(`client = $${paramIndex++}`);
-      values.push(updates.client);
-    }
-
-    if (updates.autonomy_level) {
-      updateFields.push(`autonomy_level = $${paramIndex++}`);
-      values.push(updates.autonomy_level);
-    }
-
-    if (updates.standing_instructions) {
-      updateFields.push(`standing_instructions = $${paramIndex++}`);
-      values.push(updates.standing_instructions);
-    }
-
-    if (updates.config) {
-      updateFields.push(`config = $${paramIndex++}`);
-      values.push(JSON.stringify(updates.config));
-    }
-
-    updateFields.push(`updated_at = NOW()`);
-    values.push(agentId);
-
-    const query = `
-      UPDATE agents
-      SET ${updateFields.join(', ')}
-      WHERE id = $${paramIndex}
-      RETURNING *
-    `;
-
-    const result = await pool.query(query, values);
-
-    if (result.rows.length === 0) {
-      throw new Error(`Agent not found: ${agentId}`);
-    }
-
-    logger.info('Agent configuration updated successfully', {
-      agentId,
-      updatedFields: updateFields
-    });
-
-    return result.rows[0];
-
-  } finally {
+    logger.info('Agent configuration updated in Supabase', { agentId });
+    return data;
+  } catch (error) {
+    logger.error('Failed to update agent config:', error);
+    throw error;
   }
 }
 
 // Get agent status summary
 export async function getAgentStatus(agentId) {
   const config = await loadAgentConfig(agentId);
-
-  // Get recent metrics
   const { getAgentMetrics } = await import('../logging/index.js');
   const metrics = await getAgentMetrics(agentId, 24);
-
-  // Check graduation eligibility
   const { checkGraduationEligibility } = await import('./autonomy-levels.js');
   const graduation = await checkGraduationEligibility(agentId, config.currentAutonomyLevel);
 
@@ -352,15 +207,9 @@ export async function getAgentStatus(agentId) {
       avgCycleDuration: parseInt(metrics.avg_cycle_duration) || 0,
       successfulCycles: parseInt(metrics.successful_cycles) || 0
     },
-    graduation: graduation.eligible ? {
-      eligible: true,
-      nextLevel: graduation.nextLevel,
-      meetsRequirements: graduation.meetsRequirements
-    } : {
-      eligible: false,
-      reason: graduation.reason,
-      requirements: graduation.criteria
-    },
+    graduation: graduation.eligible
+      ? { eligible: true, nextLevel: graduation.nextLevel, meetsRequirements: graduation.meetsRequirements }
+      : { eligible: false, reason: graduation.reason, requirements: graduation.criteria },
     lastUpdate: new Date().toISOString()
   };
 }
