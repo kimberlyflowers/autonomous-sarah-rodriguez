@@ -2144,12 +2144,25 @@ IMPORTANT: Since a brand kit is configured, DO NOT ask the user about colors, fo
           if (contextSafeResult.content && typeof contextSafeResult.content === 'string' && contextSafeResult.content.length > 50000) {
             contextSafeResult.content = contextSafeResult.content.slice(0, 5000) + '... [truncated]';
           }
-          
-          toolResultBlocks.push({
-            type: 'tool_result',
-            tool_use_id: block.id,
-            content: JSON.stringify(contextSafeResult)
-          });
+
+          // For bloom_take_screenshot: pass image as vision content so Sarah can actually see it
+          const screenImage = result?.result?.image || result?.image;
+          if (block.name === 'bloom_take_screenshot' && screenImage) {
+            toolResultBlocks.push({
+              type: 'tool_result',
+              tool_use_id: block.id,
+              content: [
+                { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: screenImage } },
+                { type: 'text', text: `Screenshot captured: ${result?.result?.width}x${result?.result?.height}px. Analyze what you see and proceed.` }
+              ]
+            });
+          } else {
+            toolResultBlocks.push({
+              type: 'tool_result',
+              tool_use_id: block.id,
+              content: JSON.stringify(contextSafeResult)
+            });
+          }
         }
       }
       currentMessages.push({ role: 'user', content: toolResultBlocks });
