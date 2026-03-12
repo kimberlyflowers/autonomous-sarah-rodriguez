@@ -108,34 +108,65 @@ web_search → Use for research, finding information, looking up facts, news, tr
 web_fetch → Use to READ a specific URL's text content quietly (user doesn't see anything).
   Examples: Reading an article found via web_search, extracting data from a documentation page
 
-BROWSER VISION TOOLS (how you actually browse):
-You have a live browser you can SEE and control step by step. This is how you browse:
-  browser_screenshot  Take a screenshot and SEE the current page as an image. ALWAYS do this first.
-  browser_navigate    Go to a URL, wait for it to load, then screenshot to see it.
-  browser_click       Click at x,y coordinates you identify from the screenshot.
-  browser_type        Type text into a focused field.
-  browser_key         Press keys: Enter, Tab, Escape, etc.
-  browser_scroll      Scroll up/down when content is off screen.
+════════════════════════════════════════════════════
+MODE 1 — YOUR OWN BROWSER (you do the browsing)
+════════════════════════════════════════════════════
+You have your own live browser you can SEE and control. Use this for YOUR work — researching,
+navigating websites, filling out forms on behalf of the client, etc. The user watches what you
+do in the Browser panel in real time.
+
+  browser_screenshot  Take a screenshot of YOUR browser. ALWAYS do this first to see the page.
+  browser_navigate    Go to a URL in YOUR browser, then screenshot to see it.
+  browser_click       Click at x,y coordinates in YOUR browser.
+  browser_type        Type text into a focused field in YOUR browser.
+  browser_key         Press keys: Enter, Tab, Escape, etc. in YOUR browser.
+  browser_scroll      Scroll up/down in YOUR browser.
   browser_find        Find elements by description and get their x,y to click.
   browser_get_content Read all text, links, and form fields from the current page.
   browser_js          Execute JavaScript directly on the page.
   browser_wait        Wait for loading or transitions before next screenshot.
 
-THE VISION LOOP (do this every time you browse):
+THE VISION LOOP (do this every time you use your browser):
 1. browser_screenshot with url= to navigate and see the page
 2. browser_find or examine the screenshot to locate what to click
 3. browser_click at the coordinates
 4. browser_screenshot again to verify what happened
 5. Repeat until the task is complete
 
-YOU are doing the actual browsing and seeing the page yourself.
-The Browser panel in the dashboard shows the user what you are doing in real time.
+════════════════════════════════════════════════════
+MODE 2 — USER'S COMPUTER (you help them on THEIR machine)
+════════════════════════════════════════════════════
+When the user has the BLOOM Desktop app running, you can see AND control THEIR computer directly.
+The Browser panel shows their live screen streaming to you in real time.
+Use this when the user asks for help with something on their own computer — navigating, clicking,
+filling out forms, or anything on their desktop or local apps.
 
-DECISION RULE:
-- User says research, find out, look up a TOPIC: use web_search (fast, no browser needed)
-- User says go to, visit, check, navigate, open a SITE: use browser_screenshot with url=
-- User gives you a URL: browser_screenshot(url=the_url) to navigate and see it
-- You need to read a page quietly for your own reference: web_fetch (no browser session needed)
+  bloom_take_screenshot   See the user's current screen as an image. ALWAYS do this first.
+  bloom_click             Click at x,y coordinates on the user's screen.
+  bloom_double_click      Double-click at x,y on the user's screen.
+  bloom_type_text         Type text at the current cursor position on the user's screen.
+  bloom_key_press         Press keys on the user's computer (Enter, Tab, Cmd+C, etc.)
+  bloom_scroll            Scroll at x,y coordinates on the user's screen.
+  bloom_move_mouse        Move the mouse to x,y on the user's screen.
+  bloom_drag              Drag from one point to another on the user's screen.
+
+THE VISION LOOP for user's computer:
+1. bloom_take_screenshot to see their screen
+2. Identify where to click from the screenshot
+3. bloom_click at the correct coordinates
+4. bloom_take_screenshot again to verify
+5. Repeat until done
+
+IMPORTANT: Only use bloom_* tools when the user asks you to help with something on THEIR computer.
+If the Desktop app is not running, these tools will not work — tell the user to open BLOOM Desktop.
+
+════════════════════════════════════════════════════
+DECISION RULE — which mode to use:
+════════════════════════════════════════════════════
+- "Research / look up / find info" → web_search (no browser needed)
+- "Go to a website / navigate to a URL" → YOUR browser (browser_screenshot with url=)
+- "Help me on my computer / fill this out for me / click this on my screen" → USER'S computer (bloom_take_screenshot first)
+- "Read a page quietly" → web_fetch (no browser, no screen)
 
 IMAGE CREATION (another superpower):
 You can generate professional images on demand. Use image_generate to create flyers, social media
@@ -943,13 +974,91 @@ const _ALL_TOOLS = [
   },
   {
     name: "browser_screenshot",
-    description: "Take a screenshot of a web page. Returns a base64-encoded PNG image. Useful for verifying page state, capturing visual content, or documenting web pages.",
+    description: "Take a screenshot of a web page in YOUR OWN browser. Returns a base64-encoded PNG image. Use this for navigating and seeing websites you are browsing yourself.",
     input_schema: {
       type: "object",
       properties: {
         url: { type: "string", description: "URL of the page to screenshot" }
       },
       required: ["url"]
+    }
+  },
+  // ── USER'S COMPUTER CONTROL ──────────────────────────────────────────────
+  {
+    name: "bloom_take_screenshot",
+    description: "Take a screenshot of THE USER'S computer screen. Returns a base64 image of what is currently on their screen. ALWAYS call this first before clicking or typing on the user's computer.",
+    input_schema: { type: "object", properties: {}, required: [] }
+  },
+  {
+    name: "bloom_click",
+    description: "Click at specific x,y coordinates on THE USER'S screen. Use bloom_take_screenshot first to see the screen and identify coordinates.",
+    input_schema: {
+      type: "object",
+      properties: {
+        x: { type: "number", description: "X coordinate to click" },
+        y: { type: "number", description: "Y coordinate to click" }
+      },
+      required: ["x", "y"]
+    }
+  },
+  {
+    name: "bloom_double_click",
+    description: "Double-click at x,y coordinates on THE USER'S screen.",
+    input_schema: {
+      type: "object",
+      properties: {
+        x: { type: "number" },
+        y: { type: "number" }
+      },
+      required: ["x", "y"]
+    }
+  },
+  {
+    name: "bloom_type_text",
+    description: "Type text at the current cursor position on THE USER'S computer. Click the target field first with bloom_click, then use this to type.",
+    input_schema: {
+      type: "object",
+      properties: {
+        text: { type: "string", description: "Text to type on the user's computer" }
+      },
+      required: ["text"]
+    }
+  },
+  {
+    name: "bloom_key_press",
+    description: "Press a key or keyboard shortcut on THE USER'S computer. Examples: 'Return', 'Tab', 'Escape', 'cmd+c', 'cmd+v'.",
+    input_schema: {
+      type: "object",
+      properties: {
+        key: { type: "string", description: "Key or shortcut to press (e.g. 'Return', 'Tab', 'cmd+c')" }
+      },
+      required: ["key"]
+    }
+  },
+  {
+    name: "bloom_scroll",
+    description: "Scroll at x,y coordinates on THE USER'S screen.",
+    input_schema: {
+      type: "object",
+      properties: {
+        x: { type: "number" },
+        y: { type: "number" },
+        direction: { type: "string", enum: ["up", "down", "left", "right"] },
+        amount: { type: "number", description: "Scroll amount in pixels", default: 300 }
+      },
+      required: ["x", "y", "direction"]
+    }
+  },
+  {
+    name: "bloom_move_mouse",
+    description: "Move the mouse to x,y on THE USER'S screen without clicking.",
+    input_schema: {
+      type: "object",
+      properties: {
+        x: { type: "number" },
+        y: { type: "number" }
+      },
+      required: ["x", "y"]
     }
   },
   // ── WEB SEARCH & FETCH ───────────────────────────────────────────────────
@@ -1788,6 +1897,43 @@ async function executeTool(toolName, toolInput, sessionId = null) {
       }
 
       // Legacy local browser tools removed — all browsing goes through sidecar
+    }
+
+    // ── USER'S COMPUTER CONTROL (bloom_* tools) ───────────────────────────
+    if (toolName.startsWith('bloom_') && toolName !== 'bloom_log') {
+      const SARAH_URL = process.env.SARAH_URL || `http://localhost:${process.env.PORT || 3000}`;
+      const { v4: uuidv4 } = await import('uuid');
+
+      // Find the active desktop session
+      const statusRes = await fetch(`${SARAH_URL}/api/desktop/status`);
+      const statusData = await statusRes.json();
+      if (!statusData.sessions || statusData.sessions.length === 0) {
+        return { error: 'No desktop connected. Ask the user to open the BLOOM Desktop app on their computer.' };
+      }
+      const desktopSessionId = statusData.sessions[0].sessionId;
+      const commandId = uuidv4();
+
+      // Queue the command
+      const cmdRes = await fetch(`${SARAH_URL}/api/desktop/command`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: desktopSessionId, commandId, tool: toolName, args: toolInput })
+      });
+      if (!cmdRes.ok) {
+        return { error: `Failed to send command to desktop: ${cmdRes.status}` };
+      }
+
+      // Poll for result (up to 15 seconds)
+      const deadline = Date.now() + 15000;
+      while (Date.now() < deadline) {
+        await new Promise(r => setTimeout(r, 500));
+        const resultRes = await fetch(`${SARAH_URL}/api/desktop/result/${commandId}`);
+        if (resultRes.ok) {
+          const resultData = await resultRes.json();
+          if (resultData.ready) return resultData;
+        }
+      }
+      return { error: 'Desktop command timed out — the user may have minimized or closed BLOOM Desktop.' };
     }
 
     return { error: `Unknown tool: ${toolName}` };
