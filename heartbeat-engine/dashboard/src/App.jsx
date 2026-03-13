@@ -318,16 +318,17 @@ function useSarahChat() {
     }
     
     // Progress indicator
-    // Work tasks: "Sarah is working" with elapsed time
+    // Work tasks: agent "is working" with elapsed time
     // Casual chat: "Thinking..." with dots (NOT bare dots)
     const startTime = Date.now();
     let progressInterval = null;
+    const fn=(currentAgent?.name||"Sarah").split(" ")[0];
     if(isWorkTask){
-      setWorkingStatus("Sending to Sarah...");
+      setWorkingStatus(`Sending to ${fn}...`);
       progressInterval = setInterval(()=>{
         const elapsed = Math.round((Date.now()-startTime)/1000);
-        if(elapsed < 3) setWorkingStatus("Sarah is reading your request...");
-        else if(elapsed < 8) setWorkingStatus("Sarah is working on this...");
+        if(elapsed < 3) setWorkingStatus(`${fn} is reading your request...`);
+        else if(elapsed < 8) setWorkingStatus(`${fn} is working on this...`);
         else if(elapsed < 15) setWorkingStatus(`Still working... (${elapsed}s)`);
         else if(elapsed < 30) setWorkingStatus(`This is a bigger task — hang tight... (${elapsed}s)`);
         else if(elapsed < 60) setWorkingStatus(`Deep work in progress... (${elapsed}s)`);
@@ -375,7 +376,7 @@ function useSarahChat() {
         if(ackId) setMessages(p=>p.filter(m=>m.id!==ackId));
         const elapsed = Math.round((Date.now()-startTime)/1000);
         const msg = elapsed >= 470 
-          ? "Sarah took too long to respond (timed out after 8 minutes). Try again or simplify the request."
+          ? `${fn} took too long to respond (timed out after 8 minutes). Try again or simplify the request.`
           : "Stopped. What would you like me to do instead?";
         setMessages(p=>[...p,{id:Date.now(),b:true,t:msg,tm:ts2,isSystem:true}]);
         return false;
@@ -892,7 +893,7 @@ function InternalTasks({c,sse}) {
   const statusColors={pending:"#F59E0B",in_progress:c.bl,completed:c.gr,failed:"#EF4444"};
 
   return(
-    <Card c={c} title="Internal Tasks" subtitle="Sarah's active work queue" icon={<TaskListIcon c={c} size={16}/>}>
+    <Card c={c} title="Internal Tasks" subtitle={`${aFN}'s active work queue`} icon={<TaskListIcon c={c} size={16}/>}>
       <div style={{maxHeight:240,overflowY:"auto"}}>
         {tasks.length===0
           ? <div style={{padding:20,textAlign:"center",fontSize:12,color:c.so}}>No active tasks</div>
@@ -1092,13 +1093,13 @@ function Screen({c,mob,mode,setMode}) {
                 <div style={{flex:1,padding:"3px 8px",borderRadius:4,background:"#111",fontSize:10,color:"#aaa",fontFamily:"monospace",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{browserUrl}</div>
               </div>
             )}
-            <img src={screenshot} alt="Sarah's browser" style={{width:"100%",flex:1,objectFit:"contain",display:"block"}}/>
+            <img src={screenshot} alt={aFN+"'s browser"} style={{width:"100%",flex:1,objectFit:"contain",display:"block"}}/>
           </div>
         ):(
           <div style={{textAlign:"center",padding:30}}>
             
             <div style={{fontSize:13,color:"#666",marginBottom:4}}>Browser idle</div>
-            <div style={{fontSize:11,color:"#555"}}>Activates when Sarah starts browsing</div>
+            <div style={{fontSize:11,color:"#555"}}>Activates when {aFN} starts browsing</div>
           </div>
         )}
       </div>
@@ -1351,7 +1352,7 @@ function SessionFilesPanel({c, sessionId, setActiveArtifact}){
     <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",textAlign:"center",padding:30}}>
       <div>
         <div style={{fontSize:13,color:c.so,marginBottom:4}}>No files in this chat</div>
-        <div style={{fontSize:11,color:c.fa}}>Ask Sarah to create content — blogs, websites, emails, docs — and they'll appear here</div>
+        <div style={{fontSize:11,color:c.fa}}>Ask {aFN} to create content — blogs, websites, emails, docs — and they'll appear here</div>
       </div>
     </div>
   );
@@ -1823,7 +1824,7 @@ function CallsPage({c,mob}){
     <div style={{textAlign:"center",padding:60,background:c.cd,borderRadius:16,border:"1px solid "+c.ln}}>
       <div style={{fontSize:40,marginBottom:12}}>📞</div>
       <div style={{fontSize:15,fontWeight:600,color:c.tx,marginBottom:6}}>No calls yet</div>
-      <div style={{fontSize:13,color:c.so,maxWidth:400,margin:"0 auto",lineHeight:1.6}}>When clients call or leave voicemails on your BLOOM number, Sarah will read the transcript, extract action items, and get to work. Call transcripts and Sarah's actions will appear here.</div>
+      <div style={{fontSize:13,color:c.so,maxWidth:400,margin:"0 auto",lineHeight:1.6}}>When clients call or leave voicemails on your BLOOM number, {aFN} will read the transcript, extract action items, and get to work. Call transcripts and {aFN}'s actions will appear here.</div>
     </div>
   );
 
@@ -1867,7 +1868,7 @@ function CallsPage({c,mob}){
                 </div>
                 {call.sarah_response&&(
                   <div style={{padding:"12px 18px",borderTop:"1px solid "+c.ln}}>
-                    <div style={{fontSize:11,fontWeight:700,color:c.ac,marginBottom:4,textTransform:"uppercase",letterSpacing:"0.5px"}}>🌸 Sarah's Actions</div>
+                    <div style={{fontSize:11,fontWeight:700,color:c.ac,marginBottom:4,textTransform:"uppercase",letterSpacing:"0.5px"}}>🌸 {aFN}'s Actions</div>
                     <div style={{fontSize:13,color:c.tx,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{call.sarah_response}</div>
                   </div>
                 )}
@@ -2042,13 +2043,13 @@ function SkillsPage({c,mob}){
             <div style={{marginBottom:16}}>
               <label style={{fontSize:12,fontWeight:600,color:c.tx,marginBottom:4,display:'block'}}>When to use this skill</label>
               <input value={form.trigger} onChange={e=>setForm(f=>({...f,trigger:e.target.value}))} placeholder="e.g., new lead, intake form, onboarding" style={{width:'100%',padding:'10px 12px',borderRadius:8,border:'1px solid '+c.ln,background:c.sf,color:c.tx,fontSize:13,outline:'none',boxSizing:'border-box'}}/>
-              <div style={{fontSize:11,color:c.so,marginTop:4}}>Keywords that tell Sarah when to apply this skill</div>
+              <div style={{fontSize:11,color:c.so,marginTop:4}}>Keywords that tell {aFN} when to apply this skill</div>
             </div>
 
             <div style={{marginBottom:20}}>
               <label style={{fontSize:12,fontWeight:600,color:c.tx,marginBottom:4,display:'block'}}>Instructions</label>
               <textarea value={form.instructions} onChange={e=>setForm(f=>({...f,instructions:e.target.value}))} placeholder={"Describe exactly how you want this done. For example:\n\n1. When a new lead fills out the intake form...\n2. Create a contact in BLOOM CRM with tags 'new-intake'\n3. Add them to the Welcome workflow\n4. Send the intake confirmation email\n5. Create a note with the form submission details\n6. Notify the team in the #new-leads channel"} style={{width:'100%',padding:'10px 12px',borderRadius:8,border:'1px solid '+c.ln,background:c.sf,color:c.tx,fontSize:13,outline:'none',minHeight:180,resize:'vertical',fontFamily:'inherit',boxSizing:'border-box',lineHeight:1.5}}/>
-              <div style={{fontSize:11,color:c.so,marginTop:4}}>Be specific — the more detail you give, the better Sarah performs this task</div>
+              <div style={{fontSize:11,color:c.so,marginTop:4}}>Be specific — the more detail you give, the better {aFN} performs this task</div>
             </div>
 
             <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
@@ -2301,7 +2302,7 @@ function BusinessProfilePage({c,mob,userImg,setUserImg}){
                 Set as Active Kit
               </button>
             )}
-            {brand.active&&<span style={{fontSize:11,color:c.gr,fontWeight:600}}>✓ Active — Sarah uses this kit</span>}
+            {brand.active&&<span style={{fontSize:11,color:c.gr,fontWeight:600}}>✓ Active — {aFN} uses this kit</span>}
           </div>
         </div>
       </div>
@@ -2463,7 +2464,7 @@ function BillingPage({c,mob}){
                 {projTotalOver>0&&<div style={{fontSize:11,color:"#ea4335"}}>{$(plan.price)} base + {$(projTotalOver)} overages</div>}
               </div>
             </div>
-            {projTotalOver>10&&<div style={{marginTop:10,padding:"9px 14px",borderRadius:8,fontSize:12,lineHeight:1.5,background:"rgba(244,162,97,0.06)",border:"1px solid rgba(244,162,97,0.2)",color:c.ac2||"#F4A261"}}>💡 <strong>Tip:</strong> You're on pace for {$(projTotalOver)} in overages. Consider adjusting Sarah's send frequency or upgrading your plan.</div>}
+            {projTotalOver>10&&<div style={{marginTop:10,padding:"9px 14px",borderRadius:8,fontSize:12,lineHeight:1.5,background:"rgba(244,162,97,0.06)",border:"1px solid rgba(244,162,97,0.2)",color:c.ac2||"#F4A261"}}>💡 <strong>Tip:</strong> You're on pace for {$(projTotalOver)} in overages. Consider adjusting {aFN}'s send frequency or upgrading your plan.</div>}
           </div>
         )}
       </div>
@@ -2471,7 +2472,7 @@ function BillingPage({c,mob}){
       {/* AI Generation */}
       <div style={{background:c.cd,borderRadius:12,border:"1px solid "+c.ln,padding:18,marginBottom:14}}>
         <div style={{fontSize:15,fontWeight:700,marginBottom:4}}>AI Generation</div>
-        <div style={{fontSize:12,color:c.so,marginBottom:14}}>Sarah picks the best AI model for each job automatically.</div>
+        <div style={{fontSize:12,color:c.so,marginBottom:14}}>{aFN} picks the best AI model for each job automatically.</div>
         {overageItems.filter(i=>["image","video"].includes(i.key)).map(i=><BillingUsageBar key={i.key} {...i} c={c}/>)}
         <div style={{borderTop:"1px solid "+c.ln,marginTop:6,paddingTop:14}}>
           <div style={{fontSize:12,fontWeight:700,color:c.so,marginBottom:10}}>Content Created This Period</div>
@@ -2497,7 +2498,7 @@ function BillingPage({c,mob}){
           </tr></thead>
           <tbody>
             {[
-              {l:"Chat with Sarah",v:["Unlimited","Unlimited","Unlimited"]},
+              {l:"Chat with your Bloomie",v:["Unlimited","Unlimited","Unlimited"]},
               {l:"BLOOM CRM",v:["Included","Included","Included"]},
               {l:"Scheduled Tasks",v:["5","15","Unlimited"]},
               {l:"Emails included",v:["1,000","5,000","10,000"]},
@@ -2769,6 +2770,7 @@ function App() {
   const sbOpen=sbO==="full"||sbO==="mini";
 
   const agent={nm:currentAgent?.name||"Sarah Rodriguez",role:currentAgent?.role||"Marketing & Operations Executive",img:agentImgUrl||currentAgent?.avatar_url||null,grad:"linear-gradient(135deg,#F4A261,#E76F8B)"};
+  const aFN=(currentAgent?.name||"Sarah").split(" ")[0]; // agent first name for dynamic UI text
 
   useEffect(()=>{ if(btm.current) setTimeout(()=>btm.current?.scrollIntoView({behavior:"smooth"}),100); },[messages]);
 
@@ -3288,7 +3290,7 @@ function App() {
                       <div style={{animation:"bloomieWiggle 3s ease-in-out infinite"}}><Face sz={mob?64:80} agent={agent}/></div>
                     </div>
                     <h2 style={{fontSize:mob?22:28,fontWeight:700,color:c.tx,marginTop:18,marginBottom:6}}>Chat with {(currentAgent?.name||"Sarah").split(" ")[0]}</h2>
-                    <p style={{fontSize:mob?13:15,color:c.so,marginBottom:28}}>Give her tasks, check her work, or ask what's going on</p>
+                    <p style={{fontSize:mob?13:15,color:c.so,marginBottom:28}}>Give {aFN} tasks, check their work, or ask what's going on</p>
                     <div style={{position:"relative",marginBottom:20}}>
                       <div style={{display:"flex",alignItems:"flex-end",gap:8,padding:mob?"12px":"14px 16px",borderRadius:20,border:"1.5px solid "+(vcRec?c.ac:c.ln),background:c.inp,transition:"border-color .2s"}}>
                         <div ref={plusMenuRef} style={{position:"relative",flexShrink:0,marginBottom:2}}>
@@ -3323,7 +3325,7 @@ function App() {
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={vcRec?c.ac:c.so} strokeWidth="2" strokeLinecap="round"><rect x="9" y="1" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0014 0"/><path d="M12 17v4M8 21h8"/></svg>
                         </button>
                         {loading?(
-                          <button onClick={stopSarah} style={{width:36,height:36,borderRadius:10,border:"none",cursor:"pointer",background:"rgba(234,67,53,0.15)",color:"#ea4335",fontSize:14,fontWeight:700,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:2}} title="Stop Sarah">■</button>
+                          <button onClick={stopSarah} style={{width:36,height:36,borderRadius:10,border:"none",cursor:"pointer",background:"rgba(234,67,53,0.15)",color:"#ea4335",fontSize:14,fontWeight:700,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:2}} title={"Stop "+aFN}>■</button>
                         ):(
                           <button onClick={doSend} disabled={!tx.trim()} style={{width:36,height:36,borderRadius:10,border:"none",cursor:tx.trim()?"pointer":"not-allowed",background:tx.trim()?"linear-gradient(135deg,#F4A261,#E76F8B)":"transparent",color:tx.trim()?"#fff":c.fa,fontSize:16,fontWeight:700,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:2}}>➜</button>
                         )}
@@ -3439,7 +3441,7 @@ function App() {
                                 <>
                                   <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
                                     <span style={{width:8,height:8,borderRadius:"50%",background:c.ac,animation:"pulse 1.2s ease infinite"}}/>
-                                    <span style={{fontSize:13,fontWeight:600,color:c.tx}}>Sarah is working</span>
+                                    <span style={{fontSize:13,fontWeight:600,color:c.tx}}>{aFN} is working</span>
                                   </div>
                                   <div style={{fontSize:11,color:c.so,lineHeight:1.5}}>
                                     <div style={{display:"flex",alignItems:"center",gap:6}}>
@@ -3451,7 +3453,7 @@ function App() {
                               )}
                             </div>
                           </div>
-                          <button onClick={stopSarah} title="Stop Sarah" style={{width:32,height:32,borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:14,color:"#ea4335",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"background .15s"}} onMouseEnter={e=>e.currentTarget.style.background="rgba(234,67,53,0.1)"} onMouseLeave={e=>e.currentTarget.style.background=c.cd}>■</button>
+                          <button onClick={stopSarah} title={"Stop "+aFN} style={{width:32,height:32,borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:14,color:"#ea4335",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"background .15s"}} onMouseEnter={e=>e.currentTarget.style.background="rgba(234,67,53,0.1)"} onMouseLeave={e=>e.currentTarget.style.background=c.cd}>■</button>
                         </div>
                       )}
                       <div ref={btm}/>
@@ -3511,7 +3513,7 @@ function App() {
                   <div style={{flexShrink:0,padding:mob?"8px 12px 12px":"10px 20px 14px",background:c.cd,borderTop:"1px solid "+c.ln}}>
                       <div style={{display:"flex",alignItems:"center",gap:6,paddingBottom:6}}>
                         <span style={{width:5,height:5,borderRadius:"50%",background:connected?c.gr:c.fa}}/>
-                        <span style={{fontSize:11,color:c.fa}}>{connected?"Connected to Sarah's API":"Reconnecting…"}</span>
+                        <span style={{fontSize:11,color:c.fa}}>{connected?`Connected to ${aFN}'s API`:"Reconnecting…"}</span>
                       </div>
                       {/* Pending files preview */}
                       {pendingFiles.length>0&&(
@@ -3599,7 +3601,7 @@ function App() {
               <div style={{marginBottom:20,display:"flex",alignItems:"flex-start",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
                 <div>
                   <h1 style={{fontSize:mob?20:24,fontWeight:700,color:c.tx,marginBottom:6}}>Operations Monitor</h1>
-                  <p style={{fontSize:13,color:c.so}}>Real-time visibility into Sarah's autonomous work</p>
+                  <p style={{fontSize:13,color:c.so}}>Real-time visibility into {aFN}'s autonomous work</p>
                 </div>
                 <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                   <a href={contactsUrl} target="_blank" rel="noopener noreferrer" style={{display:"flex",alignItems:"center",gap:6,padding:"8px 14px",borderRadius:10,border:"1px solid "+c.ln,background:c.cd,textDecoration:"none",color:c.tx,fontSize:12,fontWeight:600}}>
@@ -3643,7 +3645,7 @@ function App() {
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
                     <div>
                       <h1 style={{fontSize:20,fontWeight:700,color:c.tx}}>Activity</h1>
-                      <p style={{fontSize:13,color:c.so,marginTop:3}}>What Sarah's been working on</p>
+                      <p style={{fontSize:13,color:c.so,marginTop:3}}>What {aFN}'s been working on</p>
                     </div>
                     <div style={{display:"flex",gap:10}}>
                       {taskRuns.some(r=>r.status==="pending")&&(
@@ -3691,7 +3693,7 @@ function App() {
                     {taskFormOpen&&(
                       <div style={{padding:16,borderRadius:12,border:"1px solid "+c.ln,background:c.sf,marginBottom:14}}>
                         <input value={newTask.name} onChange={e=>setNewTask(p=>({...p,name:e.target.value}))} placeholder="Task name..." style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,fontSize:13,color:c.tx,marginBottom:8,fontFamily:"inherit",boxSizing:"border-box"}}/>
-                        <textarea value={newTask.instruction} onChange={e=>setNewTask(p=>({...p,instruction:e.target.value}))} placeholder="What should Sarah do?" rows={3} style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,fontSize:13,color:c.tx,marginBottom:8,fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
+                        <textarea value={newTask.instruction} onChange={e=>setNewTask(p=>({...p,instruction:e.target.value}))} placeholder={"What should "+aFN+" do?"} rows={3} style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,fontSize:13,color:c.tx,marginBottom:8,fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
                         <div style={{display:"flex",gap:6,marginBottom:10}}>
                           <select value={newTask.taskType} onChange={e=>setNewTask(p=>({...p,taskType:e.target.value}))} style={{flex:1,padding:"8px 10px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,fontSize:12,color:c.tx,fontFamily:"inherit"}}>
                             <option value="content">Content</option><option value="email">Email</option><option value="research">Research</option><option value="crm">CRM</option><option value="custom">Custom</option>
@@ -3780,7 +3782,7 @@ function App() {
 
                           {/* AI Decompose — for visionary task descriptions */}
                           <button onClick={async()=>{
-                            const vision=prompt("Describe what you want your AI employee to do — be as big-picture as you want:\n\nExample: 'I want Sarah to handle all my marketing. Blog posts, emails, social media, lead follow-up, and keep the CRM clean.'");
+                            const vision=prompt(`Describe what you want your AI employee to do — be as big-picture as you want:\n\nExample: 'I want ${aFN} to handle all my marketing. Blog posts, emails, social media, lead follow-up, and keep the CRM clean.'`);
                             if(!vision) return;
                             try{
                               const r=await fetch('/api/chat/message',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
@@ -3832,7 +3834,7 @@ function App() {
                       <div style={{textAlign:"center",padding:60,color:c.so}}>
                         <div style={{fontSize:28,marginBottom:8,opacity:0.25}}>📋</div>
                         <div style={{fontSize:14,fontWeight:600,color:c.tx,marginBottom:4}}>No scheduled tasks yet</div>
-                        <div style={{fontSize:13,marginBottom:16}}>Add one here or tell Sarah in chat</div>
+                        <div style={{fontSize:13,marginBottom:16}}>Add one here or tell {aFN} in chat</div>
                       </div>
                     )}
                   </div>
@@ -4017,7 +4019,7 @@ function App() {
                         <div style={{borderTop:"1px solid "+c.ln,paddingTop:16}}>
                           <div style={{fontSize:11,fontWeight:700,color:c.so,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:10}}>Add New Task</div>
                           <input value={calTask.name} onChange={e=>setCalTask(p=>({...p,name:e.target.value}))} placeholder="Task name..." style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,fontSize:13,color:c.tx,marginBottom:6,fontFamily:"inherit",boxSizing:"border-box"}}/>
-                          <textarea value={calTask.instruction} onChange={e=>setCalTask(p=>({...p,instruction:e.target.value}))} placeholder="What should Sarah do?" rows={2} style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,fontSize:13,color:c.tx,marginBottom:6,fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
+                          <textarea value={calTask.instruction} onChange={e=>setCalTask(p=>({...p,instruction:e.target.value}))} placeholder={"What should "+aFN+" do?"} rows={2} style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,fontSize:13,color:c.tx,marginBottom:6,fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
                           <div style={{display:"flex",gap:6,marginBottom:10}}>
                             <select value={calTask.frequency} onChange={e=>setCalTask(p=>({...p,frequency:e.target.value}))} style={{flex:1,padding:"8px 10px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,fontSize:12,color:c.tx,fontFamily:"inherit"}}>
                               <option value="daily">Daily</option><option value="weekdays">Weekdays</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option>
@@ -4047,7 +4049,7 @@ function App() {
                       <div style={{textAlign:"center",padding:60,color:c.so}}>
                         <div style={{fontSize:28,marginBottom:8,opacity:0.25}}>📋</div>
                         <div style={{fontSize:14,fontWeight:600,color:c.tx,marginBottom:4}}>No activity yet</div>
-                        <div style={{fontSize:13}}>Once Sarah starts running scheduled tasks, her work will show up here.</div>
+                        <div style={{fontSize:13}}>Once {aFN} starts running scheduled tasks, their work will show up here.</div>
                       </div>
                     ):(
                       <div style={{display:"flex",flexDirection:"column",gap:2}}>
@@ -4083,7 +4085,7 @@ function App() {
                                   {run.result&&<div style={{padding:"12px 16px",fontSize:13,color:c.tx,lineHeight:1.6,borderBottom:ev.actions?.length?"1px solid "+c.ln+"40":"none"}}>{run.result}</div>}
                                   {ev.actions?.length>0&&(
                                     <div style={{padding:"10px 16px"}}>
-                                      <div style={{fontSize:11,fontWeight:700,color:c.so,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>What Sarah did</div>
+                                      <div style={{fontSize:11,fontWeight:700,color:c.so,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>What {aFN} did</div>
                                       {ev.actions.map((a,ai)=>(
                                         <div key={ai} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"7px 0",borderBottom:ai<ev.actions.length-1?"1px solid "+c.ln+"30":"none"}}>
                                           <span style={{fontSize:14,flexShrink:0,marginTop:1}}>{a.icon||"•"}</span>
@@ -4132,7 +4134,7 @@ function App() {
                   <PhoneIcon c={c} size={mob?20:24}/>
                   Calls
                 </h1>
-                <p style={{fontSize:13,color:c.so}}>Phone calls and voicemails — Sarah reads transcripts and takes action</p>
+                <p style={{fontSize:13,color:c.so}}>Phone calls and voicemails — {aFN} reads transcripts and takes action</p>
               </div>
               <CallsPage c={c} mob={mob}/>
             </div>
@@ -4274,7 +4276,7 @@ function App() {
               <div style={{marginBottom:16,display:"flex",flexDirection:mob?"column":"row",gap:12,alignItems:mob?"stretch":"center",justifyContent:"space-between"}}>
                 <div>
                   <h1 style={{fontSize:mob?20:24,fontWeight:700,color:c.tx,marginBottom:4}}>Files & Deliverables</h1>
-                  <p style={{fontSize:13,color:c.so}}>All content Sarah has created for you</p>
+                  <p style={{fontSize:13,color:c.so}}>All content {aFN} has created for you</p>
                 </div>
                 <input value={filesSearch||''} onChange={e=>setFilesSearch(e.target.value)} placeholder="Search files..." style={{padding:"8px 14px",borderRadius:10,border:"1.5px solid "+c.ln,fontSize:13,fontFamily:"inherit",background:c.inp,color:c.tx,width:mob?"100%":240}}/>
               </div>
@@ -4284,7 +4286,7 @@ function App() {
                 <div style={{textAlign:"center",padding:60,color:c.so,background:c.cd,borderRadius:16,border:"1px solid "+c.ln}}>
                   
                   <div style={{fontSize:15,fontWeight:600,color:c.tx,marginBottom:6}}>No files yet</div>
-                  <div style={{fontSize:13}}>Ask Sarah to create content — blog posts, email campaigns, SOPs, reports — and they'll appear here.</div>
+                  <div style={{fontSize:13}}>Ask {aFN} to create content — blog posts, email campaigns, SOPs, reports — and they'll appear here.</div>
                 </div>
               ) : (
                 <div style={{display:"grid",gridTemplateColumns:mob?"1fr":"repeat(auto-fill, minmax(280px, 1fr))",gap:14}}>
@@ -4654,14 +4656,14 @@ function App() {
             <div style={{padding:mob?"16px 12px 40px":"32px 40px 60px",maxWidth:960,margin:"0 auto"}}>
               <div style={{marginBottom:32}}>
                 <h1 style={{fontSize:mob?24:32,fontWeight:700,color:c.tx,marginBottom:8}}>Customize</h1>
-                <p style={{fontSize:14,color:c.so}}>Connect the tools Sarah can use — she'll have access to them automatically in every conversation.</p>
+                <p style={{fontSize:14,color:c.so}}>Connect the tools {aFN} can use — they'll have access to them automatically in every conversation.</p>
               </div>
 
               {/* ── CONNECTORS GRID ── */}
               <div style={{marginBottom:40}}>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
                   <div style={{fontSize:16,fontWeight:700,color:c.tx}}>Your Connectors</div>
-                  <div style={{fontSize:12,color:c.so}}>Connect once — Sarah uses them automatically</div>
+                  <div style={{fontSize:12,color:c.so}}>Connect once — {aFN} uses them automatically</div>
                 </div>
                 {[
                   {cat:"CRM & Communication",items:[
@@ -4738,7 +4740,7 @@ function App() {
                     </div>
                     <div style={{flex:1}}>
                       <div style={{fontSize:14,fontWeight:700,color:c.tx,marginBottom:3}}>Create new skills</div>
-                      <div style={{fontSize:12,color:c.so}}>Teach Sarah your processes, team norms, and expertise — she'll follow them on every task.</div>
+                      <div style={{fontSize:12,color:c.so}}>Teach {aFN} your processes, team norms, and expertise — they'll follow them on every task.</div>
                     </div>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={c.so} strokeWidth="2" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
                   </div>
@@ -4752,7 +4754,7 @@ function App() {
             <div style={{padding:mob?"16px 12px 40px":"20px 20px 40px",maxWidth:800,margin:"0 auto"}}>
               <div style={{marginBottom:24}}>
                 <h1 style={{fontSize:mob?20:24,fontWeight:700,color:c.tx,marginBottom:6}}>Settings</h1>
-                <p style={{fontSize:13,color:c.so}}>Configure Sarah and your Bloomie experience</p>
+                <p style={{fontSize:13,color:c.so}}>Configure {aFN} and your Bloomie experience</p>
               </div>
               <div style={{display:"flex",flexDirection:mob?"column":"row",background:c.cd,borderRadius:16,border:"1px solid "+c.ln,overflow:"hidden"}}>
                 <div style={{padding:mob?"10px 16px":"16px",borderRight:mob?"none":"1px solid "+c.ln,borderBottom:mob?"1px solid "+c.ln:"none",display:"flex",flexDirection:mob?"row":"column",gap:mob?4:2,flexShrink:0,overflowX:mob?"auto":"visible"}}>
@@ -4775,7 +4777,7 @@ function App() {
                         <div style={{padding:"12px 14px",borderRadius:10,background:c.sf,border:"1px solid "+c.ln,display:"flex",alignItems:"center",gap:12}}>
                           <Face sz={44} agent={agent}/>
                           <div>
-                            <div style={{fontSize:14,fontWeight:700,color:c.tx}}>Sarah Rodriguez</div>
+                            <div style={{fontSize:14,fontWeight:700,color:c.tx}}>{agent.nm}</div>
                             <div style={{fontSize:12,color:c.so}}>Marketing & Operations Executive</div>
                             <div style={{fontSize:11,color:c.gr,marginTop:4,display:"flex",alignItems:"center",gap:4}}>
                               <span style={{width:6,height:6,borderRadius:"50%",background:c.gr}}/>Level 1 Assistant · 60 GHL Tools
@@ -4788,7 +4790,7 @@ function App() {
                   {stab==="Connection"&&(
                     <div>
                       <div style={{marginBottom:28}}>
-                        <div style={{fontSize:14,fontWeight:700,color:c.tx,marginBottom:10}}>Sarah's API</div>
+                        <div style={{fontSize:14,fontWeight:700,color:c.tx,marginBottom:10}}>{aFN}'s API</div>
                         <div style={{padding:"12px 14px",borderRadius:10,background:connected?c.gf:"#fef2f2",border:"1px solid "+(connected?c.gr+"30":"#fecaca")}}>
                           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
                             <span style={{width:8,height:8,borderRadius:"50%",background:connected?c.gr:"#ef4444",animation:connected?"pulse 1.5s ease infinite":"none"}}/>
@@ -4911,7 +4913,7 @@ function App() {
                 {taskFormOpen&&(
                   <div style={{padding:12,borderRadius:10,border:"1px solid "+c.ln,background:c.sf,marginBottom:12}}>
                     <input value={newTask.name} onChange={e=>setNewTask(p=>({...p,name:e.target.value}))} placeholder="Task name..." style={{width:"100%",padding:"8px 10px",borderRadius:6,border:"1px solid "+c.ln,background:c.inp,fontSize:13,color:c.tx,marginBottom:8,fontFamily:"inherit",boxSizing:"border-box"}}/>
-                    <textarea value={newTask.instruction} onChange={e=>setNewTask(p=>({...p,instruction:e.target.value}))} placeholder="What should Sarah do?" rows={3} style={{width:"100%",padding:"8px 10px",borderRadius:6,border:"1px solid "+c.ln,background:c.inp,fontSize:13,color:c.tx,marginBottom:8,fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
+                    <textarea value={newTask.instruction} onChange={e=>setNewTask(p=>({...p,instruction:e.target.value}))} placeholder={"What should "+aFN+" do?"} rows={3} style={{width:"100%",padding:"8px 10px",borderRadius:6,border:"1px solid "+c.ln,background:c.inp,fontSize:13,color:c.tx,marginBottom:8,fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
                     <div style={{display:"flex",gap:6,marginBottom:8}}>
                       <select value={newTask.taskType} onChange={e=>setNewTask(p=>({...p,taskType:e.target.value}))} style={{flex:1,padding:"7px 8px",borderRadius:6,border:"1px solid "+c.ln,background:c.inp,fontSize:12,color:c.tx}}>
                         <option value="content">Content</option>
@@ -4940,7 +4942,7 @@ function App() {
 
                 {/* Task list */}
                 {scheduledTasks.length===0&&!taskFormOpen&&(
-                  <div style={{textAlign:"center",padding:"16px 0",color:c.so,fontSize:12}}>No scheduled tasks yet. Add one or tell Sarah in chat.</div>
+                  <div style={{textAlign:"center",padding:"16px 0",color:c.so,fontSize:12}}>No scheduled tasks yet. Add one or tell {aFN} in chat.</div>
                 )}
                 {scheduledTasks.map(t=>(
                   <div key={t.taskId} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",borderBottom:"1px solid "+c.ln+"40"}}>
@@ -5316,10 +5318,10 @@ function App() {
           </div>
           <div style={{flex:1,overflowY:"auto",padding:16}}>
             {[
-              {ic:"💬",t:"Chat with Sarah",d:"Give her tasks directly"},
+              {ic:"💬",t:`Chat with ${currentAgent?.name?.split(" ")[0]||"your Bloomie"}`,d:"Give them tasks directly"},
               {ic:"📊",t:"Monitor tab",d:"Health, trust gate, tool performance"},
               {ic:"⏰",t:"Automation",d:"Configure cron jobs & heartbeat"},
-              {ic:"🖥️",t:"Screen viewer",d:"Watch Sarah work in real time"},
+              {ic:"🖥️",t:"Screen viewer",d:`Watch ${currentAgent?.name?.split(" ")[0]||"your Bloomie"} work in real time`},
               {ic:"🔐",t:"Trust gate",d:"Autonomy level & daily limits"},
               {ic:"⚙️",t:"Settings",d:"Customize your experience"},
             ].map((item,i)=>(
