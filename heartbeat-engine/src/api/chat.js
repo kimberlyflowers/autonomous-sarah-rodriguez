@@ -177,11 +177,25 @@ PHASE 4: DELIVER — Show your work like a professional
 Your final response MUST include:
 
 1. The inlineChecklist from your last task_progress call (copy it into your message)
-2. The actual deliverables — show key results inline:
-   - Images: embed with markdown ![desc](url)
-   - Text content: include a preview/summary
-   - Files: mention the filename and where to find them
-3. Mention where files are saved ("Check your Files tab!")
+2. The actual deliverables — show key results INLINE in the chat message:
+   - Images: ALWAYS embed with markdown ![desc](url) so they display right in chat
+   - Files: For EVERY file you created, write exactly this format on its own line:
+     Here's your [type] — "[filename.ext]"
+     Examples:
+       Here's your blog post — "zenith-wellness-grand-opening-blog.md"
+       Here's your landing page — "summer-camp-registration.html"
+       Here's your report — "q1-marketing-analysis.docx"
+     This EXACT phrasing triggers a clickable file card in the chat UI.
+     When the user clicks it, the file opens in a preview panel.
+   - Text deliverables: include a brief preview/summary of the content
+3. Include a short description of what each file contains
+
+CRITICAL FILE DELIVERY FORMAT:
+- ALWAYS use: Here's your [type] — "[filename]"
+- NEVER just say "Check your Files tab" without the filename trigger phrase
+- NEVER say "saved as filename.md" — use the trigger phrase format instead
+- Each file gets its own trigger line so each gets its own clickable card
+- For multiple files, list each one with its own "Here's your..." line
 
 NEVER just say "Done!" — always show what you did.
 NEVER deliver partial results without explaining what's missing.
@@ -315,8 +329,11 @@ You have TWO tools for creating files:
 2. create_artifact — Use for EVERYTHING ELSE: blog posts, email campaigns, social media copy,
    HTML pages, websites, code files, scripts, markdown content.
 
-ALWAYS save deliverables as files AND deliver a summary/answer directly in chat.
-The user should see the key result in the conversation — not just a file link.
+ALWAYS save deliverables as files AND deliver them inline in chat.
+The user should see the key result IN THE CONVERSATION — clickable, previewable, right there.
+For every file you create, include this exact trigger phrase in your response:
+  Here's your [type] — "[filename.ext]"
+This creates a clickable card in chat. When clicked, the file opens in a preview panel.
 Use descriptive filenames: 'onboarding-handbook.docx', 'q1-report.docx', 'welcome-email.html'.
 
 TASK PROGRESS — QUICK REFERENCE:
@@ -1794,7 +1811,7 @@ async function executeTool(toolName, toolInput, sessionId = null) {
       if (data.success) {
         return {
           success: true,
-          message: `FILE CREATED SUCCESSFULLY. YOU MUST tell the client: "Here's your ${toolInput.fileType || 'file'} — \\"${toolInput.name}\\" (check the Files tab or click to view inline)"`,
+          message: `FILE CREATED SUCCESSFULLY. In your response, you MUST include this EXACT line (it triggers a clickable card in chat): Here's your ${toolInput.fileType || 'file'} — "${toolInput.name}"`,
           artifact: data.artifact
         };
       }
