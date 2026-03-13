@@ -192,17 +192,25 @@ You have TWO tools for creating files:
 2. create_artifact — Use for EVERYTHING ELSE: blog posts, email campaigns, social media copy,
    HTML pages, websites, code files, scripts, markdown content.
 
-Do NOT paste long content directly in chat. ALWAYS save deliverables as files.
+ALWAYS save deliverables as files AND deliver a summary/answer directly in chat.
+The user should see the key result in the conversation — not just a file link.
 Use descriptive filenames: 'onboarding-handbook.docx', 'q1-report.docx', 'welcome-email.html'.
 
-TASK PROGRESS CHECKLIST (CRITICAL — USE THIS):
-You have a task_progress tool that shows a visual checklist in the user's BLOOM Desktop app.
-For ANY task with 3+ steps, you MUST:
-1. Call task_progress at the START with all steps as "pending"
-2. Update the current step to "in_progress" before starting it
-3. Mark each step "completed" as you finish, and set the next to "in_progress"
-4. Only have ONE step as "in_progress" at a time
-This gives the user a live view of what you're doing — like a project manager watching work happen.
+TASK PROGRESS CHECKLIST — MANDATORY, NO EXCEPTIONS:
+You have a task_progress tool. This is NOT optional. It is a HARD REQUIREMENT.
+For ANY task with 2 or more steps, you MUST call task_progress BEFORE doing any work on each step.
+Failure to call task_progress is a bug — the user cannot see what you are doing without it.
+
+Rules:
+1. BEFORE starting work: call task_progress with ALL steps as "pending"
+2. BEFORE each step: call task_progress setting that step to "in_progress"
+3. AFTER each step: call task_progress marking it "completed" and the next "in_progress"
+4. Only ONE step may be "in_progress" at a time
+5. Send the COMPLETE todo array every call — not just the changed item
+
+If the user is in the browser chat, include a formatted checklist in your response text.
+If the request came from BLOOM Desktop (sessionId starts with "desktop_"), push to the SSE stream.
+Always do both if unsure.
 
 DISPLAYING IMAGES IN CHAT (CRITICAL):
 When you generate an image, ALWAYS embed it inline in your response so ${operatorFirstName} can see it immediately:
@@ -1304,7 +1312,7 @@ const _ALL_TOOLS = [
   },
   {
     name: "task_progress",
-    description: "Update the visual task checklist that the user sees in BLOOM Desktop. Call this to show what you're working on, mark steps complete, and track multi-step tasks. ALWAYS use this for any task with 3+ steps — create the checklist at the start, update it as you go, and mark complete when done. The user sees this as a real-time progress widget.",
+    description: "MANDATORY for any task with 2+ steps. Update the visual task checklist. Call BEFORE starting each step — not after. The tool returns an inlineChecklist string: if the user is in browser chat, include it in your response text so they see progress. If on Desktop, it streams via SSE automatically. Always send the COMPLETE todo array every call.",
     input_schema: {
       type: "object",
       properties: {
@@ -1482,14 +1490,31 @@ async function executeTool(toolName, toolInput, sessionId = null) {
       }
     }
 
-    // task_progress — updates the real-time checklist widget in BLOOM Desktop
+    // task_progress — routes checklist to SSE (Desktop) and/or returns inline (browser chat)
     if (toolName === 'task_progress') {
       const sessionKey = sessionId || 'default';
+      const isDesktop = sessionKey.startsWith('desktop_');
+
+      // Always update the in-memory Map so SSE stream has latest state
       taskProgress.set(sessionKey, {
         todos: toolInput.todos,
         updatedAt: Date.now()
       });
-      return { success: true, todoCount: toolInput.todos.length };
+
+      // Build a formatted checklist for inline chat display
+      const checklist = toolInput.todos.map(t => {
+        const icon = t.status === 'completed' ? '✅' : t.status === 'in_progress' ? '🔄' : '⬜';
+        const label = t.status === 'in_progress' ? t.activeForm : t.content;
+        return `${icon} ${label}`;
+      }).join('\n');
+
+      return {
+        success: true,
+        todoCount: toolInput.todos.length,
+        context: isDesktop ? 'desktop_sse' : 'browser_chat',
+        // Browser chat: Sarah should include this checklist in her response text
+        inlineChecklist: checklist
+      };
     }
 
     // All GHL tools + notify_owner route through the unified executor
