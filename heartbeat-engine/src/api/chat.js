@@ -388,35 +388,34 @@ When creating websites or landing pages, generate real images for them:
 6. NEVER use placeholder images (via.placeholder.com, placehold.it, unsplash random)
 The HTML stays clean and small. Images load from their own URLs.
 
-EDITING EXISTING WEBSITES (CRITICAL — ZERO TOLERANCE FOR FULL REBUILDS):
+EDITING EXISTING WEBSITES — USE edit_artifact (MANDATORY):
 When the user asks to MODIFY an existing website (change colors, update text, fix layout, add section):
 
-⚠️ ABSOLUTE RULE: You MUST preserve the EXACT existing HTML structure, CSS styles, layout, images,
-and content — changing ONLY the specific things the user requested. If you return HTML that looks
-different from the original (different colors, different layout, different fonts, missing sections),
-YOU HAVE FAILED. The user will notice immediately.
+⚠️ ABSOLUTE RULE: NEVER use create_artifact to update an existing file. ALWAYS use edit_artifact.
+The edit_artifact tool applies your changes SERVER-SIDE via find-and-replace, so the original HTML
+is preserved perfectly and only your specific changes are applied.
 
 MANDATORY MODIFICATION WORKFLOW:
-1. Call get_session_files to retrieve the FULL existing HTML content
-2. READ the HTML carefully — understand its structure, styles, and layout
-3. Find the SPECIFIC lines/sections that need to change
-4. Make ONLY those changes — surgical precision, like a find-and-replace
-5. Return the COMPLETE HTML with your minimal changes applied
-6. The output must be IDENTICAL to the original except for the requested changes
+1. Call get_session_files to retrieve the existing HTML content
+2. READ the HTML carefully to find the EXACT strings you need to change
+3. Call edit_artifact with precise find→replace operations
+4. Each operation specifies the EXACT old string and the new string to replace it with
+5. The server applies your replacements to the stored HTML — you NEVER rewrite the full file
 
-WHAT "SURGICAL EDIT" MEANS:
-- If they say "change hero opacity" → Find the hero overlay CSS, change the opacity value, touch NOTHING else
-- If they say "make text bigger" → Find the font-size values, increase them, touch NOTHING else
-- If they say "change button color" → Find button CSS, change color values, touch NOTHING else
-- If they say "add a section" → Insert new HTML at the right spot, preserve everything around it
+HOW TO USE edit_artifact:
+- For CSS changes: find the exact CSS property line → replace with new value
+  Example: find "background: linear-gradient(135deg, #ff6b35, #ff1493)" → replace "background: #F4A261"
+- For text changes: find the exact text → replace with new text
+  Example: find "Spring Collection 2024" → replace "Spring Collection 2025"
+- For href changes: find the old href → replace with new href
+  Example: find 'href="#"' → replace 'href="checkout.html"'
+- For adding content: find a nearby unique string, replace with that string + new content appended
+- Keep find strings SHORT but UNIQUE — just enough to match exactly one spot in the HTML
 
-WHAT "FULL REBUILD" LOOKS LIKE (NEVER DO THIS):
-- Different color scheme than the original
-- Different font or typography
-- Missing images that were in the original
-- Different layout or structure
-- Changed content the user didn't ask to change
-- Simplified/reduced version of the original
+WHAT NEVER TO DO:
+- NEVER call create_artifact with the same filename as an existing file (this rebuilds from scratch)
+- NEVER reproduce the full HTML content — the server handles that
+- NEVER change things the user didn't ask you to change
 
 LINK REQUESTS — CREATE REAL PAGES, NEVER USE PLACEHOLDER URLs:
 When the user says "link to a checkout page" or "add a link to [any page]":
@@ -452,26 +451,21 @@ Never tell ${operatorFirstName} you "can't" do something that you actually can. 
 image, you can see it — say so and engage with it. If they need a blog post written, write it.
 If they need advice, give it. Your job is to be genuinely useful, not to list your limitations.
 
-EDITING YOUR OWN WORK — NEVER recreate, ALWAYS retrieve and surgically edit:
+EDITING YOUR OWN WORK — ALWAYS use edit_artifact:
 When a user asks you to edit or modify something you already created (a flyer, image, website,
-document), call get_session_files FIRST to retrieve the file from this session.
+document), call get_session_files FIRST to see the file content, then use edit_artifact.
 
-For HTML/documents: get_session_files returns the FULL content in the 'content' field.
-  1. READ the entire content carefully
-  2. IDENTIFY the specific lines that need to change (e.g., an opacity value, a URL, text content)
-  3. Make ONLY those specific changes — treat it like find-and-replace
-  4. Call create_artifact with the FULL modified HTML (SAME filename to update in place)
-  5. The output MUST look identical to the original except for the specific requested changes
-
-  ⚠️ If the user asks to "change the opacity" and your output has different colors, different
-  layout, different fonts, or missing images — you did a FULL REBUILD, which is WRONG.
-  A correct edit changes ONLY the opacity value and touches NOTHING else.
+For HTML/documents:
+  1. Call get_session_files to see the content and identify exact strings to change
+  2. Call edit_artifact with find→replace operations for each change
+  3. The server patches the stored HTML — you never reproduce the full file
+  4. Include the <!-- file:filename.ext --> tag in your response
 
 For images: call image_edit with the url from get_session_files.
 
 NEVER say "can you share the file?" or "please paste the code" — you made it, you can get it.
-NEVER recreate an entire site when asked for a small change — retrieve, edit, re-save.
-NEVER change things the user didn't ask you to change — that's the same as rebuilding.
+NEVER use create_artifact to update an existing file — ALWAYS use edit_artifact.
+NEVER change things the user didn't ask you to change.
 
 CRITICAL — create_artifact failures: ALWAYS retry, NEVER dump code in chat:
 If create_artifact fails for any reason, retry it immediately. If it fails twice, tell the client
@@ -1415,7 +1409,7 @@ const _ALL_TOOLS = [
   },
   {
     name: "create_artifact",
-    description: "Create or UPDATE a deliverable file. When UPDATING an existing file: use the SAME filename — this replaces the old version. When updating, your content MUST be the original HTML with ONLY the requested changes applied (surgical edit). Do NOT rewrite from scratch. When CREATING a new file: use a descriptive filename. NEVER use placeholder URLs (yourstore.com, example.com) — create real pages or ask for the real URL. After saving, include <!-- file:filename.ext --> in your response (the tool response will remind you).",
+    description: "Create a NEW deliverable file. Use ONLY for brand new files — NEVER to update an existing file. To edit an existing file, use edit_artifact instead (server-side find-and-replace that preserves the original). NEVER use placeholder URLs (yourstore.com, example.com) — create real pages or ask for the real URL. After saving, include <!-- file:filename.ext --> in your response.",
     input_schema: {
       type: "object",
       properties: {
@@ -1596,6 +1590,55 @@ Do NOT use this for simple questions, conversation, or tasks you can handle your
       },
       required: ["taskType", "specialistPrompt"]
     }
+  },
+  {
+    name: "edit_artifact",
+    description: `Surgically edit an existing HTML artifact using server-side find-and-replace. This is the MANDATORY tool for modifying existing websites/pages. You specify WHAT to change as find→replace pairs, and the server applies the changes to the stored HTML without you having to reproduce the full file.
+
+WHEN TO USE:
+- User asks to change a button color → find the old CSS, replace with new CSS
+- User asks to update text → find the old text, replace with new text
+- User asks to change a link → find the old href, replace with new href
+- User asks to add a section → find the insertion point, replace with expanded version
+- ANY modification to an existing HTML artifact
+
+HOW TO USE:
+1. Call get_session_files to see the artifact content and get the artifact name
+2. Read the HTML content returned to identify the exact strings to change
+3. Call edit_artifact with precise find→replace operations
+4. The server applies your changes to the stored HTML and saves it
+
+RULES:
+- Each 'find' string must EXACTLY match text in the HTML (including whitespace)
+- Keep find strings as SHORT as possible while still being unique
+- For CSS changes: find the specific property line, replace with new value
+- For text changes: find the exact text, replace with new text
+- For adding content: find a nearby landmark, replace with landmark + new content
+- You can include multiple operations in one call — they are applied in order
+
+NEVER use create_artifact to update an existing file — ALWAYS use edit_artifact instead.
+The ONLY exception is when creating a brand new file that doesn't exist yet.`,
+    input_schema: {
+      type: "object",
+      properties: {
+        artifactName: { type: "string", description: "Filename of the artifact to edit (e.g. 'mountain-peak-coffee-landing.html'). Must match the name from get_session_files." },
+        sessionId: { type: "string", description: "Session ID where the artifact lives. Use the current session ID." },
+        operations: {
+          type: "array",
+          description: "Array of find-and-replace operations to apply in order",
+          items: {
+            type: "object",
+            properties: {
+              find: { type: "string", description: "Exact string to find in the HTML. Must match exactly (including whitespace). Keep as short as possible while being unique." },
+              replace: { type: "string", description: "String to replace it with. Can be longer or shorter than the original." },
+              description: { type: "string", description: "Brief note about what this change does (for logging)" }
+            },
+            required: ["find", "replace"]
+          }
+        }
+      },
+      required: ["artifactName", "sessionId", "operations"]
+    }
   }
 ];
 
@@ -1655,7 +1698,7 @@ function getCapabilityNotes() {
     capabilities.push('Web search is AVAILABLE — use web_search for any research, finding information, or looking up current data.');
   }
   if (available.some(t => t.name === 'create_artifact')) {
-    capabilities.push('File creation is AVAILABLE — use create_artifact to save HTML, markdown, code, and any deliverables.');
+    capabilities.push('File creation is AVAILABLE — use create_artifact for NEW files, use edit_artifact for modifying existing files (server-side find-and-replace). NEVER use create_artifact to update an existing file.');
   }
   if (available.some(t => t.name.startsWith('ghl_'))) {
     capabilities.push('CRM tools are AVAILABLE — use ghl_ tools for contacts, emails, SMS, calendars, and pipelines.');
@@ -1859,23 +1902,19 @@ async function executeTool(toolName, toolInput, sessionId = null) {
           files: allFiles,
           message: `Found ${allFiles.length} file(s) from this session.
 
-⚠️ CRITICAL EDITING RULES — READ BEFORE MAKING ANY CHANGES:
+⚠️ TO EDIT AN EXISTING FILE: Use edit_artifact (NOT create_artifact).
 
-For HTML/text files (content is in the 'content' field):
-1. READ the full content carefully — understand its structure, styles, images, and layout
-2. FIND the specific lines that relate to the user's request
-3. CHANGE ONLY those specific lines — like a surgical find-and-replace
-4. Call create_artifact with the COMPLETE modified content using the SAME filename to update in place
-5. Your output MUST be IDENTICAL to the original except for the specific requested changes
+1. Read the content below to find the EXACT strings you need to change
+2. Call edit_artifact with find→replace operations for each change
+3. The server patches the stored HTML — you never rewrite the full file
+4. Include <!-- file:filename.ext --> in your response
 
-⚠️ DO NOT:
-- Rewrite the HTML from scratch (this changes the look/feel and the user WILL notice)
-- Change colors, fonts, layout, or images the user didn't ask you to change
-- Remove or simplify sections that exist in the original
-- Use placeholder URLs (https://yourstore.com/...) — create real pages or ask for real URLs
-
-⚠️ If the user asks for a new page that doesn't exist yet (checkout page, about page, etc.):
-- CREATE it as a new artifact first, then link to its preview URL in the existing page
+RULES:
+- NEVER use create_artifact to update an existing file — it rebuilds from scratch
+- ALWAYS use edit_artifact with precise find→replace operations
+- Keep find strings short but unique — just enough to match one spot
+- Do NOT change anything the user didn't ask you to change
+- Use placeholder URLs → create real pages with create_artifact first
 
 For images: use the 'url' field with image_edit.`
         };
@@ -2011,6 +2050,111 @@ REMEMBER: Put <!-- file:${toolInput.name} --> on its own line. Do NOT write "${t
         return { success: true, replaced: occurrences, artifactId: art.id, message: `Replaced ${occurrences} instance(s) of the image` };
       } catch (e) {
         return { success: false, error: e.message };
+      }
+    }
+
+    // edit_artifact — server-side find-and-replace on HTML artifacts (surgical editing)
+    if (toolName === 'edit_artifact') {
+      const { artifactName, sessionId: artSessionId, operations = [] } = toolInput;
+      try {
+        if (!artifactName) return { success: false, error: 'artifactName is required' };
+        if (!operations.length) return { success: false, error: 'At least one operation is required' };
+
+        const { createClient } = await import('@supabase/supabase-js');
+        const editSupabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+        const sid = artSessionId || sessionId;
+
+        // Find the artifact by name + session
+        const { data: arts, error: findErr } = await editSupabase
+          .from('artifacts')
+          .select('id, name, content, file_type')
+          .eq('session_id', sid)
+          .eq('name', artifactName)
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        if (findErr) return { success: false, error: `DB error: ${findErr.message}` };
+        if (!arts || arts.length === 0) return { success: false, error: `Artifact "${artifactName}" not found in session ${sid}. Check the filename.` };
+
+        const artifact = arts[0];
+        if (!artifact.content) return { success: false, error: `Artifact "${artifactName}" has no content to edit.` };
+
+        let html = artifact.content;
+        const results = [];
+
+        // Apply each find-and-replace operation in order
+        for (let i = 0; i < operations.length; i++) {
+          const op = operations[i];
+          if (!op.find) {
+            results.push({ index: i, success: false, error: 'Missing "find" string' });
+            continue;
+          }
+
+          // Check if the find string exists in the current HTML
+          const idx = html.indexOf(op.find);
+          if (idx === -1) {
+            results.push({
+              index: i,
+              success: false,
+              error: `String not found in HTML. Make sure it matches EXACTLY (including whitespace and quotes).`,
+              find_preview: op.find.slice(0, 80),
+              description: op.description || ''
+            });
+            continue;
+          }
+
+          // Count occurrences
+          let count = 0;
+          let searchFrom = 0;
+          while (true) {
+            const pos = html.indexOf(op.find, searchFrom);
+            if (pos === -1) break;
+            count++;
+            searchFrom = pos + op.find.length;
+          }
+
+          // Replace ALL occurrences
+          html = html.split(op.find).join(op.replace);
+
+          results.push({
+            index: i,
+            success: true,
+            occurrences: count,
+            description: op.description || `Replaced ${count} occurrence(s)`
+          });
+        }
+
+        const successCount = results.filter(r => r.success).length;
+        const failCount = results.filter(r => !r.success).length;
+
+        // Save the modified HTML back to Supabase
+        if (successCount > 0) {
+          const { error: updateErr } = await editSupabase
+            .from('artifacts')
+            .update({ content: html, updated_at: new Date().toISOString() })
+            .eq('id', artifact.id);
+
+          if (updateErr) return { success: false, error: `Failed to save: ${updateErr.message}` };
+        }
+
+        // Build the file tag so frontend shows the updated card
+        const fileTag = `<!-- file:${artifactName} -->`;
+
+        return {
+          success: successCount > 0,
+          artifactId: artifact.id,
+          artifactName: artifactName,
+          totalOperations: operations.length,
+          successful: successCount,
+          failed: failCount,
+          results,
+          fileTag,
+          message: successCount > 0
+            ? `✅ Applied ${successCount}/${operations.length} edit(s) to "${artifactName}". Include ${fileTag} in your response so the user sees the updated file card.`
+            : `❌ No edits were applied — all ${failCount} find strings were not found. Check that your find strings match the HTML exactly.`
+        };
+      } catch (e) {
+        return { success: false, error: `edit_artifact error: ${e.message}` };
       }
     }
 
