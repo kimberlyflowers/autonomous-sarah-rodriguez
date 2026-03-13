@@ -2144,6 +2144,18 @@ REMEMBER: Put <!-- file:${toolInput.name} --> on its own line. Do NOT write "${t
         let html = artifact.content;
         const results = [];
 
+        // Helper: escape string for use in regex
+        const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+        // Helper: build a whitespace-flexible regex from a find string
+        // Collapses each run of whitespace in `find` into \s+ so that
+        // "background-color: #0066CC;" matches regardless of indentation
+        const buildFlexRegex = (findStr) => {
+          const parts = findStr.split(/\s+/);
+          const pattern = parts.map(p => escapeRegex(p)).join('\\s+');
+          return new RegExp(pattern, 'g');
+        };
+
         // Apply each find-and-replace operation in order
         for (let i = 0; i < operations.length; i++) {
           const op = operations[i];
@@ -2152,37 +2164,59 @@ REMEMBER: Put <!-- file:${toolInput.name} --> on its own line. Do NOT write "${t
             continue;
           }
 
-          // Check if the find string exists in the current HTML
-          const idx = html.indexOf(op.find);
-          if (idx === -1) {
+          // Try 1: exact match
+          let idx = html.indexOf(op.find);
+          if (idx !== -1) {
+            // Count occurrences
+            let count = 0;
+            let searchFrom = 0;
+            while (true) {
+              const pos = html.indexOf(op.find, searchFrom);
+              if (pos === -1) break;
+              count++;
+              searchFrom = pos + op.find.length;
+            }
+            html = html.split(op.find).join(op.replace);
             results.push({
               index: i,
-              success: false,
-              error: `String not found in HTML. Make sure it matches EXACTLY (including whitespace and quotes).`,
-              find_preview: op.find.slice(0, 80),
-              description: op.description || ''
+              success: true,
+              occurrences: count,
+              method: 'exact',
+              description: op.description || `Replaced ${count} occurrence(s)`
             });
             continue;
           }
 
-          // Count occurrences
-          let count = 0;
-          let searchFrom = 0;
-          while (true) {
-            const pos = html.indexOf(op.find, searchFrom);
-            if (pos === -1) break;
-            count++;
-            searchFrom = pos + op.find.length;
+          // Try 2: whitespace-flexible regex match
+          // This handles CSS indentation differences (tabs vs spaces, different indent levels)
+          try {
+            const flexRegex = buildFlexRegex(op.find);
+            const matches = html.match(flexRegex);
+            if (matches && matches.length > 0) {
+              console.log(`[edit_artifact] Whitespace-flex match for op ${i}: found ${matches.length} match(es). First match: "${matches[0].slice(0, 80)}..."`);
+              // For each match, figure out the replacement preserving whitespace intent
+              // We replace the matched text with the replacement text
+              html = html.replace(flexRegex, op.replace);
+              results.push({
+                index: i,
+                success: true,
+                occurrences: matches.length,
+                method: 'whitespace-flex',
+                description: op.description || `Replaced ${matches.length} occurrence(s) via whitespace-flexible match`
+              });
+              continue;
+            }
+          } catch (regexErr) {
+            console.log(`[edit_artifact] Flex regex failed for op ${i}: ${regexErr.message}`);
           }
 
-          // Replace ALL occurrences
-          html = html.split(op.find).join(op.replace);
-
+          // Both tries failed
           results.push({
             index: i,
-            success: true,
-            occurrences: count,
-            description: op.description || `Replaced ${count} occurrence(s)`
+            success: false,
+            error: `String not found in HTML (tried exact + whitespace-flexible match). The text may not exist in the file.`,
+            find_preview: op.find.slice(0, 120),
+            description: op.description || ''
           });
         }
 
