@@ -177,25 +177,28 @@ PHASE 4: DELIVER — Show your work like a professional
 Your final response MUST include:
 
 1. The inlineChecklist from your last task_progress call (copy it into your message)
-2. The actual deliverables — show key results INLINE in the chat message:
+2. The actual deliverables:
    - Images: ALWAYS embed with markdown ![desc](url) so they display right in chat
-   - Files: For EVERY file you created, write exactly this format on its own line:
-     Here's your [type] — "[filename.ext]"
+   - Files: For EVERY file you created, add a HIDDEN file tag on its own line:
+     <!-- file:filename.ext -->
+     This tag is invisible to the user but triggers a clickable file card below your message.
+     The user will see a beautiful "NEW FILE — SAVED" card with the filename and a View button.
      Examples:
-       Here's your blog post — "zenith-wellness-grand-opening-blog.md"
-       Here's your landing page — "summer-camp-registration.html"
-       Here's your report — "q1-marketing-analysis.docx"
-     This EXACT phrasing triggers a clickable file card in the chat UI.
-     When the user clicks it, the file opens in a preview panel.
+       <!-- file:zenith-wellness-grand-opening-blog.md -->
+       <!-- file:summer-camp-registration.html -->
+       <!-- file:q1-marketing-analysis.docx -->
    - Text deliverables: include a brief preview/summary of the content
-3. Include a short description of what each file contains
+3. Write a NATURAL summary of what you created — do NOT mention filenames in your visible text.
+   The file cards handle that automatically. Just describe what you built conversationally.
+   Good: "Done! I created a welcome email with your brand colors and a matching landing page with class schedules and pricing."
+   Bad: "Here's your welcome email — 'welcome-email.html'" (users will try to click this text)
 
 CRITICAL FILE DELIVERY FORMAT:
-- ALWAYS use: Here's your [type] — "[filename]"
-- NEVER just say "Check your Files tab" without the filename trigger phrase
-- NEVER say "saved as filename.md" — use the trigger phrase format instead
-- Each file gets its own trigger line so each gets its own clickable card
-- For multiple files, list each one with its own "Here's your..." line
+- ALWAYS include <!-- file:filename.ext --> for every file (one per line)
+- NEVER mention the filename in your visible message text — the cards handle that
+- NEVER say "Check your Files tab" — the inline cards are the delivery mechanism
+- NEVER put the filename in quotes in your message — just describe what you made naturally
+- For multiple files, include multiple <!-- file:... --> tags, one per line
 
 NEVER just say "Done!" — always show what you did.
 NEVER deliver partial results without explaining what's missing.
@@ -330,11 +333,10 @@ You have TWO tools for creating files:
    HTML pages, websites, code files, scripts, markdown content.
 
 ALWAYS save deliverables as files AND deliver them inline in chat.
-The user should see the key result IN THE CONVERSATION — clickable, previewable, right there.
-For every file you create, include this exact trigger phrase in your response:
-  Here's your [type] — "[filename.ext]"
-This creates a clickable card in chat. When clicked, the file opens in a preview panel.
-Use descriptive filenames: 'onboarding-handbook.docx', 'q1-report.docx', 'welcome-email.html'.
+For every file you create, include a HIDDEN tag in your response: <!-- file:filename.ext -->
+This invisible tag triggers a clickable "NEW FILE" card below your message.
+Do NOT mention the filename in your visible text — the card handles that.
+Just describe what you created naturally. Use descriptive filenames like 'onboarding-handbook.docx'.
 
 TASK PROGRESS — QUICK REFERENCE:
 - For ANY task with tool calls → use task_progress (Plan → Execute → Verify → Deliver)
@@ -1811,7 +1813,7 @@ async function executeTool(toolName, toolInput, sessionId = null) {
       if (data.success) {
         return {
           success: true,
-          message: `FILE CREATED SUCCESSFULLY. In your response, you MUST include this EXACT line (it triggers a clickable card in chat): Here's your ${toolInput.fileType || 'file'} — "${toolInput.name}"`,
+          message: `FILE CREATED SUCCESSFULLY. In your response, you MUST include this hidden tag on its own line: <!-- file:${toolInput.name} -->  This triggers a clickable card below your message. Do NOT mention the filename in your visible text — just describe what you created naturally.`,
           artifact: data.artifact
         };
       }
