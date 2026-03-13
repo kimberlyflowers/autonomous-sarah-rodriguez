@@ -1605,31 +1605,47 @@ Do NOT use this for simple questions, conversation, or tasks you can handle your
   },
   {
     name: "edit_artifact",
-    description: `Surgically edit an existing HTML artifact using server-side find-and-replace. This is the MANDATORY tool for modifying existing websites/pages. You specify WHAT to change as find→replace pairs, and the server applies the changes to the stored HTML without you having to reproduce the full file.
+    description: `Surgically edit an existing HTML artifact. This is the MANDATORY tool for modifying existing websites/pages.
+
+TWO MODES — choose the right one:
+
+**MODE 1: CSS-TARGETED (PREFERRED for CSS changes)**
+Use cssSelector + cssProperty + cssValue. The server finds the CSS rule block and changes the property.
+You do NOT need to know the current value — just the selector and what you want to set.
+Example: { "cssSelector": ".cta-button", "cssProperty": "background-color", "cssValue": "#22C55E" }
+This will find the .cta-button { ... } block and set background-color to #22C55E, regardless of current value.
+
+**MODE 2: FIND-AND-REPLACE (for text changes, HTML structure changes)**
+Use find + replace. The server finds the exact string and replaces it.
+You MUST know the exact current text/HTML. Use get_session_files to read the file first.
 
 WHEN TO USE:
-- User asks to change a button color → find the old CSS, replace with new CSS
-- User asks to update text → find the old text, replace with new text
-- User asks to change a link → find the old href, replace with new href
-- User asks to add a section → find the insertion point, replace with expanded version
+- Change a button color → CSS-TARGETED mode (cssSelector + cssProperty + cssValue)
+- Change any CSS property → CSS-TARGETED mode
+- Update text content → FIND-AND-REPLACE mode (find + replace)
+- Change a link → FIND-AND-REPLACE mode
+- Add a section → FIND-AND-REPLACE mode
 - ANY modification to an existing HTML artifact
 
 HOW TO USE:
 1. Call get_session_files to see the artifact content and get the artifact name
-2. Read the HTML content returned to identify the exact strings to change
-3. Call edit_artifact with precise find→replace operations
-4. The server applies your changes to the stored HTML and saves it
+2. For CSS changes: identify the CSS selector and property to change → use CSS-TARGETED mode
+3. For text/HTML changes: read the exact strings from the content → use FIND-AND-REPLACE mode
+4. The server applies your changes and saves
 
-RULES:
-- Each 'find' string must EXACTLY match text in the HTML (including whitespace)
+CSS-TARGETED MODE RULES:
+- cssSelector must match a CSS selector in a <style> block (e.g. ".cta-button", "#hero", "h1")
+- cssProperty is the CSS property name (e.g. "background-color", "color", "font-size")
+- cssValue is the new value (e.g. "#22C55E", "24px", "bold")
+- If the property exists, it's replaced. If it doesn't exist, it's added to the block.
+- You do NOT need to know the current value — this eliminates guessing.
+
+FIND-AND-REPLACE MODE RULES:
+- Each 'find' string must EXACTLY match text in the HTML
 - Keep find strings as SHORT as possible while still being unique
-- For CSS changes: find the specific property line, replace with new value
-- For text changes: find the exact text, replace with new text
-- For adding content: find a nearby landmark, replace with landmark + new content
-- You can include multiple operations in one call — they are applied in order
+- The server tries exact match first, then whitespace-flexible match as fallback
 
-NEVER use create_artifact to update an existing file — ALWAYS use edit_artifact instead.
-The ONLY exception is when creating a brand new file that doesn't exist yet.`,
+NEVER use create_artifact to update an existing file — ALWAYS use edit_artifact instead.`,
     input_schema: {
       type: "object",
       properties: {
@@ -1637,15 +1653,17 @@ The ONLY exception is when creating a brand new file that doesn't exist yet.`,
         sessionId: { type: "string", description: "Session ID where the artifact lives. Use the current session ID." },
         operations: {
           type: "array",
-          description: "Array of find-and-replace operations to apply in order",
+          description: "Array of edit operations. Each operation can be EITHER css-targeted (cssSelector+cssProperty+cssValue) OR find-and-replace (find+replace).",
           items: {
             type: "object",
             properties: {
-              find: { type: "string", description: "Exact string to find in the HTML. Must match exactly (including whitespace). Keep as short as possible while being unique." },
-              replace: { type: "string", description: "String to replace it with. Can be longer or shorter than the original." },
+              cssSelector: { type: "string", description: "CSS selector to target (e.g. '.cta-button', '#hero', 'h1'). Use with cssProperty and cssValue for CSS changes." },
+              cssProperty: { type: "string", description: "CSS property to change (e.g. 'background-color', 'color', 'font-size'). Use with cssSelector and cssValue." },
+              cssValue: { type: "string", description: "New CSS value to set (e.g. '#22C55E', '24px'). Use with cssSelector and cssProperty." },
+              find: { type: "string", description: "Exact string to find in the HTML (for find-and-replace mode). Keep as short as possible while being unique." },
+              replace: { type: "string", description: "String to replace it with (for find-and-replace mode)." },
               description: { type: "string", description: "Brief note about what this change does (for logging)" }
-            },
-            required: ["find", "replace"]
+            }
           }
         }
       },
@@ -2183,11 +2201,68 @@ REMEMBER: Put <!-- file:${toolInput.name} --> on its own line. Do NOT write "${t
           return new RegExp(pattern, 'g');
         };
 
-        // Apply each find-and-replace operation in order
+        // Helper: CSS-targeted edit — find a CSS selector's block and change a single property
+        // This avoids the "guessing exact find string" problem entirely.
+        // op.cssSelector = ".cta-button" | op.cssProperty = "background-color" | op.cssValue = "#22C55E"
+        const applyCssEdit = (htmlStr, selector, property, newValue) => {
+          // Escape the selector for regex (handles . # : etc.)
+          const escSel = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          // Match the selector block: .class-name { ... }   (handles whitespace variations)
+          // This regex finds the selector, then everything up to the closing brace
+          const blockRegex = new RegExp(escSel + '\\s*\\{([^}]*?)\\}', 'gs');
+          let matched = false;
+          const result = htmlStr.replace(blockRegex, (fullMatch, blockContent) => {
+            matched = true;
+            // Now find the property inside the block
+            const propRegex = new RegExp(
+              '(' + property.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*:\\s*)([^;!}]+)(\\s*(?:![^;]*)?;?)',
+              'i'
+            );
+            if (propRegex.test(blockContent)) {
+              // Replace the property value
+              const newBlock = blockContent.replace(propRegex, '$1' + newValue + ';');
+              return fullMatch.replace(blockContent, newBlock);
+            } else {
+              // Property doesn't exist in this block — add it
+              const trimmed = blockContent.trimEnd();
+              const indent = blockContent.match(/^(\s*)/)?.[1] || '  ';
+              const newBlock = trimmed + (trimmed.endsWith(';') ? '' : ';') + '\n' + indent + property + ': ' + newValue + ';\n';
+              return fullMatch.replace(blockContent, newBlock);
+            }
+          });
+          return { html: result, matched };
+        };
+
+        // Apply each operation in order
         for (let i = 0; i < operations.length; i++) {
           const op = operations[i];
+
+          // Mode 1: CSS-targeted edit (selector + property + value)
+          if (op.cssSelector && op.cssProperty && op.cssValue) {
+            const { html: newHtml, matched } = applyCssEdit(html, op.cssSelector, op.cssProperty, op.cssValue);
+            if (matched) {
+              html = newHtml;
+              results.push({
+                index: i,
+                success: true,
+                occurrences: 1,
+                method: 'css-targeted',
+                description: op.description || `Set ${op.cssSelector} { ${op.cssProperty}: ${op.cssValue} }`
+              });
+            } else {
+              results.push({
+                index: i,
+                success: false,
+                error: `CSS selector "${op.cssSelector}" not found in the HTML/CSS.`,
+                description: op.description || ''
+              });
+            }
+            continue;
+          }
+
+          // Mode 2: find-and-replace (original mode)
           if (!op.find) {
-            results.push({ index: i, success: false, error: 'Missing "find" string' });
+            results.push({ index: i, success: false, error: 'Missing "find" string (or use cssSelector+cssProperty+cssValue for CSS edits)' });
             continue;
           }
 
