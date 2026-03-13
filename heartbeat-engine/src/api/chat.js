@@ -455,6 +455,26 @@ EXAMPLE — User says "build a 5-page website":
 4. After creating ALL pages, include <!-- site:{sessionId}:index.html --> in your final response
 Result: A complete multi-page site where all navigation links work.
 
+ADDING A PAGE TO AN EXISTING SITE — CRITICAL WORKFLOW:
+When the user says "add an about page to the website" or "on the [name] website, create a [page]":
+1. Call get_site_pages to see ALL existing pages and their nav structure
+2. Create the NEW page with create_artifact — include a nav menu linking to ALL existing pages PLUS itself
+3. Use edit_artifact on EACH existing page to add the new page to their nav menus
+4. Make sure ALL links on the new page point to actual existing pages (use the names from get_site_pages)
+This ensures the new page is fully integrated into the site with working two-way navigation.
+
+REPLACING A PAGE IN AN EXISTING SITE:
+When the user says "replace the olivia page with a better version" or similar:
+1. Call get_site_pages to find the existing page name
+2. Use edit_artifact with extensive find-and-replace to rewrite the content
+3. Do NOT use create_artifact (that creates a duplicate). ALWAYS use edit_artifact to modify in place.
+
+UNDERSTANDING "THE WEBSITE" vs "A PAGE":
+- If the user says "on the Bloomie Staffing website, add an about page" → they mean add ONE new page to the existing site
+- If the user says "rebuild the Bloomie Staffing website" → they mean recreate all pages from scratch
+- If the user says "edit the Olivia page" → they mean modify one specific page
+- Always call get_site_pages first to understand what already exists before making changes
+
 Examples of EDIT requests (do NOT rebuild):
 - "Change the hero image" → Replace image URL only
 - "Make the text bigger" → Adjust font sizes only
@@ -1691,6 +1711,27 @@ NEVER use create_artifact to update an existing file — ALWAYS use edit_artifac
       },
       required: ["artifactName", "sessionId", "operations"]
     }
+  },
+  {
+    name: "get_site_pages",
+    description: `List all HTML pages that belong to a multi-page website. Use this when:
+- The user refers to an existing website by name (e.g. "on the Bloomie Staffing website...")
+- You need to know what pages already exist before adding a new one
+- You need to update navigation across all pages in a site
+
+This searches for all HTML artifacts in the current session. Returns page names, descriptions, and preview URLs.
+After getting the page list, you can:
+1. Create a NEW page with create_artifact (it auto-links via the site route)
+2. Edit existing pages with edit_artifact (e.g. to add the new page to their nav menus)
+3. Replace a page by using edit_artifact with extensive find-and-replace operations`,
+    input_schema: {
+      type: "object",
+      properties: {
+        sessionId: { type: "string", description: "Session ID of the site. Use your current session ID." },
+        siteName: { type: "string", description: "Optional — name/keyword to help identify the site (e.g. 'bloomie', 'staffing'). Used for logging only." }
+      },
+      required: ["sessionId"]
+    }
   }
 ];
 
@@ -1976,6 +2017,70 @@ For images: use the 'url' field with image_edit.`
       } catch (err) {
         logger.error('get_session_files failed:', err.message);
         return { success: false, error: 'Could not retrieve session files: ' + err.message };
+      }
+    }
+
+    // Get all HTML pages in a site (session)
+    if (toolName === 'get_site_pages') {
+      try {
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+        const sid = sessionId || toolInput.sessionId;
+        logger.info('get_site_pages', { sessionId: sid, siteName: toolInput.siteName });
+
+        const { data, error } = await supabase
+          .from('artifacts')
+          .select('id, name, description, file_type, content, created_at')
+          .eq('session_id', sid)
+          .eq('file_type', 'html')
+          .order('created_at', { ascending: true });
+
+        if (error) {
+          return { success: false, error: 'Could not retrieve site pages: ' + error.message };
+        }
+
+        if (!data || data.length === 0) {
+          return { success: true, pages: [], message: 'No HTML pages found in this session. This might be a new site — create pages with create_artifact.' };
+        }
+
+        // Extract nav links from each page to show site structure
+        const pages = data.map(page => {
+          // Find all internal .html links in the page content
+          const linkMatches = (page.content || '').match(/href="([a-zA-Z0-9][a-zA-Z0-9._-]*\.html)"/gi) || [];
+          const linkedPages = linkMatches.map(m => m.match(/href="([^"]+)"/)?.[1]).filter(Boolean);
+
+          return {
+            name: page.name,
+            description: page.description,
+            previewUrl: `/api/files/site/${sid}/${page.name}`,
+            linksTo: [...new Set(linkedPages)],
+            hasNav: linkedPages.length > 1,
+            contentLength: (page.content || '').length
+          };
+        });
+
+        const pageNames = pages.map(p => p.name);
+
+        return {
+          success: true,
+          sessionId: sid,
+          siteEntryUrl: `/api/files/site/${sid}/${pages[0]?.name || 'index.html'}`,
+          totalPages: pages.length,
+          pages,
+          allPageNames: pageNames,
+          message: `This site has ${pages.length} page(s): ${pageNames.join(', ')}.
+
+ADDING A NEW PAGE TO THIS SITE:
+1. Create the new page with create_artifact — include a nav menu linking to ALL existing pages: ${pageNames.join(', ')} plus the new page
+2. After creating the new page, use edit_artifact on EACH existing page to add the new page to their nav menu
+3. The server auto-resolves relative .html links, so just use href="filename.html"
+
+REPLACING A PAGE:
+Use edit_artifact with find-and-replace operations to modify the existing page content.`
+        };
+      } catch (err) {
+        logger.error('get_site_pages failed:', err.message);
+        return { success: false, error: 'Could not retrieve site pages: ' + err.message };
       }
     }
 
