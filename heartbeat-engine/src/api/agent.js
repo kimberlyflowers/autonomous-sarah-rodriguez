@@ -66,15 +66,16 @@ function nextRunTime(frequency, runTime = '09:00') {
 // PROFILE ENDPOINTS
 // ═══════════════════════════════════════════════════════════════
 
-// GET /api/agent/profile
+// GET /api/agent/profile — supports ?agentId= for multi-agent
 router.get('/profile', async (req, res) => {
   try {
     const supabase = await getSupabase();
+    const targetAgentId = req.query.agentId || SARAH_AGENT_ID;
 
     const { data: agent, error: agentErr } = await supabase
       .from('agents')
       .select('id, name, role, avatar_url, standing_instructions, created_at, updated_at')
-      .eq('id', SARAH_AGENT_ID)
+      .eq('id', targetAgentId)
       .single();
 
     if (agentErr && agentErr.code !== 'PGRST116') {
@@ -84,22 +85,22 @@ router.get('/profile', async (req, res) => {
     const { count: taskCount } = await supabase
       .from('scheduled_tasks')
       .select('id', { count: 'exact', head: true })
-      .eq('agent_id', SARAH_AGENT_ID)
+      .eq('agent_id', targetAgentId)
       .eq('enabled', true);
 
     const { count: fileCount } = await supabase
       .from('artifacts')
       .select('id', { count: 'exact', head: true })
-      .eq('agent_id', SARAH_AGENT_ID);
+      .eq('agent_id', targetAgentId);
 
     const { count: msgCount } = await supabase
       .from('messages')
       .select('id', { count: 'exact', head: true })
-      .eq('agent_id', SARAH_AGENT_ID);
+      .eq('agent_id', targetAgentId);
 
     return res.json({
       profile: {
-        agentId:        agent?.id || SARAH_AGENT_ID,
+        agentId:        agent?.id || targetAgentId,
         jobTitle:       agent?.role || 'AI Employee',
         jobDescription: agent?.standing_instructions?.slice(0, 200) || '',
         avatarUrl:      agent?.avatar_url || null,
@@ -126,11 +127,12 @@ router.get('/profile', async (req, res) => {
   }
 });
 
-// PATCH /api/agent/profile
+// PATCH /api/agent/profile — supports agentId in body for multi-agent
 router.patch('/profile', async (req, res) => {
   try {
     const supabase = await getSupabase();
-    let { jobTitle, jobDescription, avatarUrl } = req.body;
+    let { jobTitle, jobDescription, avatarUrl, agentId } = req.body;
+    const targetAgentId = agentId || SARAH_AGENT_ID;
 
     // If avatar is a data URL, upload to Supabase Storage first
     if (avatarUrl && avatarUrl.startsWith('data:image')) {
@@ -156,7 +158,7 @@ router.patch('/profile', async (req, res) => {
     const { data, error } = await supabase
       .from('agents')
       .update(updates)
-      .eq('id', SARAH_AGENT_ID)
+      .eq('id', targetAgentId)
       .select()
       .single();
 
@@ -167,6 +169,93 @@ router.patch('/profile', async (req, res) => {
   } catch (error) {
     logger.error('Update profile error', { error: error.message });
     return res.status(500).json({ error: 'Failed to update profile' });
+  }
+});
+
+// POST /api/agent/create — onboard a new Bloomie (cloned from base capabilities)
+router.post('/create', async (req, res) => {
+  try {
+    const { name, role, standingInstructions, config = {}, organizationId } = req.body;
+    if (!name?.trim()) return res.status(400).json({ error: 'Agent name is required' });
+    if (!role?.trim()) return res.status(400).json({ error: 'Agent role is required' });
+
+    const supabase = await getSupabase();
+    const orgId = organizationId || BLOOM_ORG_ID;
+
+    // Generate a new UUID for the agent
+    const { randomUUID } = await import('crypto');
+    const newAgentId = randomUUID();
+
+    // Default standing instructions if none provided
+    const defaultInstructions = `You are ${name}, an autonomous AI employee (a "Bloomie") built and deployed by BLOOM Ecosystem.
+
+Every heartbeat cycle, you should:
+1. Check for new client inquiries and respond within scope
+2. Check for overdue follow-ups and send reminders
+3. Check for upcoming calendar events and prepare reminders
+4. Check for any tasks assigned to you and work on them
+5. Monitor email for anything requiring attention
+
+You operate within your current autonomy level. If something exceeds your scope,
+escalate to your manager with your analysis, what you have already checked, and your
+recommendation. Never guess — if unsure, escalate.
+
+Log everything: what you did, what you chose not to do (and why), and what you
+escalated. Your logs are how trust is built.`;
+
+    const { data, error } = await supabase
+      .from('agents')
+      .insert({
+        id: newAgentId,
+        name: name.trim(),
+        role: role.trim(),
+        organization_id: orgId,
+        autonomy_level: 1,
+        standing_instructions: standingInstructions?.trim() || defaultInstructions,
+        config: config,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+
+    logger.info('New Bloomie agent created', { agentId: newAgentId, name: name.trim(), role: role.trim() });
+    return res.json({
+      success: true,
+      agent: {
+        id: data.id,
+        name: data.name,
+        role: data.role,
+        autonomyLevel: data.autonomy_level,
+        createdAt: data.created_at
+      }
+    });
+  } catch (error) {
+    logger.error('Create agent error', { error: error.message });
+    return res.status(500).json({ error: 'Failed to create agent: ' + error.message });
+  }
+});
+
+// GET /api/agent/list — list all agents in the organization
+router.get('/list', async (req, res) => {
+  try {
+    const supabase = await getSupabase();
+    const orgId = req.query.organizationId || BLOOM_ORG_ID;
+
+    const { data, error } = await supabase
+      .from('agents')
+      .select('id, name, role, avatar_url, autonomy_level, created_at, updated_at')
+      .eq('organization_id', orgId)
+      .order('created_at', { ascending: true });
+
+    if (error) throw new Error(error.message);
+
+    return res.json({ agents: data || [] });
+  } catch (error) {
+    logger.error('List agents error', { error: error.message });
+    return res.status(500).json({ error: 'Failed to list agents' });
   }
 });
 

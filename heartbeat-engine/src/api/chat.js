@@ -2885,7 +2885,7 @@ async function callAnthropicWithRetry(params, maxRetries = 3) {
   }
 }
 
-async function chatWithSarah(userMessage, history, agentConfig, sessionId = null) {
+async function chatWithAgent(userMessage, history, agentConfig, sessionId = null) {
   let systemPrompt = buildSystemPrompt(agentConfig);
   
   // Inject brand kit if available
@@ -3155,20 +3155,21 @@ When a user asks you to edit, modify, or update something you previously created
 // ROUTES — DB-backed persistent sessions
 
 let _tablesReady = false;
-async function ensureSession(_pool, sessionId, userId = null) {
+async function ensureSession(_pool, sessionId, userId = null, agentId = null) {
   // Supabase only — pool param kept for call-chain compatibility but not used
   try {
     const { createClient } = await import('@supabase/supabase-js');
     const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
     const resolvedUserId = userId || process.env.BLOOM_OWNER_USER_ID || '823e2fb5-2f8f-4279-9c84-c8f4bf78bcce';
+    const resolvedAgentId = agentId || process.env.AGENT_UUID || 'c3000000-0000-0000-0000-000000000003';
     await sb.from('sessions').upsert({
       id: sessionId,
       user_id: resolvedUserId,
       organization_id: process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001',
-      agent_id: process.env.AGENT_UUID || 'c3000000-0000-0000-0000-000000000003',
+      agent_id: resolvedAgentId,
       updated_at: new Date().toISOString()
     }, { onConflict: 'id', ignoreDuplicates: false });
-    logger.info(`Session ${sessionId} ensured in Supabase`);
+    logger.info(`Session ${sessionId} ensured in Supabase`, { agentId: resolvedAgentId });
   } catch (err) {
     logger.warn(`ensureSession failed:`, err.message);
   }
@@ -3224,18 +3225,19 @@ Title:`;
   }
 }
 
-async function saveMessages(_pool, sessionId, userMsg, assistantMsg, files = null, userId = null) {
+async function saveMessages(_pool, sessionId, userMsg, assistantMsg, files = null, userId = null, agentId = null) {
   const userText = typeof userMsg === 'string' ? userMsg : JSON.stringify(userMsg);
-  
+
   // Save messages to SUPABASE (source of truth for millions of users)
   try {
     const { createClient } = await import('@supabase/supabase-js');
     const supabaseUrl = process.env.SUPABASE_URL;
     const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
     const supabase = createClient(supabaseUrl, supabaseKey);
-    
+
     const resolvedUserId = userId || process.env.BLOOM_OWNER_USER_ID || '823e2fb5-2f8f-4279-9c84-c8f4bf78bcce';
-    
+    const resolvedAgentId = agentId || process.env.AGENT_UUID || 'c3000000-0000-0000-0000-000000000003';
+
     // Insert user message
     await supabase
       .from('messages')
@@ -3243,11 +3245,12 @@ async function saveMessages(_pool, sessionId, userMsg, assistantMsg, files = nul
         session_id: sessionId,
         organization_id: process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001',
         user_id: resolvedUserId,
+        agent_id: resolvedAgentId,
         role: 'user',
         content: userText,
         files: files ? files : null
       });
-    
+
     // Insert assistant message
     await supabase
       .from('messages')
@@ -3255,6 +3258,7 @@ async function saveMessages(_pool, sessionId, userMsg, assistantMsg, files = nul
         session_id: sessionId,
         organization_id: process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001',
         user_id: resolvedUserId,
+        agent_id: resolvedAgentId,
         role: 'assistant',
         content: assistantMsg
       });
@@ -3271,8 +3275,8 @@ async function saveMessages(_pool, sessionId, userMsg, assistantMsg, files = nul
 
 // GET /api/chat/sessions
 router.get('/sessions', async (req, res) => {
-  const { projectId } = req.query;
-  
+  const { projectId, agentId } = req.query;
+
   // If projectId is provided, query Supabase
   if (projectId) {
     try {
@@ -3280,15 +3284,16 @@ router.get('/sessions', async (req, res) => {
       const supabaseUrl = process.env.SUPABASE_URL;
       const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
       const supabase = createClient(supabaseUrl, supabaseKey);
-      
+
       const userId = process.env.BLOOM_OWNER_USER_ID || '823e2fb5-2f8f-4279-9c84-c8f4bf78bcce'; // Kimberly's UUID
-      
-      const { data, error } = await supabase
+
+      let query = supabase
         .from('sessions')
-        .select('id, title, created_at, updated_at, project_id, user_id')
+        .select('id, title, created_at, updated_at, project_id, user_id, agent_id')
         .eq('project_id', projectId)
-        .eq('user_id', userId)
-        .order('updated_at', { ascending: false });
+        .eq('user_id', userId);
+      if (agentId) query = query.eq('agent_id', agentId);
+      const { data, error } = await query.order('updated_at', { ascending: false });
       
       if (error) {
         logger.error('Supabase sessions fetch error', { error: error.message });
@@ -3314,15 +3319,17 @@ router.get('/sessions', async (req, res) => {
     }
   }
   
-  // Default: query Supabase sessions for this user
+  // Default: query Supabase sessions for this user (optionally filtered by agentId)
   try {
     const { createClient } = await import('@supabase/supabase-js');
     const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
     const resolvedUserId = process.env.BLOOM_OWNER_USER_ID || '823e2fb5-2f8f-4279-9c84-c8f4bf78bcce';
-    const { data, error } = await sb
+    let query = sb
       .from('sessions')
-      .select('id, title, created_at, updated_at')
-      .eq('user_id', resolvedUserId)
+      .select('id, title, created_at, updated_at, agent_id')
+      .eq('user_id', resolvedUserId);
+    if (agentId) query = query.eq('agent_id', agentId);
+    const { data, error } = await query
       .order('updated_at', { ascending: false })
       .limit(50);
     if (error) throw error;
@@ -3379,16 +3386,16 @@ router.patch('/sessions/:id/title', async (req, res) => {
 });
 
 router.post('/message', async (req, res) => {
-  // Track which skills Sarah loads during this turn — shown as badges in the dashboard
+  // Track which skills the agent loads during this turn — shown as badges in the dashboard
   let skillsUsedThisTurn = [];
   try {
-    const { message, sessionId = 'session-' + Date.now() } = req.body;
+    const { message, sessionId = 'session-' + Date.now(), agentId } = req.body;
     if (!message?.trim()) return res.status(400).json({ error: 'Message required' });
 
     const userId = await getUserId(req);
-    await ensureSession(null, sessionId, userId);
+    const agentConfig = await loadAgentConfig(agentId || null);
+    await ensureSession(null, sessionId, userId, agentConfig.agentId);
     const history = await loadHistory(null, sessionId);
-    const agentConfig = await loadAgentConfig();
 
     // Auto-fetch Google Docs/Sheets/Slides if URL detected in message
     let enrichedMessage = message;
@@ -3426,10 +3433,10 @@ router.post('/message', async (req, res) => {
       }
     }
 
-    const response = await chatWithSarah(enrichedMessage, history, agentConfig, sessionId);
+    const response = await chatWithAgent(enrichedMessage, history, agentConfig, sessionId);
     logger.info(`💬 Chat [${sessionId}] User: ${message.slice(0, 100)}${message.length > 100 ? '...' : ''}`);
-    logger.info(`💬 Chat [${sessionId}] Sarah: ${response.replace(/\[Session context[\s\S]*$/, '').slice(0, 100)}${response.length > 100 ? '...' : ''}`);
-    await saveMessages(null, sessionId, message, response, null, userId);
+    logger.info(`💬 Chat [${sessionId}] ${agentConfig.name || 'Agent'}: ${response.replace(/\[Session context[\s\S]*$/, '').slice(0, 100)}${response.length > 100 ? '...' : ''}`);
+    await saveMessages(null, sessionId, message, response, null, userId, agentConfig.agentId);
 
     // Strip internal session context before sending to client
     const cleanResponse = response.replace(/\s*\[Session context[\s\S]*$/g, '').trim();
@@ -3439,7 +3446,7 @@ router.post('/message', async (req, res) => {
       generateSessionTitle(sessionId, message, cleanResponse).catch(() => {});
     }
 
-    return res.json({ response: cleanResponse, sessionId, skillsUsed: skillsUsedThisTurn });
+    return res.json({ response: cleanResponse, sessionId, agentId: agentConfig.agentId, skillsUsed: skillsUsedThisTurn });
   } catch (error) {
     logger.error('Chat error', { error: error.message });
 
@@ -3462,15 +3469,15 @@ router.post('/message', async (req, res) => {
 // POST /api/chat/upload — accept files + optional message, send to Sarah as multipart content
 router.post('/upload', async (req, res) => {
   try {
-    const { message = '', sessionId = 'session-' + Date.now(), files = [] } = req.body;
+    const { message = '', sessionId = 'session-' + Date.now(), files = [], agentId } = req.body;
     if (!files.length && !message.trim()) {
       return res.status(400).json({ error: 'Message or files required' });
     }
 
     const userId = await getUserId(req);
-    await ensureSession(null, sessionId, userId);
+    const agentConfig = await loadAgentConfig(agentId || null);
+    await ensureSession(null, sessionId, userId, agentConfig.agentId);
     const history = await loadHistory(null, sessionId);
-    const agentConfig = await loadAgentConfig();
 
     // Build multipart content blocks for Anthropic
     const userContent = [];
@@ -3538,7 +3545,7 @@ router.post('/upload', async (req, res) => {
     if (textMsg) userContent.push({ type: 'text', text: textMsg });
 
     const content = userContent.length === 1 && userContent[0].type === 'text' ? userContent[0].text : userContent;
-    const response = await chatWithSarah(content, history, agentConfig, sessionId);
+    const response = await chatWithAgent(content, history, agentConfig, sessionId);
 
     // Save uploaded images to chat_uploads (separate from artifacts/Files tab)
     // These are user-provided context images, NOT Bloomie-created deliverables
@@ -3600,7 +3607,7 @@ router.post('/upload', async (req, res) => {
       ? `[Files: ${files.map(f => f.name).join(', ')}]${textMsg ? ' ' + textMsg : ''}`
       : textMsg;
     const filesMeta = files.map(f => ({ name: f.name, type: f.type }));
-    await saveMessages(null, sessionId, historyLabel, response, filesMeta, userId);
+    await saveMessages(null, sessionId, historyLabel, response, filesMeta, userId, agentConfig.agentId);
 
     // Generate smart title on first message (same as text endpoint)
     if (history.length === 0) {
