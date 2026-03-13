@@ -479,6 +479,10 @@ Multiple "Sign Up" "Learn More" "Book Now" → confusion
 Pink + red + orange + purple = visual assault
 **FIX:** Pick 2-3 colors maximum
 
+### ❌ Emojis in Content
+Using 🌍 🔥 ⭐ ☕ as icons or decoration is lazy and unprofessional
+**FIX:** Use SVG icons, CSS shapes, or icon font characters (never Unicode emoji)
+
 ### ❌ Generic Stock Photos
 Looks like every other corporate site
 **FIX:** Generate specific, contextual images
