@@ -106,8 +106,8 @@ router.get('/pending', (req, res) => {
 
   const session = sessions.get(sessionId);
   if (!session) {
-    // Desktop not registered yet — return empty rather than 404 to avoid poll errors
-    return res.json({ commands: [], count: 0 });
+    // Session not found — tell Desktop to re-register (Railway redeploy wiped in-memory sessions)
+    return res.json({ commands: [], count: 0, sessionLost: true });
   }
 
   // Update heartbeat
