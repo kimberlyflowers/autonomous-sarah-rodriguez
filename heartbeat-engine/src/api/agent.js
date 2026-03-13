@@ -182,9 +182,10 @@ router.post('/create', async (req, res) => {
     const supabase = await getSupabase();
     const orgId = organizationId || BLOOM_ORG_ID;
 
-    // Generate a new UUID for the agent
+    // Generate a new UUID and URL-friendly slug for the agent
     const { randomUUID } = await import('crypto');
     const newAgentId = randomUUID();
+    const slug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
     // Default standing instructions if none provided
     const defaultInstructions = `You are ${name}, an autonomous AI employee (a "Bloomie") built and deployed by BLOOM Ecosystem.
@@ -207,6 +208,7 @@ escalated. Your logs are how trust is built.`;
       .from('agents')
       .insert({
         id: newAgentId,
+        slug: slug,
         name: name.trim(),
         role: role.trim(),
         organization_id: orgId,
