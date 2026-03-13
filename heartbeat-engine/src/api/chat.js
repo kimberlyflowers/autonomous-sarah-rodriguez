@@ -426,12 +426,29 @@ When the user says "link to a checkout page" or "add a link to [any page]":
 - If you need to link to an external page the user hasn't specified, ASK for the real URL
 - If they want an internal page (checkout, about, contact), BUILD the page and link to it
 
+MULTI-PAGE WEBSITES — CRITICAL LINKING RULES:
+When building a multi-page site (e.g. homepage + about + services + contact), ALL pages must link to each other using RELATIVE href links:
+- Use href="about.html" NOT href="#" or href="https://example.com/about"
+- Use href="services.html" NOT href="/api/files/publish/some-uuid"
+- Use href="index.html" to link back to the homepage
+- For anchor links on the SAME page, use href="#section-name"
+The server automatically resolves relative .html links between pages in the same session.
+Navigation menus on EVERY page must include working links to ALL other pages in the site.
+After creating ALL pages, include this tag in your FINAL response: <!-- site:{sessionId}:index.html -->
+This gives the user a single entry point to browse the entire connected site.
+
 EXAMPLE — User says "make buttons link to a checkout page":
 1. Get the existing landing page HTML via get_session_files
 2. Create a new checkout page HTML with create_artifact (coastal-surf-shop-checkout.html)
-3. Update the landing page buttons to link to the checkout page's preview URL
-4. Save the modified landing page with create_artifact (same filename to update in place)
-Result: TWO files — updated landing page + new checkout page. Both are real, clickable pages.
+3. Use edit_artifact on the landing page to update button hrefs to href="coastal-surf-shop-checkout.html"
+Result: TWO files linked together. Navigation works automatically via the site route.
+
+EXAMPLE — User says "build a 5-page website":
+1. Plan all pages: index.html, about.html, services.html, portfolio.html, contact.html
+2. Create each page with create_artifact, ensuring EVERY page has a nav menu with relative links to ALL other pages
+3. Example nav on every page: <a href="index.html">Home</a> <a href="about.html">About</a> <a href="services.html">Services</a> etc.
+4. After creating ALL pages, include <!-- site:{sessionId}:index.html --> in your final response
+Result: A complete multi-page site where all navigation links work.
 
 Examples of EDIT requests (do NOT rebuild):
 - "Change the hero image" → Replace image URL only
@@ -2032,6 +2049,9 @@ For images: use the 'url' field with image_edit.`
       });
       const data = await resp.json();
       if (data.success) {
+        // Build site URL for multi-page site linking
+        const siteUrl = sessionId ? `/api/files/site/${sessionId}/${toolInput.name}` : null;
+
         return {
           success: true,
           message: `FILE CREATED SUCCESSFULLY: "${toolInput.name}"
@@ -2050,8 +2070,12 @@ BAD example response: "I created \\"${toolInput.name}\\" — you can find it in 
 
 The hidden tag <!-- file:${toolInput.name} --> automatically creates a clickable card below your message. The user clicks THAT card to view the file. If you mention the filename in text, users will try to click those words and get confused.
 
-REMEMBER: Put <!-- file:${toolInput.name} --> on its own line. Do NOT write "${toolInput.name}" in your visible text.`,
-          artifact: data.artifact
+REMEMBER: Put <!-- file:${toolInput.name} --> on its own line. Do NOT write "${toolInput.name}" in your visible text.
+
+MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building a multi-page site, ALL pages in this session are linked at /api/files/site/${sessionId}/{filename}. Use relative href links between pages (e.g. href="about.html", href="services.html") and the server will automatically resolve them within the same session. After creating ALL pages, include this tag in your final response so the user gets a single entry point:
+<!-- site:${sessionId}:index.html -->`,
+          artifact: data.artifact,
+          siteUrl
         };
       }
       return { success: false, error: data.error || 'Failed to create artifact' };

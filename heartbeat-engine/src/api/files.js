@@ -275,6 +275,58 @@ router.get('/publish/:fileId', async (req, res) => {
   } catch { return res.status(500).send('Preview failed'); }
 });
 
+// ── MULTI-PAGE SITE ROUTE — serve pages by session + filename ─────────────────
+// Enables multi-page sites: Sarah uses relative links (href="about.html") and
+// this route resolves them within the same session context.
+router.get('/site/:sessionId/:filename', async (req, res) => {
+  try {
+    const { sessionId, filename } = req.params;
+    const supabase = sb();
+    const { data: file, error } = await supabase.from('artifacts')
+      .select('name, file_type, content, storage_path, session_id')
+      .eq('session_id', sessionId)
+      .eq('name', filename)
+      .single();
+
+    if (error || !file) {
+      // Fallback: try case-insensitive or partial match
+      const { data: files } = await supabase.from('artifacts')
+        .select('name, file_type, content, storage_path, session_id')
+        .eq('session_id', sessionId)
+        .eq('file_type', 'html');
+      const match = (files || []).find(f =>
+        f.name.toLowerCase() === filename.toLowerCase() ||
+        f.name.toLowerCase().replace(/\s+/g, '-') === filename.toLowerCase()
+      );
+      if (!match) return res.status(404).send(`Page "${filename}" not found in this site`);
+      return serveSitePage(match, sessionId, res);
+    }
+
+    return serveSitePage(file, sessionId, res);
+  } catch (e) {
+    logger.error('Site route error', { error: e.message });
+    return res.status(500).send('Failed to load page');
+  }
+});
+
+// Helper: serve an HTML page with relative links rewritten to the site route
+function serveSitePage(file, sessionId, res) {
+  if (file.file_type === 'html' && file.content) {
+    let html = file.content;
+    // Rewrite relative .html links to use site route
+    // Matches href="filename.html" or href="filename.html#anchor"
+    // Does NOT touch: href="#anchor", href="https://...", href="/absolute/...", href="mailto:..."
+    html = html.replace(
+      /href="([a-zA-Z0-9][a-zA-Z0-9._-]*\.html)(#[^"]*)?\"/gi,
+      (match, fname, hash) => `href="/api/files/site/${sessionId}/${fname}${hash || ''}"`
+    );
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    return res.send(html);
+  }
+  if (file.storage_path) return res.redirect(302, file.storage_path);
+  return res.status(404).send('Content not available');
+}
+
 // ── PATCH — approve/reject ────────────────────────────────────────────────────
 router.patch('/artifacts/:fileId', async (req, res) => {
   try {
