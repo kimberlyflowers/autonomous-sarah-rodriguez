@@ -28,7 +28,7 @@ function sb() {
 // ── CREATE ARTIFACT ──────────────────────────────────────────────────────────
 router.post('/artifacts', async (req, res) => {
   try {
-    const { name, description = '', fileType = 'text', mimeType = 'text/plain', content, sessionId = null, metadata = {} } = req.body;
+    const { name, description = '', fileType = 'text', mimeType = 'text/plain', content, sessionId = null, agentId = null, metadata = {} } = req.body;
     if (!name || !content) return res.status(400).json({ error: 'name and content required' });
 
     const fileId = `art_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
@@ -84,7 +84,7 @@ router.post('/artifacts', async (req, res) => {
     }
     if (!artifact && !insertErr) {
       const { data: inserted, error: err } = await supabase.from('artifacts').insert({
-        organization_id: ORG_ID(), created_by_user_id: USER_ID(), agent_id: AGENT_ID(),
+        organization_id: ORG_ID(), created_by_user_id: USER_ID(), agent_id: agentId || AGENT_ID(),
         session_id: sessionId || null, name, description, file_type: fileType, mime_type: mimeType,
         content: contentText || null, storage_path: storagePath || filePath || null,
         file_size: fileSize, floral_id: floralId, bloomshield_registered: false, published: false
@@ -142,17 +142,18 @@ async function queueBloomshield({ supabaseId, floralId, contentText, name, mimeT
 // ── LIST ARTIFACTS ───────────────────────────────────────────────────────────
 router.get('/artifacts', async (req, res) => {
   try {
-    const { status, limit = 50, sessionId } = req.query;
+    const { status, limit = 50, sessionId, agentId } = req.query;
     const supabase = sb();
 
     let query = supabase.from('artifacts')
-      .select('id, name, description, file_type, mime_type, file_size, storage_path, content, floral_id, published, slug, created_at, bloomshield_registered, session_id')
+      .select('id, name, description, file_type, mime_type, file_size, storage_path, content, floral_id, published, slug, created_at, bloomshield_registered, session_id, agent_id')
       .order('created_at', { ascending: false })
       .limit(parseInt(limit));
 
     // All artifacts are auto-approved now — no status filter needed unless explicitly requested
     if (status) query = query.eq('published', status === 'approved');
     if (sessionId) query = query.eq('session_id', sessionId);
+    if (agentId) query = query.eq('agent_id', agentId);
 
     const { data, error } = await query;
     if (error) throw error;

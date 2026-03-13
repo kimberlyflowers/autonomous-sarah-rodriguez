@@ -2167,7 +2167,8 @@ Use edit_artifact with find-and-replace operations to modify the existing page c
           fileType: toolInput.fileType || 'markdown',
           mimeType: mimeMap[toolInput.fileType] || 'text/markdown',
           content: cleanContent,
-          sessionId: sessionId
+          sessionId: sessionId,
+          agentId: agentConfig?.agentId || null
         })
       });
       const data = await resp.json();
