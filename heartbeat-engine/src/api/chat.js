@@ -21,6 +21,9 @@ const router = express.Router();
 const logger = createLogger('chat-api');
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+// In-memory task progress keyed by sessionId (SSE pushes to Desktop)
+const taskProgress = new Map();
+
 // Extract user ID from Supabase JWT — falls back to env var during transition
 async function getUserId(req) {
   try {
@@ -191,6 +194,15 @@ You have TWO tools for creating files:
 
 Do NOT paste long content directly in chat. ALWAYS save deliverables as files.
 Use descriptive filenames: 'onboarding-handbook.docx', 'q1-report.docx', 'welcome-email.html'.
+
+TASK PROGRESS CHECKLIST (CRITICAL — USE THIS):
+You have a task_progress tool that shows a visual checklist in the user's BLOOM Desktop app.
+For ANY task with 3+ steps, you MUST:
+1. Call task_progress at the START with all steps as "pending"
+2. Update the current step to "in_progress" before starting it
+3. Mark each step "completed" as you finish, and set the next to "in_progress"
+4. Only have ONE step as "in_progress" at a time
+This gives the user a live view of what you're doing — like a project manager watching work happen.
 
 DISPLAYING IMAGES IN CHAT (CRITICAL):
 When you generate an image, ALWAYS embed it inline in your response so ${operatorFirstName} can see it immediately:
@@ -1291,6 +1303,29 @@ const _ALL_TOOLS = [
     }
   },
   {
+    name: "task_progress",
+    description: "Update the visual task checklist that the user sees in BLOOM Desktop. Call this to show what you're working on, mark steps complete, and track multi-step tasks. ALWAYS use this for any task with 3+ steps — create the checklist at the start, update it as you go, and mark complete when done. The user sees this as a real-time progress widget.",
+    input_schema: {
+      type: "object",
+      properties: {
+        todos: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              content: { type: "string", description: "What needs to be done (imperative: 'Move files to Documents')" },
+              status: { type: "string", enum: ["pending", "in_progress", "completed"], description: "Current state" },
+              activeForm: { type: "string", description: "Present tense shown while running ('Moving files to Documents')" }
+            },
+            required: ["content", "status", "activeForm"]
+          },
+          description: "The full todo list. Send the COMPLETE list every time (not just changes)."
+        }
+      },
+      required: ["todos"]
+    }
+  },
+  {
     name: "load_skill",
     description: "Load detailed expert instructions for a specific skill before doing complex work. Call this BEFORE starting any major creative or document task. The skill provides data-driven best practices, formatting standards, and quality requirements. Available skills are listed in your system prompt — match the skill name exactly.",
     input_schema: {
@@ -1445,6 +1480,16 @@ async function executeTool(toolName, toolInput, sessionId = null) {
         logger.warn('bloom_log insert failed', { error: err.message });
         return { logged: null };
       }
+    }
+
+    // task_progress — updates the real-time checklist widget in BLOOM Desktop
+    if (toolName === 'task_progress') {
+      const sessionKey = sessionId || 'default';
+      taskProgress.set(sessionKey, {
+        todos: toolInput.todos,
+        updatedAt: Date.now()
+      });
+      return { success: true, todoCount: toolInput.todos.length };
     }
 
     // All GHL tools + notify_owner route through the unified executor
@@ -2479,6 +2524,8 @@ router.delete('/sessions/:id', async (req, res) => {
     const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
     await sb.from('messages').delete().eq('session_id', req.params.id);
     await sb.from('sessions').delete().eq('id', req.params.id);
+    // Clean up in-memory task progress to prevent memory buildup
+    taskProgress.delete(req.params.id);
     res.json({ success: true });
   } catch (e) {
     res.json({ success: false });
@@ -2742,6 +2789,37 @@ router.get('/crm-link', (req, res) => {
 
 router.get('/health', (req, res) => {
   res.json({ status: 'ok', agent: 'sarah-rodriguez', mode: 'direct-api' });
+});
+
+// ── TASK PROGRESS SSE STREAM ────────────────────────────────────────────
+// Desktop subscribes to this for real-time checklist updates
+// Full path: /api/chat/progress-stream?sessionId=xxx
+// Desktop app connects via EventSource to this URL for live todo updates
+router.get('/progress-stream', (req, res) => {
+  const sessionId = req.query.sessionId || 'default';
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'Access-Control-Allow-Origin': '*'
+  });
+  res.write('data: ' + JSON.stringify({ connected: true }) + '\n\n');
+
+  // Push progress updates every 500ms
+  const interval = setInterval(() => {
+    const progress = taskProgress.get(sessionId);
+    if (progress) {
+      res.write('data: ' + JSON.stringify(progress) + '\n\n');
+    }
+  }, 500);
+
+  // Keep-alive ping every 15s to survive Railway's idle timeout
+  const heartbeat = setInterval(() => res.write(': ping\n\n'), 15000);
+
+  req.on('close', () => {
+    clearInterval(interval);
+    clearInterval(heartbeat);
+  });
 });
 
 // ── MODEL SWITCHING ──────────────────────────────────────────────────────
