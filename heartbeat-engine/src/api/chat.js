@@ -1927,25 +1927,45 @@ For images: use the 'url' field with image_edit.`
     // Artifact creation — save deliverables for client review
     if (toolName === 'create_artifact') {
       // ──── OVERWRITE PROTECTION ────
-      // If an artifact with this name already exists in this session, BLOCK the create
+      // If an artifact with this name already exists in ANY recent session, BLOCK the create
       // and force Sarah to use edit_artifact instead
       try {
         const { createClient } = await import('@supabase/supabase-js');
         const checkSupabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-        const { data: existing } = await checkSupabase
+        console.log(`[create_artifact] Overwrite check: name="${toolInput.name}", sessionId="${sessionId}"`);
+
+        // Check in current session first
+        let { data: existing } = await checkSupabase
           .from('artifacts')
-          .select('id, name')
+          .select('id, name, session_id')
           .eq('session_id', sessionId)
           .eq('name', toolInput.name)
           .limit(1);
+
+        // Also check by name alone (any session) as a safety net
+        if (!existing || existing.length === 0) {
+          const { data: anyExisting } = await checkSupabase
+            .from('artifacts')
+            .select('id, name, session_id')
+            .eq('name', toolInput.name)
+            .order('created_at', { ascending: false })
+            .limit(1);
+          if (anyExisting && anyExisting.length > 0) {
+            existing = anyExisting;
+            console.log(`[create_artifact] Found existing artifact in different session: ${anyExisting[0].session_id}`);
+          }
+        }
+
         if (existing && existing.length > 0) {
+          console.log(`[create_artifact] BLOCKED overwrite of "${toolInput.name}" (existing id: ${existing[0].id})`);
           return {
             success: false,
-            error: `BLOCKED: A file named "${toolInput.name}" already exists in this session (id: ${existing[0].id}). ` +
+            error: `BLOCKED: A file named "${toolInput.name}" already exists (id: ${existing[0].id}). ` +
               `You MUST use edit_artifact to modify existing files — NEVER create_artifact. ` +
               `Call edit_artifact with artifactName="${toolInput.name}" and your find→replace operations.`
           };
         }
+        console.log(`[create_artifact] No existing artifact found, allowing create`);
       } catch (e) {
         // If the check fails, log but allow the create to proceed
         console.warn('[create_artifact] Overwrite check failed:', e.message);
@@ -2080,17 +2100,19 @@ REMEMBER: Put <!-- file:${toolInput.name} --> on its own line. Do NOT write "${t
 
     // edit_artifact — server-side find-and-replace on HTML artifacts (surgical editing)
     if (toolName === 'edit_artifact') {
-      const { artifactName, sessionId: artSessionId, operations = [] } = toolInput;
+      const { artifactName, operations = [] } = toolInput;
       try {
         if (!artifactName) return { success: false, error: 'artifactName is required' };
         if (!operations.length) return { success: false, error: 'At least one operation is required' };
 
         const { createClient } = await import('@supabase/supabase-js');
         const editSupabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-        const sid = artSessionId || sessionId;
+        // ALWAYS use the real chat session ID — ignore whatever the LLM passes as sessionId
+        const sid = sessionId;
+        console.log(`[edit_artifact] Looking up artifact: name="${artifactName}", session="${sid}"`);
 
         // Find the artifact by name + session
-        const { data: arts, error: findErr } = await editSupabase
+        let { data: arts, error: findErr } = await editSupabase
           .from('artifacts')
           .select('id, name, content, file_type')
           .eq('session_id', sid)
@@ -2098,8 +2120,23 @@ REMEMBER: Put <!-- file:${toolInput.name} --> on its own line. Do NOT write "${t
           .order('created_at', { ascending: false })
           .limit(1);
 
+        // Fallback: if not found by session, try by name alone (most recent)
+        if ((!arts || arts.length === 0) && !findErr) {
+          console.log(`[edit_artifact] Not found in session "${sid}", trying name-only fallback`);
+          const fallback = await editSupabase
+            .from('artifacts')
+            .select('id, name, content, file_type, session_id')
+            .eq('name', artifactName)
+            .order('created_at', { ascending: false })
+            .limit(1);
+          if (fallback.data && fallback.data.length > 0) {
+            arts = fallback.data;
+            console.log(`[edit_artifact] Found via fallback in session "${arts[0].session_id}"`);
+          }
+        }
+
         if (findErr) return { success: false, error: `DB error: ${findErr.message}` };
-        if (!arts || arts.length === 0) return { success: false, error: `Artifact "${artifactName}" not found in session ${sid}. Check the filename.` };
+        if (!arts || arts.length === 0) return { success: false, error: `Artifact "${artifactName}" not found. Check the filename.` };
 
         const artifact = arts[0];
         if (!artifact.content) return { success: false, error: `Artifact "${artifactName}" has no content to edit.` };
@@ -2160,6 +2197,7 @@ REMEMBER: Put <!-- file:${toolInput.name} --> on its own line. Do NOT write "${t
             .eq('id', artifact.id);
 
           if (updateErr) return { success: false, error: `Failed to save: ${updateErr.message}` };
+          console.log(`[edit_artifact] ✅ Saved ${successCount} edit(s) to artifact ${artifact.id} ("${artifactName}")`);
         }
 
         // Build the file tag so frontend shows the updated card
