@@ -307,6 +307,13 @@ Examples of RIGHT behavior:
 - User: "create a website" → Sarah asks 3 intake questions, waits for answers, THEN builds
 - User: "make a flyer" → Sarah calls image_generate with a flyer prompt
 
+EMOJI BAN — ABSOLUTE RULE:
+NEVER use emojis anywhere in websites, HTML files, documents, or any deliverable.
+No 🌍 🔥 ⭐ ☕ or any other emoji in content, headings, cards, icons, or decorative elements.
+If you need visual icons, use SVG icons or CSS shapes — never Unicode emoji characters.
+This applies to ALL deliverables: websites, flyers, documents, social posts, emails.
+Emoji in professional deliverables is unacceptable and will be rejected.
+
 WEBSITE INTAKE — MANDATORY before building any website or landing page:
 When asked to build a website, landing page, or web page, NEVER start building immediately.
 You MUST first ask these 3 questions in a single message (keep it brief and friendly):
@@ -1245,7 +1252,7 @@ const _ALL_TOOLS = [
     input_schema: {
       type: "object",
       properties: {
-        skill_name: { type: "string", description: "The skill to load (e.g. 'frontend-design', 'docx', 'pptx', 'pdf', 'xlsx', 'blog-content', 'email-marketing', 'social-media', 'book-writing', 'ghl-crm')" },
+        skill_name: { type: "string", description: "The skill to load. Must be one of these exact names: 'website-creation', 'docx', 'pptx', 'pdf', 'xlsx', 'blog-content', 'email-marketing', 'social-media', 'book-writing', 'ghl-crm', 'flyer-generation', 'image-generation', 'lead-scraper'" },
         context: { type: "string", description: "Brief description of what you're about to create — helps select the right guidelines" }
       },
       required: ["skill_name"]
@@ -1620,50 +1627,36 @@ async function executeTool(toolName, toolInput, sessionId = null) {
     // Load skill — injects expert instructions into the conversation
     if (toolName === 'load_skill') {
       try {
-        const { getSkillContext, getAllSkills } = await import('../skills/skill-loader.js');
         const skillName = toolInput.skill_name;
         
-        // Find the matching skill type from the catalog
-        const allSkills = getAllSkills();
-        const match = allSkills.find(s => s.name === skillName);
+        // Load directly from the catalog file by name — bypasses broken type-mapping indirection
+        const skillsDir = new URL('../skills/catalog', import.meta.url).pathname;
+        const skillFile = path.join(skillsDir, `${skillName}.md`);
         
-        if (!match) {
-          return { success: false, error: `Skill "${skillName}" not found. Available: ${allSkills.map(s => s.name).join(', ')}` };
+        if (!fs.existsSync(skillFile)) {
+          // List available skills by scanning the catalog dir
+          const available = fs.readdirSync(skillsDir)
+            .filter(f => f.endsWith('.md'))
+            .map(f => f.replace('.md', ''));
+          return { success: false, error: `Skill "${skillName}" not found. Available: ${available.join(', ')}` };
         }
         
-        // Load the full skill body by mapping name to type
-        const nameToType = {
-          'frontend-design': 'coding',
-          'website-landing-page': 'coding',
-          'website-creation': 'coding',
-          'docx': 'docx',
-          'docx-documents': 'docx',
-          'pptx': 'pptx',
-          'pdf': 'pdf',
-          'xlsx': 'xlsx',
-          'professional-documents': 'docx',
-          'blog-content': 'writing',
-          'email-marketing': 'email',
-          'social-media': 'writing',
-          'book-writing': 'writing',
-          'ghl-crm': 'crm',
-          'flyer-generation': 'image',
-          'image-generation': 'image',
-          'lead-scraper': 'scraping',   // Lead generation via browser
-        };
-        const skillType = nameToType[skillName] || 'writing';
-        const skillBody = getSkillContext(skillType, toolInput.context || '');
+        const raw = fs.readFileSync(skillFile, 'utf-8');
+        // Strip YAML frontmatter (--- ... ---)
+        const fmMatch = raw.match(/^---\n[\s\S]*?\n---\n([\s\S]*)$/);
+        const skillBody = fmMatch ? fmMatch[1].trim() : raw.trim();
         
-        if (skillBody) {
-          // Inject into system prompt for subsequent rounds
-          systemPrompt += skillBody;
-          // Track which skills were used this turn for dashboard visibility
-          if (!skillsUsedThisTurn) skillsUsedThisTurn = [];
-          skillsUsedThisTurn.push(skillName);
-          logger.info('Skill loaded via tool', { skill: skillName, length: skillBody.length });
-          return { success: true, message: `Loaded "${skillName}" skill — ${skillBody.length} characters of expert guidelines now active. Proceed with the task using these instructions.` };
+        if (!skillBody) {
+          return { success: false, error: `Skill "${skillName}" file is empty` };
         }
-        return { success: false, error: `Skill "${skillName}" found but body is empty` };
+        
+        // Inject into system prompt for this conversation turn
+        systemPrompt += `\n\n<skill name="${skillName}">\n${skillBody}\n</skill>`;
+        
+        if (!skillsUsedThisTurn) skillsUsedThisTurn = [];
+        skillsUsedThisTurn.push(skillName);
+        logger.info('Skill loaded via tool', { skill: skillName, length: skillBody.length });
+        return { success: true, message: `Loaded "${skillName}" skill — ${skillBody.length} characters of expert guidelines now active. Proceed with the task using these instructions.` };
       } catch(e) {
         return { success: false, error: `Failed to load skill: ${e.message}` };
       }
