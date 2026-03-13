@@ -225,10 +225,11 @@ function useSarahChat() {
     if(a) {
       setCurrentAgentId(agentId);
       setCurrentAgent(a);
-      // Start fresh session for new agent
+      // Clear everything immediately — no stale data from previous agent
       sid.current = null;
       setCurrentSessionId(null);
       setMessages([]);
+      setSessions([]);
       fetchSessions(agentId);
     }
   };
@@ -2727,6 +2728,9 @@ function App() {
   const [filesSearch,setFilesSearch]=useState('');
   const [filesRefresh,setFilesRefresh]=useState(0);
   const [previewFile,setPreviewFile]=useState(null); // {name, content, fileId}
+
+  // Clear files immediately when switching agents (prevents stale data flash)
+  useEffect(()=>{ setFiles([]); setFilesRefresh(r=>r+1); },[currentAgentId]);
   const [pageEditor,setPageEditor]=useState(null); // {fileId, name, content} — GrapesJS editor
   const [editMode,setEditMode]=useState(false);
   const [editContent,setEditContent]=useState('');
@@ -2746,18 +2750,19 @@ function App() {
     {id:"c4",nm:"Task completion scan",ic:"✅",freq:"Hourly",next:"—",last:"—",ok:true,on:true},
   ]);
 
-  // Fetch deliverables when files tab opens or after approval
+  // Fetch deliverables when files tab opens, after approval, or when agent changes
   useEffect(()=>{
     if(pg!=="artifacts") return;
     setFilesLoading(true);
-    fetch("/api/files/artifacts?limit=50")
+    const url = currentAgentId ? `/api/files/artifacts?limit=50&agentId=${currentAgentId}` : "/api/files/artifacts?limit=50";
+    fetch(url)
       .then(r=>r.ok?r.json():null)
       .then(d=>{
         setFiles(d?.artifacts||[]);
       })
       .catch(()=>{})
       .finally(()=>setFilesLoading(false));
-  },[pg,filesRefresh]);
+  },[pg,filesRefresh,currentAgentId]);
   const btm=useRef(null);
   const fRef=useRef(null);
   const [pendingFiles,setPendingFiles]=useState([]);
