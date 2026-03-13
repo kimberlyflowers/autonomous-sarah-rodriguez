@@ -208,9 +208,20 @@ Rules:
 4. Only ONE step may be "in_progress" at a time
 5. Send the COMPLETE todo array every call — not just the changed item
 
-If the user is in the browser chat, include a formatted checklist in your response text.
-If the request came from BLOOM Desktop (sessionId starts with "desktop_"), push to the SSE stream.
-Always do both if unsure.
+CRITICAL — DISPLAYING THE CHECKLIST IN YOUR RESPONSE:
+The task_progress tool returns an "inlineChecklist" field in its result. You MUST copy-paste this
+checklist into your FINAL chat response so the user can see what you did. This is NOT optional.
+Your final message should look like this:
+
+Here's what I did:
+[paste the inlineChecklist from the last task_progress result here]
+
+[then your actual answer/summary/deliverable]
+
+If you skip the checklist, the user sees NOTHING — just "Done." That is UNACCEPTABLE.
+NEVER reply with just "Done" or "Complete" — always show the checklist AND give the real answer.
+If the request came from BLOOM Desktop (sessionId starts with "desktop_"), the SSE stream handles it.
+In browser chat, YOU are responsible for showing the checklist. No one else will.
 
 DISPLAYING IMAGES IN CHAT (CRITICAL):
 When you generate an image, ALWAYS embed it inline in your response so ${operatorFirstName} can see it immediately:
@@ -1508,12 +1519,17 @@ async function executeTool(toolName, toolInput, sessionId = null) {
         return `${icon} ${label}`;
       }).join('\n');
 
+      // Return the checklist as the primary text content so the LLM sees it front and center
+      const instruction = isDesktop
+        ? 'Progress pushed to Desktop SSE stream.'
+        : 'IMPORTANT: Include the checklist below in your next response so the user can see progress:\n\n' + checklist;
+
       return {
         success: true,
         todoCount: toolInput.todos.length,
         context: isDesktop ? 'desktop_sse' : 'browser_chat',
-        // Browser chat: Sarah should include this checklist in her response text
-        inlineChecklist: checklist
+        inlineChecklist: checklist,
+        message: instruction
       };
     }
 
@@ -2309,7 +2325,14 @@ IMPORTANT: Since a brand kit is configured, DO NOT ask the user about colors, fo
 
           // For bloom_take_screenshot: pass image as vision content so Sarah can actually see it
           const screenImage = result?.result?.image || result?.image;
-          if (block.name === 'bloom_take_screenshot' && screenImage) {
+          // For task_progress: send the checklist as plain text so Sarah sees it clearly
+          if (block.name === 'task_progress' && result?.inlineChecklist) {
+            toolResultBlocks.push({
+              type: 'tool_result',
+              tool_use_id: block.id,
+              content: result.message || result.inlineChecklist
+            });
+          } else if (block.name === 'bloom_take_screenshot' && screenImage) {
             toolResultBlocks.push({
               type: 'tool_result',
               tool_use_id: block.id,
