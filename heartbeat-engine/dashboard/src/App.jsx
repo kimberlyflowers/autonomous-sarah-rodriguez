@@ -880,7 +880,7 @@ function ActionLog({c,sse}) {
 }
 
 // ── INTERNAL TASKS
-function InternalTasks({c,sse}) {
+function InternalTasks({c,sse,aFN="Sarah"}) {
   const [tasks,setTasks] = useState([]);
   useEffect(()=>{
     const go=async()=>{ try{ const r=await fetch("/api/dashboard/internal-tasks"); if(r.ok){ const d=await r.json(); setTasks(d.tasks||d||[]); } }catch{} };
@@ -1007,7 +1007,7 @@ function ResizablePanel({c,defaultWidth,minWidth,maxWidth,children}) {
 
 
 // ── SCREEN VIEWER — live feed from Sarah's browser via SSE
-function Screen({c,mob,mode,setMode}) {
+function Screen({c,mob,mode,setMode,aFN="Sarah"}) {
   const [screenshot,setScreenshot] = useState(null);
   const [browserUrl,setBrowserUrl] = useState(null);
   const [live,setLive] = useState(false);
@@ -1320,7 +1320,7 @@ function ImageLightbox({src, alt, onClose}) {
   );
 }
 
-function SessionFilesPanel({c, sessionId, setActiveArtifact}){
+function SessionFilesPanel({c, sessionId, setActiveArtifact, aFN="Sarah"}){
   const [lightbox,setLightbox]=useState(null);
   const [files,setFiles]=useState([]);
   const [uploads,setUploads]=useState([]);
@@ -1809,7 +1809,7 @@ function BillingUsageBar({icon,label,used,limit,rate,unit,c}){
 
 // ── SKILLS PAGE — Train your Bloomie ────────────────────────────────────────
 // ── CALLS PAGE — Phone transcript viewer ────────────────────────────────────
-function CallsPage({c,mob}){
+function CallsPage({c,mob,aFN="Sarah"}){
   const [calls,setCalls]=useState([]);
   const [loading,setLoading]=useState(true);
   const [expanded,setExpanded]=useState(null);
@@ -1881,7 +1881,7 @@ function CallsPage({c,mob}){
   );
 }
 
-function SkillsPage({c,mob}){
+function SkillsPage({c,mob,aFN="Sarah"}){
   const [skills,setSkills]=useState([]);
   const [bloomSkills,setBloomSkills]=useState([]);
   const [loading,setLoading]=useState(true);
@@ -2357,7 +2357,7 @@ function BusinessProfilePage({c,mob,userImg,setUserImg}){
   );
 }
 
-function BillingPage({c,mob}){
+function BillingPage({c,mob,aFN="Sarah"}){
   const [showEstimate,setShowEstimate]=useState(false);
   const currentPlan="enterprise";
   const plan=PLANS_DATA[currentPlan];
@@ -3482,7 +3482,7 @@ function App() {
                           {/* ── Browser tab ── */}
                           {rightTab==="browser"&&(
                             <>
-                              <Screen c={c} mob={false} mode="docked" setMode={setScrM}/>
+                              <Screen c={c} mob={false} mode="docked" setMode={setScrM} aFN={aFN}/>
                               <div style={{borderTop:"1px solid "+c.ln,background:c.cd,flexShrink:0}}>
                                 <div style={{padding:"10px 16px",borderBottom:"1px solid "+c.ln,display:"flex",alignItems:"center",gap:8}}>
                                   <span style={{width:8,height:8,borderRadius:"50%",background:c.ac,animation:"pulse 1.5s ease infinite"}}/>
@@ -3504,7 +3504,7 @@ function App() {
                               />
                             ):(
                               sid.current ? (
-                                <SessionFilesPanel c={c} sessionId={sid.current} setActiveArtifact={setActiveArtifact}/>
+                                <SessionFilesPanel c={c} sessionId={sid.current} setActiveArtifact={setActiveArtifact} aFN={aFN}/>
                               ) : (
                                 <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",color:c.so,fontSize:13}}>
                                   No active conversation
@@ -3633,7 +3633,7 @@ function App() {
                 <ContextAnalytics c={c} sse={sse}/>
               </div>
               <div style={{display:"grid",gridTemplateColumns:mob?"1fr":"1fr 1fr",gap:16,marginBottom:16}}>
-                <InternalTasks c={c} sse={sse}/>
+                <InternalTasks c={c} sse={sse} aFN={aFN}/>
                 <ActionLog c={c} sse={sse}/>
               </div>
               <EscalationPanel c={c} sse={sse}/>
@@ -4142,7 +4142,7 @@ function App() {
                 </h1>
                 <p style={{fontSize:13,color:c.so}}>Phone calls and voicemails — {aFN} reads transcripts and takes action</p>
               </div>
-              <CallsPage c={c} mob={mob}/>
+              <CallsPage c={c} mob={mob} aFN={aFN}/>
             </div>
           )}
 
@@ -4838,13 +4838,13 @@ function App() {
           )}
 
           {/* ══ BILLING ══ */}
-          {pg==="billing"&&(<BillingPage c={c} mob={mob}/>)}
+          {pg==="billing"&&(<BillingPage c={c} mob={mob} aFN={aFN}/>)}
           {pg==="business"&&(<BusinessProfilePage c={c} mob={mob} userImg={userImg} setUserImg={setUserImg}/>)}
-          {pg==="skills"&&(<SkillsPage c={c} mob={mob}/>)}
+          {pg==="skills"&&(<SkillsPage c={c} mob={mob} aFN={aFN}/>)}
         </div>
       </div>
-      {scrM==="pop"&&<Screen c={c} mob={mob} mode="pop" setMode={setScrM}/>}
-      {scrM==="full"&&<Screen c={c} mob={mob} mode="full" setMode={setScrM}/>}
+      {scrM==="pop"&&<Screen c={c} mob={mob} mode="pop" setMode={setScrM} aFN={aFN}/>}
+      {scrM==="full"&&<Screen c={c} mob={mob} mode="full" setMode={setScrM} aFN={aFN}/>}
 
       {/* ── HELP BUBBLE — exact Jaden ── */}
       {/* ══ AGENT PROFILE PANEL ══ */}
