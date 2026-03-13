@@ -1237,6 +1237,31 @@ const _ALL_TOOLS = [
     }
   },
   {
+    name: "swap_image_in_artifact",
+    description: "Replace one image with another inside a saved HTML artifact (website, flyer, landing page). Use when the operator says things like \'replace the hero image with that coffee shot\', \'swap that photo for the one in files\', or \'use a different image on the website\'. Workflow: 1) Call get_session_files to find the artifact fileId and identify the old image src in the HTML. 2) Call list_ai_images to find the replacement image URL. 3) Call this tool to do the swap. 4) Confirm what was replaced.",
+    input_schema: {
+      type: "object",
+      properties: {
+        artifactId: { type: "string", description: "UUID of the HTML artifact to edit (fileId from get_session_files)" },
+        oldSrc: { type: "string", description: "Exact image URL currently in the artifact HTML to be replaced" },
+        newSrc: { type: "string", description: "New image URL to use (from AI image library or any Supabase CDN URL)" }
+      },
+      required: ["artifactId", "oldSrc", "newSrc"]
+    }
+  },
+  {
+    name: "list_ai_images",
+    description: "Browse the full AI image library — every image Sarah has ever generated, stored in Supabase. Use when the operator wants to find a specific image to use on a website, see available images, or pick one for a swap. Returns image URLs, names, and descriptions. Supports optional keyword search.",
+    input_schema: {
+      type: "object",
+      properties: {
+        search: { type: "string", description: "Optional keyword to filter by description (e.g. \'coffee\', \'hero\', \'headshot\')" },
+        limit: { type: "number", description: "Max images to return (default 50)" }
+      },
+      required: []
+    }
+  },
+  {
     name: "create_docx",
     description: "Create a professional Word document (.docx) with real formatting — tables, headers, footers, page numbers, branded styling. Use this instead of create_artifact when the user asks for a document, report, handbook, SOP, proposal, or any professional deliverable. CRITICAL: After creating the file, ALWAYS tell the client in your response that you've created it and include the filename in quotes. Example: 'Here's your employee handbook — \"onboarding-handbook.docx\"'. Provide a complete Node.js script that uses the 'docx' npm library to build the document. The script will be executed and the resulting .docx file saved for download.",
     input_schema: {
@@ -1643,7 +1668,58 @@ async function executeTool(toolName, toolInput, sessionId = null) {
       }
     }
 
-    // Load skill — injects expert instructions into the conversation
+    // swap_image_in_artifact — replace one image URL with another in an HTML artifact
+    if (toolName === 'swap_image_in_artifact') {
+      const { artifactId, oldSrc, newSrc } = toolInput;
+      try {
+        if (!artifactId || !oldSrc || !newSrc) return { success: false, error: 'artifactId, oldSrc, and newSrc are all required' };
+        const { data: art } = await supabase.from('artifacts').select('id, content').eq('id', artifactId).single();
+        if (!art?.content) return { success: false, error: `Artifact ${artifactId} not found` };
+        const occurrences = (art.content.match(new RegExp(oldSrc.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length;
+        if (occurrences === 0) return { success: false, error: `Image URL not found in artifact. Make sure oldSrc exactly matches the src in the HTML.` };
+        const updated = art.content.split(oldSrc).join(newSrc);
+        await supabase.from('artifacts').update({ content: updated, updated_at: new Date().toISOString() }).eq('id', art.id);
+        return { success: true, replaced: occurrences, artifactId: art.id, message: `Replaced ${occurrences} instance(s) of the image` };
+      } catch (e) {
+        return { success: false, error: e.message };
+      }
+    }
+
+    // list_ai_images — browse all AI-generated images in the Supabase library
+    if (toolName === 'list_ai_images') {
+      const { search = '', limit = 50 } = toolInput;
+      try {
+        let query = supabase
+          .from('artifacts')
+          .select('id, name, description, storage_path, created_at')
+          .eq('file_type', 'image')
+          .not('storage_path', 'is', null)
+          .order('created_at', { ascending: false })
+          .limit(Math.min(parseInt(limit) || 50, 200));
+        const { data, error } = await query;
+        if (error) throw error;
+        let images = (data || []).filter(r => r.storage_path?.startsWith('http'));
+        if (search) {
+          const term = search.toLowerCase();
+          images = images.filter(r => (r.description || r.name || '').toLowerCase().includes(term));
+        }
+        return {
+          success: true,
+          total: images.length,
+          images: images.map(r => ({
+            id: r.id,
+            url: r.storage_path,
+            name: r.name,
+            description: r.description || '',
+            created_at: r.created_at
+          }))
+        };
+      } catch (e) {
+        return { success: false, error: e.message };
+      }
+    }
+
+        // Load skill — injects expert instructions into the conversation
     if (toolName === 'load_skill') {
       try {
         const skillName = toolInput.skill_name;
