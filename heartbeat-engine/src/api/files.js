@@ -495,4 +495,78 @@ router.post('/artifacts/:fileId/apply-edits', async (req, res) => {
 });
 
 
+// ── GET all AI-generated images — for GrapesJS Asset Manager ──
+// Returns GrapesJS-compatible asset array: { assets: [{src, name, type, category}] }
+router.get('/images', async (req, res) => {
+  try {
+    const { limit = 200, search } = req.query;
+    const supabase = sb();
+
+    let query = supabase
+      .from('artifacts')
+      .select('id, name, description, storage_path, created_at')
+      .eq('file_type', 'image')
+      .not('storage_path', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(parseInt(limit));
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    const assets = (data || [])
+      .filter(r => r.storage_path && r.storage_path.startsWith('http'))
+      .filter(r => !search || (r.description || r.name || '').toLowerCase().includes(search.toLowerCase()))
+      .map(r => ({
+        id:          r.id,
+        src:         r.storage_path,
+        name:        r.name || 'Generated image',
+        description: r.description || '',
+        type:        'image',
+        category:    'AI Generated',
+        created_at:  r.created_at,
+      }));
+
+    return res.json({ success: true, assets, total: assets.length });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+// ── SWAP an image URL inside an HTML artifact ──
+// Replaces oldSrc with newSrc everywhere it appears in the artifact HTML
+router.post('/artifacts/:fileId/swap-image', async (req, res) => {
+  try {
+    const { oldSrc, newSrc } = req.body;
+    if (!oldSrc || !newSrc) return res.status(400).json({ error: 'oldSrc and newSrc required' });
+
+    const supabase = sb();
+    const { data: art } = await supabase
+      .from('artifacts')
+      .select('id, content')
+      .eq('id', req.params.fileId)
+      .single();
+
+    if (!art?.content) return res.status(404).json({ error: 'Artifact not found' });
+
+    const occurrences = (art.content.match(new RegExp(escapeRegex(oldSrc), 'g')) || []).length;
+    if (occurrences === 0) return res.status(400).json({ error: `Image URL not found in artifact: ${oldSrc.substring(0, 80)}` });
+
+    const updated = art.content.split(oldSrc).join(newSrc);
+
+    const { error } = await supabase
+      .from('artifacts')
+      .update({ content: updated, updated_at: new Date().toISOString() })
+      .eq('id', art.id);
+
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json({ success: true, replaced: occurrences, artifactId: art.id });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 export default router;

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import grapesjs from 'grapesjs';
 import 'grapesjs/dist/css/grapes.min.css';
 import GjsEditor from '@grapesjs/react';
@@ -10,6 +10,27 @@ export default function PageEditor({ editor: editorData, onClose, onSaved }) {
   const gjsRef  = useRef(null);
   const [saving,  setSaving]  = useState(false);
   const [saveMsg, setSaveMsg] = useState(null);
+  const [aiAssets, setAiAssets] = useState([]);
+  const [assetSearch, setAssetSearch] = useState('');
+
+  // Load AI image library on mount
+  useEffect(() => {
+    fetch('/api/files/images?limit=200')
+      .then(r => r.json())
+      .then(d => { if (d.assets) setAiAssets(d.assets); })
+      .catch(() => {});
+  }, []);
+
+  // Refresh search results
+  const refreshAssets = (search = '') => {
+    const url = search ? `/api/files/images?limit=200&search=${encodeURIComponent(search)}` : '/api/files/images?limit=200';
+    fetch(url).then(r => r.json()).then(d => {
+      if (d.assets && gjsRef.current) {
+        gjsRef.current.AssetManager.clear();
+        gjsRef.current.AssetManager.add(d.assets.map(a => ({ src: a.src, name: a.name, category: a.category })));
+      }
+    }).catch(() => {});
+  };
 
   const onEditor = (editor) => {
     gjsRef.current = editor;
@@ -18,6 +39,24 @@ export default function PageEditor({ editor: editorData, onClose, onSaved }) {
     if (editorData.content) {
       editor.setComponents(editorData.content);
     }
+
+    // ── Seed Asset Manager with AI image library ─────────────────────
+    if (aiAssets.length) {
+      editor.AssetManager.add(aiAssets.map(a => ({ src: a.src, name: a.name, category: 'AI Generated' })));
+    }
+
+    // ── Refresh library when asset manager opens ──────────────────────
+    editor.on('asset:open', () => {
+      fetch('/api/files/images?limit=200')
+        .then(r => r.json())
+        .then(d => {
+          if (d.assets) {
+            editor.AssetManager.clear();
+            editor.AssetManager.add(d.assets.map(a => ({ src: a.src, name: a.name, category: 'AI Generated' })));
+          }
+        })
+        .catch(() => {});
+    });
 
     // ── Append href/target traits to button type after editor loads ────
     // grapesjs-plugin-forms already owns 'button' type with Text+Type.
@@ -171,6 +210,15 @@ export default function PageEditor({ editor: editorData, onClose, onSaved }) {
             height: '100%',
             storageManager: false,
             undoManager: { trackSelection: false },
+            assetManager: {
+              // Upload new images directly to BLOOM
+              upload: '/api/files/images/upload',
+              uploadName: 'file',
+              // Pre-populate with AI library (refreshed on open via event above)
+              assets: aiAssets.map(a => ({ src: a.src, name: a.name, category: 'AI Generated' })),
+              // Show asset categories
+              showUrlInput: true,
+            },
             plugins: [gjsPresetWebpage, gjsBlocksBasic, gjsPluginForms],
             pluginsOpts: {
               [gjsPresetWebpage]: { navbarOpts: false, countdownOpts: false },
