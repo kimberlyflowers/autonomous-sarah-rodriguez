@@ -260,15 +260,23 @@ router.get('/publish/:fileId', async (req, res) => {
   try {
     const supabase = sb();
     const { data: file, error } = await supabase.from('artifacts')
-      .select('name, file_type, content, storage_path')
+      .select('name, file_type, content, storage_path, session_id')
       .eq('id', req.params.fileId)
       .single();
 
     if (error || !file) return res.status(404).send('File not found');
 
     if (file.file_type === 'html' && file.content) {
+      let html = file.content;
+      // Rewrite relative .html links to use site route (enables multi-page site navigation)
+      if (file.session_id) {
+        html = html.replace(
+          /href="([a-zA-Z0-9][a-zA-Z0-9._-]*\.html)(#[^"]*)?\"/gi,
+          (match, fname, hash) => `href="/api/files/site/${file.session_id}/${fname}${hash || ''}"`
+        );
+      }
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
-      return res.send(file.content);
+      return res.send(html);
     }
     if (file.storage_path) return res.redirect(302, file.storage_path);
     return res.redirect(`/api/files/download/${req.params.fileId}`);
