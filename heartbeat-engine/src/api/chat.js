@@ -2330,7 +2330,7 @@ IMPORTANT: Since a brand kit is configured, DO NOT ask the user about colors, fo
             toolResultBlocks.push({
               type: 'tool_result',
               tool_use_id: block.id,
-              content: result.message || result.inlineChecklist
+              content: result.message + (result.inlineChecklist ? "\n\n" + result.inlineChecklist : "")
             });
           } else if (block.name === 'bloom_take_screenshot' && screenImage) {
             toolResultBlocks.push({
