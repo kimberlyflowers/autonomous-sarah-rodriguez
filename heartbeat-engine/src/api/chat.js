@@ -2259,6 +2259,17 @@ IMPORTANT: Since a brand kit is configured, DO NOT ask the user about colors, fo
 
   if (isMultiStep) logger.info('Multi-step request detected — using Sonnet for full context retention');
 
+  // ── PASSIVE TASK TRACKING — auto-populate Active Tasks panel ──────────
+  // Even if Sarah never calls task_progress, the dashboard still shows live progress.
+  // Sarah's own task_progress calls will overwrite this (which is fine — hers are richer).
+  const trackingKey = sessionId || 'default';
+  let sarahCalledTaskProgress = false; // flag: if true, don't overwrite with passive data
+  const taskLabel = (typeof messageText === 'string' ? messageText : 'Working on task').slice(0, 80);
+  taskProgress.set(trackingKey, {
+    todos: [{ content: taskLabel, status: 'in_progress', activeForm: 'Processing request...' }],
+    updatedAt: Date.now()
+  });
+
   for (let round = 0; round < 15; round++) {
     const response = await callAnthropicWithRetry({
       model: chatModel,
@@ -2279,6 +2290,24 @@ IMPORTANT: Since a brand kit is configured, DO NOT ask the user about colors, fo
         .filter(b => b.type === 'text')
         .map(b => b.text)
         .join('');
+
+      // Passive tracking: mark all steps complete on end_turn
+      if (!sarahCalledTaskProgress && toolsUsed.length > 0) {
+        const friendlyName = (n) => n.replace(/_/g, ' ').replace(/^bloom /, '');
+        taskProgress.set(trackingKey, {
+          todos: toolsUsed.map(t => ({
+            content: friendlyName(t.name),
+            status: 'completed',
+            activeForm: friendlyName(t.name)
+          })),
+          updatedAt: Date.now()
+        });
+      }
+      // If no tools were used, clear the "Processing request..." entry
+      if (toolsUsed.length === 0) {
+        taskProgress.delete(trackingKey);
+      }
+
       // Log tool usage for debugging — never append to user-facing response
       if (toolsUsed.length > 0) {
         const toolSummaryLog = toolsUsed.map(t => t.name).join(', ');
@@ -2325,6 +2354,21 @@ IMPORTANT: Since a brand kit is configured, DO NOT ask the user about colors, fo
             result = { success: false, error: `Tool error: ${toolError.message}` };
           }
           toolResults.push(result);
+
+          // Passive tracking: if Sarah called task_progress herself, stop overwriting
+          if (block.name === 'task_progress') sarahCalledTaskProgress = true;
+          // Update passive tracker with each tool call (unless Sarah is managing it)
+          if (!sarahCalledTaskProgress) {
+            const friendlyName = (n) => n.replace(/_/g, ' ').replace(/^bloom /, '');
+            taskProgress.set(trackingKey, {
+              todos: toolsUsed.map((t, i) => ({
+                content: friendlyName(t.name),
+                status: i < toolsUsed.length - 1 ? 'completed' : 'in_progress',
+                activeForm: `Running ${friendlyName(t.name)}...`
+              })),
+              updatedAt: Date.now()
+            });
+          }
           
           // Strip large binary data from context (keep URLs only)
           const contextSafeResult = {...result};
