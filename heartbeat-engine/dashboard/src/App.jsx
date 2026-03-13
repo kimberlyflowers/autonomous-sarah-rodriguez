@@ -199,20 +199,54 @@ function useSarahChat() {
   const [sessions,setSessions] = useState([]);
   const [currentSessionId,setCurrentSessionId] = useState(null);
   const sid = useRef(null);
+  // Multi-agent support
+  const [agents,setAgents] = useState([]);
+  const [currentAgentId,setCurrentAgentId] = useState(null);
+  const [currentAgent,setCurrentAgent] = useState(null);
 
-  // Load session list on mount
-  const fetchSessions = async () => {
+  // Load available agents
+  const fetchAgents = async () => {
     try {
-      const r = await fetch("/api/chat/sessions");
+      const r = await fetch("/api/agent/list");
       const d = await r.json();
-      const list = d.sessions || [];
-      setSessions(list);
-      // Don't auto-load last session — start on welcome screen
-      // User clicks a session to load it, or types to start a new one
+      const list = d.agents || [];
+      setAgents(list);
+      // Default to first agent if none selected
+      if(list.length > 0 && !currentAgentId) {
+        setCurrentAgentId(list[0].id);
+        setCurrentAgent(list[0]);
+      }
     } catch {}
   };
 
-  useEffect(()=>{ fetchSessions(); },[]);
+  // Switch to a different agent
+  const switchAgent = (agentId) => {
+    const a = agents.find(x => x.id === agentId);
+    if(a) {
+      setCurrentAgentId(agentId);
+      setCurrentAgent(a);
+      // Start fresh session for new agent
+      sid.current = null;
+      setCurrentSessionId(null);
+      setMessages([]);
+      fetchSessions(agentId);
+    }
+  };
+
+  // Load session list on mount
+  const fetchSessions = async (agentId) => {
+    try {
+      const aid = agentId || currentAgentId;
+      const url = aid ? `/api/chat/sessions?agentId=${aid}` : "/api/chat/sessions";
+      const r = await fetch(url);
+      const d = await r.json();
+      const list = d.sessions || [];
+      setSessions(list);
+    } catch {}
+  };
+
+  useEffect(()=>{ fetchAgents(); },[]);
+  useEffect(()=>{ if(currentAgentId) fetchSessions(currentAgentId); },[currentAgentId]);
 
   // Start a fresh session
   const newSession = () => {
@@ -313,7 +347,7 @@ function useSarahChat() {
       const res = await fetch("/api/chat/message",{
         method:"POST",
         headers:authHeaders,
-        body:JSON.stringify({message:text,sessionId:sid.current}),
+        body:JSON.stringify({message:text,sessionId:sid.current,agentId:currentAgentId}),
         signal: controller.signal
       });
       clearTimeout(timeoutId);
@@ -367,7 +401,7 @@ function useSarahChat() {
       setMessages(p=>[...p,{id:msgId,b:false,t:text||'',tm:ts,files:encoded}]);
       if(!sid.current){ const id="session-"+Date.now(); sid.current=id; setCurrentSessionId(id); }
       const uploadHeaders = await getAuthHeaders();
-      const resp = await fetch("/api/chat/upload",{method:"POST",headers:uploadHeaders,body:JSON.stringify({message:text,sessionId:sid.current,files:encoded})});
+      const resp = await fetch("/api/chat/upload",{method:"POST",headers:uploadHeaders,body:JSON.stringify({message:text,sessionId:sid.current,agentId:currentAgentId,files:encoded})});
       const data = await resp.json();
       // Replace blob/dataUrl previews with stable server URLs so images work on any computer
       if(data.uploadedFiles?.length) {
@@ -400,7 +434,7 @@ function useSarahChat() {
       setMessages(p=>[...p,{id:msgId2,b:false,t:text||'',tm:ts,files:encoded}]);
       if(!sid.current){ const id="session-"+Date.now(); sid.current=id; setCurrentSessionId(id); }
       const uploadHeaders = await getAuthHeaders();
-      const resp = await fetch("/api/chat/upload",{method:"POST",headers:uploadHeaders,body:JSON.stringify({message:text,sessionId:sid.current,files:encoded})});
+      const resp = await fetch("/api/chat/upload",{method:"POST",headers:uploadHeaders,body:JSON.stringify({message:text,sessionId:sid.current,agentId:currentAgentId,files:encoded})});
       const data = await resp.json();
       // Replace blob/dataUrl previews with stable server URLs
       if(data.uploadedFiles?.length) {
@@ -424,7 +458,7 @@ function useSarahChat() {
     } finally { setLoading(false); }
   };
 
-  return {messages,setMessages,send,sendFiles,sendFilesEncoded,loading,workingStatus,sessions,currentSessionId,newSession,loadSession,deleteSession,fetchSessions,stopSarah,sid};
+  return {messages,setMessages,send,sendFiles,sendFilesEncoded,loading,workingStatus,sessions,currentSessionId,newSession,loadSession,deleteSession,fetchSessions,stopSarah,sid,agents,currentAgentId,currentAgent,switchAgent};
 }
 
 
@@ -2514,7 +2548,7 @@ function App() {
   const sse=useSSE();
   const agentOnline=useAgentOnline();
   const {crmUrl,contactsUrl}=useCRMLink();
-  const {messages,setMessages,send,sendFiles,sendFilesEncoded,loading,workingStatus,sessions,currentSessionId,newSession,loadSession,deleteSession,fetchSessions,stopSarah,sid}=useSarahChat();
+  const {messages,setMessages,send,sendFiles,sendFilesEncoded,loading,workingStatus,sessions,currentSessionId,newSession,loadSession,deleteSession,fetchSessions,stopSarah,sid,agents,currentAgentId,currentAgent,switchAgent}=useSarahChat();
   // Periodically refresh session titles (AI title generates async after first message)
   useEffect(()=>{ const t=setInterval(fetchSessions,8000); return()=>clearInterval(t); },[]);
   const connected=agentOnline; // true online/offline from health poll
@@ -2729,7 +2763,7 @@ function App() {
   const [pendingFiles,setPendingFiles]=useState([]);
   const sbOpen=sbO==="full"||sbO==="mini";
 
-  const agent={nm:"Sarah Rodriguez",role:"Marketing & Operations Executive",img:agentImgUrl||null,grad:"linear-gradient(135deg,#F4A261,#E76F8B)"};
+  const agent={nm:currentAgent?.name||"Sarah Rodriguez",role:currentAgent?.role||"Marketing & Operations Executive",img:agentImgUrl||currentAgent?.avatar_url||null,grad:"linear-gradient(135deg,#F4A261,#E76F8B)"};
 
   useEffect(()=>{ if(btm.current) setTimeout(()=>btm.current?.scrollIntoView({behavior:"smooth"}),100); },[messages]);
 
@@ -2987,6 +3021,15 @@ function App() {
                     )}
                   </div>
 
+                  {/* Agent switcher — switch between Bloomies */}
+                  {agents.length>1&&(
+                    <div style={{padding:"6px 14px 0",flexShrink:0}}>
+                      <select value={currentAgentId||""} onChange={e=>switchAgent(e.target.value)} style={{width:"100%",padding:"7px 10px",borderRadius:8,border:"1px solid "+c.ln,background:c.sf,color:c.tx,fontSize:12,fontWeight:600,cursor:"pointer",appearance:"auto"}}>
+                        {agents.map(a=><option key={a.id} value={a.id}>{a.name} — {a.role}</option>)}
+                      </select>
+                    </div>
+                  )}
+
                   {/* Agent identity card */}
                   <div style={{padding:"12px 14px 8px",borderBottom:"1px solid "+c.ln,flexShrink:0}}>
                     <div onClick={()=>{loadProfile();setPg("profile");}} style={{padding:"10px 12px",borderRadius:12,background:c.sf,border:"1px solid "+c.ln,display:"flex",alignItems:"center",gap:10,marginBottom:10,cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=c.hv} onMouseLeave={e=>e.currentTarget.style.background=c.sf}>
@@ -3239,7 +3282,7 @@ function App() {
                     <div style={{display:"flex",justifyContent:"center",marginBottom:8}}>
                       <div style={{animation:"bloomieWiggle 3s ease-in-out infinite"}}><Face sz={mob?64:80} agent={agent}/></div>
                     </div>
-                    <h2 style={{fontSize:mob?22:28,fontWeight:700,color:c.tx,marginTop:18,marginBottom:6}}>Chat with Sarah</h2>
+                    <h2 style={{fontSize:mob?22:28,fontWeight:700,color:c.tx,marginTop:18,marginBottom:6}}>Chat with {(currentAgent?.name||"Sarah").split(" ")[0]}</h2>
                     <p style={{fontSize:mob?13:15,color:c.so,marginBottom:28}}>Give her tasks, check her work, or ask what's going on</p>
                     <div style={{position:"relative",marginBottom:20}}>
                       <div style={{display:"flex",alignItems:"flex-end",gap:8,padding:mob?"12px":"14px 16px",borderRadius:20,border:"1.5px solid "+(vcRec?c.ac:c.ln),background:c.inp,transition:"border-color .2s"}}>
@@ -3737,7 +3780,8 @@ function App() {
                             try{
                               const r=await fetch('/api/chat/message',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
                                 message:`SYSTEM TASK — Do NOT respond conversationally. Break this vision into specific recurring tasks. Return ONLY a CSV with no extra text, no markdown, no explanation. Format: Task Name,Instruction,Frequency,Time\n\nVision: "${vision}"\n\nRules:\n- Each task must be specific and actionable (not vague)\n- Include the exact instruction Sarah should follow each time\n- Default to daily unless it makes sense otherwise\n- Time should be spread across the day (not all at 9am)\n- 5-10 tasks max\n- Output ONLY the CSV rows, no headers, no backticks`,
-                                sessionId:'system-decompose-'+Date.now()
+                                sessionId:'system-decompose-'+Date.now(),
+                                agentId:currentAgentId
                               })});
                               const d=await r.json();
                               if(d.response){
@@ -5261,7 +5305,7 @@ function App() {
             <Bloom sz={40}/>
             <div style={{flex:1}}>
               <div style={{fontSize:16,fontWeight:700,color:"#fff"}}>Bloomie Help</div>
-              <div style={{fontSize:11,color:"rgba(255,255,255,.8)"}}>Sarah Rodriguez</div>
+              <div style={{fontSize:11,color:"rgba(255,255,255,.8)"}}>{currentAgent?.name||"Sarah Rodriguez"}</div>
             </div>
             <button onClick={()=>setHlpO(false)} style={{width:28,height:28,borderRadius:"50%",border:"1px solid rgba(255,255,255,.3)",background:"rgba(255,255,255,.15)",cursor:"pointer",color:"#fff",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
           </div>
