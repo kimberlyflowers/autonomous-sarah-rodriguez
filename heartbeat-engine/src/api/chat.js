@@ -193,12 +193,30 @@ Your final response MUST include:
    Good: "Done! I created a welcome email with your brand colors and a matching landing page with class schedules and pricing."
    Bad: "Here's your welcome email — 'welcome-email.html'" (users will try to click this text)
 
-CRITICAL FILE DELIVERY FORMAT:
-- ALWAYS include <!-- file:filename.ext --> for every file (one per line)
+CRITICAL FILE DELIVERY FORMAT (MUST FOLLOW — NO EXCEPTIONS):
+- ALWAYS include <!-- file:filename.ext --> for EVERY file you created (one per line, at the end of your message)
 - NEVER mention the filename in your visible message text — the cards handle that
-- NEVER say "Check your Files tab" — the inline cards are the delivery mechanism
+- NEVER say "Check your Files tab" or "you can find it in your Files tab" — the inline cards ARE the delivery
 - NEVER put the filename in quotes in your message — just describe what you made naturally
-- For multiple files, include multiple <!-- file:... --> tags, one per line
+- For multiple files, include MULTIPLE <!-- file:... --> tags, one per line
+
+COMPLETE EXAMPLE of a correct multi-file delivery response:
+---
+✅ Load email marketing skill
+✅ Write promotional email
+✅ Load website creation skill
+✅ Generate hero image
+✅ Build landing page
+✅ Verify all deliverables
+
+All done! I created a promotional email with your spring menu highlights, warm bakery colors, and a strong pre-order CTA. I also built a matching landing page with hero imagery, your seasonal menu, and a prominent pre-order button for local customers.
+
+Let me know if you'd like any changes to the copy, colors, or layout!
+
+<!-- file:moonrise-bakery-spring-email.html -->
+<!-- file:moonrise-bakery-spring-landing.html -->
+---
+Notice: filenames appear ONLY in <!-- file: --> tags. The visible text describes the work naturally.
 
 NEVER just say "Done!" — always show what you did.
 NEVER deliver partial results without explaining what's missing.
@@ -1813,7 +1831,23 @@ async function executeTool(toolName, toolInput, sessionId = null) {
       if (data.success) {
         return {
           success: true,
-          message: `FILE CREATED SUCCESSFULLY. In your response, you MUST include this hidden tag on its own line: <!-- file:${toolInput.name} -->  This triggers a clickable card below your message. Do NOT mention the filename in your visible text — just describe what you created naturally.`,
+          message: `FILE CREATED SUCCESSFULLY: "${toolInput.name}"
+
+⚠️ MANDATORY — YOUR RESPONSE MUST FOLLOW THESE EXACT RULES:
+
+1. Include this EXACT hidden tag on its own line in your response (copy it exactly):
+<!-- file:${toolInput.name} -->
+
+2. Do NOT write the filename "${toolInput.name}" anywhere in your visible message text.
+3. Do NOT say "check your Files tab" or "you can find it in your Files tab".
+4. Instead, describe what you created naturally without mentioning filenames.
+
+GOOD example response: "Done! I built a promotional email with warm spring colors and a pre-order CTA, plus a matching landing page with your menu highlights."
+BAD example response: "I created \\"${toolInput.name}\\" — you can find it in your Files tab."
+
+The hidden tag <!-- file:${toolInput.name} --> automatically creates a clickable card below your message. The user clicks THAT card to view the file. If you mention the filename in text, users will try to click those words and get confused.
+
+REMEMBER: Put <!-- file:${toolInput.name} --> on its own line. Do NOT write "${toolInput.name}" in your visible text.`,
           artifact: data.artifact
         };
       }
