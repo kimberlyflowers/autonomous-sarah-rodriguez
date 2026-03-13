@@ -574,7 +574,7 @@ const _ALL_TOOLS = [
 
   {
     name: "notify_owner",
-    description: `Send a text (SMS) or email to the business owner (${operatorFirstName}) directly. Use this to: report completed work, alert on VIP emails, flag a blocker you've hit, confirm task done, or ask a question that needs a human decision. ALWAYS use this when contacting the owner — not ghl_send_message.`,
+    description: `Send a text (SMS) or email to the business owner directly. Use this to: report completed work, alert on VIP emails, flag a blocker you've hit, confirm task done, or ask a question that needs a human decision. ALWAYS use this when contacting the owner — not ghl_send_message.`,
     input_schema: {
       type: "object",
       properties: {
