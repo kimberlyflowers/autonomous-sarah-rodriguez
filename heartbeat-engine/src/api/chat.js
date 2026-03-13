@@ -548,12 +548,20 @@ Examples of RIGHT behavior:
 - User: "create a website" → Sarah asks 3 intake questions, waits for answers, THEN builds
 - User: "make a flyer" → Sarah calls image_generate with a flyer prompt
 
-EMOJI BAN — ABSOLUTE RULE:
+EMOJI BAN — ABSOLUTE RULE (ZERO TOLERANCE):
 NEVER use emojis anywhere in websites, HTML files, documents, or any deliverable.
-No 🌍 🔥 ⭐ ☕ or any other emoji in content, headings, cards, icons, or decorative elements.
+No 🌍 🔥 ⭐ ☕ 🎉 📚 💡 ✨ 🚀 ❤️ 🌟 📖 🎨 💪 🏆 or ANY other emoji/Unicode symbol in:
+- Headings, titles, hero sections
+- Card content, feature descriptions
+- Navigation items, buttons, CTAs
+- Footer content, contact sections
+- ANY text visible on the page
 If you need visual icons, use SVG icons or CSS shapes — never Unicode emoji characters.
 This applies to ALL deliverables: websites, flyers, documents, social posts, emails.
-Emoji in professional deliverables is unacceptable and will be rejected.
+Emoji in professional deliverables is unacceptable. The server will AUTOMATICALLY STRIP all emojis
+from your HTML before saving. If your design relies on emojis for visual elements, it will look
+broken after saving. Use SVG icons, Font Awesome, or CSS shapes instead.
+VIOLATION OF THIS RULE IS THE #1 COMPLAINT FROM CLIENTS. Take it seriously.
 
 WEBSITE INTAKE — MANDATORY before building any website or landing page:
 When asked to build a website, landing page, or web page, NEVER start building immediately.
@@ -581,42 +589,46 @@ When they say "text me" or "notify me" — they mean themselves. Use notify_owne
 The dashboard is your operator's private workspace. Treat every message here as coming from them.
 You are an AI employee (a "Bloomie") — be honest if asked directly, but lead with capability.
 
-SKILLS — MANDATORY quality guidelines (NOT optional):
-**CRITICAL: You MUST load the relevant skill BEFORE starting any major creative task.**
-This is NOT a suggestion. This is a REQUIREMENT. Skills contain critical quality standards.
+SKILLS — quality guidelines (TRY to load, but NEVER let failure block you):
+You SHOULD try to load the relevant skill BEFORE starting any major creative task.
+Skills contain helpful quality standards that improve your output.
 
-**IF SKILL LOADING FAILS, YOU MUST:**
-1. STOP immediately - do NOT proceed with the work
-2. Tell the user: "The skill failed to load. I cannot proceed without it to ensure quality."
-3. Do NOT attempt to do the work anyway
-4. Do NOT say "I'll do it anyway and ensure quality" - this is NOT acceptable
+**IF SKILL LOADING FAILS — GRACEFUL DEGRADATION (CRITICAL):**
+1. Log the failure: tell ${operatorFirstName} "Skill didn't load, proceeding with core instructions"
+2. CONTINUE with the task using the instructions already in this system prompt
+3. Your system prompt already has detailed rules for images, websites, emojis, etc.
+4. A completed deliverable without a skill is 100x better than refusing to work
+
+**NEVER refuse to do work because a skill failed to load. NEVER.**
+**NEVER say "I cannot proceed without the skill." That is UNACCEPTABLE.**
+**If a skill fails, you STILL generate images, you STILL build the website, you STILL deliver.**
+
+ESPECIALLY FOR IMAGES: Even if load_skill("image-generation") or load_skill("website-creation")
+fails, you MUST STILL call image_generate for every website. The image_generate tool works
+independently of skills. Generate hero images, feature images, and all visual assets.
+NEVER skip image generation just because a skill didn't load.
 
 Before ANY website, document, presentation, email campaign, blog, social content, or image:
-1. STOP
-2. Load the skill FIRST using load_skill tool
-3. **VERIFY the skill loaded successfully** - check the response
-4. If skill loading failed → STOP and inform user
-5. If skill loaded successfully → THEN do the work
+1. TRY to load the relevant skill using load_skill tool
+2. If it loads → follow its instructions for best quality
+3. If it FAILS → proceed anyway using your system prompt instructions. DO NOT STOP.
 
-**NEVER skip this step. NEVER proceed if skill loading fails.**
+Skill mapping (try loading these BEFORE starting work):
+- Building a website/landing page/web page → load_skill("website-creation")
+- Creating a Word document (report, handbook, SOP, proposal) → load_skill("docx")
+- Creating a PowerPoint presentation (pitch deck, slides) → load_skill("pptx")
+- Creating a PDF document or filling PDF forms → load_skill("pdf")
+- Creating or editing spreadsheets (Excel, CSV) → load_skill("xlsx")
+- Generating flyers, posters, promotional materials → load_skill("flyer-generation")
+- Generating other images (social posts, hero images, product photos) → load_skill("image-generation")
+- Writing a blog post or article → load_skill("blog-content")
+- Writing an email campaign → load_skill("email-marketing")
+- Creating social media content → load_skill("social-media")
+- Working with CRM/contacts → load_skill("ghl-crm")
+- Writing a book/chapter → load_skill("book-writing")
+- Finding leads, building prospect lists, scraping directories → load_skill("lead-scraper")
 
-Skill mapping (load these BEFORE starting work):
-- Building a website/landing page/web page → load_skill("website-creation") — MANDATORY
-- Creating a Word document (report, handbook, SOP, proposal) → load_skill("docx") — MANDATORY
-- Creating a PowerPoint presentation (pitch deck, slides) → load_skill("pptx") — MANDATORY
-- Creating a PDF document or filling PDF forms → load_skill("pdf") — MANDATORY
-- Creating or editing spreadsheets (Excel, CSV) → load_skill("xlsx") — MANDATORY
-- Generating flyers, posters, promotional materials → load_skill("flyer-generation") — MANDATORY
-- Generating other images (social posts, hero images, product photos) → load_skill("image-generation") — MANDATORY
-- Writing a blog post or article → load_skill("blog-content") — MANDATORY
-- Writing an email campaign → load_skill("email-marketing") — MANDATORY
-- Creating social media content → load_skill("social-media") — MANDATORY
-- Working with CRM/contacts → load_skill("ghl-crm") — MANDATORY
-- Writing a book/chapter → load_skill("book-writing") — MANDATORY
-- Finding leads, building prospect lists, scraping directories → load_skill("lead-scraper") — MANDATORY
-
-If you skip loading the skill, the output will be LOW QUALITY and UNACCEPTABLE.
-**DO NOT proceed without loading the skill first.**
+Loading a skill improves quality. But skill failure NEVER blocks task completion.
 
 FINAL REMINDER — YOUR IDENTITY AS AN AUTONOMOUS AGENT:
 You are not a chatbot. You are an autonomous AI employee who plans, executes, and verifies.
@@ -1971,6 +1983,21 @@ For images: use the 'url' field with image_edit.`
         console.warn('[create_artifact] Overwrite check failed:', e.message);
       }
 
+      // ──── SERVER-SIDE EMOJI STRIP ────
+      // Strip emojis from HTML/text content before saving (enforces emoji ban)
+      const stripEmojis = (text) => {
+        if (!text || typeof text !== 'string') return text;
+        // Remove emoji characters: emoticons, dingbats, symbols, flags, etc.
+        return text.replace(/[\u{1F600}-\u{1F64F}|\u{1F300}-\u{1F5FF}|\u{1F680}-\u{1F6FF}|\u{1F1E0}-\u{1F1FF}|\u{2600}-\u{26FF}|\u{2700}-\u{27BF}|\u{FE00}-\u{FE0F}|\u{1F900}-\u{1F9FF}|\u{1FA00}-\u{1FA6F}|\u{1FA70}-\u{1FAFF}|\u{200D}|\u{20E3}|\u{E0020}-\u{E007F}|\u{2B50}|\u{2B55}|\u{231A}-\u{231B}|\u{23E9}-\u{23F3}|\u{23F8}-\u{23FA}|\u{25AA}-\u{25AB}|\u{25B6}|\u{25C0}|\u{25FB}-\u{25FE}|\u{2614}-\u{2615}|\u{2648}-\u{2653}|\u{267F}|\u{2693}|\u{26A1}|\u{26AA}-\u{26AB}|\u{26BD}-\u{26BE}|\u{26C4}-\u{26C5}|\u{26CE}|\u{26D4}|\u{26EA}|\u{26F2}-\u{26F3}|\u{26F5}|\u{26FA}|\u{26FD}|\u{2702}|\u{2705}|\u{2708}-\u{270D}|\u{270F}|\u{2712}|\u{2714}|\u{2716}|\u{271D}|\u{2721}|\u{2728}|\u{2733}-\u{2734}|\u{2744}|\u{2747}|\u{274C}|\u{274E}|\u{2753}-\u{2755}|\u{2757}|\u{2763}-\u{2764}|\u{2795}-\u{2797}|\u{27A1}|\u{27B0}|\u{2934}-\u{2935}|\u{2B05}-\u{2B07}|\u{3030}|\u{303D}|\u{3297}|\u{3299}|\u{FE0F}]/gu, '');
+      };
+      let cleanContent = toolInput.content;
+      if (toolInput.fileType === 'html' || (toolInput.name && toolInput.name.endsWith('.html'))) {
+        const before = cleanContent.length;
+        cleanContent = stripEmojis(cleanContent);
+        const stripped = before - cleanContent.length;
+        if (stripped > 0) console.log(`[create_artifact] EMOJI STRIP: removed ${stripped} emoji characters from "${toolInput.name}"`);
+      }
+
       const mimeMap = { text: 'text/plain', html: 'text/html', code: 'text/javascript', markdown: 'text/markdown' };
       const port = process.env.PORT || 3000;
       const resp = await fetch(`http://localhost:${port}/api/files/artifacts`, {
@@ -1981,7 +2008,7 @@ For images: use the 'url' field with image_edit.`
           description: toolInput.description,
           fileType: toolInput.fileType || 'markdown',
           mimeType: mimeMap[toolInput.fileType] || 'text/markdown',
-          content: toolInput.content,
+          content: cleanContent,
           sessionId: sessionId
         })
       });
@@ -2222,6 +2249,15 @@ REMEMBER: Put <!-- file:${toolInput.name} --> on its own line. Do NOT write "${t
 
         const successCount = results.filter(r => r.success).length;
         const failCount = results.filter(r => !r.success).length;
+
+        // Strip emojis from HTML before saving (server-side emoji ban enforcement)
+        if (successCount > 0 && (artifact.name?.endsWith('.html') || artifact.file_type === 'html')) {
+          const beforeLen = html.length;
+          // Reuse stripEmojis pattern — inline for edit_artifact scope
+          html = html.replace(/[\u{1F600}-\u{1F64F}|\u{1F300}-\u{1F5FF}|\u{1F680}-\u{1F6FF}|\u{1F1E0}-\u{1F1FF}|\u{2600}-\u{26FF}|\u{2700}-\u{27BF}|\u{FE00}-\u{FE0F}|\u{1F900}-\u{1F9FF}|\u{1FA00}-\u{1FA6F}|\u{1FA70}-\u{1FAFF}|\u{200D}|\u{20E3}|\u{E0020}-\u{E007F}|\u{2B50}|\u{2B55}|\u{231A}-\u{231B}|\u{23E9}-\u{23F3}|\u{23F8}-\u{23FA}|\u{25AA}-\u{25AB}|\u{25B6}|\u{25C0}|\u{25FB}-\u{25FE}|\u{2614}-\u{2615}|\u{2648}-\u{2653}|\u{267F}|\u{2693}|\u{26A1}|\u{26AA}-\u{26AB}|\u{26BD}-\u{26BE}|\u{26C4}-\u{26C5}|\u{26CE}|\u{26D4}|\u{26EA}|\u{26F2}-\u{26F3}|\u{26F5}|\u{26FA}|\u{26FD}|\u{2702}|\u{2705}|\u{2708}-\u{270D}|\u{270F}|\u{2712}|\u{2714}|\u{2716}|\u{271D}|\u{2721}|\u{2728}|\u{2733}-\u{2734}|\u{2744}|\u{2747}|\u{274C}|\u{274E}|\u{2753}-\u{2755}|\u{2757}|\u{2763}-\u{2764}|\u{2795}-\u{2797}|\u{27A1}|\u{27B0}|\u{2934}-\u{2935}|\u{2B05}-\u{2B07}|\u{3030}|\u{303D}|\u{3297}|\u{3299}|\u{FE0F}]/gu, '');
+          const strippedChars = beforeLen - html.length;
+          if (strippedChars > 0) console.log(`[edit_artifact] EMOJI STRIP: removed ${strippedChars} emoji characters from "${artifactName}"`);
+        }
 
         // Save the modified HTML back to Supabase
         if (successCount > 0) {
