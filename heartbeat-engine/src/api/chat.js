@@ -432,10 +432,15 @@ When building a multi-page site (e.g. homepage + about + services + contact), AL
 - Use href="services.html" NOT href="/api/files/publish/some-uuid"
 - Use href="index.html" to link back to the homepage
 - For anchor links on the SAME page, use href="#section-name"
+- NEVER use href="#" as a placeholder for links that should go to other pages — ALWAYS use the actual filename
+- ALL clickable links and buttons that reference another page MUST use href="actual-filename.html" — this includes "View Profile" links, "Hire" buttons, CTA buttons, card links, and ANY element the user would click expecting to go to another page
 The server automatically resolves relative .html links between pages in the same session.
 Navigation menus on EVERY page must include working links to ALL other pages in the site.
 After creating ALL pages, include this tag in your FINAL response: <!-- site:{sessionId}:index.html -->
 This gives the user a single entry point to browse the entire connected site.
+
+COMPLETING WORK FOR ALL ITEMS — CRITICAL:
+When a user asks you to do something for multiple items (e.g. "create full job descriptions for EACH agent", "add images to ALL pages", "build portfolio pages for every team member"), you MUST complete the work for EVERY item, not just the first one. If there are 3 agents, create content for all 3. If there are 5 pages, update all 5. NEVER stop after doing one and call it done.
 
 EXAMPLE — User says "make buttons link to a checkout page":
 1. Get the existing landing page HTML via get_session_files
@@ -1871,8 +1876,10 @@ async function executeTool(toolName, toolInput, sessionId = null) {
           process.env.SUPABASE_URL,
           process.env.SUPABASE_SERVICE_KEY
         );
-        const sid = toolInput.sessionId || sessionId;
+        // ALWAYS use the real chat session ID — ignore whatever the LLM passes
+        const sid = sessionId || toolInput.sessionId;
         const fileType = toolInput.fileType || 'all';
+        logger.info('get_session_files', { requestedSid: toolInput.sessionId, actualSid: sid, fileType });
 
         let query = supabase
           .from('artifacts')
@@ -1896,7 +1903,8 @@ async function executeTool(toolName, toolInput, sessionId = null) {
           return {
             success: true,
             files: [],
-            message: 'No files found for this session. You may need to recreate the asset.'
+            sessionId: sid,
+            message: `No files found for session ${sid}. You may need to recreate the asset.`
           };
         }
 
@@ -2835,6 +2843,14 @@ IMPORTANT: Since a brand kit is configured, DO NOT ask the user about colors, fo
     }
   } catch(e) { 
     logger.warn('Brand kit injection failed:', e.message);
+  }
+
+  // Inject session ID so Sarah can find/edit existing files
+  if (sessionId) {
+    systemPrompt += `\n\nCURRENT SESSION CONTEXT:
+Your current session ID is: ${sessionId}
+ALWAYS use this session ID when calling get_session_files or edit_artifact — never guess or make one up.
+When a user asks you to edit, modify, or update something you previously created, ALWAYS call get_session_files first with this session ID to find the file, then use edit_artifact with this session ID and the artifact name.`;
   }
 
   // Inject matching skill body into system prompt based on user's message
