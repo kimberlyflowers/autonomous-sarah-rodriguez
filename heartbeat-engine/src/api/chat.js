@@ -25,6 +25,23 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 // Exported so dashboard.js can serve it via /api/dashboard/agentic-executions
 export const taskProgress = new Map();
 
+// ── AUTO-CLEANUP: Purge stale "Planning steps..." entries every 60 seconds ──
+// Prevents orphaned entries from piling up when API calls fail before cleanup
+setInterval(() => {
+  const STALE_THRESHOLD_MS = 3 * 60 * 1000; // 3 minutes
+  const now = Date.now();
+  for (const [key, entry] of taskProgress) {
+    const age = now - (entry.updatedAt || 0);
+    const isStalePassive = entry.todos?.length === 1
+      && entry.todos[0].activeForm === 'Planning steps...'
+      && age > STALE_THRESHOLD_MS;
+    if (isStalePassive) {
+      taskProgress.delete(key);
+      console.log(`[cleanup] Removed stale passive tracking entry: ${key} (age: ${Math.round(age/1000)}s)`);
+    }
+  }
+}, 60_000);
+
 // Extract user ID from Supabase JWT — falls back to env var during transition
 async function getUserId(req) {
   try {
@@ -2801,6 +2818,16 @@ router.post('/message', async (req, res) => {
     return res.json({ response: cleanResponse, sessionId, skillsUsed: skillsUsedThisTurn });
   } catch (error) {
     logger.error('Chat error', { error: error.message });
+
+    // ── CLEANUP: Remove stale "Planning steps..." entry on error ──────────
+    // Without this, failed API calls leave permanent 0% entries in Active Tasks
+    const failedKey = sessionId || 'default';
+    const staleEntry = taskProgress.get(failedKey);
+    if (staleEntry && staleEntry.todos?.length === 1 && staleEntry.todos[0].activeForm === 'Planning steps...') {
+      taskProgress.delete(failedKey);
+      logger.info('Cleaned up stale passive tracking entry', { sessionId: failedKey });
+    }
+
     return res.status(500).json({
       error: 'Failed to process message',
       response: "Sorry, I'm having a technical issue. Please try again."
