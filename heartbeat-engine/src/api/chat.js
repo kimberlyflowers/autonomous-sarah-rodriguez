@@ -19,7 +19,17 @@ import crypto from 'crypto';
 
 const router = express.Router();
 const logger = createLogger('chat-api');
+// Default Anthropic client (platform key) — agents with their own key get a per-request client
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+// Get Anthropic client for a specific agent config — uses agent's own key if set, otherwise platform key
+function getAnthropicClient(agentConfig) {
+  const agentKey = agentConfig?.anthropicApiKey;
+  if (agentKey && agentKey !== process.env.ANTHROPIC_API_KEY) {
+    return new Anthropic({ apiKey: agentKey });
+  }
+  return anthropic;
+}
 
 // In-memory task progress keyed by sessionId (SSE pushes to Desktop)
 // Exported so dashboard.js can serve it via /api/dashboard/agentic-executions
@@ -2755,7 +2765,7 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
             max_tokens: 4096,
             system: 'You are an expert at this task. Deliver the highest quality output possible. No preamble — go straight into the deliverable.' + skillContext,
             messages: [{ role: 'user', content: toolInput.specialistPrompt }],
-          });
+          }, 3, agentClient);
 
           const fallbackText = fallbackResult.content?.map(b => b.text || '').join('') || '';
           
@@ -2858,15 +2868,16 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
 }
 
 // AGENTIC LOOP — handles multi-turn tool calling
-async function callAnthropicWithRetry(params, maxRetries = 3) {
+async function callAnthropicWithRetry(params, maxRetries = 3, client = null) {
+  const apiClient = client || anthropic;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      // 90 second timeout per attempt
-      const timeoutPromise = new Promise((_, reject) => 
+      // 150 second timeout per attempt
+      const timeoutPromise = new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Anthropic API timeout (150s)')), 150000)
       );
       return await Promise.race([
-        anthropic.messages.create(params),
+        apiClient.messages.create(params),
         timeoutPromise
       ]);
     } catch (err) {
@@ -2886,8 +2897,10 @@ async function callAnthropicWithRetry(params, maxRetries = 3) {
 }
 
 async function chatWithAgent(userMessage, history, agentConfig, sessionId = null) {
+  // Get the right Anthropic client — per-agent key if configured, otherwise platform key
+  const agentClient = getAnthropicClient(agentConfig);
   let systemPrompt = buildSystemPrompt(agentConfig);
-  
+
   // Inject brand kit if available
   try {
     const { createClient } = await import('@supabase/supabase-js');
@@ -3007,7 +3020,7 @@ When a user asks you to edit, modify, or update something you previously created
       system: systemPrompt,
       messages: currentMessages,
       tools: availableTools
-    });
+    }, 3, agentClient);
 
     // Accumulate token usage every round
     if (response.usage) {
@@ -3718,9 +3731,7 @@ router.post('/models/switch', async (req, res) => {
   }
 });
 
-export function getAnthropicClient() {
-  return anthropic;
-}
+export { getAnthropicClient };
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PHONE CALL TRANSCRIPT INGESTION

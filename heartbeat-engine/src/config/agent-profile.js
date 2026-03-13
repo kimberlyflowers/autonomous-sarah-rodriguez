@@ -61,12 +61,14 @@ export async function loadAgentConfig(agentId = null) {
 }
 
 // Merge database config with environment variables
+// IMPORTANT: agentId and name always come from the DB — env vars are only for shared services
 function mergeWithEnvironment(dbConfig) {
   return {
     ...dbConfig,
-    agentId: process.env.AGENT_ID || dbConfig.agentId,
-    name: process.env.AGENT_NAME || dbConfig.name,
-    currentAutonomyLevel: parseInt(process.env.AUTONOMY_LEVEL || dbConfig.currentAutonomyLevel || 1),
+    // agentId and name are per-agent — never override from env
+    agentId: dbConfig.agentId,
+    name: dbConfig.name,
+    currentAutonomyLevel: parseInt(dbConfig.currentAutonomyLevel || process.env.AUTONOMY_LEVEL || 1),
     ghlConfig: {
       ...dbConfig.config?.ghlConfig,
       apiKey: process.env.GHL_API_KEY,
@@ -87,13 +89,15 @@ function mergeWithEnvironment(dbConfig) {
       phone: process.env.HUMAN_CONTACT_PHONE || dbConfig.config?.humanContact?.phone,
       ghlUserId: process.env.HUMAN_GHL_USER_ID || dbConfig.config?.humanContact?.ghlUserId
     },
-    anthropicApiKey: process.env.ANTHROPIC_API_KEY,
+    // Per-agent API key (stored in agent config JSONB) takes priority for usage tracking
+    // Falls back to platform-wide key from environment
+    anthropicApiKey: dbConfig.config?.anthropicApiKey || process.env.ANTHROPIC_API_KEY,
     lettaServerUrl: process.env.LETTA_SERVER_URL,
     supabase: {
       url: process.env.SUPABASE_URL,
       serviceKey: process.env.SUPABASE_SERVICE_KEY
     },
-    notificationEmail: process.env.NOTIFICATION_EMAIL || 'notifications@bloomiestaffing.com',
+    notificationEmail: dbConfig.config?.notificationEmail || process.env.NOTIFICATION_EMAIL || 'notifications@bloomiestaffing.com',
     defaultCalendarId: process.env.DEFAULT_CALENDAR_ID || dbConfig.config?.defaultCalendarId,
     timezone: process.env.TIMEZONE || 'America/New_York'
   };
