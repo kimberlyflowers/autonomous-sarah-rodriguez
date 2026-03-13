@@ -1190,30 +1190,38 @@ function parseMessageCards(text) {
   }
 
   // Detect artifact creation — Sarah used create_artifact tool
-  // Strategy: find ALL file references in the message, create a card for each one
-  const artifactPatterns = [
-    // Primary trigger: "Here's your [type] — "filename.ext"" (the format we tell Sarah to use)
-    /Here's your .+?(?:—|–|-) +"([^"]+\.(?:html|md|docx|pdf|txt|js|css|jsx|json))"/gi,
-    // Alternate: 'I've created/saved/built "filename.ext"'
-    /(?:I've created|I created|I've saved|I saved|I've built|I built|I've designed|I designed|Here's the|Here is) (?:a |an |the )?(?:deliverable|artifact|file|page|website|landing page|blog|post|document|report|email|draft).*?"([^"]+\.(?:html|md|docx|pdf|txt|js|css|jsx|json))"/gi,
-    // Filename in quotes near save/create words
-    /"([^"]+\.(?:html|md|docx|pdf|txt|js|css|jsx|json))".*?(?:saved|created|ready|built|designed)/gi,
-    /(?:saved|created|built|designed).*?"([^"]+\.(?:html|md|docx|pdf|txt|js|css|jsx|json))"/gi,
-  ];
-
+  // PRIMARY: Hidden HTML comment tags <!-- file:filename.ext --> (invisible to user)
+  const hiddenTagPattern = /<!--\s*file:\s*([^>]+?\.(?:html|md|docx|pdf|txt|js|css|jsx|json))\s*-->/gi;
   const foundFiles = new Set();
-  for (const pattern of artifactPatterns) {
-    let match;
-    while ((match = pattern.exec(text)) !== null) {
-      const fname = (match[1] || "").trim();
-      if (fname && !foundFiles.has(fname)) {
-        foundFiles.add(fname);
-        cards.push({ type: "artifact", name: fname });
+  let match;
+  while ((match = hiddenTagPattern.exec(text)) !== null) {
+    const fname = (match[1] || "").trim();
+    if (fname && !foundFiles.has(fname)) {
+      foundFiles.add(fname);
+      cards.push({ type: "artifact", name: fname });
+    }
+  }
+
+  // FALLBACK: Legacy trigger phrases (for older messages before the hidden tag format)
+  if (foundFiles.size === 0) {
+    const legacyPatterns = [
+      /Here's your .+?(?:—|–|-) +"([^"]+\.(?:html|md|docx|pdf|txt|js|css|jsx|json))"/gi,
+      /(?:I've created|I created|I've saved|I saved|I've built|I built|I've designed|I designed|Here's the|Here is) (?:a |an |the )?(?:deliverable|artifact|file|page|website|landing page|blog|post|document|report|email|draft).*?"([^"]+\.(?:html|md|docx|pdf|txt|js|css|jsx|json))"/gi,
+      /"([^"]+\.(?:html|md|docx|pdf|txt|js|css|jsx|json))".*?(?:saved|created|ready|built|designed)/gi,
+      /(?:saved|created|built|designed).*?"([^"]+\.(?:html|md|docx|pdf|txt|js|css|jsx|json))"/gi,
+    ];
+    for (const pattern of legacyPatterns) {
+      while ((match = pattern.exec(text)) !== null) {
+        const fname = (match[1] || "").trim();
+        if (fname && !foundFiles.has(fname)) {
+          foundFiles.add(fname);
+          cards.push({ type: "artifact", name: fname });
+        }
       }
     }
   }
 
-  // Fallback: if no specific files found but mentions Files tab, show latest
+  // Last resort: mentions Files tab
   if (foundFiles.size === 0) {
     const fallbackMatch = text.match(/(?:in your Files tab|saved to (?:your )?Files|it's in (?:your )?Files|check (?:your |the )?Files tab|ready for you to review|approve it|check it out in Files|view it in Files)/i);
     if (fallbackMatch) {
@@ -1222,6 +1230,19 @@ function parseMessageCards(text) {
   }
 
   return cards;
+}
+
+// Strip hidden file tags and legacy trigger phrases from message text before rendering
+function cleanMessageText(text) {
+  if (!text) return text;
+  let cleaned = text;
+  // Remove hidden file tags: <!-- file:filename.ext -->
+  cleaned = cleaned.replace(/<!--\s*file:\s*[^>]+?-->\n?/g, '');
+  // Remove legacy trigger phrases: "Here's your [type] — "filename.ext""
+  cleaned = cleaned.replace(/Here's your .+?(?:—|–|-)\s*"[^"]+\.(?:html|md|docx|pdf|txt|js|css|jsx|json)"\n?/gi, '');
+  // Clean up any resulting double blank lines
+  cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
+  return cleaned.trim();
 }
 
 // ── SESSION FILES PANEL — right panel shows files from current chat ──────────
@@ -3273,6 +3294,7 @@ function App() {
                     <div style={{flex:1,minWidth:0,overflowY:"auto",overflowX:"hidden",background:c.bg,padding:mob?"14px 12px":"18px 24px",transition:"padding .25s ease"}}>
                       {messages.map((m)=>{
                         const cards=m.b?parseMessageCards(m.t):[];
+                        const displayText=m.b?cleanMessageText(m.t):m.t;
                         return (
                         <div key={m.id} style={{display:"flex",justifyContent:m.b?"flex-start":"flex-end",marginBottom:16,flexDirection:"column",alignItems:m.b?"flex-start":"flex-end"}}>
                           <div style={{display:"flex",justifyContent:m.b?"flex-start":"flex-end",width:"100%"}}>
@@ -3291,7 +3313,7 @@ function App() {
                                   ))}
                                 </div>
                               )}
-                              {m.t&&(m.b?(
+                              {displayText&&(m.b?(
                                 <div className="sarah-msg" style={{fontSize:15,lineHeight:1.65,color:c.tx}}>
                                   <ReactMarkdown
                                     remarkPlugins={[remarkGfm]}
@@ -3317,10 +3339,10 @@ function App() {
                                       td:({children})=><td style={{border:"1px solid "+c.ln,padding:"6px 10px"}}>{children}</td>,
                                       blockquote:({children})=><div style={{borderLeft:"3px solid "+c.ac,paddingLeft:12,margin:"10px 0",color:c.so}}>{children}</div>,
                                     }}
-                                  >{m.t}</ReactMarkdown>
+                                  >{displayText}</ReactMarkdown>
                                 </div>
                               ):(
-                                <div style={{fontSize:14,lineHeight:1.65}}>{m.t}</div>
+                                <div style={{fontSize:14,lineHeight:1.65}}>{displayText}</div>
                               ))}
                               <div style={{fontSize:10,opacity:0.45,marginTop:5,textAlign:m.b?"left":"right"}}>{m.tm}</div>
                               {/* Skill badge — shows which skill Sarah used for this response */}
