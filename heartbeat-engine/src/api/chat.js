@@ -257,17 +257,17 @@ not for you to report problems. Fix what you can, work around what you can't, de
 
 CRITICAL — website + image order of operations (NEVER skip this):
 When asked to build a website that uses images, you MUST follow this exact sequence:
-STEP 1: Load the frontend-design skill immediately.
-STEP 2: Call generate_images_parallel with ALL image prompts at once (hero, team members, backgrounds, etc).
-  This kicks off all image generation in the background simultaneously — do NOT wait for it to finish.
-STEP 3: Immediately build the complete website HTML using create_artifact. The tool returns placeholder
-  URLs like PENDING_IMG_0, PENDING_IMG_1, etc. Use Unsplash URLs (https://images.unsplash.com/photo-XXXXXXX?w=1200&q=80)
-  as visible placeholders in the HTML for now.
-STEP 4: Save with create_artifact. Tell the client: "Site is live — images are generating in parallel."
-STEP 5: When generate_images_parallel resolves, call update_artifact_images with the artifact name and
-  the mapping of placeholder → real image URL. This swaps images in the saved HTML automatically.
-NEVER generate images sequentially (one at a time) for websites — always use generate_images_parallel.
-The site must always be delivered first. Images update themselves in the background.
+STEP 1: Call generate_images_parallel with ALL image prompts at once (hero, cards, gallery, etc).
+  This runs all generations concurrently and AWAITS them — it will take 30-90 seconds but returns
+  REAL image URLs. Do NOT tell the client images are "generating in parallel" — just wait.
+STEP 2: generate_images_parallel returns an imageMap: { "IMG_HERO": "https://...", "IMG_CARD_1": "https://...", ... }
+  These are REAL Supabase CDN URLs. Use them directly in your HTML.
+STEP 3: Build the complete HTML with create_artifact using the REAL image URLs from imageMap.
+  NEVER use Unsplash placeholders, via.placeholder.com, or any fake URLs.
+  NEVER tell the client you "generated 14 images in parallel" if you haven't received their URLs yet.
+STEP 4: Save with create_artifact. Tell the client the site is live with real images.
+NEVER lie about images being generated if you don't have their URLs. If generate_images_parallel
+hasn't returned yet, you don't have the images. Wait for it — it returns real URLs when done.
 
 EXCEPTION — communication tools must ALWAYS report real errors:
 If notify_owner fails, ghl_send_message fails, or ANY tool that sends a message to a real person fails —
@@ -1139,7 +1139,7 @@ const _ALL_TOOLS = [
   },
   {
     name: "generate_images_parallel",
-    description: "Kick off multiple image generations simultaneously in the background. Use this at the START of website creation before building HTML. Returns immediately with placeholder IDs — do not wait for it. Images generate concurrently and will be available when done. After create_artifact saves the HTML, call update_artifact_images to swap placeholders for real URLs.",
+    description: "Generate multiple images simultaneously for a website. Pass all image prompts at once — they run concurrently and ALL complete before this tool returns. Returns an imageMap with real CDN URLs keyed by your ID strings. Use these real URLs directly in your HTML. This tool WAITS for all images — do not build HTML until it returns. Typical time: 30-90 seconds for 10-14 images.",
     input_schema: {
       type: "object",
       properties: {
@@ -1527,7 +1527,8 @@ async function executeTool(toolName, toolInput, sessionId = null) {
       const { images = [], artifactName = '' } = toolInput;
       if (!images.length) return { success: false, error: 'No images specified' };
 
-      // Fire all image generations concurrently — don't await
+      // FIXED: Actually await all images concurrently — fire-and-forget is broken on Railway
+      // (ephemeral processes don't survive long enough for background promises to complete)
       const imagePromises = images.map(async (img) => {
         try {
           const result = await executeImageTool({
@@ -1537,40 +1538,22 @@ async function executeTool(toolName, toolInput, sessionId = null) {
             organizationId,
             supabase
           });
-          return { id: img.id, url: result.image_url || result.url || null, success: !!result.image_url };
+          return { id: img.id, url: result.image_url || result.url || null, success: !!(result.image_url || result.url) };
         } catch (e) {
           return { id: img.id, url: null, success: false, error: e.message };
         }
       });
 
-      // Store the promise in a background map keyed by artifactName
-      if (!global._pendingImageJobs) global._pendingImageJobs = {};
-      global._pendingImageJobs[artifactName] = Promise.all(imagePromises).then(async (results) => {
-        // Auto-update the artifact once all images are done
-        const sb = supabase;
-        const { data: art } = await sb.from('artifacts')
-          .select('id, content')
-          .eq('name', artifactName)
-          .eq('organization_id', organizationId)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .single();
-        if (art?.content) {
-          let updated = art.content;
-          for (const r of results) {
-            if (r.url) updated = updated.split(r.id).join(r.url);
-          }
-          if (updated !== art.content) {
-            await sb.from('artifacts').update({ content: updated, updated_at: new Date().toISOString() }).eq('id', art.id);
-          }
-        }
-        return results;
-      });
+      // Wait for ALL images to finish before returning
+      const results = await Promise.all(imagePromises);
+      const succeeded = results.filter(r => r.success && r.url);
+      const failed = results.filter(r => !r.success);
 
       return {
         success: true,
-        message: `Kicked off ${images.length} image generation(s) in parallel for ${artifactName}. Build your HTML now using Unsplash placeholder URLs — call update_artifact_images after saving to swap in real images once they arrive.`,
-        pendingIds: images.map(i => i.id)
+        message: `All ${images.length} images generated. ${succeeded.length} succeeded, ${failed.length} failed. Use the imageMap below — embed these real URLs directly in your HTML. Do NOT use placeholder URLs.`,
+        imageMap: Object.fromEntries(results.map(r => [r.id, r.url || null])),
+        results
       };
     }
 
