@@ -423,6 +423,15 @@ router.get('/agentic-executions', (req, res) => {
     if (!hasActive && !allDone) continue;
     if (allDone && age > 5 * 60 * 1000) continue;
 
+    // Filter stale passive tracking entries ("Planning steps..." stuck > 3 min)
+    const isStalePassive = progress.todos.length === 1
+      && progress.todos[0].activeForm === 'Planning steps...'
+      && age > 3 * 60 * 1000;
+    if (isStalePassive) {
+      taskProgress.delete(sessionId); // Clean up while we're here
+      continue;
+    }
+
     executions.push({
       task: progress.todos.find(t => t.status === 'in_progress')?.activeForm
         || progress.todos[0]?.content
