@@ -1190,16 +1190,33 @@ function parseMessageCards(text) {
   }
 
   // Detect artifact creation — Sarah used create_artifact tool
-  const artifactMatch = text.match(/Created "(.+?)".*?(?:waiting for (?:your )?approval|ready for (?:your )?review)/i)
-    || text.match(/(?:I've created|I created|Here's the|I've saved|saved as|saved it to|I've built|I built|Here is|I've designed|I designed) (?:a |an |the )?(?:deliverable|artifact|file|page|website|landing page|blog|post|document|report|email|draft).*?"(.+?)"/i)
-    || text.match(/"([^"]+\.(?:html|md|docx|pdf|txt|js|css))".*?(?:saved|created|ready|built|designed)/i)
-    || text.match(/(?:saved|created|built|designed).*?"([^"]+\.(?:html|md|docx|pdf|txt|js|css))"/i)
-    || text.match(/(?:in your Files tab|saved to (?:your )?Files|it's in (?:your )?Files|ready for you to review|ready for you to (?:edit|post)|you can review it|approve it|check it out in Files|view it in Files)/i);
-  if (artifactMatch) {
-    const name = (artifactMatch[1] || artifactMatch[2] || "").trim();
-    if (name) {
-      cards.push({ type: "artifact", name });
-    } else {
+  // Strategy: find ALL file references in the message, create a card for each one
+  const artifactPatterns = [
+    // Primary trigger: "Here's your [type] — "filename.ext"" (the format we tell Sarah to use)
+    /Here's your .+?(?:—|–|-) +"([^"]+\.(?:html|md|docx|pdf|txt|js|css|jsx|json))"/gi,
+    // Alternate: 'I've created/saved/built "filename.ext"'
+    /(?:I've created|I created|I've saved|I saved|I've built|I built|I've designed|I designed|Here's the|Here is) (?:a |an |the )?(?:deliverable|artifact|file|page|website|landing page|blog|post|document|report|email|draft).*?"([^"]+\.(?:html|md|docx|pdf|txt|js|css|jsx|json))"/gi,
+    // Filename in quotes near save/create words
+    /"([^"]+\.(?:html|md|docx|pdf|txt|js|css|jsx|json))".*?(?:saved|created|ready|built|designed)/gi,
+    /(?:saved|created|built|designed).*?"([^"]+\.(?:html|md|docx|pdf|txt|js|css|jsx|json))"/gi,
+  ];
+
+  const foundFiles = new Set();
+  for (const pattern of artifactPatterns) {
+    let match;
+    while ((match = pattern.exec(text)) !== null) {
+      const fname = (match[1] || "").trim();
+      if (fname && !foundFiles.has(fname)) {
+        foundFiles.add(fname);
+        cards.push({ type: "artifact", name: fname });
+      }
+    }
+  }
+
+  // Fallback: if no specific files found but mentions Files tab, show latest
+  if (foundFiles.size === 0) {
+    const fallbackMatch = text.match(/(?:in your Files tab|saved to (?:your )?Files|it's in (?:your )?Files|check (?:your |the )?Files tab|ready for you to review|approve it|check it out in Files|view it in Files)/i);
+    if (fallbackMatch) {
       cards.push({ type: "artifact", name: "__latest__" });
     }
   }
