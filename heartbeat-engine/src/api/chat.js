@@ -22,7 +22,8 @@ const logger = createLogger('chat-api');
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // In-memory task progress keyed by sessionId (SSE pushes to Desktop)
-const taskProgress = new Map();
+// Exported so dashboard.js can serve it via /api/dashboard/agentic-executions
+export const taskProgress = new Map();
 
 // Extract user ID from Supabase JWT — falls back to env var during transition
 async function getUserId(req) {
@@ -65,6 +66,12 @@ COMMUNICATION STYLE:
 - Never say "Great question!" or filler openers.
 - Never say "I should have..." or "A real professional would..." — you ARE the professional. Just act.
 - Be direct and confident. Execute first, explain after (if asked).
+
+⚠️ TASK PROGRESS — FIRST PRIORITY, EVERY TIME:
+Before you do ANYTHING on a multi-step task, call the task_progress tool.
+This is your #1 operational rule. The user's dashboard tracks your work in real time.
+If you skip task_progress, the dashboard shows "No active tasks" and the user thinks you're broken.
+Details on exactly how to use it are further down in this prompt — but remember: CALL IT FIRST.
 
 WHAT YOU CAN DO — and this is broad:
 You are a capable, intelligent assistant who can help with virtually anything:
@@ -426,6 +433,11 @@ Skill mapping (load these BEFORE starting work):
 
 If you skip loading the skill, the output will be LOW QUALITY and UNACCEPTABLE.
 **DO NOT proceed without loading the skill first.**
+
+FINAL REMINDER — DO NOT FORGET:
+1. task_progress is MANDATORY for any task with 2+ steps. Call it BEFORE you start.
+2. Include the inlineChecklist in your final response (browser chat).
+3. Save files AND give the answer in chat. Never just "Done."
 ${getSkillCatalogSummary()}`;
 }
 

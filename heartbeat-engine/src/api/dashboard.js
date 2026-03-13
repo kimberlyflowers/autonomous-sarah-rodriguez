@@ -4,6 +4,7 @@
 import express from 'express';
 import { createLogger } from '../logging/logger.js';
 import { loadAgentConfig, getAgentStatus } from '../config/agent-profile.js';
+import { taskProgress } from './chat.js';
 
 const router = express.Router();
 const logger = createLogger('dashboard-api');
@@ -403,8 +404,42 @@ router.post('/brand-kit', async (req, res) => {
   }
 });
 
-export default router;
-// Stub for agentic-executions — endpoint polled by dashboard
+// ── ACTIVE TASK TRACKER — serves taskProgress data to dashboard panel ──
+// The ActiveTaskTracker component in App.jsx polls this every 15s.
+// Data shape: { executions: [{ task, status, steps: [{ name, status }] }] }
 router.get('/agentic-executions', (req, res) => {
-  res.json({ executions: [] });
+  const limit = parseInt(req.query.limit) || 5;
+  const executions = [];
+
+  // Convert taskProgress Map entries into the format ActiveTaskTracker expects
+  for (const [sessionId, progress] of taskProgress.entries()) {
+    if (!progress?.todos || progress.todos.length === 0) continue;
+
+    const hasActive = progress.todos.some(t => t.status === 'in_progress');
+    const allDone = progress.todos.every(t => t.status === 'completed');
+
+    // Only show tasks that are active or recently completed (within 5 min)
+    const age = Date.now() - (progress.updatedAt || 0);
+    if (!hasActive && !allDone) continue;
+    if (allDone && age > 5 * 60 * 1000) continue;
+
+    executions.push({
+      task: progress.todos.find(t => t.status === 'in_progress')?.activeForm
+        || progress.todos[0]?.content
+        || 'Running task',
+      name: `Session: ${sessionId}`,
+      status: allDone ? 'complete' : 'running',
+      steps: progress.todos.map(t => ({
+        name: t.status === 'in_progress' ? t.activeForm : t.content,
+        description: t.content,
+        status: t.status === 'completed' ? 'done' : t.status === 'in_progress' ? 'active' : 'pending'
+      }))
+    });
+
+    if (executions.length >= limit) break;
+  }
+
+  res.json({ executions });
 });
+
+export default router;
