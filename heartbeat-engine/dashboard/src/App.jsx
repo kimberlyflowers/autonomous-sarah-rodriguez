@@ -2676,10 +2676,12 @@ function App() {
   };
   const [agentImgUrl,setAgentImgUrl]=useState(null);
 
-  const loadProfile = async () => {
+  const loadProfile = async (agentId) => {
     try {
+      const aid = agentId || currentAgentId;
+      const qs = aid ? `?agentId=${aid}` : '';
       const [pRes, tRes] = await Promise.all([
-        fetch('/api/agent/profile').then(r=>r.json()),
+        fetch('/api/agent/profile'+qs).then(r=>r.json()),
         fetch('/api/agent/tasks').then(r=>r.json())
       ]);
       setProfileData(pRes);
@@ -2707,11 +2709,15 @@ function App() {
   const [userImg,setUserImg]=useState(null);
   const userImgRef=useRef(null);
 
-  // Load user avatar + agent avatar on mount
+  // Load user avatar on mount
   useEffect(()=>{
     fetch('/api/dashboard/user-avatar').then(r=>r.json()).then(d=>{if(d.avatar)setUserImg(d.avatar);}).catch(()=>{});
-    fetch('/api/agent/profile').then(r=>r.json()).then(d=>{if(d.profile?.avatarUrl)setAgentImgUrl(d.profile.avatarUrl);}).catch(()=>{});
   },[]);
+  // Load agent avatar when agent changes
+  useEffect(()=>{
+    if(!currentAgentId) return;
+    fetch('/api/agent/profile?agentId='+currentAgentId).then(r=>r.json()).then(d=>{if(d.profile?.avatarUrl)setAgentImgUrl(d.profile.avatarUrl); else setAgentImgUrl(null);}).catch(()=>{});
+  },[currentAgentId]);
   const [projO,setProjO]=useState(false);
   const [activeProj,setActiveProj]=useState("My Business");
   const [bizLogo,setBizLogo]=useState(null);
@@ -4165,14 +4171,14 @@ function App() {
                             cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
                             const dataUrl=cv.toDataURL('image/jpeg',0.8);
                             setAgentImgUrl(dataUrl);
-                            const r=await fetch('/api/agent/profile',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({avatarUrl:dataUrl})});
+                            const r=await fetch('/api/agent/profile',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({avatarUrl:dataUrl,agentId:currentAgentId})});
                             const d=await r.json();
                             console.log('Agent avatar save:',d);
                           }catch(err){
                             // Fallback — save original if resize fails
                             console.error('Resize failed, saving original:',err);
                             setAgentImgUrl(ev.target.result);
-                            fetch('/api/agent/profile',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({avatarUrl:ev.target.result})}).catch(()=>{});
+                            fetch('/api/agent/profile',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({avatarUrl:ev.target.result,agentId:currentAgentId})}).catch(()=>{});
                           }
                         };
                         reader.readAsDataURL(file);
@@ -4209,7 +4215,7 @@ function App() {
                     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
                       <span style={{fontSize:14,fontWeight:700,color:c.tx}}>Job Description</span>
                       <button onClick={()=>{
-                        if(editingProfile){fetch('/api/agent/profile',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({jobTitle:editTitle,jobDescription:editDesc})}).then(()=>loadProfile());}
+                        if(editingProfile){fetch('/api/agent/profile',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({jobTitle:editTitle,jobDescription:editDesc,agentId:currentAgentId})}).then(()=>loadProfile());}
                         setEditingProfile(!editingProfile);
                       }} style={{padding:"5px 12px",borderRadius:6,border:"1px solid "+c.ln,background:"transparent",cursor:"pointer",fontSize:12,fontWeight:600,color:c.ac,fontFamily:"inherit"}}>
                         {editingProfile?'Save':'Edit'}
@@ -4879,7 +4885,7 @@ function App() {
                   <span style={{fontSize:13,fontWeight:700,color:c.tx,textTransform:"uppercase",letterSpacing:"0.5px"}}>Job Description</span>
                   <button onClick={()=>{
                     if(editingProfile){
-                      fetch('/api/agent/profile',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({jobTitle:editTitle,jobDescription:editDesc})})
+                      fetch('/api/agent/profile',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({jobTitle:editTitle,jobDescription:editDesc,agentId:currentAgentId})})
                         .then(()=>loadProfile());
                     }
                     setEditingProfile(!editingProfile);
