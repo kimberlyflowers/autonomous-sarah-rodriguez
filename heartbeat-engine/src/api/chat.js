@@ -1926,6 +1926,31 @@ For images: use the 'url' field with image_edit.`
 
     // Artifact creation — save deliverables for client review
     if (toolName === 'create_artifact') {
+      // ──── OVERWRITE PROTECTION ────
+      // If an artifact with this name already exists in this session, BLOCK the create
+      // and force Sarah to use edit_artifact instead
+      try {
+        const { createClient } = await import('@supabase/supabase-js');
+        const checkSupabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+        const { data: existing } = await checkSupabase
+          .from('artifacts')
+          .select('id, name')
+          .eq('session_id', sessionId)
+          .eq('name', toolInput.name)
+          .limit(1);
+        if (existing && existing.length > 0) {
+          return {
+            success: false,
+            error: `BLOCKED: A file named "${toolInput.name}" already exists in this session (id: ${existing[0].id}). ` +
+              `You MUST use edit_artifact to modify existing files — NEVER create_artifact. ` +
+              `Call edit_artifact with artifactName="${toolInput.name}" and your find→replace operations.`
+          };
+        }
+      } catch (e) {
+        // If the check fails, log but allow the create to proceed
+        console.warn('[create_artifact] Overwrite check failed:', e.message);
+      }
+
       const mimeMap = { text: 'text/plain', html: 'text/html', code: 'text/javascript', markdown: 'text/markdown' };
       const port = process.env.PORT || 3000;
       const resp = await fetch(`http://localhost:${port}/api/files/artifacts`, {
