@@ -2083,7 +2083,7 @@ function SkillsPage({c,mob,aFN="Sarah"}){
 }
 
 // ── BUSINESS PROFILE PAGE — Synced from BLOOM CRM ─────────────────────────────────
-function BusinessProfilePage({c,mob,userImg,setUserImg}){
+function BusinessProfilePage({c,mob,userImg,setUserImg,meInitial="U"}){
   const [biz,setBiz]=useState(null);
   const [loading,setLoading]=useState(true);
   const emptyKit={kitName:'',logo:null,colors:['#F4A261','#E76F8B','#2D3436','#FFFFFF','#F5F5F5'],fonts:{heading:'',body:''},tagline:'',brandVoice:'',active:false};
@@ -2169,7 +2169,7 @@ function BusinessProfilePage({c,mob,userImg,setUserImg}){
       {/* Owner Photo */}
       <div style={{background:c.cd,borderRadius:16,border:"1px solid "+c.ln,padding:24,marginBottom:16,display:"flex",alignItems:"center",gap:20}}>
         <label style={{width:80,height:80,borderRadius:16,background:userImg?"transparent":"linear-gradient(135deg,#F4A261,#E76F8B)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,fontWeight:700,color:"#fff",cursor:"pointer",overflow:"hidden",flexShrink:0,border:"3px solid "+c.ln}}>
-          {userImg?<img src={userImg} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>:"K"}
+          {userImg?<img src={userImg} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>:meInitial}
           <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{
             const f=e.target.files[0];if(!f)return;
             const reader=new FileReader();
@@ -2182,10 +2182,10 @@ function BusinessProfilePage({c,mob,userImg,setUserImg}){
                 cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
                 const d=cv.toDataURL('image/jpeg',0.8);
                 setUserImg(d);
-                fetch('/api/dashboard/user-avatar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({avatar:d})}).catch(()=>{});
+                getAuthHeaders().then(h=>fetch('/api/agent/me/avatar',{method:'POST',headers:h,body:JSON.stringify({avatar:d})})).catch(()=>{});
               }catch{
                 setUserImg(ev.target.result);
-                fetch('/api/dashboard/user-avatar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({avatar:ev.target.result})}).catch(()=>{});
+                getAuthHeaders().then(h=>fetch('/api/agent/me/avatar',{method:'POST',headers:h,body:JSON.stringify({avatar:ev.target.result})})).catch(()=>{});
               }
             };reader.readAsDataURL(f);
           }}/>
@@ -2193,7 +2193,7 @@ function BusinessProfilePage({c,mob,userImg,setUserImg}){
         <div>
           <div style={{fontSize:18,fontWeight:700,color:c.tx}}>Your Photo</div>
           <div style={{fontSize:12,color:c.so,marginTop:2}}>Visible across all your Bloomie dashboards</div>
-          {userImg&&<button onClick={()=>{setUserImg(null);fetch('/api/dashboard/user-avatar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({avatar:null})}).catch(()=>{});}} style={{marginTop:8,padding:"4px 12px",borderRadius:6,border:"1px solid rgba(234,67,53,0.3)",background:"transparent",cursor:"pointer",fontSize:11,color:"#ea4335",fontFamily:"inherit"}}>Remove photo</button>}
+          {userImg&&<button onClick={()=>{setUserImg(null);getAuthHeaders().then(h=>fetch('/api/agent/me/avatar',{method:'POST',headers:h,body:JSON.stringify({avatar:null})})).catch(()=>{});}} style={{marginTop:8,padding:"4px 12px",borderRadius:6,border:"1px solid rgba(234,67,53,0.3)",background:"transparent",cursor:"pointer",fontSize:11,color:"#ea4335",fontFamily:"inherit"}}>Remove photo</button>}
         </div>
       </div>
 
@@ -2545,11 +2545,11 @@ function BillingPage({c,mob,aFN="Sarah"}){
   );
 }
 
-export default function AppWithErrorBoundary() {
-  return <ErrorBoundary><App /></ErrorBoundary>;
+export default function AppWithErrorBoundary({ user: authUser }) {
+  return <ErrorBoundary><App authUser={authUser} /></ErrorBoundary>;
 }
 
-function App() {
+function App({ authUser }) {
   const W=useW();
   const mob=W<768;
   const [dark,setDark]=useState(true);
@@ -2724,9 +2724,34 @@ function App() {
   const [searchQuery,setSearchQuery]=useState(""); // Search conversations
   const [userImg,setUserImg]=useState(null);
   const userImgRef=useRef(null);
+  // Dynamic user profile from /api/agent/me (replaces hardcoded Kimberly/Owner/K)
+  const [meProfile,setMeProfile]=useState(null);
+  const meDisplayName = meProfile?.fullName || authUser?.user_metadata?.full_name || authUser?.email?.split('@')[0] || 'User';
+  const meInitial = meDisplayName.charAt(0).toUpperCase();
+  const meRole = meProfile?.role || 'member';
+  const meOrgName = meProfile?.orgName || null;
+  const meOrgLogo = meProfile?.orgLogoUrl || null;
 
-  // Load user avatar on mount
+  // Load authenticated user profile on mount
   useEffect(()=>{
+    (async()=>{
+      try{
+        const headers=await getAuthHeaders();
+        const r=await fetch('/api/agent/me',{headers});
+        const d=await r.json();
+        if(d.user){
+          setMeProfile(d.user);
+          if(d.user.avatarUrl) setUserImg(d.user.avatarUrl);
+          if(d.user.orgName) { setBizName(d.user.orgName); setActiveProj(d.user.orgName); }
+          if(d.user.orgLogoUrl) setBizLogo(d.user.orgLogoUrl);
+        }
+      }catch(e){ console.error('Failed to load user profile',e); }
+    })();
+  },[]);
+
+  // Fallback: Load user avatar from old endpoint if /me didn't provide one
+  useEffect(()=>{
+    if(userImg) return; // already loaded from /me
     fetch('/api/dashboard/user-avatar').then(r=>r.json()).then(d=>{if(d.avatar)setUserImg(d.avatar);}).catch(()=>{});
   },[]);
   // Load agent avatar when agent changes
@@ -2739,13 +2764,14 @@ function App() {
   const [bizLogo,setBizLogo]=useState(null);
   const [bizName,setBizName]=useState(null);
 
-  // Load business profile for logo
+  // Fallback: Load business profile for logo (only if /me didn't provide org info)
   useEffect(()=>{
+    if(meOrgName) return; // already got org from /me
     fetch('/api/dashboard/business-profile').then(r=>r.json()).then(d=>{
       if(d.profile?.logoUrl)setBizLogo(d.profile.logoUrl);
       if(d.profile?.name){setBizName(d.profile.name);setActiveProj(d.profile.name);}
     }).catch(()=>{});
-  },[]);
+  },[meOrgName]);
   const [files,setFiles]=useState([]);
   const [filesLoading,setFilesLoading]=useState(false);
   const [filesSearch,setFilesSearch]=useState('');
@@ -2998,7 +3024,7 @@ function App() {
           {scrM==="hidden"&&<button onClick={()=>setScrM("docked")} style={{width:32,height:32,borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:14,color:c.so,display:"flex",alignItems:"center",justifyContent:"center"}} title="Show side panel">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke={c.so} strokeWidth="2"><path d="M10 3l-5 5 5 5"/></svg>
           </button>}
-          <div style={{width:36,height:36,borderRadius:"50%",background:userImg?"transparent":"linear-gradient(135deg,#F4A261,#E76F8B)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,color:"#fff",overflow:"hidden"}}>{userImg?<img src={userImg} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>:"K"}</div>
+          <div style={{width:36,height:36,borderRadius:"50%",background:userImg?"transparent":"linear-gradient(135deg,#F4A261,#E76F8B)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,color:"#fff",overflow:"hidden"}}>{userImg?<img src={userImg} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>:meInitial}</div>
         </div>
       </div>
 
@@ -3020,7 +3046,7 @@ function App() {
                       {(s.title||"C").charAt(0).toUpperCase()}
                     </button>
                   ))}
-                  <button onClick={()=>setSbO("full")} style={{width:40,height:40,borderRadius:10,border:"none",background:c.sf,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:c.tx,marginTop:"auto"}}>K</button>
+                  <button onClick={()=>setSbO("full")} style={{width:40,height:40,borderRadius:10,border:"none",background:c.sf,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:c.tx,marginTop:"auto"}}>{userImg?<img src={userImg} style={{width:"100%",height:"100%",borderRadius:10,objectFit:"cover"}} alt=""/>:meInitial}</button>
                 </div>
               )}
 
@@ -3231,7 +3257,7 @@ function App() {
                     </div>
                     <button onClick={()=>setUmO(!umO)} style={{width:"100%",padding:"8px 10px",borderRadius:10,border:"none",cursor:"pointer",background:umO?c.sf:"transparent",display:"flex",alignItems:"center",gap:10}} onMouseEnter={e=>e.currentTarget.style.background=c.hv} onMouseLeave={e=>e.currentTarget.style.background=umO?c.sf:"transparent"}>
                       <label style={{width:30,height:30,borderRadius:8,background:userImg?"transparent":"linear-gradient(135deg,#F4A261,#E76F8B)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"#fff",flexShrink:0,cursor:"pointer",overflow:"hidden",position:"relative"}}>
-                        {userImg?<img src={userImg} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>:"K"}
+                        {userImg?<img src={userImg} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>:meInitial}
                         <input ref={userImgRef} type="file" accept="image/*" style={{display:"none"}} onChange={e=>{
                           const f=e.target.files[0]; if(!f) return;
                           const reader=new FileReader();
@@ -3244,16 +3270,16 @@ function App() {
                               cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
                               const d=cv.toDataURL('image/jpeg',0.8);
                               setUserImg(d);
-                              fetch('/api/dashboard/user-avatar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({avatar:d})}).catch(()=>{});
+                              getAuthHeaders().then(h=>fetch('/api/agent/me/avatar',{method:'POST',headers:h,body:JSON.stringify({avatar:d})})).catch(()=>{});
                             }catch{
                               setUserImg(ev.target.result);
-                              fetch('/api/dashboard/user-avatar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({avatar:ev.target.result})}).catch(()=>{});
+                              getAuthHeaders().then(h=>fetch('/api/agent/me/avatar',{method:'POST',headers:h,body:JSON.stringify({avatar:ev.target.result})})).catch(()=>{});
                             }
                           };
                           reader.readAsDataURL(f);
                         }}/>
                       </label>
-                      <div style={{flex:1,textAlign:"left"}}><div style={{fontSize:13,fontWeight:600,color:c.tx}}>Kimberly</div><div style={{fontSize:11,color:c.so}}>Owner</div></div>
+                      <div style={{flex:1,textAlign:"left"}}><div style={{fontSize:13,fontWeight:600,color:c.tx}}>{meDisplayName}</div><div style={{fontSize:11,color:c.so,textTransform:"capitalize"}}>{meRole}</div></div>
                       <span style={{fontSize:12,color:c.so,transform:umO?"rotate(180deg)":"rotate(0deg)",transition:"transform .2s"}}>▾</span>
                     </button>
                     {umO&&(
@@ -4490,7 +4516,7 @@ function App() {
                               {msg.role==="user"?(
                                 <>
                                   <label style={{width:30,height:30,borderRadius:8,background:userImg?"transparent":"linear-gradient(135deg,#F4A261,#E76F8B)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"#fff",flexShrink:0,overflow:"hidden"}}>
-                                    {userImg?<img src={userImg} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>:"K"}
+                                    {userImg?<img src={userImg} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>:meInitial}
                                   </label>
                                   <div style={{flex:1}}>
                                     <div style={{fontSize:13,fontWeight:600,color:c.tx,marginBottom:4}}>You</div>
@@ -4855,7 +4881,7 @@ function App() {
 
           {/* ══ BILLING ══ */}
           {pg==="billing"&&(<BillingPage c={c} mob={mob} aFN={aFN}/>)}
-          {pg==="business"&&(<BusinessProfilePage c={c} mob={mob} userImg={userImg} setUserImg={setUserImg}/>)}
+          {pg==="business"&&(<BusinessProfilePage c={c} mob={mob} userImg={userImg} setUserImg={setUserImg} meInitial={meInitial}/>)}
           {pg==="skills"&&(<SkillsPage c={c} mob={mob} aFN={aFN}/>)}
         </div>
       </div>

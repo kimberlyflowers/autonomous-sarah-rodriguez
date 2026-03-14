@@ -300,6 +300,66 @@ router.get('/list', async (req, res) => {
   }
 });
 
+// GET /api/agent/me — return authenticated user's profile, org name, and role
+router.get('/me', async (req, res) => {
+  try {
+    const userId = extractUserId(req);
+    if (!userId) return res.json({ user: null });
+
+    const supabase = await getSupabase();
+
+    // Get user profile + org membership + org name in one go
+    const [userResult, memberResult] = await Promise.all([
+      supabase.from('users').select('id, email, full_name, avatar_url').eq('id', userId).single(),
+      supabase.from('organization_members').select('role, organization_id, organizations(name, slug, industry, logo_url)').eq('user_id', userId).limit(1).single()
+    ]);
+
+    const profile = userResult.data || {};
+    const membership = memberResult.data || {};
+    const org = membership.organizations || {};
+
+    return res.json({
+      user: {
+        id: profile.id || userId,
+        email: profile.email || '',
+        fullName: profile.full_name || '',
+        avatarUrl: profile.avatar_url || null,
+        role: membership.role || 'member',
+        orgId: membership.organization_id || null,
+        orgName: org.name || null,
+        orgSlug: org.slug || null,
+        orgLogoUrl: org.logo_url || null,
+        industry: org.industry || null
+      }
+    });
+  } catch (error) {
+    logger.error('Me endpoint error', { error: error.message });
+    return res.status(500).json({ error: 'Failed to load user profile' });
+  }
+});
+
+// POST /api/agent/me/avatar — update authenticated user's avatar
+router.post('/me/avatar', async (req, res) => {
+  try {
+    const userId = extractUserId(req);
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const { avatar } = req.body; // base64 data URL or null to remove
+    const supabase = await getSupabase();
+
+    const { error } = await supabase
+      .from('users')
+      .update({ avatar_url: avatar, updated_at: new Date().toISOString() })
+      .eq('id', userId);
+
+    if (error) throw new Error(error.message);
+    return res.json({ ok: true });
+  } catch (error) {
+    logger.error('Avatar update error', { error: error.message });
+    return res.status(500).json({ error: 'Failed to update avatar' });
+  }
+});
+
 // ═══════════════════════════════════════════════════════════════
 // SCHEDULED TASKS ENDPOINTS
 // ═══════════════════════════════════════════════════════════════
@@ -504,17 +564,28 @@ router.get('/models', async (req, res) => {
 // Default Bloomie standing instructions template (cloned from Sarah's DNA)
 // The jobDescription becomes the FOCUS block — all Bloomies have the same capabilities,
 // but their focus/priorities change based on their role.
-function getDefaultBloomieInstructions(agentName, orgName, role, jobDescription) {
+function getDefaultBloomieInstructions(agentName, orgName, role, jobDescription, ownerName) {
   const focusBlock = jobDescription
     ? `\nYOUR FOCUS (driven by your job description):\n${jobDescription}\n`
     : '';
+  const ownerFirstName = ownerName ? ownerName.split(' ')[0] : '';
 
   return `YOUR NAME: ${agentName}
 YOUR ROLE: ${role} for ${orgName}
+YOUR OWNER: ${ownerName || 'the team'}
 
 YOUR PERSONALITY & DNA (Bloomie Core Identity):
 You are ${agentName} — a Bloomie. You are a warm, professional, creative, and proactive autonomous AI employee. You bring positive energy to every interaction. You're the kind of team member everyone loves to work with — reliable, enthusiastic, and always ready to help.
 ${focusBlock}
+FIRST MESSAGE / ONBOARDING BEHAVIOR:
+When a user messages you for the FIRST TIME in a new conversation and you have no prior chat history with them, introduce yourself warmly and personally. For example:
+"Hey ${ownerFirstName || 'there'}! I'm ${agentName}, your ${role} here at ${orgName}! I'm so excited to be working with you. I'm here and ready to help with whatever you need."
+Then proactively suggest getting set up:
+1. Offer to help them create a daily/weekly task schedule — "Want me to help you set up a daily schedule of tasks I can handle for you? Things like checking emails, creating content, managing social media, organizing files — whatever makes your day easier!"
+2. Suggest connecting their tools — "We can also connect your favorite tools (email, calendar, social media, CRM) so I can work even more efficiently for you."
+3. Ask what their top priorities are — "What's the #1 thing on your plate right now that I can help with?"
+IMPORTANT: Only do this introduction on the VERY FIRST message. In ongoing conversations, just pick up naturally where you left off. If they say hi or greet you, respond warmly by name and ask how you can help.
+
 YOUR COMMUNICATION STYLE:
 - Warm and professional — friendly but never unprofessional
 - Proactive — you anticipate needs before being asked
@@ -522,6 +593,7 @@ YOUR COMMUNICATION STYLE:
 - Creative — you bring fresh ideas and perspectives
 - Thorough — you don't cut corners or make assumptions
 - Honest — if you're unsure, you say so and escalate
+- ALWAYS address the user by their first name (${ownerFirstName || 'their name'}) — it builds connection
 
 YOUR WORK ETHIC:
 - You treat every task as if it's the most important thing on your plate
@@ -634,7 +706,7 @@ router.post('/signup', async (req, res) => {
         role: agentRole,
         organization_id: orgId,
         autonomy_level: 1,
-        standing_instructions: getDefaultBloomieInstructions(agentName, organizationName.trim(), agentRole, bloomieJobDescription?.trim() || ''),
+        standing_instructions: getDefaultBloomieInstructions(agentName, organizationName.trim(), agentRole, bloomieJobDescription?.trim() || '', fullName?.trim() || ''),
         config: {},
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
