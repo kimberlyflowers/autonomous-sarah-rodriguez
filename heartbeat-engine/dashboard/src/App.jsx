@@ -3265,7 +3265,7 @@ function App() {
                           {ic:"⚙️",l:"Settings",fn:()=>{setPg("settings");setUmO(false);}},
                           {ic:"🔧",l:"Developer Mode",fn:()=>setUmO(false)},
                           {ic:dark?"☀️":"🌙",l:dark?"Light Mode":"Dark Mode",fn:()=>{setDark(!dark);setUmO(false);}},
-                          {ic:"🚪",l:"Log out",fn:()=>setUmO(false)},
+                          {ic:"🚪",l:"Log out",fn:async()=>{setUmO(false);await supabase.auth.signOut();}},
                         ].map((item,i,arr)=>(
                           <button key={i} onClick={item.fn} style={{width:"100%",textAlign:"left",padding:"11px 14px",border:"none",cursor:"pointer",background:"transparent",fontSize:13,color:i===arr.length-1?"#ef4444":c.tx,display:"flex",alignItems:"center",gap:10,borderBottom:i<arr.length-1?"1px solid "+c.ln+"60":"none"}} onMouseEnter={e=>e.currentTarget.style.background=c.hv} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                             <span style={{fontSize:15}}>{item.ic}</span>{item.l}
