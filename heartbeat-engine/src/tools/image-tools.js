@@ -636,7 +636,7 @@ export async function executeImageTool(toolName, parameters) {
             .insert({
               organization_id: process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001',
               created_by_user_id: process.env.BLOOM_OWNER_USER_ID || '823e2fb5-2f8f-4279-9c84-c8f4bf78bcce',
-              agent_id: process.env.AGENT_UUID || 'c3000000-0000-0000-0000-000000000003',
+              agent_id: parameters.agentId || process.env.AGENT_UUID || 'c3000000-0000-0000-0000-000000000003',
               session_id: parameters.sessionId || null,
               name: `bloom-img-${Date.now()}.png`,
               description: `Generated: ${(parameters.prompt || '').slice(0, 100)}`,
