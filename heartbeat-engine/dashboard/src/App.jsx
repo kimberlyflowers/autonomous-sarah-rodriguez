@@ -2694,6 +2694,14 @@ function App() {
     } catch(e){ console.error('Failed to load profile',e); }
   };
 
+  // Reload profile when agent changes while on profile page
+  useEffect(()=>{
+    if(pg==="profile" && currentAgentId){
+      setProfileData(null); // clear stale data immediately
+      loadProfile(currentAgentId);
+    }
+  },[currentAgentId]);
+
   const loadActivity = async () => {
     try {
       const [tRes, rRes] = await Promise.all([
