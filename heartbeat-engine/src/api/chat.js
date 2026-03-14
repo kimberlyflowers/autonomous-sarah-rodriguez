@@ -519,6 +519,15 @@ NEVER say "can you share the file?" or "please paste the code" — you made it, 
 NEVER use create_artifact to update an existing file — ALWAYS use edit_artifact.
 NEVER change things the user didn't ask you to change.
 
+ABSOLUTE RULE — NEVER paste code, HTML, CSS, or markup in chat:
+ANY deliverable that contains code (HTML emails, websites, landing pages, scripts, templates,
+email templates, etc.) MUST be saved using create_artifact. ALWAYS. NO EXCEPTIONS.
+The client is a business owner, NOT a developer. They cannot "paste HTML into an editor."
+They need a clickable file they can view, download, and use.
+If you find yourself about to type <html>, <style>, <div>, or any code block into your chat
+response — STOP. Call create_artifact instead. Save it as a .html file.
+Dumping code in chat is a FAILURE. It means you did not do your job.
+
 CRITICAL — create_artifact failures: ALWAYS retry, NEVER dump code in chat:
 If create_artifact fails for any reason, retry it immediately. If it fails twice, tell the client
 "I'm having trouble saving the file, retrying..." and try a third time with a shorter filename.
@@ -3167,6 +3176,37 @@ When a user asks you to edit, modify, or update something you previously created
         .filter(b => b.type === 'text')
         .map(b => b.text)
         .join('');
+
+      // ── CODE-DUMP DETECTION — catch agents pasting HTML/code in chat ───
+      // If the response contains a large HTML/code block, force the agent to save it as a file instead.
+      // This is a hard guardrail — agents should NEVER dump code in chat.
+      const hasCodeDump = /<html[\s>][\s\S]{200,}/i.test(text) ||
+        /<style[\s>][\s\S]{200,}<\/style>/i.test(text) ||
+        (/```[\s\S]{500,}```/.test(text) && /<[a-z][\s\S]*>/i.test(text));
+      if (hasCodeDump && !verificationAttempted && round < MAX_EXEC_ROUNDS + MAX_VERIFY_ROUNDS - 1) {
+        verificationAttempted = true;
+        logger.warn('🚫 CODE-DUMP DETECTED: Agent pasted HTML/code in chat instead of using create_artifact');
+
+        if (!agentCalledTaskProgress) {
+          taskProgress.set(trackingKey, {
+            todos: [{ content: 'Save code as file', status: 'in_progress', activeForm: 'Saving code as proper file...' }],
+            updatedAt: Date.now()
+          });
+        }
+
+        currentMessages.push({ role: 'assistant', content: response.content });
+        currentMessages.push({ role: 'user', content:
+          `[SYSTEM — CODE DUMP VIOLATION]\n` +
+          `You just pasted raw HTML/code directly in chat. This is NOT acceptable.\n` +
+          `The client is a business owner who cannot read or use raw code.\n\n` +
+          `You MUST:\n` +
+          `1. Take the HTML/code you just wrote and save it using create_artifact as a .html file\n` +
+          `2. Then respond with ONLY a natural description of what you created + the <!-- file:filename.html --> tag\n` +
+          `3. Do NOT repeat the code in chat\n\n` +
+          `Fix this now.`
+        });
+        continue; // Force back into loop to save the file properly
+      }
 
       // ── CODE-ENFORCED VERIFICATION ─────────────────────────────────────
       // After the agent thinks it's done, check if there are unresolved failures.
