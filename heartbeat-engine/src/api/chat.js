@@ -3384,15 +3384,39 @@ async function loadHistory(_pool, sessionId) {
     const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
     const { data, error } = await sb
       .from('messages')
-      .select('role, content, created_at')
+      .select('role, content, files, created_at')
       .eq('session_id', sessionId)
       .order('created_at', { ascending: true })
       .limit(40);
     if (error) throw error;
-    return (data || []).map(msg => ({
-      role: msg.role === 'sarah' ? 'assistant' : msg.role,
-      content: msg.content
-    }));
+    return (data || []).map(msg => {
+      const role = msg.role === 'sarah' ? 'assistant' : msg.role;
+
+      // ── RECONSTRUCT IMAGE CONTEXT FOR HISTORY ──────────────────────────
+      // When a user uploaded images, files metadata contains _imageUrls.
+      // Reconstruct as Anthropic vision content blocks so the agent remembers
+      // what was in the images on subsequent turns (prevents context loss).
+      if (role === 'user' && msg.files && Array.isArray(msg.files)) {
+        const imageUrlEntry = msg.files.find(f => f._imageUrls);
+        if (imageUrlEntry && imageUrlEntry._imageUrls.length > 0) {
+          const contentBlocks = [];
+          // Add each image as a URL-based image block
+          for (const url of imageUrlEntry._imageUrls) {
+            contentBlocks.push({
+              type: 'image',
+              source: { type: 'url', url }
+            });
+          }
+          // Add the text content
+          if (msg.content) {
+            contentBlocks.push({ type: 'text', text: msg.content });
+          }
+          return { role, content: contentBlocks };
+        }
+      }
+
+      return { role, content: msg.content };
+    });
   } catch (err) {
     logger.error('loadHistory failed:', err.message);
     return [];
@@ -3804,10 +3828,17 @@ router.post('/upload', async (req, res) => {
       }
     }
 
+    // Build a history-safe user message that preserves image context for future turns.
+    // We store Supabase URLs so loadHistory can reconstruct vision content blocks.
+    const imageUrls = uploadedFiles.filter(u => u.supabaseUrl).map(u => u.supabaseUrl);
     const historyLabel = files.length
       ? `[Files: ${files.map(f => f.name).join(', ')}]${textMsg ? ' ' + textMsg : ''}`
       : textMsg;
     const filesMeta = files.map(f => ({ name: f.name, type: f.type }));
+    // Store image URLs in files metadata so loadHistory can reconstruct image blocks
+    if (imageUrls.length > 0) {
+      filesMeta.push({ _imageUrls: imageUrls });
+    }
     await saveMessages(null, sessionId, historyLabel, response, filesMeta, userId, agentConfig.agentId);
 
     // Generate smart title on first message (same as text endpoint)
