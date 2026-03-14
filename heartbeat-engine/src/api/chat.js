@@ -2991,18 +2991,18 @@ When a user asks you to edit, modify, or update something you previously created
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
 
+  // ── TOOL FAILURE TRACKING — counts failures per tool for smart retry/alternative logic ──
+  const toolFailureCounts = {}; // { toolName: count } — tracks how many times each tool has failed
+  const failedTools = [];       // Array of { name, error, round } — full failure log
+
   // Model selection — always use configured model unless explicitly overridden
-  // Previous auto-upgrade to Sonnet was triggering on simple "and" conjunctions,
-  // causing 10x cost spikes ($3/1M vs $0.80/1M). Now stays on Haiku by default.
   const messageText = Array.isArray(userMessage) ? userMessage.filter(b => b.type === 'text').map(b => b.text).join(' ') : userMessage;
   const chatModel = process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001';
   logger.info('Chat model selected', { model: chatModel });
 
   // ── PASSIVE TASK TRACKING — auto-populate Active Tasks panel ──────────
-  // Safety net: even if Sarah skips task_progress, the dashboard still shows live progress.
-  // If Sarah calls task_progress herself (Plan phase), her data overwrites this (hers is richer).
   const trackingKey = sessionId || 'default';
-  let sarahCalledTaskProgress = false; // flag: if true, don't overwrite with passive data
+  let agentCalledTaskProgress = false; // flag: if true, don't overwrite with passive data
   const taskLabel = (typeof messageText === 'string' ? messageText : 'Working on task').slice(0, 80);
   taskProgress.set(trackingKey, {
     todos: [
@@ -3011,7 +3011,143 @@ When a user asks you to edit, modify, or update something you previously created
     updatedAt: Date.now()
   });
 
-  for (let round = 0; round < 15; round++) {
+  // ── HELPER: execute a tool with automatic retry on failure ──────────────
+  // Retries once with same params before reporting failure to the agent.
+  // Skips retry for tools where retry doesn't make sense (task_progress, bloom_log).
+  const noRetryTools = new Set(['task_progress', 'bloom_log', 'bloom_take_screenshot', 'load_skill']);
+  async function executeWithRetry(toolName, toolInput, sid) {
+    let result;
+    try {
+      result = await executeTool(toolName, toolInput, sid);
+    } catch (toolError) {
+      logger.error(`Tool ${toolName} threw error (attempt 1):`, toolError.message);
+      result = { success: false, error: `Tool error: ${toolError.message}` };
+    }
+
+    // Check if tool failed and is retryable
+    const isFailed = result?.success === false || result?.error;
+    if (isFailed && !noRetryTools.has(toolName)) {
+      const priorFails = toolFailureCounts[toolName] || 0;
+      if (priorFails < 2) { // Only auto-retry if this tool hasn't already failed 2+ times
+        logger.info(`🔄 Auto-retrying ${toolName} (attempt 2, prior failures: ${priorFails})`);
+        // Update passive tracker to show retry
+        if (!agentCalledTaskProgress) {
+          const friendlyName = (n) => n.replace(/_/g, ' ').replace(/^bloom /, '');
+          const currentTodos = toolsUsed.map((t, i) => ({
+            content: friendlyName(t.name),
+            status: i < toolsUsed.length - 1 ? 'completed' : 'in_progress',
+            activeForm: `Retrying ${friendlyName(toolName)}...`
+          }));
+          taskProgress.set(trackingKey, { todos: currentTodos, updatedAt: Date.now() });
+        }
+        try {
+          result = await executeTool(toolName, toolInput, sid);
+        } catch (retryError) {
+          logger.error(`Tool ${toolName} threw error (attempt 2):`, retryError.message);
+          result = { success: false, error: `Tool error after retry: ${retryError.message}` };
+        }
+      }
+    }
+
+    // Track failures
+    const stillFailed = result?.success === false || result?.error;
+    if (stillFailed) {
+      toolFailureCounts[toolName] = (toolFailureCounts[toolName] || 0) + 1;
+      failedTools.push({ name: toolName, error: result?.error || 'Unknown error', round: toolsUsed.length });
+      logger.warn(`Tool ${toolName} failed (total failures: ${toolFailureCounts[toolName]})`, { error: result?.error });
+    }
+
+    return result;
+  }
+
+  // ── HELPER: build tool result block for the message context ────────────
+  function buildToolResultBlock(block, result) {
+    // Strip large binary data from context (keep URLs only)
+    const contextSafeResult = {...result};
+    if (contextSafeResult.image_base64) {
+      delete contextSafeResult.image_base64;
+    }
+    if (contextSafeResult.content && typeof contextSafeResult.content === 'string' && contextSafeResult.content.length > 50000) {
+      contextSafeResult.content = contextSafeResult.content.slice(0, 5000) + '... [truncated]';
+    }
+
+    const screenImage = result?.result?.image || result?.image;
+
+    // For task_progress: send the checklist as plain text
+    if (block.name === 'task_progress' && result?.inlineChecklist) {
+      return {
+        type: 'tool_result',
+        tool_use_id: block.id,
+        content: result.message + (result.inlineChecklist ? "\n\n" + result.inlineChecklist : "")
+      };
+    }
+    // For screenshots: pass image as vision content
+    if (block.name === 'bloom_take_screenshot' && screenImage) {
+      return {
+        type: 'tool_result',
+        tool_use_id: block.id,
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: screenImage } },
+          { type: 'text', text: `Screenshot captured: ${result?.result?.width}x${result?.result?.height}px. Analyze what you see and proceed.` }
+        ]
+      };
+    }
+
+    // For failed tools with 2+ failures: inject nudge to try alternative approach
+    const isFailed = result?.success === false || result?.error;
+    if (isFailed && (toolFailureCounts[block.name] || 0) >= 2) {
+      contextSafeResult._systemNote = `⚠️ This tool has failed ${toolFailureCounts[block.name]} times. Try a DIFFERENT approach or alternative tool instead of retrying the same thing.`;
+    }
+
+    return {
+      type: 'tool_result',
+      tool_use_id: block.id,
+      content: JSON.stringify(contextSafeResult)
+    };
+  }
+
+  // ── HELPER: log cost and write usage metrics ───────────────────────────
+  async function logCostAndUsage(round) {
+    const isHaiku = chatModel.includes('haiku');
+    const inputRate = isHaiku ? 0.80 : 3.00;
+    const outputRate = isHaiku ? 4.00 : 15.00;
+    const turnCostUSD = ((totalInputTokens / 1e6) * inputRate) + ((totalOutputTokens / 1e6) * outputRate);
+    logger.info(`💰 COST: $${turnCostUSD.toFixed(4)} this turn (${round + 1} API calls, ${totalInputTokens} in / ${totalOutputTokens} out, model: ${chatModel})`, {
+      cost: turnCostUSD, rounds: round + 1, inputTokens: totalInputTokens, outputTokens: totalOutputTokens, model: chatModel, tools: toolsUsed.map(t=>t.name).join(',')
+    });
+
+    try {
+      const { createClient } = await import('@supabase/supabase-js');
+      const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
+      const today = new Date().toISOString().split('T')[0];
+      const orgId = process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001';
+      const resolvedAgentId = agentConfig?.agentId || process.env.AGENT_UUID || 'c3000000-0000-0000-0000-000000000003';
+      const artifactsCreated = toolsUsed.filter(t => t.name === 'create_artifact' || t.name === 'image_generate').length;
+
+      await supabase.rpc('upsert_usage_metrics', {
+        p_org_id: orgId,
+        p_agent_id: resolvedAgentId,
+        p_date: today,
+        p_messages: 1,
+        p_tokens_input: totalInputTokens,
+        p_tokens_output: totalOutputTokens,
+        p_artifacts: artifactsCreated
+      });
+      logger.info('Usage metrics recorded', { agentId: resolvedAgentId, inputTokens: totalInputTokens, outputTokens: totalOutputTokens, model: chatModel, costUSD: turnCostUSD });
+    } catch (usageErr) {
+      logger.warn('Usage metrics write failed (non-critical):', usageErr.message);
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // MAIN AGENTIC LOOP — Plan → Execute → Verify → Retry
+  // Up to 15 rounds for the main execution, plus up to 3 extra for verification/fix
+  // ══════════════════════════════════════════════════════════════════════════
+  const MAX_EXEC_ROUNDS = 15;
+  const MAX_VERIFY_ROUNDS = 3;
+  let verificationAttempted = false;
+
+  for (let round = 0; round < MAX_EXEC_ROUNDS + MAX_VERIFY_ROUNDS; round++) {
     const response = await callAnthropicWithRetry({
       model: chatModel,
       max_tokens: 8192,
@@ -3032,84 +3168,157 @@ When a user asks you to edit, modify, or update something you previously created
         .map(b => b.text)
         .join('');
 
-      // Passive tracking: mark all steps complete + add verified on end_turn
-      if (!sarahCalledTaskProgress && toolsUsed.length > 0) {
+      // ── CODE-ENFORCED VERIFICATION ─────────────────────────────────────
+      // After the agent thinks it's done, check if there are unresolved failures.
+      // If tools failed and the agent didn't retry them, force a verification round.
+      // This only runs once — we don't want infinite verification loops.
+      if (!verificationAttempted && toolsUsed.length > 0 && round < MAX_EXEC_ROUNDS + MAX_VERIFY_ROUNDS - 1) {
+        const unresolvedFailures = failedTools.filter(f => {
+          // Check if this failure was later resolved by a successful call to the same tool
+          const laterSuccess = toolsUsed.find((t, i) =>
+            t.name === f.name && i > f.round &&
+            toolResults[i] && !toolResults[i]?.error && toolResults[i]?.success !== false
+          );
+          return !laterSuccess;
+        });
+
+        if (unresolvedFailures.length > 0) {
+          verificationAttempted = true;
+          logger.info(`🔍 VERIFICATION: ${unresolvedFailures.length} unresolved tool failures detected, forcing verification round`, {
+            failures: unresolvedFailures.map(f => `${f.name}: ${f.error}`).join('; ')
+          });
+
+          // Update passive tracker to show verification
+          if (!agentCalledTaskProgress) {
+            const friendlyName = (n) => n.replace(/_/g, ' ').replace(/^bloom /, '');
+            const steps = toolsUsed.map(t => ({
+              content: friendlyName(t.name),
+              status: 'completed',
+              activeForm: friendlyName(t.name)
+            }));
+            steps.push({ content: 'Verify and fix failures', status: 'in_progress', activeForm: 'Verifying and fixing failures...' });
+            taskProgress.set(trackingKey, { todos: steps, updatedAt: Date.now() });
+          }
+
+          // Inject the verification message and continue the loop
+          const failureList = unresolvedFailures.map(f => `- ${f.name}: ${f.error}`).join('\n');
+          currentMessages.push({ role: 'assistant', content: response.content });
+          currentMessages.push({ role: 'user', content:
+            `[SYSTEM — AUTOMATIC VERIFICATION]\n` +
+            `Before delivering to the user, the following tool failures were detected that you did NOT resolve:\n\n` +
+            `${failureList}\n\n` +
+            `You MUST either:\n` +
+            `1. Retry these failed tools with adjusted parameters\n` +
+            `2. Use alternative tools/approaches to accomplish the same goal\n` +
+            `3. If truly impossible, explain to the user EXACTLY what failed and why\n\n` +
+            `Do NOT deliver partial or broken results. Fix the issues now, then deliver.`
+          });
+          continue; // Go back into the loop for the fix round
+        }
+
+        // ── COMPLETENESS VERIFICATION (no failures, but did the agent do everything?) ──
+        // Only for multi-tool tasks where the request was complex enough to warrant checking
+        const originalRequest = typeof userMessage === 'string' ? userMessage :
+          (Array.isArray(userMessage) ? userMessage.filter(b => b.type === 'text').map(b => b.text).join(' ') : '');
+        const hasMultipleParts = /\band\b.*\band\b|,.*,.*and\b|then\b.*then\b|also\b.*also\b/i.test(originalRequest);
+
+        if (hasMultipleParts && toolsUsed.length >= 2) {
+          verificationAttempted = true;
+          logger.info('🔍 VERIFICATION: Multi-part request detected, running completeness check');
+
+          // Cheap verification sub-call — ask a fresh model instance to check completeness
+          try {
+            const verifyResult = await callAnthropicWithRetry({
+              model: chatModel,
+              max_tokens: 300,
+              messages: [{
+                role: 'user',
+                content: `You are a quality checker. The user asked: "${originalRequest.slice(0, 500)}"\n\n` +
+                  `The agent's response was: "${text.slice(0, 1000)}"\n\n` +
+                  `The agent used these tools: ${toolsUsed.map(t => t.name).join(', ')}\n\n` +
+                  `Did the agent complete EVERY part of the request? Reply with ONLY one of:\n` +
+                  `COMPLETE — if all parts were addressed\n` +
+                  `MISSING: [brief description of what was missed] — if anything was skipped`
+              }]
+            }, 2, agentClient);
+
+            if (verifyResult.usage) {
+              totalInputTokens += verifyResult.usage.input_tokens || 0;
+              totalOutputTokens += verifyResult.usage.output_tokens || 0;
+            }
+
+            const verifyText = verifyResult.content?.[0]?.text?.trim() || '';
+            if (verifyText.startsWith('MISSING')) {
+              logger.info(`🔍 VERIFICATION FAILED: ${verifyText}`);
+
+              if (!agentCalledTaskProgress) {
+                const friendlyName = (n) => n.replace(/_/g, ' ').replace(/^bloom /, '');
+                const steps = toolsUsed.map(t => ({
+                  content: friendlyName(t.name),
+                  status: 'completed',
+                  activeForm: friendlyName(t.name)
+                }));
+                steps.push({ content: 'Fix missing items', status: 'in_progress', activeForm: 'Fixing missing items...' });
+                taskProgress.set(trackingKey, { todos: steps, updatedAt: Date.now() });
+              }
+
+              // Re-enter the loop to fix what's missing
+              currentMessages.push({ role: 'assistant', content: response.content });
+              currentMessages.push({ role: 'user', content:
+                `[SYSTEM — COMPLETENESS CHECK]\n` +
+                `A quality check found you missed part of the request:\n${verifyText}\n\n` +
+                `Complete the missing items now before delivering to the user.`
+              });
+              continue; // Go back into the loop
+            } else {
+              logger.info('🔍 VERIFICATION PASSED: All parts complete');
+            }
+          } catch (verifyErr) {
+            // Verification sub-call failed — not critical, deliver what we have
+            logger.warn('Verification sub-call failed (non-critical):', verifyErr.message);
+          }
+        }
+      }
+
+      // ── FINALIZE: Update tracking, log costs, return response ──────────
+      if (!agentCalledTaskProgress && toolsUsed.length > 0) {
         const friendlyName = (n) => n.replace(/_/g, ' ').replace(/^bloom /, '');
         const steps = toolsUsed.map(t => ({
           content: friendlyName(t.name),
           status: 'completed',
           activeForm: friendlyName(t.name)
         }));
-        // Add a "Verified" step to mirror the Plan→Execute→Verify protocol
         steps.push({ content: 'Verify deliverables', status: 'completed', activeForm: 'Verified' });
         taskProgress.set(trackingKey, { todos: steps, updatedAt: Date.now() });
       }
-      // If no tools were used, clear the "Planning steps..." entry
       if (toolsUsed.length === 0) {
         taskProgress.delete(trackingKey);
       }
 
-      // Log tool usage for debugging — never append to user-facing response
       if (toolsUsed.length > 0) {
         const toolSummaryLog = toolsUsed.map(t => t.name).join(', ');
-        logger.info('Tools used this turn', { tools: toolSummaryLog, sessionId });
+        logger.info('Tools used this turn', { tools: toolSummaryLog, sessionId, failures: failedTools.length });
       }
 
-      // ── COST TRACKING — log actual $ spent per turn ──────────────────────
-      // Haiku: $0.80/$4.00 per 1M in/out — Sonnet: $3.00/$15.00 per 1M in/out
-      const isHaiku = chatModel.includes('haiku');
-      const inputRate = isHaiku ? 0.80 : 3.00;  // per 1M tokens
-      const outputRate = isHaiku ? 4.00 : 15.00;
-      const turnCostUSD = ((totalInputTokens / 1e6) * inputRate) + ((totalOutputTokens / 1e6) * outputRate);
-      logger.info(`💰 COST: $${turnCostUSD.toFixed(4)} this turn (${round + 1} API calls, ${totalInputTokens} in / ${totalOutputTokens} out, model: ${chatModel})`, {
-        cost: turnCostUSD, rounds: round + 1, inputTokens: totalInputTokens, outputTokens: totalOutputTokens, model: chatModel, tools: toolsUsed.map(t=>t.name).join(',')
-      });
-
-      // Write token usage to Supabase usage_metrics (fire and forget — never block response)
-      try {
-        const { createClient } = await import('@supabase/supabase-js');
-        const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
-        const today = new Date().toISOString().split('T')[0];
-        const orgId = process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001';
-        const resolvedAgentId = agentConfig?.agentId || process.env.AGENT_UUID || 'c3000000-0000-0000-0000-000000000003';
-        const artifactsCreated = toolsUsed.filter(t => t.name === 'create_artifact' || t.name === 'image_generate').length;
-
-        await supabase.rpc('upsert_usage_metrics', {
-          p_org_id: orgId,
-          p_agent_id: resolvedAgentId,
-          p_date: today,
-          p_messages: 1,
-          p_tokens_input: totalInputTokens,
-          p_tokens_output: totalOutputTokens,
-          p_artifacts: artifactsCreated
-        });
-        logger.info('Usage metrics recorded', { agentId: resolvedAgentId, inputTokens: totalInputTokens, outputTokens: totalOutputTokens, model: chatModel, costUSD: turnCostUSD });
-      } catch (usageErr) {
-        logger.warn('Usage metrics write failed (non-critical):', usageErr.message);
-      }
-
+      await logCostAndUsage(round);
       return text;
     }
 
+    // ── TOOL EXECUTION with auto-retry ───────────────────────────────────
     if (response.stop_reason === 'tool_use') {
       currentMessages.push({ role: 'assistant', content: response.content });
       const toolResultBlocks = [];
       for (const block of response.content) {
         if (block.type === 'tool_use') {
           toolsUsed.push({ name: block.name, input: block.input });
-          let result;
-          try {
-            result = await executeTool(block.name, block.input, sessionId);
-          } catch (toolError) {
-            logger.error(`Tool ${block.name} threw error:`, toolError.message);
-            result = { success: false, error: `Tool error: ${toolError.message}` };
-          }
+
+          // Execute with automatic retry on failure
+          const result = await executeWithRetry(block.name, block.input, sessionId);
           toolResults.push(result);
 
-          // Passive tracking: if Sarah called task_progress herself, stop overwriting
-          if (block.name === 'task_progress') sarahCalledTaskProgress = true;
-          // Update passive tracker with each tool call (unless Sarah is managing it)
-          if (!sarahCalledTaskProgress) {
+          // Passive tracking
+          if (block.name === 'task_progress') agentCalledTaskProgress = true;
+          if (!agentCalledTaskProgress) {
             const friendlyName = (n) => n.replace(/_/g, ' ').replace(/^bloom /, '');
             taskProgress.set(trackingKey, {
               todos: toolsUsed.map((t, i) => ({
@@ -3120,55 +3329,26 @@ When a user asks you to edit, modify, or update something you previously created
               updatedAt: Date.now()
             });
           }
-          
-          // Strip large binary data from context (keep URLs only)
-          const contextSafeResult = {...result};
-          if (contextSafeResult.image_base64) {
-            delete contextSafeResult.image_base64; // Remove 200KB+ base64 blob
-          }
-          if (contextSafeResult.content && typeof contextSafeResult.content === 'string' && contextSafeResult.content.length > 50000) {
-            contextSafeResult.content = contextSafeResult.content.slice(0, 5000) + '... [truncated]';
-          }
 
-          // For bloom_take_screenshot: pass image as vision content so Sarah can actually see it
-          const screenImage = result?.result?.image || result?.image;
-          // For task_progress: send the checklist as plain text so Sarah sees it clearly
-          if (block.name === 'task_progress' && result?.inlineChecklist) {
-            toolResultBlocks.push({
-              type: 'tool_result',
-              tool_use_id: block.id,
-              content: result.message + (result.inlineChecklist ? "\n\n" + result.inlineChecklist : "")
-            });
-          } else if (block.name === 'bloom_take_screenshot' && screenImage) {
-            toolResultBlocks.push({
-              type: 'tool_result',
-              tool_use_id: block.id,
-              content: [
-                { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: screenImage } },
-                { type: 'text', text: `Screenshot captured: ${result?.result?.width}x${result?.result?.height}px. Analyze what you see and proceed.` }
-              ]
-            });
-          } else {
-            toolResultBlocks.push({
-              type: 'tool_result',
-              tool_use_id: block.id,
-              content: JSON.stringify(contextSafeResult)
-            });
-          }
+          toolResultBlocks.push(buildToolResultBlock(block, result));
         }
       }
       currentMessages.push({ role: 'user', content: toolResultBlocks });
     }
   }
-  // If we got here, Sarah used all 10 rounds. Include what she did.
+
+  // ── EXHAUSTED ALL ROUNDS — return what we have ─────────────────────────
+  await logCostAndUsage(MAX_EXEC_ROUNDS + MAX_VERIFY_ROUNDS);
   if (toolsUsed.length > 0) {
     const toolSummary = toolsUsed.map(t => t.name).join(', ');
-    const lastResult = toolResults[toolResults.length - 1];
     const successfulArtifact = toolResults.find(r => r?.artifact?.name);
     if (successfulArtifact) {
       return `Done! I created "${successfulArtifact.artifact.name}" — you can find it in your Files tab. Let me know if you want any changes!`;
     }
-    return `I worked on this using ${toolSummary}. The task was more complex than expected — want me to try a different approach?`;
+    if (failedTools.length > 0) {
+      return `I worked on this using ${toolSummary}, but ran into ${failedTools.length} issue(s) along the way. Want me to try a different approach?`;
+    }
+    return `I worked on this using ${toolSummary}. The task was more complex than expected — want me to continue or try a different approach?`;
   }
   return "I got a bit carried away. Let me know if you need me to try a simpler approach.";
 }
