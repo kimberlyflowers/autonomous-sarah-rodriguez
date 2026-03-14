@@ -3368,12 +3368,15 @@ When a user asks you to edit, modify, or update something you previously created
         if (block.type === 'tool_use') {
           // ── AUTO-INJECT REFERENCE IMAGE for image_generate ──────────────
           // If the agent calls image_generate without reference_image_url but the
-          // conversation contains user-uploaded images, auto-inject the most recent
-          // uploaded image URL. This prevents the agent from silently dropping the
-          // reference and generating a completely different-looking person.
+          // conversation contains person-related images (user uploads OR previously
+          // generated images), auto-inject the best reference URL.
+          // Priority: 1) user-uploaded photo  2) last generated image from this session
+          // This prevents the agent from generating a completely different person when
+          // the user says "resize it" or "make a hero image of this guy".
           if (block.name === 'image_generate' && !block.input.reference_image_url && !block.input.reference_image_base64) {
-            // Scan conversation for user-uploaded image URLs (most recent first)
             let foundRefUrl = null;
+
+            // 1) Check for user-uploaded images in conversation (highest priority — the original reference)
             for (let mi = currentMessages.length - 1; mi >= 0; mi--) {
               const msg = currentMessages[mi];
               if (msg.role === 'user' && Array.isArray(msg.content)) {
@@ -3384,6 +3387,36 @@ When a user asks you to edit, modify, or update something you previously created
                 }
               }
             }
+
+            // 2) If no user upload found, check for previously generated image URLs from this session's tool results
+            if (!foundRefUrl) {
+              for (let ti = toolResults.length - 1; ti >= 0; ti--) {
+                const tr = toolResults[ti];
+                if (tr && tr.image_url && toolsUsed[ti]?.name === 'image_generate') {
+                  foundRefUrl = tr.image_url;
+                  logger.info('Using previously generated image as reference (no user upload found)');
+                  break;
+                }
+              }
+            }
+
+            // 3) Also check assistant message text for markdown image URLs from prior turns
+            if (!foundRefUrl) {
+              for (let mi = currentMessages.length - 1; mi >= 0; mi--) {
+                const msg = currentMessages[mi];
+                if (msg.role === 'assistant') {
+                  const text = typeof msg.content === 'string' ? msg.content :
+                    (Array.isArray(msg.content) ? msg.content.filter(b => b.type === 'text').map(b => b.text).join(' ') : '');
+                  const imgMatch = text.match(/!\[.*?\]\((https:\/\/[^\s)]+\.png[^\s)]*)\)/);
+                  if (imgMatch) {
+                    foundRefUrl = imgMatch[1];
+                    logger.info('Extracted reference image URL from assistant markdown response');
+                    break;
+                  }
+                }
+              }
+            }
+
             if (foundRefUrl) {
               block.input.reference_image_url = foundRefUrl;
               if (!block.input.engine || block.input.engine === 'auto') {
