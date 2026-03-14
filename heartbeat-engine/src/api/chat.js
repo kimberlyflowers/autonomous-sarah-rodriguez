@@ -3402,8 +3402,8 @@ router.patch('/sessions/:id/title', async (req, res) => {
 router.post('/message', async (req, res) => {
   // Track which skills the agent loads during this turn — shown as badges in the dashboard
   let skillsUsedThisTurn = [];
+  const { message, sessionId = 'session-' + Date.now(), agentId } = req.body || {};
   try {
-    const { message, sessionId = 'session-' + Date.now(), agentId } = req.body;
     if (!message?.trim()) return res.status(400).json({ error: 'Message required' });
 
     const userId = await getUserId(req);
