@@ -115,9 +115,15 @@ export const imageToolExecutors = {
     const background = params.background || 'opaque';
 
     // Engine selection logic
+    const hasReferenceImage = !!(params.reference_image_url || params.reference_image_base64);
     let useEngine = engine;
     if (engine === 'auto') {
-      if (getOpenAIKey()) {
+      if (hasReferenceImage && getGeminiKey()) {
+        // Reference image provided → prefer Gemini (Nano Banana) for character consistency
+        // GPT generation endpoint doesn't support reference images natively
+        useEngine = 'gemini';
+        logger.info('Auto-routing to Gemini for character consistency (reference image provided)');
+      } else if (getOpenAIKey()) {
         useEngine = 'gpt';
       } else if (getGeminiKey()) {
         useEngine = 'gemini';
@@ -128,6 +134,19 @@ export const imageToolExecutors = {
 
     if (useEngine === 'gpt') {
       try {
+        // If reference image provided with GPT, use edit endpoint (generation doesn't support references)
+        if (hasReferenceImage) {
+          logger.info('GPT engine with reference image → using edit endpoint for character consistency');
+          const refUrl = params.reference_image_url;
+          const refB64 = params.reference_image_base64;
+          const editPrompt = `Generate a new image based on this reference person. ${prompt}. Keep the person's face, hair, skin tone, ethnicity, and distinguishing features exactly the same.`;
+          const result = await editWithGPTImage(editPrompt, refUrl, refB64, size, quality);
+          if (result.success) return result;
+          // GPT edit failed with reference — fall back to Gemini which handles this natively
+          logger.warn('GPT edit with reference failed, trying Gemini', { error: result.error });
+          if (getGeminiKey()) return await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64);
+          return result;
+        }
         const result = await generateWithGPTImage(prompt, size, quality, background);
         if (result.success) return result;
         // OpenAI failed — try Gemini if available
