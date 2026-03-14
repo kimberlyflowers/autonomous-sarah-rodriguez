@@ -203,6 +203,7 @@ function useSarahChat() {
   const [agents,setAgents] = useState([]);
   const [currentAgentId,setCurrentAgentId] = useState(null);
   const [currentAgent,setCurrentAgent] = useState(null);
+  const agentIdRef = useRef(null); // Always-current agent ID for use in closures/intervals
 
   // Load available agents
   const fetchAgents = async () => {
@@ -215,6 +216,7 @@ function useSarahChat() {
       if(list.length > 0 && !currentAgentId) {
         setCurrentAgentId(list[0].id);
         setCurrentAgent(list[0]);
+        agentIdRef.current = list[0].id;
       }
     } catch {}
   };
@@ -223,6 +225,7 @@ function useSarahChat() {
   const switchAgent = (agentId) => {
     const a = agents.find(x => x.id === agentId);
     if(a) {
+      agentIdRef.current = agentId; // Update ref FIRST so intervals/callbacks use new agent immediately
       setCurrentAgentId(agentId);
       setCurrentAgent(a);
       // Clear everything immediately — no stale data from previous agent
@@ -234,11 +237,12 @@ function useSarahChat() {
     }
   };
 
-  // Load session list on mount
+  // Load session list on mount — uses agentIdRef to avoid stale closures in intervals/callbacks
   const fetchSessions = async (agentId) => {
     try {
-      const aid = agentId || currentAgentId;
-      const url = aid ? `/api/chat/sessions?agentId=${aid}` : "/api/chat/sessions";
+      const aid = agentId || agentIdRef.current || currentAgentId;
+      if(!aid) return; // Don't fetch without an agent ID — would return all agents' sessions
+      const url = `/api/chat/sessions?agentId=${aid}`;
       const r = await fetch(url);
       const d = await r.json();
       const list = d.sessions || [];
