@@ -3626,7 +3626,7 @@ router.get('/sessions', async (req, res) => {
       const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
       const supabase = createClient(supabaseUrl, supabaseKey);
 
-      const userId = process.env.BLOOM_OWNER_USER_ID || '823e2fb5-2f8f-4279-9c84-c8f4bf78bcce'; // Kimberly's UUID
+      const userId = await getUserId(req); // Multi-tenant: resolves from JWT, falls back to env var
 
       let query = supabase
         .from('sessions')
@@ -3664,7 +3664,7 @@ router.get('/sessions', async (req, res) => {
   try {
     const { createClient } = await import('@supabase/supabase-js');
     const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-    const resolvedUserId = process.env.BLOOM_OWNER_USER_ID || '823e2fb5-2f8f-4279-9c84-c8f4bf78bcce';
+    const resolvedUserId = await getUserId(req); // Multi-tenant: resolves from JWT
     let query = sb
       .from('sessions')
       .select('id, title, created_at, updated_at, agent_id')
