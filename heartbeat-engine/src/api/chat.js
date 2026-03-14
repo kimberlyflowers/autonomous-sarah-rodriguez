@@ -2991,15 +2991,12 @@ When a user asks you to edit, modify, or update something you previously created
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
 
-  // Detect multi-step requests — use Sonnet to preserve context across tool calls
-  const multiStepKeywords = /\b(and (then|also|after|send|text|email|post|share|save|upload)|then (send|text|email|post|share|save)|after (that|you|creating|making|generating)|also (send|text|email)|as well|too\b.*\b(send|text|email))/i;
+  // Model selection — always use configured model unless explicitly overridden
+  // Previous auto-upgrade to Sonnet was triggering on simple "and" conjunctions,
+  // causing 10x cost spikes ($3/1M vs $0.80/1M). Now stays on Haiku by default.
   const messageText = Array.isArray(userMessage) ? userMessage.filter(b => b.type === 'text').map(b => b.text).join(' ') : userMessage;
-  const isMultiStep = multiStepKeywords.test(messageText) || messageText.split(/\band\b/i).length > 2;
-  const chatModel = isMultiStep
-    ? 'claude-sonnet-4-5-20250929'
-    : (process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001');
-
-  if (isMultiStep) logger.info('Multi-step request detected — using Sonnet for full context retention');
+  const chatModel = process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001';
+  logger.info('Chat model selected', { model: chatModel });
 
   // ── PASSIVE TASK TRACKING — auto-populate Active Tasks panel ──────────
   // Safety net: even if Sarah skips task_progress, the dashboard still shows live progress.
@@ -3058,25 +3055,35 @@ When a user asks you to edit, modify, or update something you previously created
         logger.info('Tools used this turn', { tools: toolSummaryLog, sessionId });
       }
 
+      // ── COST TRACKING — log actual $ spent per turn ──────────────────────
+      // Haiku: $0.80/$4.00 per 1M in/out — Sonnet: $3.00/$15.00 per 1M in/out
+      const isHaiku = chatModel.includes('haiku');
+      const inputRate = isHaiku ? 0.80 : 3.00;  // per 1M tokens
+      const outputRate = isHaiku ? 4.00 : 15.00;
+      const turnCostUSD = ((totalInputTokens / 1e6) * inputRate) + ((totalOutputTokens / 1e6) * outputRate);
+      logger.info(`💰 COST: $${turnCostUSD.toFixed(4)} this turn (${round + 1} API calls, ${totalInputTokens} in / ${totalOutputTokens} out, model: ${chatModel})`, {
+        cost: turnCostUSD, rounds: round + 1, inputTokens: totalInputTokens, outputTokens: totalOutputTokens, model: chatModel, tools: toolsUsed.map(t=>t.name).join(',')
+      });
+
       // Write token usage to Supabase usage_metrics (fire and forget — never block response)
       try {
         const { createClient } = await import('@supabase/supabase-js');
         const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
         const today = new Date().toISOString().split('T')[0];
         const orgId = process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001';
-        const agentId = process.env.AGENT_UUID || 'c3000000-0000-0000-0000-000000000003';
+        const resolvedAgentId = agentConfig?.agentId || process.env.AGENT_UUID || 'c3000000-0000-0000-0000-000000000003';
         const artifactsCreated = toolsUsed.filter(t => t.name === 'create_artifact' || t.name === 'image_generate').length;
 
         await supabase.rpc('upsert_usage_metrics', {
           p_org_id: orgId,
-          p_agent_id: agentId,
+          p_agent_id: resolvedAgentId,
           p_date: today,
           p_messages: 1,
           p_tokens_input: totalInputTokens,
           p_tokens_output: totalOutputTokens,
           p_artifacts: artifactsCreated
         });
-        logger.info('Usage metrics recorded', { inputTokens: totalInputTokens, outputTokens: totalOutputTokens, model: chatModel });
+        logger.info('Usage metrics recorded', { agentId: resolvedAgentId, inputTokens: totalInputTokens, outputTokens: totalOutputTokens, model: chatModel, costUSD: turnCostUSD });
       } catch (usageErr) {
         logger.warn('Usage metrics write failed (non-critical):', usageErr.message);
       }
