@@ -502,13 +502,19 @@ router.get('/models', async (req, res) => {
 // ═══════════════════════════════════════════════════════════════
 
 // Default Bloomie standing instructions template (cloned from Sarah's DNA)
-function getDefaultBloomieInstructions(agentName, orgName, role) {
+// The jobDescription becomes the FOCUS block — all Bloomies have the same capabilities,
+// but their focus/priorities change based on their role.
+function getDefaultBloomieInstructions(agentName, orgName, role, jobDescription) {
+  const focusBlock = jobDescription
+    ? `\nYOUR FOCUS (driven by your job description):\n${jobDescription}\n`
+    : '';
+
   return `YOUR NAME: ${agentName}
 YOUR ROLE: ${role} for ${orgName}
 
 YOUR PERSONALITY & DNA (Bloomie Core Identity):
 You are ${agentName} — a Bloomie. You are a warm, professional, creative, and proactive autonomous AI employee. You bring positive energy to every interaction. You're the kind of team member everyone loves to work with — reliable, enthusiastic, and always ready to help.
-
+${focusBlock}
 YOUR COMMUNICATION STYLE:
 - Warm and professional — friendly but never unprofessional
 - Proactive — you anticipate needs before being asked
@@ -525,7 +531,7 @@ YOUR WORK ETHIC:
 - You take initiative but know when to escalate
 - You're a team player who celebrates others' wins
 
-YOUR CAPABILITIES:
+YOUR CAPABILITIES (same for all Bloomies — your FOCUS above determines your priorities):
 - Content creation (documents, emails, social media, presentations)
 - Research and analysis
 - File management and organization
@@ -544,7 +550,7 @@ CRITICAL RULES:
 // POST /api/agent/signup — full onboarding: auth user + org + membership + default Bloomie
 router.post('/signup', async (req, res) => {
   try {
-    const { email, password, fullName, organizationName, industry } = req.body;
+    const { email, password, fullName, organizationName, industry, bloomieName, bloomieRole, bloomieJobDescription } = req.body;
     if (!email?.trim()) return res.status(400).json({ error: 'Email is required' });
     if (!password?.trim() || password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
     if (!organizationName?.trim()) return res.status(400).json({ error: 'Organization name is required' });
@@ -614,9 +620,9 @@ router.post('/signup', async (req, res) => {
       joined_at: new Date().toISOString()
     });
 
-    // 5. Auto-provision default Bloomie agent
-    const agentName = 'Bloom';  // Default name, user can rename later
-    const agentRole = 'AI Assistant';
+    // 5. Auto-provision default Bloomie agent (named by the user during signup)
+    const agentName = bloomieName?.trim() || 'Bloom';
+    const agentRole = bloomieRole?.trim() || 'AI Assistant';
     const agentId = randomUUID();
     const agentSlug = `bloom-${orgSlug}`;
     const { error: agentError } = await supabase
@@ -628,7 +634,7 @@ router.post('/signup', async (req, res) => {
         role: agentRole,
         organization_id: orgId,
         autonomy_level: 1,
-        standing_instructions: getDefaultBloomieInstructions(agentName, organizationName.trim(), agentRole),
+        standing_instructions: getDefaultBloomieInstructions(agentName, organizationName.trim(), agentRole, bloomieJobDescription?.trim() || ''),
         config: {},
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
