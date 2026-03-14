@@ -15,6 +15,43 @@ async function getSupabase() {
   return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
 }
 
+// ── Multi-tenant helper: extract user ID from JWT, then resolve their org ──
+function extractUserId(req) {
+  try {
+    const authHeader = req.headers['authorization'];
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.slice(7);
+      const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
+      if (payload.sub) return payload.sub;
+    }
+  } catch (e) { /* fall through */ }
+  return null;
+}
+
+async function getUserOrgId(req) {
+  const userId = extractUserId(req);
+  if (!userId) return BLOOM_ORG_ID; // unauthenticated fallback
+
+  try {
+    const supabase = await getSupabase();
+    const { data, error } = await supabase
+      .from('organization_members')
+      .select('organization_id')
+      .eq('user_id', userId)
+      .limit(1)
+      .single();
+
+    if (data?.organization_id) {
+      logger.info('Resolved org from JWT', { userId: userId.slice(0, 8), orgId: data.organization_id.slice(0, 8) });
+      return data.organization_id;
+    }
+    if (error) logger.warn('Org lookup failed, using default', { userId: userId.slice(0, 8), error: error.message });
+  } catch (e) {
+    logger.warn('getUserOrgId error', { error: e.message });
+  }
+  return BLOOM_ORG_ID;
+}
+
 // Helper: frequency → cron expression
 function frequencyToCron(frequency, runTime = '09:00') {
   const [hour, minute] = (runTime || '09:00').split(':').map(Number);
@@ -180,7 +217,8 @@ router.post('/create', async (req, res) => {
     if (!role?.trim()) return res.status(400).json({ error: 'Agent role is required' });
 
     const supabase = await getSupabase();
-    const orgId = organizationId || BLOOM_ORG_ID;
+    // Multi-tenant: resolve org from JWT first, then body param, then default
+    const orgId = await getUserOrgId(req) || organizationId || BLOOM_ORG_ID;
 
     // Generate a new UUID and URL-friendly slug for the agent
     const { randomUUID } = await import('crypto');
@@ -240,11 +278,12 @@ escalated. Your logs are how trust is built.`;
   }
 });
 
-// GET /api/agent/list — list all agents in the organization
+// GET /api/agent/list — list all agents in the authenticated user's organization
 router.get('/list', async (req, res) => {
   try {
     const supabase = await getSupabase();
-    const orgId = req.query.organizationId || BLOOM_ORG_ID;
+    // Multi-tenant: resolve org from JWT → organization_members, fallback to query param or default
+    const orgId = await getUserOrgId(req) || req.query.organizationId || BLOOM_ORG_ID;
 
     const { data, error } = await supabase
       .from('agents')
@@ -288,10 +327,11 @@ router.get('/tasks/runs', async (req, res) => {
 router.get('/tasks', async (req, res) => {
   try {
     const supabase = await getSupabase();
+    const targetAgentId = req.query.agentId || SARAH_AGENT_ID;
     const { data, error } = await supabase
       .from('scheduled_tasks')
       .select('*')
-      .eq('agent_id', SARAH_AGENT_ID)
+      .eq('agent_id', targetAgentId)
       .order('enabled', { ascending: false })
       .order('created_at', { ascending: false });
 
@@ -454,6 +494,167 @@ router.get('/models', async (req, res) => {
   } catch (error) {
     logger.error('Get models error', { error: error.message });
     return res.status(500).json({ error: 'Failed to load model config' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// MULTI-TENANT ONBOARDING — signup → org → default Bloomie agent
+// ═══════════════════════════════════════════════════════════════
+
+// Default Bloomie standing instructions template (cloned from Sarah's DNA)
+function getDefaultBloomieInstructions(agentName, orgName, role) {
+  return `YOUR NAME: ${agentName}
+YOUR ROLE: ${role} for ${orgName}
+
+YOUR PERSONALITY & DNA (Bloomie Core Identity):
+You are ${agentName} — a Bloomie. You are a warm, professional, creative, and proactive autonomous AI employee. You bring positive energy to every interaction. You're the kind of team member everyone loves to work with — reliable, enthusiastic, and always ready to help.
+
+YOUR COMMUNICATION STYLE:
+- Warm and professional — friendly but never unprofessional
+- Proactive — you anticipate needs before being asked
+- Clear and concise — you respect people's time
+- Creative — you bring fresh ideas and perspectives
+- Thorough — you don't cut corners or make assumptions
+- Honest — if you're unsure, you say so and escalate
+
+YOUR WORK ETHIC:
+- You treat every task as if it's the most important thing on your plate
+- You follow through on commitments and meet deadlines
+- You document your work so others can follow your process
+- You're always learning and improving your skills
+- You take initiative but know when to escalate
+- You're a team player who celebrates others' wins
+
+YOUR CAPABILITIES:
+- Content creation (documents, emails, social media, presentations)
+- Research and analysis
+- File management and organization
+- Task management and scheduling
+- Communication and outreach
+- Creative problem-solving
+
+CRITICAL RULES:
+- NEVER guess — if unsure, ask or escalate
+- ALWAYS be transparent about what you can and cannot do
+- ALWAYS protect confidential information
+- ALWAYS follow the organization's guidelines and brand voice
+- Log everything: what you did, what you chose not to do (and why), and what you escalated`;
+}
+
+// POST /api/agent/signup — full onboarding: auth user + org + membership + default Bloomie
+router.post('/signup', async (req, res) => {
+  try {
+    const { email, password, fullName, organizationName, industry } = req.body;
+    if (!email?.trim()) return res.status(400).json({ error: 'Email is required' });
+    if (!password?.trim() || password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    if (!organizationName?.trim()) return res.status(400).json({ error: 'Organization name is required' });
+
+    const supabase = await getSupabase();
+    const { randomUUID } = await import('crypto');
+
+    // 1. Create auth user in Supabase Auth
+    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+      email: email.trim().toLowerCase(),
+      password: password,
+      email_confirm: true, // auto-confirm for now
+      user_metadata: { full_name: fullName?.trim() || '' }
+    });
+
+    if (authError) {
+      logger.error('Signup auth error', { error: authError.message });
+      return res.status(400).json({ error: authError.message });
+    }
+
+    const userId = authData.user.id;
+    logger.info('Auth user created', { userId: userId.slice(0, 8), email: email.trim() });
+
+    // 2. Create user profile in public.users
+    const { error: userError } = await supabase
+      .from('users')
+      .insert({
+        id: userId,
+        email: email.trim().toLowerCase(),
+        full_name: fullName?.trim() || '',
+        timezone: 'America/Chicago',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      });
+    if (userError) logger.warn('Users table insert issue (may already exist)', { error: userError.message });
+
+    // 3. Create organization
+    const orgId = randomUUID();
+    const orgSlug = organizationName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const { error: orgError } = await supabase
+      .from('organizations')
+      .insert({
+        id: orgId,
+        name: organizationName.trim(),
+        slug: orgSlug,
+        plan: 'starter',
+        industry: industry?.trim() || null,
+        owner_email: email.trim().toLowerCase(),
+        owner_name: fullName?.trim() || '',
+        bloomshield_connected: true,
+        bloomshield_auto_created: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      });
+
+    if (orgError) {
+      logger.error('Org creation error', { error: orgError.message });
+      return res.status(500).json({ error: 'Failed to create organization: ' + orgError.message });
+    }
+
+    // 4. Link user to org in organization_members
+    await supabase.from('organization_members').insert({
+      id: randomUUID(),
+      organization_id: orgId,
+      user_id: userId,
+      role: 'owner',
+      joined_at: new Date().toISOString()
+    });
+
+    // 5. Auto-provision default Bloomie agent
+    const agentName = 'Bloom';  // Default name, user can rename later
+    const agentRole = 'AI Assistant';
+    const agentId = randomUUID();
+    const agentSlug = `bloom-${orgSlug}`;
+    const { error: agentError } = await supabase
+      .from('agents')
+      .insert({
+        id: agentId,
+        slug: agentSlug,
+        name: agentName,
+        role: agentRole,
+        organization_id: orgId,
+        autonomy_level: 1,
+        standing_instructions: getDefaultBloomieInstructions(agentName, organizationName.trim(), agentRole),
+        config: {},
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      });
+
+    if (agentError) {
+      logger.error('Auto-provision agent error', { error: agentError.message });
+      // Non-fatal — user can create agents manually
+    }
+
+    logger.info('Full onboarding complete', {
+      userId: userId.slice(0, 8),
+      orgId: orgId.slice(0, 8),
+      agentId: agentId.slice(0, 8),
+      orgName: organizationName.trim()
+    });
+
+    return res.json({
+      success: true,
+      user: { id: userId, email: email.trim() },
+      organization: { id: orgId, name: organizationName.trim(), slug: orgSlug },
+      agent: { id: agentId, name: agentName, role: agentRole }
+    });
+  } catch (error) {
+    logger.error('Signup error', { error: error.message });
+    return res.status(500).json({ error: 'Signup failed: ' + error.message });
   }
 });
 

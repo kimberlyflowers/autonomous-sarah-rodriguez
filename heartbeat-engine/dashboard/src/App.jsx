@@ -205,10 +205,11 @@ function useSarahChat() {
   const [currentAgent,setCurrentAgent] = useState(null);
   const agentIdRef = useRef(null); // Always-current agent ID for use in closures/intervals
 
-  // Load available agents
+  // Load available agents (multi-tenant: sends JWT so backend resolves org)
   const fetchAgents = async () => {
     try {
-      const r = await fetch("/api/agent/list");
+      const headers = await getAuthHeaders();
+      const r = await fetch("/api/agent/list", { headers });
       const d = await r.json();
       const list = d.agents || [];
       setAgents(list);
@@ -243,7 +244,8 @@ function useSarahChat() {
       const aid = agentId || agentIdRef.current || currentAgentId;
       if(!aid) return; // Don't fetch without an agent ID — would return all agents' sessions
       const url = `/api/chat/sessions?agentId=${aid}`;
-      const r = await fetch(url);
+      const headers = await getAuthHeaders();
+      const r = await fetch(url, { headers });
       const d = await r.json();
       const list = d.sessions || [];
       setSessions(list);
