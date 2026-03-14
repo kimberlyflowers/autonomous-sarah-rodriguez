@@ -298,9 +298,10 @@ function useSarahChat() {
     if(!text.trim()) return false;
     if(!sid.current) { const id="session-"+Date.now(); sid.current=id; setCurrentSessionId(id); }
     const ts = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
-    setMessages(p=>[...p,{id:Date.now(),b:false,t:text,tm:ts}]);
+    const userMsgId = Date.now();
+    setMessages(p=>[...p,{id:userMsgId,b:false,t:text,tm:ts}]);
     setLoading(true);
-    
+
     // Detect if this is a WORK task or just casual chat
     // Direct work keywords
     const hasWorkVerbs = /\b(write|create|build|make|draft|design|generate|research|check|find|search|send|schedule|update|look up|go to|navigate|analyze|summarize|review|edit|fix|compile|prepare|pull|set up|book|cancel|redo|retry|try again|do it|do that|go ahead|start|finish|continue|proceed|run|execute|launch|publish)\b/i.test(text);
@@ -310,14 +311,15 @@ function useSarahChat() {
     // Check if recent messages suggest we're in a work context
     const recentMsgs = messages.slice(-6);
     const hasRecentWork = recentMsgs.some(m => m.b && (m.isAck || m.skill || m.hasArtifact || /working on|deliverable|created|building|generating/i.test(m.t)));
-    
+
     const isWorkTask = hasWorkVerbs || hasWorkNouns || (isContinuation && hasRecentWork);
-    
+
     // For work tasks: show instant acknowledgment
+    // IMPORTANT: ackId must be different from userMsgId to prevent filter(m=>m.id!==ackId) from also removing the user message
     let ackId = null;
     if(isWorkTask){
       const ackText = generateAck(text);
-      ackId = Date.now();
+      ackId = userMsgId + 1; // Guaranteed different from user message ID
       setMessages(p=>[...p,{id:ackId,b:true,t:ackText,tm:ts,isAck:true}]);
     }
     
