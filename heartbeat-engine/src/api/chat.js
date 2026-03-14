@@ -3366,6 +3366,33 @@ When a user asks you to edit, modify, or update something you previously created
       const toolResultBlocks = [];
       for (const block of response.content) {
         if (block.type === 'tool_use') {
+          // ── AUTO-INJECT REFERENCE IMAGE for image_generate ──────────────
+          // If the agent calls image_generate without reference_image_url but the
+          // conversation contains user-uploaded images, auto-inject the most recent
+          // uploaded image URL. This prevents the agent from silently dropping the
+          // reference and generating a completely different-looking person.
+          if (block.name === 'image_generate' && !block.input.reference_image_url && !block.input.reference_image_base64) {
+            // Scan conversation for user-uploaded image URLs (most recent first)
+            let foundRefUrl = null;
+            for (let mi = currentMessages.length - 1; mi >= 0; mi--) {
+              const msg = currentMessages[mi];
+              if (msg.role === 'user' && Array.isArray(msg.content)) {
+                const imgBlock = msg.content.find(b => b.type === 'image' && b.source?.type === 'url');
+                if (imgBlock) {
+                  foundRefUrl = imgBlock.source.url;
+                  break;
+                }
+              }
+            }
+            if (foundRefUrl) {
+              block.input.reference_image_url = foundRefUrl;
+              if (!block.input.engine || block.input.engine === 'auto') {
+                block.input.engine = 'gemini';
+              }
+              logger.info('Auto-injected reference_image_url into image_generate', { url: foundRefUrl.slice(0, 80) });
+            }
+          }
+
           toolsUsed.push({ name: block.name, input: block.input });
 
           // Execute with automatic retry on failure
