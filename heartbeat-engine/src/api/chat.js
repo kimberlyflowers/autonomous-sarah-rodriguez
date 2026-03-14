@@ -1767,6 +1767,121 @@ After getting the page list, you can:
       },
       required: ["sessionId"]
     }
+  },
+  // ── LEAD SCRAPER TOOLS ──────────────────────────────────────────────────
+  {
+    name: "scraper_check_access",
+    description: "Check what scraper tools the owner's plan includes and what upgrades are available. CALL THIS FIRST before any scraping.",
+    input_schema: {
+      type: "object",
+      properties: {
+        org_id: { type: "string", description: "Organization ID of the Bloomie owner" },
+        plan_tier: { type: "string", enum: ["free", "lead_booster", "lead_pro"], description: "Owner's current plan tier", default: "free" }
+      },
+      required: ["org_id"]
+    }
+  },
+  {
+    name: "scraper_scrape_url",
+    description: "Universal web scraper — extract structured data from ANY webpage. Give it a URL and column names describing what to extract. Works like Thunderbit: auto-detects tables, listings, cards, and repeated structures. Best for: directory pages, search results, product listings, review pages. Limitation: won't work on JavaScript-rendered pages.",
+    input_schema: {
+      type: "object",
+      properties: {
+        url: { type: "string", description: "The webpage URL to scrape" },
+        columns: { type: "array", items: { type: "string" }, description: "Column names for what to extract, e.g. ['Business Name', 'Phone', 'Address', 'Email']" },
+        org_id: { type: "string", description: "Organization ID" },
+        plan_tier: { type: "string", enum: ["free", "lead_booster", "lead_pro"], default: "free" },
+        limit: { type: "number", description: "Max results (default 30)", default: 30 },
+        offset: { type: "number", description: "Pagination offset", default: 0 }
+      },
+      required: ["url", "columns", "org_id"]
+    }
+  },
+  {
+    name: "scraper_search_businesses",
+    description: "Search Yellowpages and/or Yelp for local businesses by category and location. Returns business names, phone numbers, addresses, categories, ratings. FREE — no API keys needed. Pair with scraper_search_apollo (Lead Booster) to get verified emails for these businesses.",
+    input_schema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Business type, e.g. 'restaurants', 'plumbers', 'hair salons'" },
+        location: { type: "string", description: "City/state/zip, e.g. '78228' or 'San Antonio, TX'" },
+        source: { type: "string", enum: ["yellowpages", "yelp", "both"], description: "Which directory", default: "both" },
+        org_id: { type: "string", description: "Organization ID" },
+        plan_tier: { type: "string", enum: ["free", "lead_booster", "lead_pro"], default: "free" },
+        limit: { type: "number", default: 30 },
+        offset: { type: "number", default: 0 }
+      },
+      required: ["query", "location", "org_id"]
+    }
+  },
+  {
+    name: "scraper_search_facebook_groups",
+    description: "Find Facebook groups and extract member data. Groups with 10K-300K+ local members are gold for B2C leads. Returns member names, workplaces, locations, profile links. IMPORTANT: Facebook requires the user to be logged in.",
+    input_schema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Group search term, e.g. 'San Antonio restaurants'" },
+        group_url: { type: "string", description: "Direct URL of a specific Facebook group (optional)" },
+        org_id: { type: "string", description: "Organization ID" },
+        plan_tier: { type: "string", enum: ["free", "lead_booster", "lead_pro"], default: "free" },
+        limit: { type: "number", default: 30 },
+        offset: { type: "number", default: 0 }
+      },
+      required: ["query", "org_id"]
+    }
+  },
+  {
+    name: "scraper_search_google_maps",
+    description: "Search Google Maps for businesses via Outscraper API. Returns verified phone, address, website, rating, reviews, hours. Google Maps has the most comprehensive local business database. 🔒 Requires Lead Booster plan ($29/month).",
+    input_schema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Business type to search" },
+        location: { type: "string", description: "City/state/zip code" },
+        org_id: { type: "string", description: "Organization ID" },
+        plan_tier: { type: "string", enum: ["free", "lead_booster", "lead_pro"], default: "free" },
+        limit: { type: "number", default: 30 },
+        offset: { type: "number", default: 0 }
+      },
+      required: ["query", "location", "org_id"]
+    }
+  },
+  {
+    name: "scraper_search_apollo",
+    description: "Search Apollo.io's database of 210M+ contacts for verified emails, phone numbers, job titles, and company info. The gold standard for B2B contact data. 🔒 Requires Lead Booster plan ($29/month).",
+    input_schema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Person name, job title, or company to search" },
+        location: { type: "string", description: "City/state filter" },
+        job_title: { type: "string", description: "Job title filter, e.g. 'CEO', 'Marketing Manager'" },
+        industry: { type: "string", description: "Industry filter, e.g. 'Food & Beverages'" },
+        company_size: { type: "string", enum: ["1-10", "11-50", "51-200", "201-500", "501-1000", "1001+"], description: "Employee count range" },
+        org_id: { type: "string", description: "Organization ID" },
+        plan_tier: { type: "string", enum: ["free", "lead_booster", "lead_pro"], default: "free" },
+        limit: { type: "number", default: 30 },
+        offset: { type: "number", default: 0 }
+      },
+      required: ["query", "org_id"]
+    }
+  },
+  {
+    name: "scraper_search_linkedin",
+    description: "Search LinkedIn profiles via PhantomBuster. Returns up to 75 data points per person: name, headline, company, title, location, experience, education, email. 🔒 Requires Lead Pro plan ($99/month). Searches run async — may take 30-60 seconds.",
+    input_schema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Person name, company, or keyword" },
+        location: { type: "string", description: "Location filter" },
+        job_title: { type: "string", description: "Job title filter" },
+        company: { type: "string", description: "Company name filter" },
+        org_id: { type: "string", description: "Organization ID" },
+        plan_tier: { type: "string", enum: ["free", "lead_booster", "lead_pro"], default: "free" },
+        limit: { type: "number", default: 30 },
+        offset: { type: "number", default: 0 }
+      },
+      required: ["query", "org_id"]
+    }
   }
 ];
 
@@ -1808,6 +1923,10 @@ function checkToolReadiness(toolName) {
   if (toolName === 'web_browse' || toolName === 'web_screenshot') {
     // These fail gracefully at runtime, keep available
   }
+  // Scraper tools — always available (free tools work without API keys; paid tools gate at runtime)
+  if (toolName.startsWith('scraper_')) {
+    return { ready: true };
+  }
   // Add more checks here as connectors are added
   return { ready: true };
 }
@@ -1830,6 +1949,9 @@ function getCapabilityNotes() {
   }
   if (available.some(t => t.name.startsWith('ghl_'))) {
     capabilities.push('CRM tools are AVAILABLE — use ghl_ tools for contacts, emails, SMS, calendars, and pipelines.');
+  }
+  if (available.some(t => t.name === 'scraper_check_access')) {
+    capabilities.push('Lead scraping tools are AVAILABLE — use scraper_ tools to build prospect lists. ALWAYS call scraper_check_access FIRST to see what the owner\'s plan allows. Free: scraper_scrape_url (any URL), scraper_search_businesses (Yellowpages/Yelp), scraper_search_facebook_groups. Paid: scraper_search_google_maps, scraper_search_apollo, scraper_search_linkedin. Paid tools will return upsell messages if the owner\'s plan doesn\'t include them.');
   }
   
   if (capabilities.length > 0) {
@@ -1921,6 +2043,12 @@ async function executeTool(toolName, toolInput, sessionId = null) {
     if (toolName.startsWith('web_')) {
       const { executeWebSearchTool } = await import('../tools/web-search-tools.js');
       return await executeWebSearchTool(toolName, toolInput);
+    }
+
+    // Lead scraper MCP tools — server-side scraping + paid API integrations (Outscraper, Apollo, PhantomBuster)
+    if (toolName.startsWith('scraper_')) {
+      const { executeScraperMCPTool } = await import('../tools/scraper-mcp-tools.js');
+      return await executeScraperMCPTool(toolName, toolInput);
     }
 
     // Image generation & editing tools — GPT Image + Nano Banana
