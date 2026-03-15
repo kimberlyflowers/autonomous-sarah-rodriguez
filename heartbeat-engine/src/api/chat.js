@@ -3125,11 +3125,43 @@ ALWAYS use this session ID when calling get_session_files or edit_artifact — n
 When a user asks you to edit, modify, or update something you previously created, ALWAYS call get_session_files first with this session ID to find the file, then use edit_artifact with this session ID and the artifact name.`;
   }
 
-  // Inject matching skill body into system prompt based on user's message
+  // Auto-inject CRITICAL skills that must not depend on LLM deciding to load them
+  // The refund-handler skill is critical because wrong responses damage customer relationships
   try {
-    // Skills are loaded by the LLM via the load_skill tool — no regex pre-matching
-    // Sarah sees the skill catalog in her system prompt and decides when to load one
-  } catch(e) { /* skills not critical */ }
+    const msgText = typeof userMessage === 'string' ? userMessage :
+      (Array.isArray(userMessage) ? userMessage.filter(b => b.type === 'text').map(b => b.text).join(' ') : '');
+    const refundKeywords = /\b(refund|money back|cancel.*subscription|want my money|charged me|billing issue|overcharged|rip.?off|waste of money|not what I (paid|expected)|doesn't work|this is garbage)\b/i;
+
+    if (refundKeywords.test(msgText)) {
+      const { findSkills } = await import('../skills/skill-loader.js');
+      const refundSkills = findSkills('refund', msgText);
+      if (refundSkills.length > 0) {
+        let skillBody = refundSkills[0].body;
+
+        // Replace template variables with actual agent/org context
+        const ownerName = agentConfig?.humanContact?.name || 'your owner';
+        const ownerEmail = agentConfig?.humanContact?.email || '';
+        // Try to extract org name from standing instructions (e.g. "You are Olivia, ... at Sunrise Bakery")
+        const siText = agentConfig?.standingInstructions || '';
+        const orgMatch = siText.match(/(?:at|for|of)\s+([A-Z][A-Za-z\s&']+?)(?:\.|,|\n|$)/);
+        const orgName = agentConfig?.config?.orgName || (orgMatch ? orgMatch[1].trim() : agentConfig?.client || 'your organization');
+        const industry = agentConfig?.config?.industry || '';
+        const planTier = agentConfig?.config?.planTier || 'free';
+
+        skillBody = skillBody
+          .replace(/\{\{owner_name\}\}/g, ownerName)
+          .replace(/\{\{owner_email\}\}/g, ownerEmail)
+          .replace(/\{\{org_name\}\}/g, orgName)
+          .replace(/\{\{industry\}\}/g, industry)
+          .replace(/\{\{plan_tier\}\}/g, planTier);
+
+        systemPrompt += `\n\n<skill name="refund-handler">\n${skillBody}\n</skill>`;
+        logger.info('Auto-injected refund-handler skill', { ownerName, orgName });
+      }
+    }
+  } catch(e) {
+    logger.warn('Skill auto-injection failed:', e.message);
+  }
 
   const messages = [...history, { role: 'user', content: userMessage }];
   let currentMessages = [...messages];
