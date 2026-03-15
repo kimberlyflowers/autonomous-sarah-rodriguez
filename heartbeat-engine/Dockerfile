@@ -41,7 +41,17 @@ COPY src/ ./src/
 COPY database/ ./database/
 COPY dashboard/ ./dashboard/
 
-# Build React dashboard (cache bust: 2026-03-07b)
+# Copy and build the Bloomie Scraper MCP server
+COPY bloomie-scraper-mcp-server/ ./bloomie-scraper-mcp-server/
+WORKDIR /app/bloomie-scraper-mcp-server
+RUN npm install
+RUN npm run build
+WORKDIR /app
+
+# Copy skills catalog
+COPY skills/ ./skills/
+
+# Build React dashboard (cache bust: 2026-03-15)
 WORKDIR /app/dashboard
 RUN npm install
 RUN npm run build
