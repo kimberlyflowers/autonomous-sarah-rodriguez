@@ -1138,19 +1138,24 @@ function ProgressRing({pct,sz,stroke,color,bg}) {
 /* ═══════════════════════════════════════════════════════════════
    ACTIVE TASK TRACKER — right panel task progress
    ═══════════════════════════════════════════════════════════════ */
-function ActiveTaskTracker({c}) {
+function ActiveTaskTracker({c, sessionId}) {
   const [tasks,setTasks]=useState([]);
   useEffect(()=>{
+    // Clear tasks immediately when session changes (e.g. "New chat")
+    setTasks([]);
     const go=async()=>{
       try{
-        const r=await fetch("/api/dashboard/agentic-executions?limit=3");
+        const url=sessionId
+          ? `/api/dashboard/agentic-executions?limit=3&sessionId=${encodeURIComponent(sessionId)}`
+          : "/api/dashboard/agentic-executions?limit=3";
+        const r=await fetch(url);
         if(r.ok){const d=await r.json(); setTasks(d.executions||d||[]);}
       }catch{}
     };
     go();
     const t=setInterval(go,15000);
     return()=>clearInterval(t);
-  },[]);
+  },[sessionId]);
 
   if(tasks.length===0) return(
     <div style={{padding:"16px",textAlign:"center",color:c.fa,fontSize:12}}>No active tasks</div>
@@ -3530,7 +3535,7 @@ function App({ authUser }) {
                                   <span style={{width:8,height:8,borderRadius:"50%",background:c.ac,animation:"pulse 1.5s ease infinite"}}/>
                                   <span style={{fontSize:12,fontWeight:700,color:c.tx}}>Active Tasks</span>
                                 </div>
-                                <ActiveTaskTracker c={c}/>
+                                <ActiveTaskTracker c={c} sessionId={currentSessionId}/>
                               </div>
                             </>
                           )}

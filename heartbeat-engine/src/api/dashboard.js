@@ -409,11 +409,14 @@ router.post('/brand-kit', async (req, res) => {
 // Data shape: { executions: [{ task, status, steps: [{ name, status }] }] }
 router.get('/agentic-executions', (req, res) => {
   const limit = parseInt(req.query.limit) || 5;
+  const filterSession = req.query.sessionId || null;
   const executions = [];
 
   // Convert taskProgress Map entries into the format ActiveTaskTracker expects
   for (const [sessionId, progress] of taskProgress.entries()) {
     if (!progress?.todos || progress.todos.length === 0) continue;
+    // If a sessionId filter is provided, only show tasks for that session
+    if (filterSession && sessionId !== filterSession) continue;
 
     const hasActive = progress.todos.some(t => t.status === 'in_progress');
     const allDone = progress.todos.every(t => t.status === 'completed');
