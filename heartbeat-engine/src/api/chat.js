@@ -1938,6 +1938,20 @@ After getting the page list, you can:
       },
       required: ["job_id", "org_id"]
     }
+  },
+  {
+    name: "polymarket_analyze",
+    description: "Analyze a Polymarket prediction market using BLOOM Alpha — Bayesian calibration + historical patterns. LOCKED: requires bloom_alpha feature flag.",
+    input_schema: {
+      type: "object",
+      properties: {
+        question: { type: "string", description: "The contract question" },
+        market_id: { type: "string", description: "Polymarket market ID" },
+        market_probability: { type: "number", description: "Current market price 0-1" },
+        category: { type: "string", description: "Contract category" }
+      },
+      required: ["question", "market_probability"]
+    }
   }
 ];
 
@@ -2042,7 +2056,7 @@ function getCapabilityNotes() {
 }
 
 // TOOL EXECUTION — routes all tool calls to the appropriate executor
-async function executeTool(toolName, toolInput, sessionId = null) {
+async function executeTool(toolName, toolInput, sessionId = null, agentConfig = null) {
   logger.info(`Executing tool: ${toolName}`, { input: toolInput });
   try {
     // bloom_log goes to database
@@ -2771,6 +2785,47 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
     }
 
         // Load skill — injects expert instructions into the conversation
+    if (toolName === 'polymarket_analyze') {
+      const features = agentConfig && agentConfig.config && agentConfig.config.features ? agentConfig.config.features : [];
+      if (!features.includes('polymarket_alpha')) {
+        return { success: false, error: 'BLOOM Alpha is a premium feature. Contact your account manager to upgrade.' };
+      }
+      const { question, market_id, market_probability, category = 'Uncategorized' } = toolInput;
+      try {
+        const { createClient } = await import('@supabase/supabase-js');
+        const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+        let cal = null;
+        const calResult = await sb.schema('polymarket').table('category_calibration').select('*').eq('category', category).single();
+        cal = calResult.data;
+        if (!cal) {
+          const fb = await sb.schema('polymarket').table('category_calibration').select('*').eq('category', 'Uncategorized').single();
+          cal = fb.data || { actual_win_rate: 0.43, sample_size: 100, confidence_level: 0.5, bias_coefficient: 0.07 };
+        }
+        const baseRate = parseFloat(cal.actual_win_rate);
+        const sampleSize = parseInt(cal.sample_size);
+        const gap = baseRate - market_probability;
+        const absGap = Math.abs(gap);
+        const histResult = await sb.schema('polymarket').table('contracts').select('question,resolution,volume').eq('category', category).not('resolution', 'is', null).order('volume', { ascending: false }).limit(5);
+        const similar = (histResult.data || []).map(c => c.question.slice(0,80) + ': ' + (c.resolution === 1 ? 'YES' : 'NO')).join(' | ');
+        const decision = absGap >= 0.08 && sampleSize >= 50 ? (gap > 0 ? 'BET YES' : 'BET NO') : absGap >= 0.05 ? 'WATCH' : 'SKIP';
+        return {
+          success: true,
+          analysis: {
+            contract: question, market_id: market_id || 'unknown', category,
+            market_probability, historical_base_rate: baseRate, sample_size: sampleSize,
+            gap: parseFloat(gap.toFixed(4)), decision,
+            confidence: sampleSize >= 100 ? 'HIGH' : sampleSize >= 50 ? 'MEDIUM' : 'LOW',
+            reasoning: 'Category [' + category + '] base rate: ' + (baseRate*100).toFixed(1) + '% YES vs market: ' + (market_probability*100).toFixed(1) + '% YES. Gap: ' + (gap*100).toFixed(1) + '%. ' + (gap > 0 ? 'Crowd underpricing YES.' : 'Crowd overpricing YES.'),
+            similar_resolved: similar,
+            kelly_fraction: absGap >= 0.08 ? parseFloat(Math.min(0.40, Math.max(0.02, absGap * 0.25)).toFixed(4)) : 0
+          }
+        };
+      } catch (err) {
+        logger.error('polymarket_analyze error:', err.message);
+        return { success: false, error: 'Analysis failed: ' + err.message };
+      }
+    }
+
     if (toolName === 'load_skill') {
       try {
         const skillName = toolInput.skill_name;
@@ -3269,10 +3324,10 @@ When a user asks you to edit, modify, or update something you previously created
   // Retries once with same params before reporting failure to the agent.
   // Skips retry for tools where retry doesn't make sense (task_progress, bloom_log).
   const noRetryTools = new Set(['task_progress', 'bloom_log', 'bloom_take_screenshot', 'load_skill']);
-  async function executeWithRetry(toolName, toolInput, sid) {
+  async function executeWithRetry(toolName, toolInput, sid, agentCfg = null) {
     let result;
     try {
-      result = await executeTool(toolName, toolInput, sid);
+      result = await executeTool(toolName, toolInput, sid, agentCfg);
     } catch (toolError) {
       logger.error(`Tool ${toolName} threw error (attempt 1):`, toolError.message);
       result = { success: false, error: `Tool error: ${toolError.message}` };
@@ -3295,7 +3350,7 @@ When a user asks you to edit, modify, or update something you previously created
           taskProgress.set(trackingKey, { todos: currentTodos, updatedAt: Date.now() });
         }
         try {
-          result = await executeTool(toolName, toolInput, sid);
+          result = await executeTool(toolName, toolInput, sid, agentCfg);
         } catch (retryError) {
           logger.error(`Tool ${toolName} threw error (attempt 2):`, retryError.message);
           result = { success: false, error: `Tool error after retry: ${retryError.message}` };
