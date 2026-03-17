@@ -65,6 +65,7 @@ export async function loadAgentConfig(agentId = null) {
 function mergeWithEnvironment(dbConfig) {
   return {
     ...dbConfig,
+    config: dbConfig.config || {},
     // agentId and name are per-agent — never override from env
     agentId: dbConfig.agentId,
     name: dbConfig.name,
