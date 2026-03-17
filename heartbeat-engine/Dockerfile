@@ -48,6 +48,13 @@ RUN npm install
 RUN npm run build
 WORKDIR /app
 
+# Copy and build the Bloomie Video MCP server
+COPY bloomie-video-mcp-server/ ./bloomie-video-mcp-server/
+WORKDIR /app/bloomie-video-mcp-server
+RUN npm install
+RUN npm run build
+WORKDIR /app
+
 # Copy skills catalog
 COPY skills/ ./skills/
 

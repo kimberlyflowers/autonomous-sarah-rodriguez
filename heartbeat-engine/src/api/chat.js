@@ -1882,6 +1882,62 @@ After getting the page list, you can:
       },
       required: ["query", "org_id"]
     }
+  },
+  // ── AI VIDEO GENERATION TOOLS ──────────────────────────────────────────
+  {
+    name: "video_check_access",
+    description: "Check what video generation tools the owner's plan includes and what upgrades are available. CALL THIS FIRST before any video generation.",
+    input_schema: {
+      type: "object",
+      properties: {
+        org_id: { type: "string", description: "Organization ID of the Bloomie owner" },
+        plan_tier: { type: "string", enum: ["free", "video_creator", "video_pro"], description: "Owner's current video plan tier", default: "free" }
+      },
+      required: ["org_id"]
+    }
+  },
+  {
+    name: "video_list_avatars",
+    description: "Browse available AI avatars for video generation. Each avatar has a unique look, voice, and personality. Currently features Sarah Rodriguez — professional Latina business woman. FREE — no plan upgrade required.",
+    input_schema: {
+      type: "object",
+      properties: {
+        org_id: { type: "string", description: "Organization ID" },
+        plan_tier: { type: "string", enum: ["free", "video_creator", "video_pro"], default: "free" },
+        response_format: { type: "string", enum: ["markdown", "json"], default: "markdown" }
+      },
+      required: ["org_id"]
+    }
+  },
+  {
+    name: "video_generate",
+    description: "Generate a lip-synced AI video with a chosen avatar speaking your script. 1080p video with natural lip sync, facial expressions, and voice. Videos take 1-2 minutes. Pipeline: Text → TTS → LatentSync → CodeFormer → Alpha Blend → FFmpeg. Cost: ~$0.03/video (150x cheaper than HeyGen). 🔒 Requires Video Creator plan ($49/month).",
+    input_schema: {
+      type: "object",
+      properties: {
+        avatar_id: { type: "string", description: "Avatar ID, e.g. 'sarah'" },
+        script: { type: "string", description: "Text for the avatar to speak (max 5000 chars)" },
+        voice_style: { type: "string", description: "Voice style hint: 'warm', 'professional', 'energetic'. Default: natural" },
+        org_id: { type: "string", description: "Organization ID" },
+        plan_tier: { type: "string", enum: ["free", "video_creator", "video_pro"], default: "free" },
+        response_format: { type: "string", enum: ["markdown", "json"], default: "markdown" }
+      },
+      required: ["avatar_id", "script", "org_id"]
+    }
+  },
+  {
+    name: "video_job_status",
+    description: "Check the status of a video generation job. Returns current status and, when complete, the download URL for the finished video. Statuses: IN_QUEUE, IN_PROGRESS, COMPLETED, FAILED. 🔒 Requires Video Creator plan ($49/month).",
+    input_schema: {
+      type: "object",
+      properties: {
+        job_id: { type: "string", description: "Job ID returned by video_generate" },
+        org_id: { type: "string", description: "Organization ID" },
+        plan_tier: { type: "string", enum: ["free", "video_creator", "video_pro"], default: "free" },
+        response_format: { type: "string", enum: ["markdown", "json"], default: "markdown" }
+      },
+      required: ["job_id", "org_id"]
+    }
   }
 ];
 
@@ -1927,6 +1983,10 @@ function checkToolReadiness(toolName) {
   if (toolName.startsWith('scraper_')) {
     return { ready: true };
   }
+  // Video tools — always available (free tools work without API keys; paid tools gate at runtime)
+  if (toolName.startsWith('video_')) {
+    return { ready: true };
+  }
   // Add more checks here as connectors are added
   return { ready: true };
 }
@@ -1952,6 +2012,9 @@ function getCapabilityNotes() {
   }
   if (available.some(t => t.name === 'scraper_check_access')) {
     capabilities.push('Lead scraping tools are AVAILABLE — use scraper_ tools to build prospect lists. ALWAYS call scraper_check_access FIRST to see what the owner\'s plan allows. Free: scraper_scrape_url (any URL), scraper_search_businesses (Yellowpages/Yelp), scraper_search_facebook_groups. Paid: scraper_search_google_maps, scraper_search_apollo, scraper_search_linkedin. Paid tools will return upsell messages if the owner\'s plan doesn\'t include them.');
+  }
+  if (available.some(t => t.name === 'video_check_access')) {
+    capabilities.push('AI Video generation tools are AVAILABLE — use video_ tools to create lip-synced AI videos with Sarah Rodriguez. ALWAYS call video_check_access FIRST to see what the owner\'s plan allows. Free: video_check_access (plan info), video_list_avatars (browse avatars). Paid (Video Creator $49/mo): video_generate (submit video job), video_job_status (check progress/download). Videos are 1080p, lip-synced, ~$0.03 each. Use video_generate with avatar_id "sarah" and a script, then poll video_job_status for the download URL.');
   }
   
   if (capabilities.length > 0) {
@@ -2049,6 +2112,12 @@ async function executeTool(toolName, toolInput, sessionId = null) {
     if (toolName.startsWith('scraper_')) {
       const { executeScraperMCPTool } = await import('../tools/scraper-mcp-tools.js');
       return await executeScraperMCPTool(toolName, toolInput);
+    }
+
+    // Video MCP tools — AI video generation via Sarah Pipeline on RunPod Serverless
+    if (toolName.startsWith('video_')) {
+      const { executeVideoMCPTool } = await import('../tools/video-mcp-tools.js');
+      return await executeVideoMCPTool(toolName, toolInput);
     }
 
     // Image generation & editing tools — GPT Image + Nano Banana
