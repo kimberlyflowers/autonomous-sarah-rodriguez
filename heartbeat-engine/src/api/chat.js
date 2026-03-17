@@ -3713,7 +3713,7 @@ When a user asks you to edit, modify, or update something you previously created
           toolsUsed.push({ name: block.name, input: block.input });
 
           // Execute with automatic retry on failure
-          const result = await executeWithRetry(block.name, block.input, sessionId);
+          const result = await executeWithRetry(block.name, block.input, sessionId, agentConfig);
           toolResults.push(result);
 
           // Passive tracking
