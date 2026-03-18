@@ -2550,6 +2550,141 @@ function BillingPage({c,mob,aFN="Sarah"}){
   );
 }
 
+
+/* ═══════════════════════════════════════════════════════════════
+   DISPATCH PAGE — Mobile access to your Bloomie
+   ═══════════════════════════════════════════════════════════════ */
+function DispatchPage({c, mob, currentAgent, agentImgUrl}) {
+  const SARAH_URL = 'https://autonomous-sarah-rodriguez-production.up.railway.app';
+  const dispatchUrl = SARAH_URL + '/dispatch';
+  const [copied, setCopied] = useState(false);
+  const [qrVisible, setQrVisible] = useState(false);
+
+  const copyLink = () => {
+    navigator.clipboard?.writeText(dispatchUrl).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    });
+  };
+
+  const agentName = currentAgent?.name || 'Sarah Rodriguez';
+  const agentFirst = agentName.split(' ')[0];
+  const agentImg = agentImgUrl || currentAgent?.avatar_url || null;
+
+  // QR code via Google Charts API (no npm needed)
+  const qrSrc = 'https://chart.googleapis.com/chart?cht=qr&chs=240x240&chl=' + encodeURIComponent(dispatchUrl) + '&choe=UTF-8';
+
+  return (
+    <div style={{padding: mob ? '20px 16px 60px' : '32px 40px 60px', maxWidth: 680, margin: '0 auto'}}>
+      {/* Header */}
+      <div style={{marginBottom: 32}}>
+        <div style={{display:'flex', alignItems:'center', gap:12, marginBottom:8}}>
+          <div style={{width:40, height:40, borderRadius:10, background:'linear-gradient(135deg,#F4A261,#E76F8B)', display:'flex', alignItems:'center', justifyContent:'center'}}>
+            <svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='#fff' strokeWidth='2.5' strokeLinecap='round'>
+              <path d='M12 2C9.8 2 8 3.8 8 6s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4z'/>
+              <path d='M12 14c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4z'/>
+              <path d='M2 12c0-2.2 1.8-4 4-4s4 1.8 4 4-1.8 4-4 4-4-1.8-4-4z'/>
+              <path d='M14 12c0-2.2 1.8-4 4-4s4 1.8 4 4-1.8 4-4 4-4-1.8-4-4z'/>
+            </svg>
+          </div>
+          <div>
+            <h1 style={{fontSize: mob ? 22 : 26, fontWeight:700, color:c.tx, margin:0}}>Dispatch</h1>
+            <p style={{fontSize:13, color:c.so, margin:0}}>Chat with {agentFirst} from your phone — or share access with your team</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Agent card */}
+      <div style={{padding:20, borderRadius:16, background:c.cd, border:'1px solid '+c.ln, marginBottom:20, display:'flex', alignItems:'center', gap:16}}>
+        {agentImg
+          ? <img src={agentImg} alt={agentName} style={{width:56, height:56, borderRadius:14, objectFit:'cover', border:'2px solid '+c.ln, flexShrink:0}}/>
+          : <div style={{width:56, height:56, borderRadius:14, background:'linear-gradient(135deg,#F4A261,#E76F8B)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:22, fontWeight:700, color:'#fff', flexShrink:0}}>{agentName.charAt(0)}</div>
+        }
+        <div style={{flex:1, minWidth:0}}>
+          <div style={{fontSize:16, fontWeight:700, color:c.tx}}>{agentName}</div>
+          <div style={{fontSize:12, color:c.so, marginTop:2}}>{currentAgent?.job_title || currentAgent?.role || 'Your AI Employee'}</div>
+          <div style={{display:'flex', alignItems:'center', gap:5, marginTop:4}}>
+            <span style={{width:6, height:6, borderRadius:'50%', background:'#34a853', animation:'pulse 1.5s ease infinite'}}/>
+            <span style={{fontSize:11, color:'#34a853', fontWeight:600}}>Online via Dispatch</span>
+          </div>
+        </div>
+      </div>
+
+      {/* QR + Link section */}
+      <div style={{padding:24, borderRadius:16, background:c.cd, border:'1px solid '+c.ln, marginBottom:16}}>
+        <div style={{fontSize:14, fontWeight:700, color:c.tx, marginBottom:4}}>Open on your phone</div>
+        <div style={{fontSize:12, color:c.so, marginBottom:20}}>Scan the QR code or send the link. Sign in with your BLOOM account to start chatting.</div>
+
+        <div style={{display:'flex', flexDirection: mob ? 'column' : 'row', gap:20, alignItems:'flex-start'}}>
+          {/* QR code */}
+          <div style={{flexShrink:0, textAlign:'center'}}>
+            <div style={{width:180, height:180, borderRadius:14, border:'1px solid '+c.ln, background:'#fff', overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center', margin: mob ? '0 auto' : 0}}>
+              <img src={qrSrc} alt='QR Code' style={{width:160, height:160}} onError={e=>e.currentTarget.style.display='none'}/>
+            </div>
+            <div style={{fontSize:10, color:c.so, marginTop:6}}>Scan with your phone camera</div>
+          </div>
+
+          {/* Right side */}
+          <div style={{flex:1, minWidth:0}}>
+            <div style={{fontSize:11, fontWeight:700, color:c.so, textTransform:'uppercase', letterSpacing:'0.5px', marginBottom:8}}>Dispatch Link</div>
+            <div style={{display:'flex', gap:6, marginBottom:16}}>
+              <div style={{flex:1, padding:'10px 12px', borderRadius:8, border:'1px solid '+c.ln, background:c.sf, fontSize:12, fontFamily:'monospace', color:c.ac, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
+                {dispatchUrl}
+              </div>
+              <button onClick={copyLink} style={{padding:'10px 16px', borderRadius:8, border:'none', background: copied ? '#34a853' : 'linear-gradient(135deg,#F4A261,#E76F8B)', cursor:'pointer', fontSize:12, fontWeight:700, color:'#fff', fontFamily:'inherit', flexShrink:0, transition:'background .2s'}}>
+                {copied ? '✓ Copied' : 'Copy'}
+              </button>
+            </div>
+
+            <div style={{fontSize:11, fontWeight:700, color:c.so, textTransform:'uppercase', letterSpacing:'0.5px', marginBottom:8}}>Share via</div>
+            <div style={{display:'flex', gap:8, flexWrap:'wrap'}}>
+              {[
+                {label:'Text / iMessage', href:'sms:?body=Chat+with+' + encodeURIComponent(agentFirst) + '+from+anywhere:+' + encodeURIComponent(dispatchUrl)},
+                {label:'Email', href:'mailto:?subject=' + encodeURIComponent('Chat with ' + agentFirst + ' on Dispatch') + '&body=' + encodeURIComponent('Use this link to chat with ' + agentFirst + ' from your phone:
+
+' + dispatchUrl)},
+                {label:'WhatsApp', href:'https://wa.me/?text=' + encodeURIComponent('Chat with ' + agentFirst + ' from your phone: ' + dispatchUrl)},
+              ].map((s, i) => (
+                <a key={i} href={s.href} target='_blank' rel='noopener noreferrer' style={{padding:'7px 14px', borderRadius:8, border:'1px solid '+c.ln, background:c.cd, fontSize:12, fontWeight:600, color:c.tx, textDecoration:'none', transition:'border-color .15s'}}
+                  onMouseEnter={e=>e.currentTarget.style.borderColor=c.ac}
+                  onMouseLeave={e=>e.currentTarget.style.borderColor=c.ln}>
+                  {s.label}
+                </a>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* How it works */}
+      <div style={{padding:20, borderRadius:16, background:c.cd, border:'1px solid '+c.ln, marginBottom:16}}>
+        <div style={{fontSize:14, fontWeight:700, color:c.tx, marginBottom:14}}>How it works</div>
+        <div style={{display:'flex', flexDirection:'column', gap:12}}>
+          {[
+            {n:'1', title:'Open the link on any device', desc:'Works on iPhone, Android, or any browser — no app install needed'},
+            {n:'2', title:'Sign in with your BLOOM account', desc:'Uses your existing username and password — secure, per-user access'},
+            {n:'3', title:'Chat with ' + agentFirst + ' from anywhere', desc:'Give tasks, check status, get updates — your Bloomie is always on via Railway'},
+          ].map((step, i) => (
+            <div key={i} style={{display:'flex', alignItems:'flex-start', gap:12}}>
+              <div style={{width:26, height:26, borderRadius:8, background:'linear-gradient(135deg,#F4A261,#E76F8B)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:700, color:'#fff', flexShrink:0, marginTop:1}}>{step.n}</div>
+              <div>
+                <div style={{fontSize:13, fontWeight:600, color:c.tx}}>{step.title}</div>
+                <div style={{fontSize:12, color:c.so, marginTop:2, lineHeight:1.5}}>{step.desc}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* SMS Dispatch coming soon */}
+      <div style={{padding:16, borderRadius:12, background:'linear-gradient(135deg, rgba(244,162,97,0.06), rgba(231,111,139,0.06))', border:'1px solid rgba(244,162,97,0.2)'}}>
+        <div style={{fontSize:13, fontWeight:700, color:c.ac, marginBottom:4}}>SMS Dispatch — coming soon</div>
+        <div style={{fontSize:12, color:c.so, lineHeight:1.6}}>Text {agentFirst} directly from your phone number — no login, no app. Your Bloomie will reply as if you messaged a real person. Powered by Twilio.</div>
+      </div>
+    </div>
+  );
+}
+
 export default function AppWithErrorBoundary({ user: authUser }) {
   return <ErrorBoundary><App authUser={authUser} /></ErrorBoundary>;
 }
@@ -3144,6 +3279,10 @@ function App({ authUser }) {
                       <button onClick={()=>setPg("artifacts")} style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"none",cursor:"pointer",background:pg==="artifacts"?c.sf:"transparent",color:pg==="artifacts"?c.tx:c.so,fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:10,transition:"background .15s"}} onMouseEnter={e=>{ if(pg!=="artifacts") e.currentTarget.style.background=c.hv; }} onMouseLeave={e=>{ if(pg!=="artifacts") e.currentTarget.style.background="transparent"; }}>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                         <span>Files</span>
+                      </button>
+                      <button onClick={()=>setPg("dispatch")} style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"none",cursor:"pointer",background:pg==="dispatch"?c.sf:"transparent",color:pg==="dispatch"?c.tx:c.so,fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:10,transition:"background .15s"}} onMouseEnter={e=>{ if(pg!=="dispatch") e.currentTarget.style.background=c.hv; }} onMouseLeave={e=>{ if(pg!=="dispatch") e.currentTarget.style.background="transparent"; }}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2C9.8 2 8 3.8 8 6s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4z"/><path d="M12 14c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4z"/><path d="M2 12c0-2.2 1.8-4 4-4s4 1.8 4 4-1.8 4-4 4-4-1.8-4-4z"/><path d="M14 12c0-2.2 1.8-4 4-4s4 1.8 4 4-1.8 4-4 4-4-1.8-4-4z"/></svg>
+                        <span>Dispatch</span>
                       </button>
                     </div>
                   </div>
@@ -4888,6 +5027,7 @@ function App({ authUser }) {
           {pg==="billing"&&(<BillingPage c={c} mob={mob} aFN={aFN}/>)}
           {pg==="business"&&(<BusinessProfilePage c={c} mob={mob} userImg={userImg} setUserImg={setUserImg} meInitial={meInitial}/>)}
           {pg==="skills"&&(<SkillsPage c={c} mob={mob} aFN={aFN}/>)}
+          {pg==="dispatch"&&(<DispatchPage c={c} mob={mob} currentAgent={currentAgent} agentImgUrl={agentImgUrl}/>)}
         </div>
       </div>
       {scrM==="pop"&&<Screen c={c} mob={mob} mode="pop" setMode={setScrM} aFN={aFN}/>}
