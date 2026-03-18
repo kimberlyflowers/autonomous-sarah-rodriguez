@@ -2640,9 +2640,7 @@ function DispatchPage({c, mob, currentAgent, agentImgUrl}) {
             <div style={{display:'flex', gap:8, flexWrap:'wrap'}}>
               {[
                 {label:'Text / iMessage', href:'sms:?body=Chat+with+' + encodeURIComponent(agentFirst) + '+from+anywhere:+' + encodeURIComponent(dispatchUrl)},
-                {label:'Email', href:'mailto:?subject=' + encodeURIComponent('Chat with ' + agentFirst + ' on Dispatch') + '&body=' + encodeURIComponent('Use this link to chat with ' + agentFirst + ' from your phone:
-
-' + dispatchUrl)},
+                {label:'Email', href:'mailto:?subject=' + encodeURIComponent('Chat with ' + agentFirst + ' on Dispatch') + '&body=' + encodeURIComponent('Use this link to chat with ' + agentFirst + ' from your phone: ' + dispatchUrl)},
                 {label:'WhatsApp', href:'https://wa.me/?text=' + encodeURIComponent('Chat with ' + agentFirst + ' from your phone: ' + dispatchUrl)},
               ].map((s, i) => (
                 <a key={i} href={s.href} target='_blank' rel='noopener noreferrer' style={{padding:'7px 14px', borderRadius:8, border:'1px solid '+c.ln, background:c.cd, fontSize:12, fontWeight:600, color:c.tx, textDecoration:'none', transition:'border-color .15s'}}
