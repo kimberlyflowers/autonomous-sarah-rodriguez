@@ -261,10 +261,19 @@ router.get('/download/:platform', (req, res) => {
   try {
     const stat = fs.statSync(filePath);
     logger.info(`Desktop download starting: ${platform} by ${tokenData.email} (${Math.round(stat.size/1024/1024)}MB)`);
+
+    // Disable request timeout for large file downloads
+    req.setTimeout(0);
+    res.setTimeout(0);
+
     res.setHeader('Content-Type', fileInfo.contentType);
     res.setHeader('Content-Length', stat.size);
     res.setHeader('Content-Disposition', `attachment; filename="${fileInfo.filename}"`);
-    const stream = fs.createReadStream(filePath);
+    // Prevent Railway edge from buffering — stream immediately
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.setHeader('Cache-Control', 'no-cache');
+
+    const stream = fs.createReadStream(filePath, { highWaterMark: 64 * 1024 }); // 64KB chunks
     stream.on('error', (err) => {
       logger.error(`Stream error for ${platform}: ${err.message}`);
       if (!res.headersSent) res.status(500).json({ error: 'File stream failed' });
