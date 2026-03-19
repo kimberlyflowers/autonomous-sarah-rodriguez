@@ -2563,12 +2563,12 @@ function DispatchPage({c, mob, currentAgent, agentImgUrl}) {
   const [downloading, setDownloading] = useState(null);
   const [desktopAvail, setDesktopAvail] = useState(null);
 
-  // Detect platform
+  // Detect platform — default Mac to ARM64 since most modern Macs are Apple Silicon
+  // Chrome on M1/M2/M3 still reports "Intel" in user agent for compatibility
   const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
   const isMac = ua.includes('Macintosh') || ua.includes('Mac OS');
   const isWin = ua.includes('Windows');
-  const isArm = ua.includes('ARM') || (typeof navigator !== 'undefined' && navigator?.userAgentData?.architecture === 'arm');
-  const defaultPlatform = isMac ? (isArm ? 'mac-arm64' : 'mac-intel') : isWin ? 'windows' : null;
+  const defaultPlatform = isMac ? 'mac-arm64' : isWin ? 'windows' : null;
 
   // Check available builds
   useEffect(() => {
@@ -2692,7 +2692,7 @@ function DispatchPage({c, mob, currentAgent, agentImgUrl}) {
         <div style={{display:'flex', gap:10, flexWrap:'wrap', marginBottom:16}}>
           {/* macOS Button */}
           <button
-            onClick={() => downloadDesktop(defaultPlatform === 'mac-arm64' ? 'mac-arm64' : 'mac-intel')}
+            onClick={() => downloadDesktop(isMac ? 'mac-arm64' : 'windows')}
             disabled={downloading !== null}
             style={{flex:1, minWidth:140, padding:'14px 20px', borderRadius:12, border:'none', background: isMac ? 'linear-gradient(135deg,#F4A261,#E76F8B)' : c.sf, color: isMac ? '#fff' : c.tx, cursor: downloading ? 'wait' : 'pointer', fontSize:13, fontWeight:700, fontFamily:'inherit', display:'flex', alignItems:'center', justifyContent:'center', gap:8, transition:'transform .1s', opacity: downloading === 'mac-arm64' || downloading === 'mac-intel' ? 0.6 : 1}}>
             <svg width='18' height='18' viewBox='0 0 24 24' fill={isMac ? '#fff' : c.so}>
