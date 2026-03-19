@@ -2589,15 +2589,8 @@ function DispatchPage({c, mob, currentAgent, agentImgUrl}) {
         return;
       }
       const { downloadUrl } = await res.json();
-      // Use hidden iframe to trigger native download (no popup needed)
-      let iframe = document.getElementById('bloom-download-frame');
-      if (!iframe) {
-        iframe = document.createElement('iframe');
-        iframe.id = 'bloom-download-frame';
-        iframe.style.display = 'none';
-        document.body.appendChild(iframe);
-      }
-      iframe.src = SARAH_URL + downloadUrl;
+      // Direct navigation — Content-Disposition: attachment means browser downloads without leaving page
+      window.location.href = SARAH_URL + downloadUrl;
     } catch (e) {
       alert('Download failed. Please try again.');
     }
