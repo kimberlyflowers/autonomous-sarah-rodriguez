@@ -3178,7 +3178,8 @@ function App({ authUser }) {
   );
   const CallsIcon = ({active,sz=16}) => (
     <svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke={active?c.tx:c.so} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+      <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
+      <line x1="12" y1="18" x2="12.01" y2="18"/>
     </svg>
   );
 
@@ -3186,7 +3187,7 @@ function App({ authUser }) {
     {k:"chat",l:"Chat",icon:ChatIcon},
     {k:"monitor",l:"Status",icon:StatusIcon},
     {k:"activity",l:"Activity",icon:ActivityIcon},
-    {k:"calls",l:"Calls",icon:CallsIcon},
+    {k:"calls",l:"Mobile",icon:CallsIcon},
   ];
 
   return(
@@ -3380,6 +3381,10 @@ function App({ authUser }) {
                       <button onClick={()=>{setPg("dispatch");if(window.innerWidth<768)setSbO("closed");}} style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"none",cursor:"pointer",background:pg==="dispatch"?c.sf:"transparent",color:pg==="dispatch"?c.tx:c.so,fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:10,transition:"background .15s"}} onMouseEnter={e=>{ if(pg!=="dispatch") e.currentTarget.style.background=c.hv; }} onMouseLeave={e=>{ if(pg!=="dispatch") e.currentTarget.style.background="transparent"; }}>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2C9.8 2 8 3.8 8 6s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4z"/><path d="M12 14c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4z"/><path d="M2 12c0-2.2 1.8-4 4-4s4 1.8 4 4-1.8 4-4 4-4-1.8-4-4z"/><path d="M14 12c0-2.2 1.8-4 4-4s4 1.8 4 4-1.8 4-4 4-4-1.8-4-4z"/></svg>
                         <span>Dispatch</span>
+                      </button>
+                      <button onClick={()=>{setPg("mobile");if(window.innerWidth<768)setSbO("closed");}} style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"none",cursor:"pointer",background:pg==="mobile"?c.sf:"transparent",color:pg==="mobile"?c.tx:c.so,fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:10,transition:"background .15s"}} onMouseEnter={e=>{ if(pg!=="mobile") e.currentTarget.style.background=c.hv; }} onMouseLeave={e=>{ if(pg!=="mobile") e.currentTarget.style.background="transparent"; }}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+                        <span>Mobile</span>
                       </button>
                     </div>
                   </div>
@@ -4417,15 +4422,97 @@ function App({ authUser }) {
 
           {/* ══ CALLS — Phone call transcripts + Sarah's actions ══ */}
           {pg==="calls"&&(
-            <div style={{padding:mob?"16px 12px 40px":"20px 20px 40px",maxWidth:900,margin:"0 auto"}}>
-              <div style={{marginBottom:24}}>
-                <h1 style={{fontSize:mob?20:24,fontWeight:700,color:c.tx,marginBottom:6,display:"flex",alignItems:"center",gap:10}}>
-                  <PhoneIcon c={c} size={mob?20:24}/>
-                  Calls
-                </h1>
-                <p style={{fontSize:13,color:c.so}}>Phone calls and voicemails — {aFN} reads transcripts and takes action</p>
+            <div style={{padding:mob?"16px 12px 60px":"32px 40px 60px",maxWidth:680,margin:"0 auto"}}>
+              {/* Header */}
+              <div style={{marginBottom:32}}>
+                <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:8}}>
+                  <div style={{width:40,height:40,borderRadius:10,background:"linear-gradient(135deg,#F4A261,#E76F8B)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/>
+                    </svg>
+                  </div>
+                  <div>
+                    <h1 style={{fontSize:mob?22:26,fontWeight:700,color:c.tx,margin:0}}>BLOOM Mobile</h1>
+                    <p style={{fontSize:13,color:c.so,margin:0}}>Add {aFN} to your phone — no App Store needed</p>
+                  </div>
+                </div>
               </div>
-              <CallsPage c={c} mob={mob} aFN={aFN}/>
+
+              {/* Agent card */}
+              <div style={{padding:20,borderRadius:16,background:c.cd,border:"1px solid "+c.ln,marginBottom:20,display:"flex",alignItems:"center",gap:16}}>
+                {agentImgUrl
+                  ?<img src={agentImgUrl} alt={agent.nm} style={{width:56,height:56,borderRadius:14,objectFit:"cover",border:"2px solid "+c.ln,flexShrink:0}}/>
+                  :<div style={{width:56,height:56,borderRadius:14,background:"linear-gradient(135deg,#F4A261,#E76F8B)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,fontWeight:700,color:"#fff",flexShrink:0}}>{agent.nm.charAt(0)}</div>
+                }
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:16,fontWeight:700,color:c.tx}}>{agent.nm}</div>
+                  <div style={{fontSize:12,color:c.so,marginTop:2}}>{currentAgent?.job_title||currentAgent?.role||"Your AI Employee"}</div>
+                  <div style={{display:"flex",alignItems:"center",gap:5,marginTop:4}}>
+                    <span style={{width:6,height:6,borderRadius:"50%",background:"#34a853",animation:"pulse 1.5s ease infinite"}}/>
+                    <span style={{fontSize:11,color:"#34a853",fontWeight:600}}>Available on mobile</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* How to install */}
+              <div style={{padding:24,borderRadius:16,background:c.cd,border:"1px solid "+c.ln,marginBottom:16}}>
+                <div style={{fontSize:14,fontWeight:700,color:c.tx,marginBottom:4}}>Add to your home screen</div>
+                <div style={{fontSize:12,color:c.so,marginBottom:20}}>Works on iPhone and Android — installs like a native app, no App Store required.</div>
+
+                <div style={{display:"flex",flexDirection:"column",gap:14}}>
+                  {[
+                    {n:"1",title:"Open this dashboard on your phone",desc:"Go to "+window.location.origin+" in Safari (iPhone) or Chrome (Android)",highlight:window.location.origin},
+                    {n:"2",title:"iPhone — tap the Share button",desc:"Tap the Share icon at the bottom of Safari, then tap 'Add to Home Screen'"},
+                    {n:"3",title:"Android — tap the menu",desc:"Tap the three-dot menu in Chrome, then tap 'Add to Home screen'"},
+                    {n:"4",title:"Tap Add — you're done",desc:"BLOOM Mobile appears on your home screen. Open it anytime to chat with "+aFN},
+                  ].map((step,i)=>(
+                    <div key={i} style={{display:"flex",alignItems:"flex-start",gap:12}}>
+                      <div style={{width:28,height:28,borderRadius:8,background:"linear-gradient(135deg,#F4A261,#E76F8B)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"#fff",flexShrink:0,marginTop:1}}>{step.n}</div>
+                      <div>
+                        <div style={{fontSize:13,fontWeight:600,color:c.tx}}>{step.title}</div>
+                        <div style={{fontSize:12,color:c.so,marginTop:2,lineHeight:1.5}}>{step.desc}</div>
+                        {step.highlight&&<div style={{marginTop:6,padding:"6px 10px",borderRadius:6,background:c.sf,border:"1px solid "+c.ln,fontSize:11,fontFamily:"monospace",color:c.ac}}>{step.highlight}</div>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Share the link */}
+              <div style={{padding:20,borderRadius:16,background:c.cd,border:"1px solid "+c.ln,marginBottom:16}}>
+                <div style={{fontSize:14,fontWeight:700,color:c.tx,marginBottom:4}}>Share with your team</div>
+                <div style={{fontSize:12,color:c.so,marginBottom:14}}>Send this link to anyone on your team who needs mobile access to {aFN}.</div>
+                <div style={{display:"flex",gap:6,marginBottom:14}}>
+                  <div style={{flex:1,padding:"10px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.sf,fontSize:12,fontFamily:"monospace",color:c.ac,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{window.location.origin}</div>
+                  <button onClick={()=>{navigator.clipboard?.writeText(window.location.origin);setOauthToast({type:"success",msg:"Link copied"});setTimeout(()=>setOauthToast(null),2000);}} style={{padding:"10px 16px",borderRadius:8,border:"none",background:"linear-gradient(135deg,#F4A261,#E76F8B)",cursor:"pointer",fontSize:12,fontWeight:700,color:"#fff",fontFamily:"inherit",flexShrink:0}}>Copy</button>
+                </div>
+                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                  {[
+                    {label:"Text / iMessage",href:"sms:?body="+encodeURIComponent("Chat with "+aFN+" from your phone: "+window.location.origin)},
+                    {label:"Email",href:"mailto:?subject="+encodeURIComponent("Chat with "+aFN+" on mobile")+"&body="+encodeURIComponent("Use this link to chat with "+aFN+" from your phone: "+window.location.origin)},
+                    {label:"WhatsApp",href:"https://wa.me/?text="+encodeURIComponent("Chat with "+aFN+" from your phone: "+window.location.origin)},
+                  ].map((s,i)=>(
+                    <a key={i} href={s.href} target="_blank" rel="noopener noreferrer" style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+c.ln,background:c.cd,fontSize:12,fontWeight:600,color:c.tx,textDecoration:"none"}}
+                      onMouseEnter={e=>e.currentTarget.style.borderColor=c.ac}
+                      onMouseLeave={e=>e.currentTarget.style.borderColor=c.ln}>
+                      {s.label}
+                    </a>
+                  ))}
+                </div>
+              </div>
+
+              {/* What you can do on mobile */}
+              <div style={{padding:16,borderRadius:12,background:"linear-gradient(135deg,rgba(244,162,97,0.06),rgba(231,111,139,0.06))",border:"1px solid rgba(244,162,97,0.2)"}}>
+                <div style={{fontSize:13,fontWeight:700,color:c.ac,marginBottom:8}}>What you can do from your phone</div>
+                <div style={{display:"grid",gridTemplateColumns:mob?"1fr":"1fr 1fr",gap:6}}>
+                  {["Give {aFN} tasks from anywhere","Check what {aFN} is working on","Approve content before it goes out","Review files {aFN} created","Start new conversations","Access your full chat history"].map((item,i)=>(
+                    <div key={i} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:c.so}}>
+                      <span style={{width:5,height:5,borderRadius:"50%",background:c.ac,flexShrink:0}}/>
+                      {item.replace(/\{aFN\}/g,aFN)}
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
 
@@ -5125,6 +5212,93 @@ function App({ authUser }) {
           {pg==="business"&&(<BusinessProfilePage c={c} mob={mob} userImg={userImg} setUserImg={setUserImg} meInitial={meInitial}/>)}
           {pg==="skills"&&(<SkillsPage c={c} mob={mob} aFN={aFN}/>)}
           {pg==="dispatch"&&(<DispatchPage c={c} mob={mob} currentAgent={currentAgent} agentImgUrl={agentImgUrl}/>)}
+          {pg==="mobile"&&(
+            <div style={{padding:mob?"20px 16px 60px":"32px 40px 60px",maxWidth:680,margin:"0 auto"}}>
+              {/* Header */}
+              <div style={{marginBottom:32}}>
+                <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:8}}>
+                  <div style={{width:40,height:40,borderRadius:10,background:"linear-gradient(135deg,#F4A261,#E76F8B)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+                  </div>
+                  <div>
+                    <h1 style={{fontSize:mob?22:26,fontWeight:700,color:c.tx,margin:0}}>BLOOM Mobile</h1>
+                    <p style={{fontSize:13,color:c.so,margin:0}}>Add your Bloomie to your phone — no App Store needed</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Agent card */}
+              <div style={{padding:20,borderRadius:16,background:c.cd,border:"1px solid "+c.ln,marginBottom:20,display:"flex",alignItems:"center",gap:16}}>
+                {agentImgUrl
+                  ?<img src={agentImgUrl} alt={agent.nm} style={{width:56,height:56,borderRadius:14,objectFit:"cover",border:"2px solid "+c.ln,flexShrink:0}}/>
+                  :<div style={{width:56,height:56,borderRadius:14,background:"linear-gradient(135deg,#F4A261,#E76F8B)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,fontWeight:700,color:"#fff",flexShrink:0}}>{agent.nm.charAt(0)}</div>
+                }
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:16,fontWeight:700,color:c.tx}}>{agent.nm}</div>
+                  <div style={{fontSize:12,color:c.so,marginTop:2}}>{currentAgent?.job_title||currentAgent?.role||"Your AI Employee"}</div>
+                  <div style={{display:"flex",alignItems:"center",gap:5,marginTop:4}}>
+                    <span style={{width:6,height:6,borderRadius:"50%",background:"#34a853",animation:"pulse 1.5s ease infinite"}}/>
+                    <span style={{fontSize:11,color:"#34a853",fontWeight:600}}>Available on mobile</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Install instructions */}
+              <div style={{padding:24,borderRadius:16,background:c.cd,border:"1px solid "+c.ln,marginBottom:16}}>
+                <div style={{fontSize:14,fontWeight:700,color:c.tx,marginBottom:4}}>Add to your home screen</div>
+                <div style={{fontSize:12,color:c.so,marginBottom:20}}>Works on iPhone and Android. Installs like a native app — no App Store, no waiting.</div>
+                <div style={{display:"flex",flexDirection:"column",gap:16}}>
+                  {[
+                    {n:"1",title:"Open this page on your phone",desc:"Go to "+window.location.origin+" in Safari (iPhone) or Chrome (Android)",mono:window.location.origin},
+                    {n:"2",title:"iPhone — tap the Share icon",desc:"Tap the Share icon at the bottom of Safari, then tap Add to Home Screen"},
+                    {n:"3",title:"Android — tap the menu",desc:"Tap the three-dot menu in Chrome, then tap Add to Home screen"},
+                    {n:"4",title:"Tap Add — you are done",desc:"BLOOM Mobile appears on your home screen. Open it anytime to chat with "+aFN},
+                  ].map((step,i)=>(
+                    <div key={i} style={{display:"flex",alignItems:"flex-start",gap:12}}>
+                      <div style={{width:28,height:28,borderRadius:8,background:"linear-gradient(135deg,#F4A261,#E76F8B)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"#fff",flexShrink:0,marginTop:1}}>{step.n}</div>
+                      <div>
+                        <div style={{fontSize:13,fontWeight:600,color:c.tx}}>{step.title}</div>
+                        <div style={{fontSize:12,color:c.so,marginTop:2,lineHeight:1.5}}>{step.desc}</div>
+                        {step.mono&&<div style={{marginTop:6,padding:"6px 10px",borderRadius:6,background:c.sf,border:"1px solid "+c.ln,fontSize:11,fontFamily:"monospace",color:c.ac}}>{step.mono}</div>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Share link */}
+              <div style={{padding:20,borderRadius:16,background:c.cd,border:"1px solid "+c.ln,marginBottom:16}}>
+                <div style={{fontSize:14,fontWeight:700,color:c.tx,marginBottom:4}}>Share with your team</div>
+                <div style={{fontSize:12,color:c.so,marginBottom:14}}>Send this link to anyone who needs mobile access to {aFN}.</div>
+                <div style={{display:"flex",gap:6,marginBottom:14}}>
+                  <div style={{flex:1,padding:"10px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.sf,fontSize:12,fontFamily:"monospace",color:c.ac,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{window.location.origin}</div>
+                  <button onClick={()=>{navigator.clipboard?.writeText(window.location.origin);setOauthToast({type:"success",msg:"Link copied"});setTimeout(()=>setOauthToast(null),2000);}} style={{padding:"10px 16px",borderRadius:8,border:"none",background:"linear-gradient(135deg,#F4A261,#E76F8B)",cursor:"pointer",fontSize:12,fontWeight:700,color:"#fff",fontFamily:"inherit",flexShrink:0}}>Copy</button>
+                </div>
+                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                  {[
+                    {label:"Text",href:"sms:?body="+encodeURIComponent("Chat with "+aFN+" from your phone: "+window.location.origin)},
+                    {label:"Email",href:"mailto:?subject="+encodeURIComponent("Chat with "+aFN)+"&body="+encodeURIComponent("Open this link on your phone: "+window.location.origin)},
+                    {label:"WhatsApp",href:"https://wa.me/?text="+encodeURIComponent("Chat with "+aFN+" from your phone: "+window.location.origin)},
+                  ].map((s,i)=>(
+                    <a key={i} href={s.href} target="_blank" rel="noopener noreferrer" style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+c.ln,background:c.cd,fontSize:12,fontWeight:600,color:c.tx,textDecoration:"none"}} onMouseEnter={e=>e.currentTarget.style.borderColor=c.ac} onMouseLeave={e=>e.currentTarget.style.borderColor=c.ln}>{s.label}</a>
+                  ))}
+                </div>
+              </div>
+
+              {/* What you can do */}
+              <div style={{padding:16,borderRadius:12,background:"linear-gradient(135deg,rgba(244,162,97,0.06),rgba(231,111,139,0.06))",border:"1px solid rgba(244,162,97,0.2)"}}>
+                <div style={{fontSize:13,fontWeight:700,color:c.ac,marginBottom:8}}>What you can do from your phone</div>
+                <div style={{display:"grid",gridTemplateColumns:mob?"1fr":"1fr 1fr",gap:6}}>
+                  {["Give "+aFN+" tasks from anywhere","Check what "+aFN+" is working on","Approve content before it goes out","Review files "+aFN+" created","Start new conversations","Access your full chat history"].map((item,i)=>(
+                    <div key={i} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:c.so}}>
+                      <span style={{width:5,height:5,borderRadius:"50%",background:c.ac,flexShrink:0}}/>
+                      {item}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
       {scrM==="pop"&&<Screen c={c} mob={mob} mode="pop" setMode={setScrM} aFN={aFN}/>}

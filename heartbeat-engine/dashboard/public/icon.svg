@@ -1,0 +1,20 @@
+<svg xmlns='http://www.w3.org/2000/svg' width='192' height='192' viewBox='0 0 192 192'>
+  <rect width='192' height='192' rx='42' fill='url(#g)'/>
+  <defs>
+    <linearGradient id='g' x1='0%' y1='0%' x2='100%' y2='100%'>
+      <stop offset='0%' stop-color='#F4A261'/>
+      <stop offset='100%' stop-color='#E76F8B'/>
+    </linearGradient>
+  </defs>
+  <g transform='translate(96,96)'>
+    <!-- Flower petals -->
+    <ellipse cx='0' cy='-32' rx='16' ry='24' fill='white' opacity='0.9' transform='rotate(0)'/>
+    <ellipse cx='0' cy='-32' rx='16' ry='24' fill='white' opacity='0.85' transform='rotate(72)'/>
+    <ellipse cx='0' cy='-32' rx='16' ry='24' fill='white' opacity='0.9' transform='rotate(144)'/>
+    <ellipse cx='0' cy='-32' rx='16' ry='24' fill='white' opacity='0.85' transform='rotate(216)'/>
+    <ellipse cx='0' cy='-32' rx='16' ry='24' fill='white' opacity='0.9' transform='rotate(288)'/>
+    <!-- Center -->
+    <circle cx='0' cy='0' r='14' fill='#FFE0C2'/>
+    <circle cx='0' cy='0' r='7' fill='#F4A261'/>
+  </g>
+</svg>
