@@ -3705,29 +3705,41 @@ When a user asks you to edit, modify, or update something you previously created
       for (const block of response.content) {
         if (block.type === 'tool_use') {
           // ── AUTO-INJECT REFERENCE IMAGE for image_generate ──────────────
-          // If the agent calls image_generate without reference_image_url but the
-          // conversation contains person-related images (user uploads OR previously
-          // generated images), auto-inject the best reference URL.
-          // Priority: 1) user-uploaded photo  2) last generated image from this session
-          // This prevents the agent from generating a completely different person when
-          // the user says "resize it" or "make a hero image of this guy".
+          // If the agent calls image_generate without a reference image but the
+          // conversation contains images (user uploads, previously generated images),
+          // auto-inject the best reference so variations/resizes match the original.
+          // Priority: 1) user-uploaded image (base64 or URL)  2) last generated image  3) markdown URLs
           if (block.name === 'image_generate' && !block.input.reference_image_url && !block.input.reference_image_base64) {
             let foundRefUrl = null;
+            let foundRefBase64 = null;
 
-            // 1) Check for user-uploaded images in conversation (highest priority — the original reference)
+            // 1) Check for user-uploaded images in conversation (highest priority)
+            // Uploads come through as BOTH base64 AND url — check both formats
             for (let mi = currentMessages.length - 1; mi >= 0; mi--) {
               const msg = currentMessages[mi];
               if (msg.role === 'user' && Array.isArray(msg.content)) {
-                const imgBlock = msg.content.find(b => b.type === 'image' && b.source?.type === 'url');
-                if (imgBlock) {
-                  foundRefUrl = imgBlock.source.url;
+                // Check for URL-sourced images first
+                const urlImg = msg.content.find(b => b.type === 'image' && b.source?.type === 'url');
+                if (urlImg) {
+                  foundRefUrl = urlImg.source.url;
+                  logger.info('Found reference image (URL) from user upload');
+                  break;
+                }
+                // Check for base64-sourced images (this is how the /upload endpoint sends them)
+                const b64Img = msg.content.find(b => b.type === 'image' && b.source?.type === 'base64');
+                if (b64Img) {
+                  foundRefBase64 = b64Img.source.data;
+                  logger.info('Found reference image (base64) from user upload', {
+                    dataLength: foundRefBase64?.length || 0,
+                    mediaType: b64Img.source.media_type
+                  });
                   break;
                 }
               }
             }
 
-            // 2) If no user upload found, check for previously generated image URLs from this session's tool results
-            if (!foundRefUrl) {
+            // 2) If no user upload found, check for previously generated image URLs from this session
+            if (!foundRefUrl && !foundRefBase64) {
               for (let ti = toolResults.length - 1; ti >= 0; ti--) {
                 const tr = toolResults[ti];
                 if (tr && tr.image_url && toolsUsed[ti]?.name === 'image_generate') {
@@ -3739,13 +3751,13 @@ When a user asks you to edit, modify, or update something you previously created
             }
 
             // 3) Also check assistant message text for markdown image URLs from prior turns
-            if (!foundRefUrl) {
+            if (!foundRefUrl && !foundRefBase64) {
               for (let mi = currentMessages.length - 1; mi >= 0; mi--) {
                 const msg = currentMessages[mi];
                 if (msg.role === 'assistant') {
                   const text = typeof msg.content === 'string' ? msg.content :
                     (Array.isArray(msg.content) ? msg.content.filter(b => b.type === 'text').map(b => b.text).join(' ') : '');
-                  const imgMatch = text.match(/!\[.*?\]\((https:\/\/[^\s)]+\.png[^\s)]*)\)/);
+                  const imgMatch = text.match(/!\[.*?\]\((https:\/\/[^\s)]+\.(?:png|jpg|jpeg|webp)[^\s)]*)\)/i);
                   if (imgMatch) {
                     foundRefUrl = imgMatch[1];
                     logger.info('Extracted reference image URL from assistant markdown response');
@@ -3755,12 +3767,19 @@ When a user asks you to edit, modify, or update something you previously created
               }
             }
 
+            // Inject whichever reference we found — URL takes priority over base64
             if (foundRefUrl) {
               block.input.reference_image_url = foundRefUrl;
               if (!block.input.engine || block.input.engine === 'auto') {
                 block.input.engine = 'gemini';
               }
               logger.info('Auto-injected reference_image_url into image_generate', { url: foundRefUrl.slice(0, 80) });
+            } else if (foundRefBase64) {
+              block.input.reference_image_base64 = foundRefBase64;
+              if (!block.input.engine || block.input.engine === 'auto') {
+                block.input.engine = 'gemini';
+              }
+              logger.info('Auto-injected reference_image_base64 into image_generate', { dataLength: foundRefBase64.length });
             }
           }
 

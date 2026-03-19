@@ -1141,6 +1141,7 @@ function ProgressRing({pct,sz,stroke,color,bg}) {
    ═══════════════════════════════════════════════════════════════ */
 function ActiveTaskTracker({c, sessionId}) {
   const [tasks,setTasks]=useState([]);
+  const [pollRate,setPollRate]=useState(2000); // Start fast (2s), slow down when idle
   useEffect(()=>{
     // Clear tasks immediately when session changes (e.g. "New chat")
     setTasks([]);
@@ -1150,13 +1151,21 @@ function ActiveTaskTracker({c, sessionId}) {
           ? `/api/dashboard/agentic-executions?limit=3&sessionId=${encodeURIComponent(sessionId)}`
           : "/api/dashboard/agentic-executions?limit=3";
         const r=await fetch(url);
-        if(r.ok){const d=await r.json(); setTasks(d.executions||d||[]);}
+        if(r.ok){
+          const d=await r.json();
+          const execs=d.executions||d||[];
+          setTasks(execs);
+          // Fast poll (2s) when tasks are active, slow down (10s) when idle/complete
+          const hasActive=execs.some(t=>t.status==="running"||t.status==="active");
+          setPollRate(hasActive?2000:10000);
+        }
       }catch{}
     };
     go();
-    const t=setInterval(go,15000);
+    // Use dynamic poll rate — starts at 2s for real-time feel during active tasks
+    const t=setInterval(go,pollRate);
     return()=>clearInterval(t);
-  },[sessionId]);
+  },[sessionId,pollRate]);
 
   if(tasks.length===0) return(
     <div style={{padding:"16px",textAlign:"center",color:c.fa,fontSize:12}}>No active tasks</div>
