@@ -409,8 +409,12 @@ Action: Use image_generate with engine: "gemini" and the reference image (NOT im
 Write a NEW prompt describing the FULL scene (people + new background/setting). The reference
 image preserves the people's appearance. Do NOT use image_edit for this — scene/background
 changes with people require image_generate + reference for face preservation.
+CRITICAL — MATCH THE ORIGINAL ASPECT RATIO: Look at the uploaded image. If it's landscape/wide
+(like a hero banner or 16:9), set size: "1536x1024". If it's portrait/tall, set size: "1024x1536".
+If it's square, set size: "1024x1024". Do NOT default to square — match the original shape.
 Example: "Keep the people exactly the same but change the background to a luxury office" →
 call image_generate with engine: "gemini", describe people AND the new setting in your prompt.
+If the original image is landscape, set size: "1536x1024" to match.
 
 INTENT 3 — "Here's context / information for you"
 Keywords: "here's a screenshot", "this is what I see", "look at this error", "I like this design"
@@ -429,6 +433,12 @@ PERSON CONSISTENCY RULES (when using image_generate with people):
 - Use engine: "gemini" for character consistency (auto-routing handles this)
 - NEVER change a person's race, ethnicity, skin tone, or distinguishing features
 - NEVER describe a person's appearance from memory — the reference image handles it
+
+ASPECT RATIO RULES (when generating from a reference or uploaded image):
+- ALWAYS match the original image's aspect ratio. If the original is landscape (wider than tall),
+  use size: "1536x1024". If portrait (taller than wide), use size: "1024x1536". If square, use "1024x1024".
+- NEVER default to 1024x1024 unless the original image is actually square.
+- When the user uploads a hero banner, cover photo, or wide image, it is ALWAYS landscape.
 
 CRITICAL: If the user says "make size variations" or "resize for different platforms" and you
 call image_generate instead of image_resize, you have FAILED. Size variations = resize, not regenerate.
@@ -3978,6 +3988,29 @@ When a user asks you to edit, modify, or update something you previously created
                 block.input.engine = 'gemini';
               }
               logger.info('Auto-injected reference_image_base64 into image_generate', { dataLength: foundRefBase64.length, mime: foundRefMime });
+
+              // Auto-detect aspect ratio from reference image if size not explicitly set
+              if (!block.input.size || block.input.size === '1024x1024') {
+                try {
+                  const Jimp = (await import('jimp')).default;
+                  const imgBuf = Buffer.from(foundRefBase64, 'base64');
+                  const refImg = await Jimp.read(imgBuf);
+                  const w = refImg.getWidth();
+                  const h = refImg.getHeight();
+                  const ratio = w / h;
+                  if (ratio > 1.2) {
+                    block.input.size = '1536x1024'; // landscape
+                    logger.info(`Auto-set size to landscape (1536x1024) based on reference ${w}x${h}, ratio ${ratio.toFixed(2)}`);
+                  } else if (ratio < 0.8) {
+                    block.input.size = '1024x1536'; // portrait
+                    logger.info(`Auto-set size to portrait (1024x1536) based on reference ${w}x${h}, ratio ${ratio.toFixed(2)}`);
+                  } else {
+                    logger.info(`Reference image is ~square (${w}x${h}, ratio ${ratio.toFixed(2)}), keeping 1024x1024`);
+                  }
+                } catch (arErr) {
+                  logger.warn('Could not auto-detect aspect ratio from reference image:', arErr.message);
+                }
+              }
             }
           }
 
