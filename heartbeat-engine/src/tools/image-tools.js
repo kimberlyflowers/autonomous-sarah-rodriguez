@@ -219,7 +219,14 @@ export const imageToolExecutors = {
     const quality = params.quality || 'high';
 
     if (getOpenAIKey()) {
-      return await editWithGPTImage(prompt, params.image_url, params.image_base64, size, quality);
+      const result = await editWithGPTImage(prompt, params.image_url, params.image_base64, size, quality);
+      if (result.success) return result;
+      // GPT edit failed — fall through to Gemini if available
+      logger.warn('GPT Image edit failed, trying Gemini fallback', { error: result.error });
+      if (getGeminiKey()) {
+        return await editWithGemini(prompt, params.image_url, params.image_base64);
+      }
+      return result;
     } else if (getGeminiKey()) {
       // Gemini edit: re-generate with edit instructions + original context
       return await editWithGemini(prompt, params.image_url, params.image_base64);
@@ -444,17 +451,18 @@ async function editWithGPTImage(prompt, imageUrl, imageBase64, size, quality) {
     formData.append('size', size);
     formData.append('quality', quality);
 
-    // Attach image
+    // Attach image — OpenAI expects 'image[]' (array format) for GPT Image models
     if (imageBase64) {
       const buffer = Buffer.from(imageBase64, 'base64');
       const blob = new Blob([buffer], { type: 'image/png' });
-      formData.append('image', blob, 'input.png');
+      formData.append('image[]', blob, 'input.png');
     } else if (imageUrl) {
       // Fetch the image first
       const imgResponse = await fetch(imageUrl);
+      if (!imgResponse.ok) throw new Error(`Failed to fetch image for edit: ${imgResponse.status}`);
       const imgBuffer = Buffer.from(await imgResponse.arrayBuffer());
       const blob = new Blob([imgBuffer], { type: 'image/png' });
-      formData.append('image', blob, 'input.png');
+      formData.append('image[]', blob, 'input.png');
     }
 
     const response = await fetch('https://api.openai.com/v1/images/edits', {
