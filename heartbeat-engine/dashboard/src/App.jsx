@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, Component } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { supabase } from "./supabase.js";
+import QRCode from 'qrcode';
 import PageEditor from "./PageEditor.jsx";
 
 // Get auth headers for API calls
@@ -2711,7 +2712,7 @@ function DispatchPage({c, mob, currentAgent, agentImgUrl}) {
           {/* QR code */}
           <div style={{flexShrink:0, textAlign:'center'}}>
             <div style={{width:180, height:180, borderRadius:14, border:'1px solid '+c.ln, background:'#fff', overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center', margin: mob ? '0 auto' : 0}}>
-              <img src={qrSrc} alt='QR Code' style={{width:160, height:160}} onError={e=>e.currentTarget.style.display='none'}/>
+              <QRCanvas url={dispatchUrl} size={160}/>
             </div>
             <div style={{fontSize:10, color:c.so, marginTop:6}}>Scan with your phone camera</div>
           </div>
@@ -2773,6 +2774,21 @@ function DispatchPage({c, mob, currentAgent, agentImgUrl}) {
       </div>
     </div>
   );
+}
+
+
+/* ── QR CODE — generated in-browser, no external API ── */
+function QRCanvas({url, size=160}) {
+  const canvasRef = useRef(null);
+  useEffect(()=>{
+    if(!canvasRef.current||!url) return;
+    QRCode.toCanvas(canvasRef.current, url, {
+      width: size,
+      margin: 2,
+      color: { dark: '#000000', light: '#ffffff' }
+    }, (err)=>{ if(err) console.error('QR error:', err); });
+  },[url,size]);
+  return <canvas ref={canvasRef} style={{borderRadius:8,display:'block'}}/>;
 }
 
 export default function AppWithErrorBoundary({ user: authUser }) {
@@ -5269,7 +5285,7 @@ function App({ authUser }) {
                   <div style={{display:"flex",gap:24,alignItems:"flex-start",flexWrap:"wrap"}}>
                     <div style={{textAlign:"center",flexShrink:0}}>
                       <div style={{width:160,height:160,borderRadius:12,border:"1px solid "+c.ln,background:"#fff",display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
-                        <img src={"https://chart.googleapis.com/chart?cht=qr&chs=160x160&chl="+encodeURIComponent(window.location.origin)+"&choe=UTF-8"} alt="QR Code" style={{width:140,height:140}}/>
+                        <QRCanvas url={window.location.origin} size={140}/>
                       </div>
                       <div style={{fontSize:10,color:c.so,marginTop:6}}>Scan with your phone camera</div>
                     </div>
