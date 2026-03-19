@@ -266,14 +266,18 @@ router.get('/download/:platform', (req, res) => {
     req.setTimeout(0);
     res.setTimeout(0);
 
-    res.setHeader('Content-Type', fileInfo.contentType);
-    res.setHeader('Content-Length', stat.size);
-    res.setHeader('Content-Disposition', `attachment; filename="${fileInfo.filename}"`);
-    // Prevent Railway edge from buffering — stream immediately
-    res.setHeader('X-Accel-Buffering', 'no');
-    res.setHeader('Cache-Control', 'no-cache');
+    res.writeHead(200, {
+      'Content-Type': fileInfo.contentType,
+      'Content-Length': stat.size,
+      'Content-Disposition': `attachment; filename="${fileInfo.filename}"`,
+      'X-Accel-Buffering': 'no',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    });
+    // Flush headers immediately so Railway proxy doesn't timeout waiting for first byte
+    res.flushHeaders();
 
-    const stream = fs.createReadStream(filePath, { highWaterMark: 64 * 1024 }); // 64KB chunks
+    const stream = fs.createReadStream(filePath, { highWaterMark: 64 * 1024 });
     stream.on('error', (err) => {
       logger.error(`Stream error for ${platform}: ${err.message}`);
       if (!res.headersSent) res.status(500).json({ error: 'File stream failed' });
