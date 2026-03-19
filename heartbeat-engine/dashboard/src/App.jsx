@@ -5207,15 +5207,16 @@ function App({ authUser }) {
           {pg==="dispatch"&&(<DispatchPage c={c} mob={mob} currentAgent={currentAgent} agentImgUrl={agentImgUrl}/>)}
           {pg==="mobile"&&(
             <div style={{padding:mob?"20px 16px 60px":"32px 40px 60px",maxWidth:680,margin:"0 auto"}}>
+
               {/* Header */}
-              <div style={{marginBottom:32}}>
+              <div style={{marginBottom:28}}>
                 <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:8}}>
                   <div style={{width:40,height:40,borderRadius:10,background:"linear-gradient(135deg,#F4A261,#E76F8B)",display:"flex",alignItems:"center",justifyContent:"center"}}>
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
                   </div>
                   <div>
                     <h1 style={{fontSize:mob?22:26,fontWeight:700,color:c.tx,margin:0}}>BLOOM Mobile</h1>
-                    <p style={{fontSize:13,color:c.so,margin:0}}>Add your Bloomie to your phone — no App Store needed</p>
+                    <p style={{fontSize:13,color:c.so,margin:0}}>Your Bloomie on your phone — no App Store needed</p>
                   </div>
                 </div>
               </div>
@@ -5236,47 +5237,62 @@ function App({ authUser }) {
                 </div>
               </div>
 
-              {/* Install instructions */}
-              <div style={{padding:24,borderRadius:16,background:c.cd,border:"1px solid "+c.ln,marginBottom:16}}>
-                <div style={{fontSize:14,fontWeight:700,color:c.tx,marginBottom:4}}>Add to your home screen</div>
-                <div style={{fontSize:12,color:c.so,marginBottom:20}}>Works on iPhone and Android. Installs like a native app — no App Store, no waiting.</div>
-                <div style={{display:"flex",flexDirection:"column",gap:16}}>
-                  {[
-                    {n:"1",title:"Open this page on your phone",desc:"Go to "+window.location.origin+" in Safari (iPhone) or Chrome (Android)",mono:window.location.origin},
-                    {n:"2",title:"iPhone — tap the Share icon",desc:"Tap the Share icon at the bottom of Safari, then tap Add to Home Screen"},
-                    {n:"3",title:"Android — tap the menu",desc:"Tap the three-dot menu in Chrome, then tap Add to Home screen"},
-                    {n:"4",title:"Tap Add — you are done",desc:"BLOOM Mobile appears on your home screen. Open it anytime to chat with "+aFN},
-                  ].map((step,i)=>(
-                    <div key={i} style={{display:"flex",alignItems:"flex-start",gap:12}}>
-                      <div style={{width:28,height:28,borderRadius:8,background:"linear-gradient(135deg,#F4A261,#E76F8B)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"#fff",flexShrink:0,marginTop:1}}>{step.n}</div>
-                      <div>
-                        <div style={{fontSize:13,fontWeight:600,color:c.tx}}>{step.title}</div>
-                        <div style={{fontSize:12,color:c.so,marginTop:2,lineHeight:1.5}}>{step.desc}</div>
-                        {step.mono&&<div style={{marginTop:6,padding:"6px 10px",borderRadius:6,background:c.sf,border:"1px solid "+c.ln,fontSize:11,fontFamily:"monospace",color:c.ac}}>{step.mono}</div>}
+              {/* On mobile — show install prompt directly */}
+              {mob?(
+                <div style={{padding:24,borderRadius:16,background:c.cd,border:"1px solid "+c.ln,marginBottom:16}}>
+                  <div style={{fontSize:16,fontWeight:700,color:c.tx,marginBottom:8}}>You are already on your phone</div>
+                  <div style={{fontSize:13,color:c.so,marginBottom:20,lineHeight:1.6}}>Add {aFN} to your home screen and open it like a native app — no App Store, no login screen each time.</div>
+                  <div style={{display:"flex",flexDirection:"column",gap:14}}>
+                    <div style={{padding:16,borderRadius:12,background:c.sf,border:"1px solid "+c.ln}}>
+                      <div style={{fontSize:13,fontWeight:700,color:c.tx,marginBottom:6}}>iPhone</div>
+                      <div style={{fontSize:12,color:c.so,lineHeight:1.7}}>
+                        1. Tap the <strong style={{color:c.tx}}>Share icon</strong> at the bottom of Safari<br/>
+                        2. Scroll down and tap <strong style={{color:c.tx}}>Add to Home Screen</strong><br/>
+                        3. Tap <strong style={{color:c.tx}}>Add</strong> — done
                       </div>
                     </div>
-                  ))}
+                    <div style={{padding:16,borderRadius:12,background:c.sf,border:"1px solid "+c.ln}}>
+                      <div style={{fontSize:13,fontWeight:700,color:c.tx,marginBottom:6}}>Android</div>
+                      <div style={{fontSize:12,color:c.so,lineHeight:1.7}}>
+                        1. Tap the <strong style={{color:c.tx}}>three-dot menu</strong> in Chrome<br/>
+                        2. Tap <strong style={{color:c.tx}}>Add to Home screen</strong><br/>
+                        3. Tap <strong style={{color:c.tx}}>Add</strong> — done
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              </div>
-
-              {/* Share link */}
-              <div style={{padding:20,borderRadius:16,background:c.cd,border:"1px solid "+c.ln,marginBottom:16}}>
-                <div style={{fontSize:14,fontWeight:700,color:c.tx,marginBottom:4}}>Share with your team</div>
-                <div style={{fontSize:12,color:c.so,marginBottom:14}}>Send this link to anyone who needs mobile access to {aFN}.</div>
-                <div style={{display:"flex",gap:6,marginBottom:14}}>
-                  <div style={{flex:1,padding:"10px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.sf,fontSize:12,fontFamily:"monospace",color:c.ac,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{window.location.origin}</div>
-                  <button onClick={()=>{navigator.clipboard?.writeText(window.location.origin);setOauthToast({type:"success",msg:"Link copied"});setTimeout(()=>setOauthToast(null),2000);}} style={{padding:"10px 16px",borderRadius:8,border:"none",background:"linear-gradient(135deg,#F4A261,#E76F8B)",cursor:"pointer",fontSize:12,fontWeight:700,color:"#fff",fontFamily:"inherit",flexShrink:0}}>Copy</button>
+              ):(
+                /* On desktop — show QR + instructions to send to phone */
+                <div style={{padding:24,borderRadius:16,background:c.cd,border:"1px solid "+c.ln,marginBottom:16}}>
+                  <div style={{fontSize:14,fontWeight:700,color:c.tx,marginBottom:4}}>Send to your phone</div>
+                  <div style={{fontSize:12,color:c.so,marginBottom:20}}>Scan the QR code or copy the link and open it on your phone. Then add it to your home screen.</div>
+                  <div style={{display:"flex",gap:24,alignItems:"flex-start",flexWrap:"wrap"}}>
+                    <div style={{textAlign:"center",flexShrink:0}}>
+                      <div style={{width:160,height:160,borderRadius:12,border:"1px solid "+c.ln,background:"#fff",display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
+                        <img src={"https://chart.googleapis.com/chart?cht=qr&chs=160x160&chl="+encodeURIComponent(window.location.origin)+"&choe=UTF-8"} alt="QR Code" style={{width:140,height:140}}/>
+                      </div>
+                      <div style={{fontSize:10,color:c.so,marginTop:6}}>Scan with your phone camera</div>
+                    </div>
+                    <div style={{flex:1,minWidth:200}}>
+                      <div style={{fontSize:11,fontWeight:700,color:c.so,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>Or copy the link</div>
+                      <div style={{display:"flex",gap:6,marginBottom:16}}>
+                        <div style={{flex:1,padding:"10px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.sf,fontSize:12,fontFamily:"monospace",color:c.ac,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{window.location.origin}</div>
+                        <button onClick={()=>{navigator.clipboard?.writeText(window.location.origin);setOauthToast({type:"success",msg:"Link copied"});setTimeout(()=>setOauthToast(null),2000);}} style={{padding:"10px 16px",borderRadius:8,border:"none",background:"linear-gradient(135deg,#F4A261,#E76F8B)",cursor:"pointer",fontSize:12,fontWeight:700,color:"#fff",fontFamily:"inherit",flexShrink:0}}>Copy</button>
+                      </div>
+                      <div style={{fontSize:11,fontWeight:700,color:c.so,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>Share via</div>
+                      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                        {[
+                          {label:"Text",href:"sms:?body="+encodeURIComponent("Chat with "+aFN+" from your phone: "+window.location.origin)},
+                          {label:"Email",href:"mailto:?subject="+encodeURIComponent("Chat with "+aFN)+"&body="+encodeURIComponent("Open this link on your phone and add it to your home screen: "+window.location.origin)},
+                          {label:"WhatsApp",href:"https://wa.me/?text="+encodeURIComponent("Chat with "+aFN+" from your phone: "+window.location.origin)},
+                        ].map((s,i)=>(
+                          <a key={i} href={s.href} target="_blank" rel="noopener noreferrer" style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+c.ln,background:c.cd,fontSize:12,fontWeight:600,color:c.tx,textDecoration:"none"}} onMouseEnter={e=>e.currentTarget.style.borderColor=c.ac} onMouseLeave={e=>e.currentTarget.style.borderColor=c.ln}>{s.label}</a>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                  {[
-                    {label:"Text",href:"sms:?body="+encodeURIComponent("Chat with "+aFN+" from your phone: "+window.location.origin)},
-                    {label:"Email",href:"mailto:?subject="+encodeURIComponent("Chat with "+aFN)+"&body="+encodeURIComponent("Open this link on your phone: "+window.location.origin)},
-                    {label:"WhatsApp",href:"https://wa.me/?text="+encodeURIComponent("Chat with "+aFN+" from your phone: "+window.location.origin)},
-                  ].map((s,i)=>(
-                    <a key={i} href={s.href} target="_blank" rel="noopener noreferrer" style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+c.ln,background:c.cd,fontSize:12,fontWeight:600,color:c.tx,textDecoration:"none"}} onMouseEnter={e=>e.currentTarget.style.borderColor=c.ac} onMouseLeave={e=>e.currentTarget.style.borderColor=c.ln}>{s.label}</a>
-                  ))}
-                </div>
-              </div>
+              )}
 
               {/* What you can do */}
               <div style={{padding:16,borderRadius:12,background:"linear-gradient(135deg,rgba(244,162,97,0.06),rgba(231,111,139,0.06))",border:"1px solid rgba(244,162,97,0.2)"}}>
@@ -5290,6 +5306,7 @@ function App({ authUser }) {
                   ))}
                 </div>
               </div>
+
             </div>
           )}
         </div>
