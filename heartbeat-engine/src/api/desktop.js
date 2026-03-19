@@ -167,6 +167,7 @@ router.get('/result/:commandId', (req, res) => {
 
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://njfhzabmaxhfzekbzpzz.supabase.co';
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5qZmh6YWJtYXhoZnpla2J6cHp6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4MjYwMjMsImV4cCI6MjA4ODQwMjAyM30.QPTQhnlfZtmfQVm75GqG0Oazmyb7USjYBdLEy_G-iqU';
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || '';
 
 // Download file metadata — updated when new builds are uploaded
 const DOWNLOAD_FILES = {
@@ -204,11 +205,15 @@ router.post('/download-token/:platform', async (req, res) => {
   }
 
   try {
-    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    const { data: { user }, error } = await supabase.auth.getUser(authHeader.replace('Bearer ', ''));
+    // Verify user JWT with anon key
+    const anonClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const { data: { user }, error } = await anonClient.auth.getUser(authHeader.replace('Bearer ', ''));
     if (error || !user) return res.status(401).json({ error: 'Invalid session.' });
 
-    const { data: membership } = await supabase
+    // Use service key to query org membership (bypasses RLS)
+    const dbKey = SUPABASE_SERVICE_KEY || SUPABASE_ANON_KEY;
+    const dbClient = createClient(SUPABASE_URL, dbKey);
+    const { data: membership } = await dbClient
       .from('organization_members')
       .select('organization_id')
       .eq('user_id', user.id)
