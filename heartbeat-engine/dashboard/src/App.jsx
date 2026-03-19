@@ -2579,21 +2579,23 @@ function DispatchPage({c, mob, currentAgent, agentImgUrl}) {
 
   const downloadDesktop = async (platform) => {
     setDownloading(platform);
+    // Open window immediately within user gesture (Chrome blocks async window.open)
+    const win = window.open('about:blank', '_blank');
     try {
-      // Step 1: Get a one-time download token (auth-checked server-side)
       const headers = await getAuthHeaders();
       const res = await fetch(SARAH_URL + '/api/desktop/download-token/' + platform, { method: 'POST', headers });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
+        if (win) win.close();
         alert(err.error || 'Download failed');
         setDownloading(null);
         return;
       }
       const { downloadUrl } = await res.json();
-
-      // Step 2: Open download URL in new window (Content-Disposition: attachment triggers native download)
-      window.open(SARAH_URL + downloadUrl, '_blank');
+      // Navigate the pre-opened window to the download URL
+      if (win) win.location.href = SARAH_URL + downloadUrl;
     } catch (e) {
+      if (win) win.close();
       alert('Download failed. Please try again.');
     }
     setDownloading(null);
