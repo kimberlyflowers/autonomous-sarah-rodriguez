@@ -380,23 +380,39 @@ target. ALWAYS use these exact sizes:
 - YouTube thumbnail: target_width=1280, target_height=720, size="1536x1024"
 NEVER skip target_width and target_height when a user asks for platform-specific images.
 The output MUST be the exact pixel dimensions the platform requires — not the AI's default size.
-CHARACTER CONSISTENCY (CRITICAL — READ CAREFULLY):
-When the user uploads a photo of a person and later asks you to generate images featuring "this person",
-"this guy", "her", "him", "me", "the man/woman in the photo", or ANY reference to someone from an
-uploaded image, you MUST follow this exact workflow:
+UPLOADED IMAGE INTENT DETECTION (CRITICAL — READ CAREFULLY):
+When a user uploads an image, you MUST determine their INTENT before choosing which tool to use.
+There are THREE distinct intents:
 
-1. Call get_session_files to find the uploaded image and get its URL
-2. Call image_generate with:
-   - engine: "gemini" (REQUIRED — only Gemini supports character consistency)
-   - reference_image_url: the Supabase URL of the uploaded photo
-   - prompt: your detailed description (include ethnicity, skin tone, hair, and physical features
-     explicitly — e.g. "an Asian man with short black hair" not just "a man")
-3. NEVER generate images of a person from a reference photo without passing reference_image_url
-4. NEVER change a person's race, ethnicity, skin tone, or distinguishing features
-5. NEVER describe a person's appearance from memory — always pass the actual reference image
+INTENT 1 — "Make size variations / resize this for different platforms"
+Keywords: "resize", "size variations", "make this for Facebook/Instagram/etc", "same image different sizes"
+Action: Use image_resize (NOT image_generate). This takes the ORIGINAL image and crops/scales it
+to exact platform dimensions. NO AI generation. The output is the SAME image, just resized.
+Example: "Create 3 size variations of this flyer" → call image_resize 3 times with different
+target_width/target_height for each platform. The flyer stays IDENTICAL.
 
-If you skip reference_image_url, the generated person will look COMPLETELY DIFFERENT from the reference.
-This is unacceptable. The user uploaded that photo specifically so the generated image matches it.
+INTENT 2 — "Create something NEW using this as reference"
+Keywords: "create a flyer with this person", "make a new design like this", "use this style",
+"put this person in a new scene", "generate something similar"
+Action: Use image_generate with the reference image. The prompt you write should naturally describe
+what you want — do NOT add "preserve the person's face" boilerplate. Just describe the scene and
+the model will use the reference image for consistency.
+Example: "Create a new flyer for a different event using this person's photo" → call image_generate
+with your descriptive prompt + the reference image will be auto-injected.
+
+INTENT 3 — "Here's context / information for you"
+Keywords: "here's a screenshot", "this is what I see", "look at this error", "I like this design"
+Action: Just look at the image for context. Don't use it as a reference for generation.
+
+PERSON CONSISTENCY RULES (when using image_generate with people):
+- The reference image is auto-injected — you don't need to manually pass it
+- In your prompt, describe the person naturally (ethnicity, hair, features) so the model understands
+- Use engine: "gemini" for character consistency (auto-routing handles this)
+- NEVER change a person's race, ethnicity, skin tone, or distinguishing features
+- NEVER describe a person's appearance from memory — the reference image handles it
+
+CRITICAL: If the user says "make size variations" or "resize for different platforms" and you
+call image_generate instead of image_resize, you have FAILED. Size variations = resize, not regenerate.
 
 CREATING DELIVERABLES:
 You have TWO tools for creating files:
@@ -1500,6 +1516,21 @@ const _ALL_TOOLS = [
     }
   },
   {
+    name: "image_resize",
+    description: "Resize/crop an existing image to exact pixel dimensions WITHOUT any AI regeneration. The output is the SAME image, just at different dimensions. Use this when the user uploads an image and wants: size variations for different platforms, the same design at different dimensions, a crop/resize of their existing image. This does NOT generate new content. Common sizes: Facebook cover 820x312, Instagram post 1080x1080, Instagram story 1080x1920, Eventbrite header 2160x1080, Twitter header 1500x500, LinkedIn banner 1128x191, YouTube thumbnail 1280x720.",
+    input_schema: {
+      type: "object",
+      properties: {
+        image_url: { type: "string", description: "URL of image to resize" },
+        image_base64: { type: "string", description: "Base64-encoded image to resize" },
+        target_width: { type: "integer", description: "Exact output width in pixels" },
+        target_height: { type: "integer", description: "Exact output height in pixels" },
+        mode: { type: "string", enum: ["cover", "contain", "stretch"], description: "'cover' (default) = resize + center-crop. 'contain' = fit with letterbox. 'stretch' = distort to fill.", default: "cover" }
+      },
+      required: ["target_width", "target_height"]
+    }
+  },
+  {
     name: "image_edit",
     description: "Edit an existing image with text instructions. Change text, swap backgrounds, adjust colors, add/remove elements, fix text rendering. Provide the image via URL or base64.",
     input_schema: {
@@ -2032,6 +2063,10 @@ function checkToolReadiness(toolName) {
     if (!process.env.OPENAI_API_KEY && !process.env.GEMINI_API_KEY) {
       return { ready: false, reason: 'No image API key (OPENAI_API_KEY or GEMINI_API_KEY)' };
     }
+  }
+  // image_resize doesn't need an API key — it's pure local processing
+  if (toolName === 'image_resize') {
+    return { ready: true };
   }
   // Specialist dispatch needs at least one model key
   if (toolName === 'dispatch_to_specialist') {
@@ -3726,9 +3761,36 @@ When a user asks you to edit, modify, or update something you previously created
           // conversation contains images (user uploads, previously generated images),
           // auto-inject the best reference so variations/resizes match the original.
           // Priority: 1) user-uploaded image (base64 or URL)  2) last generated image  3) markdown URLs
+          // Also auto-inject for image_resize — it needs the uploaded image to resize
+          if (block.name === 'image_resize' && !block.input.image_url && !block.input.image_base64) {
+            // Find uploaded image and inject it
+            for (let mi = currentMessages.length - 1; mi >= 0; mi--) {
+              const msg = currentMessages[mi];
+              if (msg.role === 'user' && Array.isArray(msg.content)) {
+                const urlImg = msg.content.find(b => b.type === 'image' && b.source?.type === 'url');
+                if (urlImg) { block.input.image_url = urlImg.source.url; break; }
+                const b64Img = msg.content.find(b => b.type === 'image' && b.source?.type === 'base64');
+                if (b64Img) { block.input.image_base64 = b64Img.source.data; break; }
+              }
+            }
+            // Also check previously generated images
+            if (!block.input.image_url && !block.input.image_base64) {
+              for (let ti = toolResults.length - 1; ti >= 0; ti--) {
+                const tr = toolResults[ti];
+                if (tr?.image_url && (toolsUsed[ti]?.name === 'image_generate' || toolsUsed[ti]?.name === 'image_resize')) {
+                  block.input.image_url = tr.image_url; break;
+                }
+              }
+            }
+            if (block.input.image_url || block.input.image_base64) {
+              logger.info('Auto-injected image into image_resize');
+            }
+          }
+
           if (block.name === 'image_generate' && !block.input.reference_image_url && !block.input.reference_image_base64) {
             let foundRefUrl = null;
             let foundRefBase64 = null;
+            let foundRefMime = null;
 
             // 1) Check for user-uploaded images in conversation (highest priority)
             // Uploads come through as BOTH base64 AND url — check both formats
@@ -3746,9 +3808,10 @@ When a user asks you to edit, modify, or update something you previously created
                 const b64Img = msg.content.find(b => b.type === 'image' && b.source?.type === 'base64');
                 if (b64Img) {
                   foundRefBase64 = b64Img.source.data;
+                  foundRefMime = b64Img.source.media_type || null;
                   logger.info('Found reference image (base64) from user upload', {
                     dataLength: foundRefBase64?.length || 0,
-                    mediaType: b64Img.source.media_type
+                    mediaType: foundRefMime
                   });
                   break;
                 }
@@ -3793,10 +3856,11 @@ When a user asks you to edit, modify, or update something you previously created
               logger.info('Auto-injected reference_image_url into image_generate', { url: foundRefUrl.slice(0, 80) });
             } else if (foundRefBase64) {
               block.input.reference_image_base64 = foundRefBase64;
+              if (foundRefMime) block.input.reference_image_mime = foundRefMime;
               if (!block.input.engine || block.input.engine === 'auto') {
                 block.input.engine = 'gemini';
               }
-              logger.info('Auto-injected reference_image_base64 into image_generate', { dataLength: foundRefBase64.length });
+              logger.info('Auto-injected reference_image_base64 into image_generate', { dataLength: foundRefBase64.length, mime: foundRefMime });
             }
           }
 

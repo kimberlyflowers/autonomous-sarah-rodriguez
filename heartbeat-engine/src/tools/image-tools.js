@@ -109,6 +109,46 @@ export const imageToolDefinitions = {
     },
     category: "image",
     operation: "write"
+  },
+
+  image_resize: {
+    name: "image_resize",
+    description: "Resize/crop an existing image to exact pixel dimensions WITHOUT any AI regeneration. The output is the SAME image, just at different dimensions. Use this when the user uploads an image and wants: size variations for different platforms, the same design at different dimensions, a crop/resize of their existing image. This does NOT generate new content — it preserves the original image exactly. For platform-specific sizes: Facebook cover 820x312, Instagram post 1080x1080, Instagram story 1080x1920, Eventbrite header 2160x1080, Twitter header 1500x500, LinkedIn banner 1128x191, YouTube thumbnail 1280x720.",
+    parameters: {
+      type: "object",
+      properties: {
+        image_url: {
+          type: "string",
+          description: "URL of the image to resize (from uploads or previously generated images)"
+        },
+        image_base64: {
+          type: "string",
+          description: "Base64-encoded image data to resize (alternative to image_url)"
+        },
+        target_width: {
+          type: "integer",
+          description: "Exact output width in pixels (e.g. 820 for Facebook cover)"
+        },
+        target_height: {
+          type: "integer",
+          description: "Exact output height in pixels (e.g. 312 for Facebook cover)"
+        },
+        mode: {
+          type: "string",
+          enum: ["cover", "contain", "stretch"],
+          description: "Resize mode. 'cover' (default) fills the target dimensions with center-crop — best for platform images. 'contain' fits the entire image within the dimensions with letterboxing. 'stretch' distorts to fill exactly.",
+          default: "cover"
+        },
+        background_color: {
+          type: "string",
+          description: "Background color for 'contain' mode letterboxing (hex like '#ffffff' or '#000000'). Default: '#000000'",
+          default: "#000000"
+        }
+      },
+      required: ["target_width", "target_height"]
+    },
+    category: "image",
+    operation: "write"
   }
 };
 
@@ -152,22 +192,22 @@ export const imageToolExecutors = {
           if (result.success) return result;
           // GPT edit failed with reference — fall back to Gemini which handles this natively
           logger.warn('GPT edit with reference failed, trying Gemini', { error: result.error });
-          if (getGeminiKey()) return await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64);
+          if (getGeminiKey()) return await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
           return result;
         }
         const result = await generateWithGPTImage(prompt, size, quality, background);
         if (result.success) return result;
         // OpenAI failed — try Gemini if available
         logger.warn('OpenAI image failed, trying Gemini fallback', { error: result.error });
-        if (getGeminiKey()) return await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64);
+        if (getGeminiKey()) return await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
         return result;
       } catch(e) {
         logger.error('OpenAI image threw error', { error: e.message });
-        if (getGeminiKey()) return await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64);
+        if (getGeminiKey()) return await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
         throw e;
       }
     } else if (useEngine === 'gemini') {
-      return await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64);
+      return await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
     }
 
     return { success: false, error: `Unknown engine: ${useEngine}` };
@@ -186,6 +226,83 @@ export const imageToolExecutors = {
     }
 
     return { success: false, error: 'No image API key configured' };
+  },
+
+  image_resize: async (params) => {
+    const tw = parseInt(params.target_width);
+    const th = parseInt(params.target_height);
+    const mode = params.mode || 'cover';
+
+    if (!tw || !th || tw <= 0 || th <= 0) {
+      return { success: false, error: 'target_width and target_height are required and must be positive integers' };
+    }
+    if (tw > 8192 || th > 8192) {
+      return { success: false, error: 'Maximum dimension is 8192px' };
+    }
+
+    let imgBuffer = null;
+
+    // Get the image from base64 or URL
+    if (params.image_base64) {
+      imgBuffer = Buffer.from(params.image_base64, 'base64');
+    } else if (params.image_url) {
+      try {
+        const resp = await fetch(params.image_url);
+        if (!resp.ok) throw new Error(`Failed to fetch image: ${resp.status}`);
+        imgBuffer = Buffer.from(await resp.arrayBuffer());
+      } catch (e) {
+        return { success: false, error: `Could not fetch image: ${e.message}` };
+      }
+    } else {
+      return { success: false, error: 'Provide image_url or image_base64 to resize' };
+    }
+
+    try {
+      const Jimp = (await import('jimp')).default;
+      const image = await Jimp.read(imgBuffer);
+
+      if (mode === 'contain') {
+        // Fit entire image within dimensions, letterbox with background color
+        const bgColor = params.background_color || '#000000';
+        const bg = await new Jimp(tw, th, bgColor);
+        image.contain(tw, th);
+        bg.composite(image, 0, 0);
+        const resizedBuffer = await bg.getBufferAsync(Jimp.MIME_PNG);
+        return {
+          success: true,
+          engine: 'resize-contain',
+          image_base64: resizedBuffer.toString('base64'),
+          filepath: `/tmp/bloom-resize-${Date.now()}.png`,
+          filename: `bloom-resize-${Date.now()}.png`,
+          target_width: tw,
+          target_height: th,
+          message: `Image resized to ${tw}x${th} (contain mode)`,
+        };
+      } else if (mode === 'stretch') {
+        image.resize(tw, th);
+      } else {
+        // cover mode (default) — resize + center-crop to fill exact dimensions
+        image.cover(tw, th);
+      }
+
+      const resizedBuffer = await image.getBufferAsync(Jimp.MIME_PNG);
+      const filename = `bloom-resize-${Date.now()}.png`;
+      const filepath = `/tmp/${filename}`;
+      fs.writeFileSync(filepath, resizedBuffer);
+
+      return {
+        success: true,
+        engine: 'resize',
+        image_base64: resizedBuffer.toString('base64'),
+        filepath,
+        filename,
+        target_width: tw,
+        target_height: th,
+        message: `Image resized to exact ${tw}x${th} dimensions (${mode} mode)`,
+      };
+    } catch (e) {
+      return { success: false, error: `Resize failed: ${e.message}` };
+    }
   }
 };
 
@@ -382,14 +499,14 @@ async function editWithGPTImage(prompt, imageUrl, imageBase64, size, quality) {
 
 // ── NANO BANANA / IMAGEN (Google Gemini) ─────────────────────────────────
 
-async function generateWithGemini(prompt, size, referenceImageUrl, referenceImageBase64) {
+async function generateWithGemini(prompt, size, referenceImageUrl, referenceImageBase64, referenceImageMime) {
   try {
     logger.info('Generating image with Gemini');
 
-    // Try Nano Banana FIRST (free tier — gemini-3.1-flash-image-preview native image gen)
+    // Try Nano Banana FIRST (includes Nano Banana 2 with fallback to original)
     try {
-      logger.info('Trying Nano Banana (free tier)');
-      const result = await generateWithNanoBanana(prompt, size, referenceImageUrl, referenceImageBase64);
+      logger.info('Trying Nano Banana');
+      const result = await generateWithNanoBanana(prompt, size, referenceImageUrl, referenceImageBase64, referenceImageMime);
       if (result.success) return result;
     } catch(e) {
       logger.warn('Nano Banana failed, trying Imagen 4', { error: e.message });
@@ -449,33 +566,34 @@ async function generateWithGemini(prompt, size, referenceImageUrl, referenceImag
   }
 }
 
-async function generateWithNanoBanana(prompt, size, referenceImageUrl, referenceImageBase64) {
+async function generateWithNanoBanana(prompt, size, referenceImageUrl, referenceImageBase64, referenceImageMime) {
   try {
-    // Use Gemini 2.5 Flash Image (stable) instead of 3.1 preview (currently broken/hanging)
-    // See: https://discuss.ai.google.dev/t/gemini-3-pro-image-preview-persistent-timeout-issues
+    // Try Nano Banana 2 (gemini-3.1-flash-image-preview) first — faster, 14 reference images,
+    // 4K resolution, thinking mode. Falls back to gemini-2.5-flash-image if 3.1 fails.
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000); // 30 second timeout
-    
-    // Map size to aspect ratio (Google's official format from Feb 27, 2026)
-    // Supports: 21:9, 16:9, 4:3, 3:2, 1:1, 9:16, 3:4, 2:3, 5:4, 4:5
+    const timeout = setTimeout(() => controller.abort(), 45000); // 45 second timeout (thinking mode needs more time)
+
+    // Map size to aspect ratio — Nano Banana 2 supports many more:
+    // 1:1, 1:4, 1:8, 2:3, 3:2, 3:4, 4:1, 4:3, 4:5, 5:4, 8:1, 9:16, 16:9, 21:9
     let aspectRatio = '1:1'; // default square
     if (size === '1024x1536') aspectRatio = '2:3'; // portrait
     if (size === '1536x1024') aspectRatio = '3:2'; // landscape
-    
-    // Build parts array — text prompt FIRST, reference image SECOND (Google's required order)
+
     const hasReference = !!(referenceImageBase64 || referenceImageUrl);
     const parts = [];
 
-    // Text prompt goes first per Google API docs
-    parts.push({ text: hasReference
-      ? `Generate a new image of the person shown in the reference image below. ${prompt}. Preserve the person's face, hair, skin tone, and distinguishing features exactly.`
-      : prompt
-    });
-
-    // Reference image goes after the text
+    // ── REFERENCE IMAGE GOES FIRST (Google's recommended order for editing/reference) ──
+    // Google docs: "When using a single image with text, place the text prompt after the image part"
     if (referenceImageBase64) {
-      parts.push({ inlineData: { mimeType: 'image/jpeg', data: referenceImageBase64 } });
-      logger.info('Nano Banana: reference image added for character consistency (base64)');
+      // Detect mime type from base64 header or use provided mime type
+      let mimeType = referenceImageMime || 'image/jpeg';
+      // Check base64 magic bytes if no mime provided
+      if (!referenceImageMime && referenceImageBase64.startsWith('/9j/')) mimeType = 'image/jpeg';
+      else if (!referenceImageMime && referenceImageBase64.startsWith('iVBOR')) mimeType = 'image/png';
+      else if (!referenceImageMime && referenceImageBase64.startsWith('UklGR')) mimeType = 'image/webp';
+
+      parts.push({ inlineData: { mimeType, data: referenceImageBase64 } });
+      logger.info('Nano Banana: reference image added (base64)', { mimeType, dataLength: referenceImageBase64.length });
     } else if (referenceImageUrl) {
       try {
         const refResp = await fetch(referenceImageUrl);
@@ -483,70 +601,105 @@ async function generateWithNanoBanana(prompt, size, referenceImageUrl, reference
         const refB64 = Buffer.from(refBuf).toString('base64');
         const refMime = refResp.headers.get('content-type') || 'image/jpeg';
         parts.push({ inlineData: { mimeType: refMime, data: refB64 } });
-        logger.info('Nano Banana: reference image fetched and added for character consistency (url)');
+        logger.info('Nano Banana: reference image fetched and added (url)', { mimeType: refMime });
       } catch(refErr) {
         logger.warn('Nano Banana: failed to fetch reference image, proceeding without it', { error: refErr.message });
       }
     }
 
-    // gemini-2.5-flash-image only — 3.1-flash-image-preview returns 403 PERMISSION_DENIED via API key (known Google issue)
-    const modelId = 'gemini-2.5-flash-image';
-    logger.info(`Nano Banana: using ${modelId}${hasReference ? ' with reference image' : ''}`);
+    // ── TEXT PROMPT GOES AFTER THE IMAGE ──
+    // DO NOT wrap with hardcoded "person" language — the LLM's prompt already describes
+    // what it wants. The model understands the role of the reference image from the prompt.
+    // Wrapping with "Generate a new image of the person..." broke non-person references
+    // (flyers, logos, products) and even confused person references.
+    parts.push({ text: prompt });
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${getGeminiKey()}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts }],
-          generationConfig: {
-            // TEXT+IMAGE required when sending reference images (IMAGE-only ignores input images)
-            responseModalities: hasReference ? ["TEXT", "IMAGE"] : ["IMAGE"],
-            imageConfig: {
-              aspectRatio: aspectRatio
-            }
-          },
-        }),
-        signal: controller.signal
+    // Try Nano Banana 2 first, fall back to original if it fails
+    const models = ['gemini-3.1-flash-image-preview', 'gemini-2.5-flash-image'];
+    let lastError = null;
+
+    for (const modelId of models) {
+      try {
+        logger.info(`Nano Banana: trying ${modelId}${hasReference ? ' with reference image' : ''}`);
+
+        const modelController = new AbortController();
+        const modelTimeout = setTimeout(() => modelController.abort(), modelId.includes('3.1') ? 45000 : 30000);
+
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${getGeminiKey()}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts }],
+              generationConfig: {
+                // TEXT+IMAGE required when sending reference images (IMAGE-only ignores input images)
+                responseModalities: hasReference ? ["TEXT", "IMAGE"] : ["IMAGE"],
+                imageConfig: {
+                  aspectRatio: aspectRatio,
+                  // Nano Banana 2 supports image_size for higher res
+                  ...(modelId.includes('3.1') ? { imageSize: '1K' } : {})
+                }
+              },
+            }),
+            signal: modelController.signal
+          }
+        );
+
+        clearTimeout(modelTimeout);
+
+        if (!response.ok) {
+          const err = await response.text();
+          logger.warn(`${modelId} API error`, { status: response.status, error: err });
+          lastError = new Error(`${modelId} API error ${response.status}: ${err}`);
+          continue; // Try next model
+        }
+
+        const data = await response.json();
+
+        // Find image part in response (skip thought images)
+        const responseParts = data.candidates?.[0]?.content?.parts || [];
+        const imagePart = responseParts.find(p => p.inlineData?.mimeType?.startsWith('image/') && !p.thought);
+        // If no non-thought image, take any image
+        const finalImage = imagePart || responseParts.find(p => p.inlineData?.mimeType?.startsWith('image/'));
+
+        if (!finalImage) {
+          lastError = new Error(`No image in ${modelId} response`);
+          continue; // Try next model
+        }
+
+        const filename = `bloom-nanob-${Date.now()}.png`;
+        const filepath = `/tmp/${filename}`;
+        fs.writeFileSync(filepath, Buffer.from(finalImage.inlineData.data, 'base64'));
+
+        // Get any text description
+        const textPart = responseParts.find(p => p.text && !p.thought);
+
+        clearTimeout(timeout);
+        return {
+          success: true,
+          engine: modelId.includes('3.1') ? 'nano-banana-2' : 'nano-banana',
+          image_base64: finalImage.inlineData.data,
+          filepath,
+          filename,
+          size,
+          description: textPart?.text || null,
+          message: `Image generated with ${modelId.includes('3.1') ? 'Nano Banana 2' : 'Nano Banana'}`,
+        };
+      } catch (modelErr) {
+        if (modelErr.name === 'AbortError') {
+          logger.warn(`${modelId} timed out, trying next model`);
+          lastError = new Error(`${modelId} timed out`);
+        } else {
+          logger.warn(`${modelId} failed`, { error: modelErr.message });
+          lastError = modelErr;
+        }
+        continue;
       }
-    );
-    
+    }
+
     clearTimeout(timeout);
-
-    if (!response.ok) {
-      const err = await response.text();
-      logger.error('Nano Banana API error', { status: response.status, error: err, model: modelId });
-      throw new Error(`Nano Banana API error ${response.status}: ${err}`);
-    }
-
-    const data = await response.json();
-
-    // Find image part in response
-    const responseParts = data.candidates?.[0]?.content?.parts || [];
-    const imagePart = responseParts.find(p => p.inlineData?.mimeType?.startsWith('image/'));
-
-    if (!imagePart) {
-      throw new Error('No image in Nano Banana response');
-    }
-
-    const filename = `bloom-nanob-${Date.now()}.png`;
-    const filepath = `/tmp/${filename}`;
-    fs.writeFileSync(filepath, Buffer.from(imagePart.inlineData.data, 'base64'));
-
-    // Get any text description
-    const textPart = responseParts.find(p => p.text);
-
-    return {
-      success: true,
-      engine: 'nano-banana',
-      image_base64: imagePart.inlineData.data,
-      filepath,
-      filename,
-      size,
-      description: textPart?.text || null,
-      message: `Image generated with Nano Banana (Gemini Flash Image)`,
-    };
+    throw lastError || new Error('All Nano Banana models failed');
 
   } catch (error) {
     logger.error('Nano Banana generation failed:', { error: error.message, stack: error.stack, prompt: prompt.substring(0, 100) });
