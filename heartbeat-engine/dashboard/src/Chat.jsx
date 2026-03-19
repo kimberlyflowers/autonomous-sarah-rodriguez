@@ -1,10 +1,133 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 
+// Clarification Card — renders Sarah's question with clickable option buttons
+function ClarificationCard({ clarification, onOptionSelect, theme, disabled }) {
+  const [selectedOption, setSelectedOption] = useState(null);
+
+  const handleSelect = (option, index) => {
+    if (disabled || selectedOption !== null) return;
+    setSelectedOption(index);
+    onOptionSelect(option);
+  };
+
+  return (
+    <div style={{
+      backgroundColor: theme.surface,
+      border: `2px solid ${theme.accent}`,
+      borderRadius: 16,
+      padding: 20,
+      marginTop: 8,
+      maxWidth: 400,
+    }}>
+      {/* Question */}
+      <div style={{
+        fontSize: 15,
+        fontWeight: 600,
+        color: theme.text,
+        marginBottom: 6,
+        lineHeight: 1.4,
+      }}>
+        {clarification.question}
+      </div>
+
+      {/* Context (if provided) */}
+      {clarification.context && (
+        <div style={{
+          fontSize: 13,
+          color: theme.textMuted,
+          marginBottom: 14,
+          lineHeight: 1.4,
+        }}>
+          {clarification.context}
+        </div>
+      )}
+
+      {/* Option Buttons */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {(clarification.options || []).map((option, index) => {
+          const isSelected = selectedOption === index;
+          const isDisabled = disabled || (selectedOption !== null && !isSelected);
+
+          return (
+            <button
+              key={index}
+              onClick={() => handleSelect(option, index)}
+              disabled={isDisabled}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                padding: '12px 16px',
+                borderRadius: 12,
+                border: isSelected
+                  ? `2px solid ${theme.accent}`
+                  : `1px solid ${theme.border}`,
+                backgroundColor: isSelected
+                  ? `${theme.accent}15`
+                  : isDisabled
+                    ? `${theme.textMuted}10`
+                    : theme.surface,
+                cursor: isDisabled ? 'default' : 'pointer',
+                opacity: isDisabled && !isSelected ? 0.5 : 1,
+                transition: 'all 0.15s ease',
+                textAlign: 'left',
+                width: '100%',
+              }}
+              onMouseEnter={(e) => {
+                if (!isDisabled) {
+                  e.currentTarget.style.backgroundColor = `${theme.accent}10`;
+                  e.currentTarget.style.borderColor = theme.accent;
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isDisabled && !isSelected) {
+                  e.currentTarget.style.backgroundColor = theme.surface;
+                  e.currentTarget.style.borderColor = theme.border;
+                }
+              }}
+            >
+              <span style={{
+                fontSize: 14,
+                fontWeight: 600,
+                color: isSelected ? theme.accent : theme.text,
+                marginBottom: option.description ? 2 : 0,
+              }}>
+                {isSelected ? '\u2713 ' : ''}{option.label}
+              </span>
+              {option.description && (
+                <span style={{
+                  fontSize: 12,
+                  color: theme.textMuted,
+                  lineHeight: 1.3,
+                }}>
+                  {option.description}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {selectedOption !== null && (
+        <div style={{
+          fontSize: 12,
+          color: theme.accent,
+          marginTop: 10,
+          fontWeight: 500,
+        }}>
+          Sarah is working on it...
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Chat({ theme }) {
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [sessionId, setSessionId] = useState('session-' + Date.now());
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -15,18 +138,19 @@ function Chat({ theme }) {
     scrollToBottom();
   }, [messages]);
 
-  const sendMessage = async () => {
-    if (!inputText.trim() || isLoading) return;
+  const sendMessage = async (messageText) => {
+    const text = messageText || inputText;
+    if (!text.trim() || isLoading) return;
 
     const userMessage = {
       id: Date.now(),
-      text: inputText,
+      text: text,
       isUser: true,
       timestamp: new Date().toLocaleTimeString(),
     };
 
     setMessages(prev => [...prev, userMessage]);
-    setInputText('');
+    if (!messageText) setInputText('');
     setIsLoading(true);
 
     try {
@@ -35,18 +159,32 @@ function Chat({ theme }) {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ message: inputText }),
+        body: JSON.stringify({ message: text, sessionId }),
       });
 
       if (response.ok) {
         const data = await response.json();
-        const sarahMessage = {
-          id: Date.now() + 1,
-          text: data.response,
-          isUser: false,
-          timestamp: new Date().toLocaleTimeString(),
-        };
-        setMessages(prev => [...prev, sarahMessage]);
+        if (data.sessionId) setSessionId(data.sessionId);
+
+        // Check if the response contains a clarification request
+        if (data.clarification) {
+          const clarifyMessage = {
+            id: Date.now() + 1,
+            text: data.response || '',
+            isUser: false,
+            timestamp: new Date().toLocaleTimeString(),
+            clarification: data.clarification,
+          };
+          setMessages(prev => [...prev, clarifyMessage]);
+        } else {
+          const sarahMessage = {
+            id: Date.now() + 1,
+            text: data.response,
+            isUser: false,
+            timestamp: new Date().toLocaleTimeString(),
+          };
+          setMessages(prev => [...prev, sarahMessage]);
+        }
       } else {
         throw new Error('Failed to get response');
       }
@@ -61,6 +199,11 @@ function Chat({ theme }) {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Handle clarification option selection — sends the choice as a new message
+  const handleClarificationSelect = (option) => {
+    sendMessage(`${option.label}: ${option.description}`);
   };
 
   const handleKeyPress = (e) => {
@@ -148,12 +291,12 @@ function Chat({ theme }) {
     messageBubbleUser: {
       backgroundColor: '#E5E5EA',
       color: '#000',
-      borderBottomRightRadius: '4px', // Reduced for tail
+      borderBottomRightRadius: '4px',
     },
     messageBubbleSarah: {
       background: `linear-gradient(135deg, ${theme.accent}, ${theme.accent2})`,
       color: 'white',
-      borderBottomLeftRadius: '4px', // Reduced for tail
+      borderBottomLeftRadius: '4px',
     },
     messageTime: {
       fontSize: 11,
@@ -162,7 +305,6 @@ function Chat({ theme }) {
       textAlign: 'center',
       color: theme.textMuted,
     },
-    // Bubble wrapper for positioning tails
     bubbleWrapper: {
       position: 'relative',
       maxWidth: '70%',
@@ -262,7 +404,6 @@ function Chat({ theme }) {
                     ...(message.isUser ? styles.messageBubbleUser : styles.messageBubbleSarah),
                   }}
                 >
-                  {/* Test ReactMarkdown rendering */}
                   {message.isUser ? (
                     message.text
                   ) : (
@@ -282,11 +423,23 @@ function Chat({ theme }) {
                     </ReactMarkdown>
                   )}
                 </div>
+
+                {/* Clarification Card — shows below Sarah's message bubble */}
+                {message.clarification && (
+                  <ClarificationCard
+                    clarification={message.clarification}
+                    onOptionSelect={handleClarificationSelect}
+                    theme={theme}
+                    disabled={isLoading}
+                  />
+                )}
+
                 {/* Speech bubble tail */}
                 <div
                   style={{
                     position: 'absolute',
-                    bottom: '2px',
+                    bottom: message.clarification ? 'auto' : '2px',
+                    top: message.clarification ? '2px' : 'auto',
                     ...(message.isUser ? {
                       right: '-6px',
                       width: 0,
@@ -338,7 +491,7 @@ function Chat({ theme }) {
               ...styles.sendButton,
               ...((!inputText.trim() || isLoading) ? styles.sendButtonDisabled : {}),
             }}
-            onClick={sendMessage}
+            onClick={() => sendMessage()}
             disabled={!inputText.trim() || isLoading}
           >
             Send

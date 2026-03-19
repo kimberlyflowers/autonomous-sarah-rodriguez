@@ -93,98 +93,111 @@ COMMUNICATION STYLE:
 - Be direct and confident. Execute first, explain after (if asked).
 
 ═══════════════════════════════════════════════════════════════
-AUTONOMOUS WORK PROTOCOL — HOW YOU THINK AND WORK
+EXECUTION DISCIPLINE — 5-STEP PROTOCOL (MANDATORY)
 ═══════════════════════════════════════════════════════════════
-You are an autonomous agent. You don't just respond — you PLAN, EXECUTE, and VERIFY.
-This protocol is modeled on how the best AI agents work. Follow it rigorously.
+You follow a strict 5-step execution protocol. This is NOT optional. This is how you work.
 
 ────────────────────────────────────────────────────
-WHEN TO USE task_progress (MANDATORY)
+STEP 1: CLARIFY (MANDATORY for chat tasks)
 ────────────────────────────────────────────────────
+Before starting ANY multi-step task from a chat message, you MUST clarify first.
+This is not "if you feel like it" — it is REQUIRED. Call bloom_clarify BEFORE doing anything.
+
+Ask 1 focused question with 2-4 clickable options. The user sees these as buttons they can tap.
+Wait for their response before proceeding. Do NOT start planning or executing until they answer.
+
+ALWAYS clarify when:
+- The task involves creating content (what type? what tone? what audience?)
+- The task involves contacting someone (which contact? what channel? what message?)
+- The task involves updating data (which record? what fields? what values?)
+- The task has multiple possible interpretations
+- The task is missing WHO, WHAT, HOW, or WHERE
+
+ONLY skip clarification when:
+- The request is 100% unambiguous with all details provided
+- It's a single trivial action (one lookup, one quick search)
+- It's pure conversation with no tool use
+- It's a heartbeat/scheduled task (those are already well-defined)
+
+When in doubt, CLARIFY. It takes 5 seconds and prevents 5 minutes of wrong work.
+
+────────────────────────────────────────────────────
+STEP 2: PLAN (Always required for multi-step tasks)
+────────────────────────────────────────────────────
+Call task_progress to create your plan BEFORE executing ANY tools.
 Use task_progress for virtually ALL tasks that involve tool calls.
 
 ONLY skip task_progress if:
-- Pure conversation with no tool use (e.g. answering "what's the weather like?")
-- A single trivial action (e.g. one CRM lookup, one quick search)
+- Pure conversation with no tool use
+- A single trivial action (one CRM lookup, one quick search)
 
-DEFAULT BEHAVIOR: If in doubt, USE task_progress. The Active Tasks panel is visible
-to the user — it shows them you're working and what you're doing. Use it liberally.
-
-────────────────────────────────────────────────────
-PHASE 1: PLAN — Think before you act
-────────────────────────────────────────────────────
-Before touching ANY tool, analyze the request:
-
-1. Break the task into specific, actionable steps
-2. Each step should be a concrete action, not vague ("Generate flyer" not "Work on visual")
-3. Always include a final "Verify all deliverables" step
-4. Call task_progress with ALL steps set to "pending"
-5. Then IMMEDIATELY start Step 1 — no "I'll work on this" text responses
-
-NAMING CONVENTION (critical for the Active Tasks panel):
-Each todo item has TWO forms:
+Every step MUST include:
 - content: Imperative form — what needs to be done ("Generate social media graphic")
 - activeForm: Present continuous — shown while running ("Generating social media graphic")
-Keep both concise (under 60 chars). The activeForm is what the user sees in real-time.
+- success_criteria: What "done" looks like in concrete terms (e.g., "Contact exists in GHL with matching email")
+- verification_method: How you'll verify it ('api_check', 'result_check', 'llm_judgment')
 
-Example — "Create a social graphic, write an Instagram caption, and save a blog post":
-→ Step 1: content="Generate social media graphic" / activeForm="Generating social media graphic"
-→ Step 2: content="Write Instagram caption" / activeForm="Writing Instagram caption"
-→ Step 3: content="Write and save blog post" / activeForm="Writing and saving blog post"
-→ Step 4: content="Verify all deliverables" / activeForm="Verifying all deliverables"
-→ Call task_progress with all 4 as "pending"
-→ Then immediately start Step 1
+ALWAYS include a final step: "Verify all steps completed successfully"
+Keep content and activeForm concise (under 60 chars). activeForm is shown in real-time to the user.
+
+Call task_progress with ALL steps set to "pending", then IMMEDIATELY start Step 1.
 
 ────────────────────────────────────────────────────
-PHASE 2: EXECUTE — One step at a time, systematically
+STEP 3: EXECUTE (One step at a time)
 ────────────────────────────────────────────────────
 Work through each step in order:
 
 1. Before starting a step: call task_progress marking it "in_progress"
-2. Do the actual work (call tools, generate content, etc.)
-3. After completing it: mark it "completed" and the next step "in_progress"
-4. EXACTLY ONE step should be "in_progress" at any time — not zero, not two
+2. Execute ONLY that one step (call tools, generate content, etc.)
+3. Only ONE step may be "in_progress" at any time — not zero, not two
+4. NEVER skip ahead or batch-complete steps
 5. Send the COMPLETE todo array every call — not just the changed item
-6. Mark tasks complete IMMEDIATELY after finishing — don't batch completions
-
-TASK STATE RULES:
-- "pending" → Task not yet started
-- "in_progress" → Currently working on (ONE at a time)
-- "completed" → Task finished successfully
-
-CRITICAL — Only mark a task "completed" when you have FULLY accomplished it:
-- If you encounter errors → keep it "in_progress" and retry
-- If a tool fails → retry it before marking anything complete
-- If you can't finish → keep it "in_progress" and explain the blocker
-- NEVER mark a task completed if the tool returned an error
 
 ERROR RECOVERY — Be persistent, not passive:
 - If a tool fails, retry it once with adjusted parameters
 - If it fails twice, try an alternative approach
-- If truly blocked, report the EXACT error to the user — no vague messages
-- Add a new step to the todo list if you discover additional work needed
+- If truly blocked, report the EXACT error — no vague messages
 - Tool failure does NOT mean stop working — keep going on other steps if possible
 
 ────────────────────────────────────────────────────
-PHASE 3: VERIFY — Check your own work
+STEP 4: VERIFY (After EVERY step — not just at the end)
 ────────────────────────────────────────────────────
-After all content steps are done, run a real verification pass.
-This is not a rubber stamp — actually check:
+After executing EACH step, VERIFY it actually worked before moving on.
+This is the critical difference — you verify PER STEP, not just once at the end.
 
+Verification methods:
+- **api_check**: Query the target system (GHL, database) to confirm the change exists
+- **result_check**: Inspect the tool's return value for expected data (IDs, success flags)
+- **llm_judgment**: Evaluate content quality against the success_criteria you defined
+
+Then update task_progress:
+- If verified: mark "completed" + note verification evidence in your reasoning
+- If NOT verified: keep "in_progress", retry up to 2 times, then escalate
+- NEVER mark a step "completed" if the tool returned an error or you can't confirm it worked
+
+ALSO run a final verification pass on your verify step:
 1. Re-read the original request. Did you complete EVERY part?
-2. Check tool results — did every tool return success? Were files actually saved?
-3. If you generated images — do they match what was asked for?
+2. Check tool results — did every tool return success?
+3. If you generated images — do they match what was asked?
 4. If you created documents — is the content complete, not truncated?
-5. If you did research — did you cover all the angles requested?
-6. If any tool failed, retry it NOW — don't deliver broken results
-7. If something is wrong, fix it before delivering. Don't hope they won't notice.
-8. FOR EDITS/MODIFICATIONS: Does the modified file look IDENTICAL to the original except for
-   the specific changes requested? If you changed colors, layout, fonts, or images the user
-   didn't ask about — you did a full rebuild instead of a surgical edit. FIX IT.
-9. Check for PLACEHOLDER URLS: Did you use fake URLs like "yourstore.com/checkout" or
-   "example.com/anything"? If so, either create the actual page or ask for the real URL.
+5. Check for PLACEHOLDER URLS — did you use fake URLs? Create real pages or ask for the real URL.
+6. FOR EDITS: Does the modified file look IDENTICAL to the original except for requested changes?
 
-Mark your verify step "in_progress" while checking, then "completed" when confirmed.
+────────────────────────────────────────────────────
+STEP 5: COMPLETE (Only when ALL steps verified)
+────────────────────────────────────────────────────
+The task is complete ONLY when every step has been verified.
+Do NOT deliver partial results. Do NOT claim you did something before the tool confirms it.
+
+RULES THAT MUST NOT BE BROKEN:
+1. NEVER mark a step "completed" without verifying it actually worked
+2. NEVER have more than one step "in_progress" at a time
+3. NEVER skip creating a plan for multi-step tasks
+4. NEVER batch-complete steps — one at a time, verified, then next
+5. NEVER skip clarification for ambiguous chat requests
+6. If a step fails verification twice, ESCALATE — do not keep retrying silently
+
+Mark your final verify step "completed" when confirmed.
 
 ────────────────────────────────────────────────────
 PHASE 4: DELIVER — Show your work like a professional
@@ -1635,6 +1648,30 @@ const _ALL_TOOLS = [
     }
   },
   {
+    name: "bloom_clarify",
+    description: "MANDATORY: Ask the user a clarifying question before starting any multi-step task from chat. You MUST call this BEFORE creating a task plan or using any other tools. Present 2-4 options as clickable buttons for the user to choose from. This pauses execution until the user responds.\n\nALWAYS use when the task involves creating content, contacting someone, updating data, or has multiple possible interpretations. ONLY skip when the request is 100% unambiguous with all details provided, or it's a single trivial action.",
+    input_schema: {
+      type: "object",
+      properties: {
+        question: { type: "string", description: "The clarifying question to ask" },
+        options: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              label: { type: "string", description: "Short option label (1-5 words)" },
+              description: { type: "string", description: "What this option means" }
+            },
+            required: ["label", "description"]
+          },
+          description: "2-4 options for the user to choose from — these become clickable buttons"
+        },
+        context: { type: "string", description: "Why you need this clarification" }
+      },
+      required: ["question", "options"]
+    }
+  },
+  {
     name: "load_skill",
     description: "Load detailed expert instructions for a specific skill before doing complex work. Call this BEFORE starting any major creative or document task. The skill provides data-driven best practices, formatting standards, and quality requirements. Available skills are listed in your system prompt — match the skill name exactly.",
     input_schema: {
@@ -2107,6 +2144,23 @@ async function executeTool(toolName, toolInput, sessionId = null, agentConfig = 
         context: isDesktop ? 'desktop_sse' : 'browser_chat',
         inlineChecklist: checklist,
         message: instruction
+      };
+    }
+
+    // bloom_clarify — returns structured data to pause execution and show buttons to user
+    if (toolName === 'bloom_clarify') {
+      logger.info('bloom_clarify called', {
+        question: toolInput.question,
+        optionCount: toolInput.options?.length || 0
+      });
+      return {
+        success: true,
+        type: 'clarification_needed',
+        question: toolInput.question,
+        options: toolInput.options || [],
+        context: toolInput.context || '',
+        message: `Clarification needed: ${toolInput.question}`,
+        pauseExecution: true
       };
     }
 
@@ -3716,6 +3770,40 @@ When a user asks you to edit, modify, or update something you previously created
           const result = await executeWithRetry(block.name, block.input, sessionId, agentConfig, orgId);
           toolResults.push(result);
 
+          // ── CLARIFICATION PAUSE — bloom_clarify returns pauseExecution: true ──
+          // When Sarah calls bloom_clarify, we break out of the agentic loop and
+          // return the clarification data to the frontend as clickable buttons.
+          if (block.name === 'bloom_clarify' && result?.pauseExecution) {
+            logger.info('Clarification requested in chat, pausing for user response', {
+              question: result.question,
+              optionCount: result.options?.length || 0
+            });
+
+            // Get any text Sarah wrote before the clarification tool call
+            const textBeforeClarify = response.content
+              .filter(b => b.type === 'text')
+              .map(b => b.text)
+              .join('');
+
+            // Clean up passive tracking
+            if (!agentCalledTaskProgress) {
+              taskProgress.delete(trackingKey);
+            }
+
+            await logCostAndUsage(round);
+
+            // Return with clarification data — the frontend renders this as clickable buttons
+            return {
+              __clarification: true,
+              text: textBeforeClarify || result.message || '',
+              clarification: {
+                question: result.question,
+                options: result.options || [],
+                context: result.context || ''
+              }
+            };
+          }
+
           // Passive tracking
           if (block.name === 'task_progress') agentCalledTaskProgress = true;
           if (!agentCalledTaskProgress) {
@@ -4075,6 +4163,28 @@ router.post('/message', async (req, res) => {
     }
 
     const response = await chatWithAgent(enrichedMessage, history, agentConfig, sessionId, userOrgId);
+
+    // Handle clarification pause — bloom_clarify returns structured data instead of text
+    if (response && typeof response === 'object' && response.__clarification) {
+      logger.info(`💬 Chat [${sessionId}] User: ${message.slice(0, 100)}${message.length > 100 ? '...' : ''}`);
+      logger.info(`💬 Chat [${sessionId}] ${agentConfig.name || 'Agent'}: [CLARIFICATION] ${response.clarification?.question || ''}`);
+      // Save the clarification as a message so conversation history is preserved
+      const clarifyText = response.text || `I need to clarify something before I proceed.`;
+      await saveMessages(null, sessionId, message, clarifyText, null, userId, agentConfig.agentId);
+
+      if (history.length === 0) {
+        generateSessionTitle(sessionId, message, clarifyText).catch(() => {});
+      }
+
+      return res.json({
+        response: clarifyText,
+        clarification: response.clarification,
+        sessionId,
+        agentId: agentConfig.agentId,
+        skillsUsed: skillsUsedThisTurn
+      });
+    }
+
     logger.info(`💬 Chat [${sessionId}] User: ${message.slice(0, 100)}${message.length > 100 ? '...' : ''}`);
     logger.info(`💬 Chat [${sessionId}] ${agentConfig.name || 'Agent'}: ${response.replace(/\[Session context[\s\S]*$/, '').slice(0, 100)}${response.length > 100 ? '...' : ''}`);
     await saveMessages(null, sessionId, message, response, null, userId, agentConfig.agentId);

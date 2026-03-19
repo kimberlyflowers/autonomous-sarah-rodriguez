@@ -4,6 +4,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { createLogger } from '../logging/logger.js';
 import { getAutonomyLevel } from '../config/autonomy-levels.js';
+import { getProgressText } from './progress-log.js';
 
 const logger = createLogger('think');
 
@@ -28,11 +29,12 @@ export async function think(context) {
     let response;
     for (let attempt = 0; attempt <= 2; attempt++) {
       try {
+        const systemPrompt = await buildSystemPrompt(context);
         response = await anthropic.messages.create({
           model: 'claude-haiku-4-5-20251001',
           max_tokens: 4000,
           temperature: 0.1,
-          system: buildSystemPrompt(context),
+          system: systemPrompt,
           messages: [{ role: 'user', content: prompt }]
         });
         break;
@@ -73,8 +75,16 @@ export async function think(context) {
   }
 }
 
-function buildSystemPrompt(context) {
+async function buildSystemPrompt(context) {
   const autonomyLevel = getAutonomyLevel(context.autonomyLevel);
+
+  // Load cross-cycle progress memory (Ralph pattern)
+  let progressContext = '';
+  try {
+    progressContext = await getProgressText({ hours: 24, limit: 10 });
+  } catch (e) {
+    logger.warn('Could not load progress context for think phase:', e.message);
+  }
 
   return `You are ${context.agentProfile.name}, an autonomous operations agent for ${context.agentProfile.client}.
 
@@ -88,15 +98,32 @@ ALLOWED ACTIONS: ${autonomyLevel.allowed.join(', ')}
 BLOCKED ACTIONS: ${autonomyLevel.blocked.join(', ')}
 ESCALATION POLICY: ${autonomyLevel.escalation}
 
-DECISION-MAKING PRINCIPLES:
+═══════════════════════════════════════════════════════════════
+DECISION-MAKING DISCIPLINE
+═══════════════════════════════════════════════════════════════
+
+CORE PRINCIPLES:
 1. SAFETY FIRST: Never take actions that could harm the business or client relationships
 2. NO GUESSING: If you're unsure, escalate with your analysis rather than guess
 3. LOG EVERYTHING: Every decision (do, don't do, escalate) must be justified
 4. STAY IN SCOPE: Only take actions within your current autonomy level
 5. BE THOROUGH: Consider all possibilities before deciding
+6. VERIFY BEFORE CLAIMING SUCCESS: Never assume an action worked — check the result
+7. LEARN FROM HISTORY: Check your recent progress log below for context on what you've done, what failed, and what needs retry
+
+VERIFICATION-AWARE DECISION MAKING:
+When deciding what to do this cycle, consider:
+- Did any actions FAIL verification in recent cycles? If so, prioritize retrying them.
+- Are there tasks stuck in "in_progress" from a previous cycle? Resume or escalate them.
+- Did the last cycle flag something as "next_priority"? Address it first.
+- For every "act" decision, include a "verify_by" field describing how you'll confirm it worked.
+  Options: "api_check" (query the target system), "result_check" (inspect return value), "llm_judgment" (evaluate quality)
+
+CROSS-CYCLE MEMORY (Recent Progress):
+${progressContext || 'No recent progress entries — this may be a fresh work session.'}
 
 For each decision, you must output structured JSON with these types:
-- "act": Actions you will take within your scope
+- "act": Actions you will take within your scope (include "verify_by" field)
 - "reject": Actions you considered but decided against (with reasons)
 - "escalate": Issues requiring human intervention
 
@@ -174,7 +201,9 @@ Return your decisions as a JSON array with this format:
     },
     "reasoning": "New inquiry received 45 minutes ago, within follow-up window",
     "confidence": 0.9,
-    "urgency": "MEDIUM"
+    "urgency": "MEDIUM",
+    "verify_by": "api_check",
+    "success_criteria": "Email sent confirmation with message ID returned from GHL"
   },
   {
     "type": "reject",

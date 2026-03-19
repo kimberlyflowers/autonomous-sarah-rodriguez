@@ -258,19 +258,26 @@ After creating or updating a plan, you will receive the current plan state as a 
     operation: "write"
   },
 
-  // CLARIFICATION TOOL (Cowork AskUserQuestion equivalent)
+  // CLARIFICATION TOOL (Cowork AskUserQuestion equivalent — MANDATORY for chat tasks)
   bloom_clarify: {
     name: "bloom_clarify",
-    description: `Ask the user a clarifying question before starting work. Use this BEFORE creating a task plan when the request is ambiguous or underspecified. Present 2-4 options for the user to choose from. This pauses execution until the user responds.
+    description: `MANDATORY: Ask the user a clarifying question before starting any multi-step task from chat. You MUST call this BEFORE creating a task plan. Present 2-4 options as clickable buttons for the user to choose from. This pauses execution until the user responds.
 
-Examples of when to use:
-- "Create content for the client" → Ask: what type of content? blog post, social media, email?
-- "Follow up with leads" → Ask: which leads? how should I follow up? email, SMS, call?
-- "Update the pipeline" → Ask: which pipeline? what changes?
+THIS IS NOT OPTIONAL. Call bloom_clarify before starting real work on ANY chat task unless the request is 100% unambiguous with all details provided.
 
-Do NOT use for:
-- Clear, specific instructions
-- Heartbeat-triggered autonomous tasks
+ALWAYS use when:
+- Task involves creating content (what type? what tone? what audience?)
+- Task involves contacting someone (which contact? what channel? what message?)
+- Task involves updating data (which record? what fields? what values?)
+- Task has multiple possible interpretations
+- Task is missing WHO, WHAT, HOW, or WHERE
+- You aren't sure about scope, format, priority, or audience
+
+ONLY skip when:
+- Request is 100% unambiguous with all details provided
+- Single trivial action (one lookup, one quick search)
+- Pure conversation with no tool use
+- Heartbeat-triggered autonomous tasks (already well-defined)
 - Emergency escalations`,
     parameters: {
       type: "object",
