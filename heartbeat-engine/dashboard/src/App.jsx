@@ -2581,18 +2581,47 @@ function DispatchPage({c, mob, currentAgent, agentImgUrl}) {
   const downloadDesktop = async (platform) => {
     setDownloading(platform);
     try {
+      // Get auth token
       const headers = await getAuthHeaders();
-      const res = await fetch(SARAH_URL + '/api/desktop/download-token/' + platform, { method: 'POST', headers });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
+      const tokenRes = await fetch(SARAH_URL + '/api/desktop/download-token/' + platform, { method: 'POST', headers });
+      if (!tokenRes.ok) {
+        const err = await tokenRes.json().catch(() => ({}));
         alert(err.error || 'Download failed');
         setDownloading(null);
         return;
       }
-      const { downloadUrl } = await res.json();
-      // Direct navigation — Content-Disposition: attachment means browser downloads without leaving page
-      window.location.href = SARAH_URL + downloadUrl;
+      const { downloadUrl } = await tokenRes.json();
+      const filename = platform.includes('mac') ? 'BLOOM-Desktop.dmg' : 'BLOOM-Desktop.exe';
+
+      // Stream download via fetch (avoids Railway 503 on navigation requests)
+      const dlRes = await fetch(SARAH_URL + downloadUrl);
+      if (!dlRes.ok) throw new Error('Download failed: ' + dlRes.status);
+
+      // Use StreamSaver-style approach: collect chunks and create blob
+      const reader = dlRes.body.getReader();
+      const chunks = [];
+      let received = 0;
+      const total = parseInt(dlRes.headers.get('Content-Length') || '0');
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        received += value.length;
+        // Could update progress UI here
+      }
+
+      const blob = new Blob(chunks);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
     } catch (e) {
+      console.error('Download error:', e);
       alert('Download failed. Please try again.');
     }
     setDownloading(null);
