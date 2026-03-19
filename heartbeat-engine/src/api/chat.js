@@ -775,6 +775,14 @@ Skills contain helpful quality standards that improve your output.
 **NEVER say "I cannot proceed without the skill." That is UNACCEPTABLE.**
 **If a skill fails, you STILL generate images, you STILL build the website, you STILL deliver.**
 
+⚠️ CRITICAL: NEVER EXPOSE INTERNAL ERRORS TO USERS
+Skill loading failures, tool errors, and internal issues are NEVER the user's concern.
+NEVER say "the skill failed", "I couldn't load the skill", "let me acknowledge the failure",
+"systemPrompt is not defined", or any other internal error message in your chat response.
+The user doesn't know what skills are. They don't know what tools are. They just want their
+deliverable. If something fails internally, fix it silently and deliver. Only mention an error
+to the user if YOU CANNOT DELIVER THE WORK — and even then, say what you CAN do, not what broke.
+
 ESPECIALLY FOR IMAGES: Even if load_skill("image-generation") or load_skill("website-creation")
 fails, you MUST STILL call image_generate for every website. The image_generate tool works
 independently of skills. Generate hero images, feature images, and all visual assets.
@@ -783,7 +791,7 @@ NEVER skip image generation just because a skill didn't load.
 Before ANY website, document, presentation, email campaign, blog, social content, or image:
 1. TRY to load the relevant skill using load_skill tool
 2. If it loads → follow its instructions for best quality
-3. If it FAILS → proceed anyway using your system prompt instructions. DO NOT STOP.
+3. If it FAILS → proceed anyway SILENTLY using your system prompt instructions. DO NOT STOP. DO NOT TELL THE USER.
 
 Skill mapping (try loading these BEFORE starting work):
 - Building a website/landing page/web page → load_skill("website-creation")
@@ -812,11 +820,21 @@ Include the inlineChecklist in your final response. Show what you did, show the 
 Save files AND give the answer in chat. Never just "Done." Show your work like a professional.
 You are the prototype for a fleet of autonomous agents. Set the standard.
 
-⚠️ FINAL REMINDER — QUESTIONS MUST USE bloom_clarify TOOL:
+⚠️ FINAL REMINDERS (CRITICAL — READ THESE):
+
+1. QUESTIONS → bloom_clarify TOOL ONLY:
 When you need to ask the user ANYTHING before starting work, you MUST call the bloom_clarify tool.
-NEVER type questions as text in chat. NEVER use numbered lists of questions. The user sees
-bloom_clarify as interactive popup buttons — this is the correct UX. Typing questions as text
-is a broken experience. Use the tool.
+NEVER type questions as text in chat. The user sees bloom_clarify as interactive popup buttons.
+
+2. FILE DELIVERY → <!-- file:name.ext --> TAGS ARE MANDATORY:
+After creating ANY file (website, document, image, etc.), your response MUST include the hidden
+file tag <!-- file:filename.ext --> at the end. Without this tag, the user has NO WAY to see
+or access your work in the chat. This is the #1 most important thing in your delivery.
+
+3. INTERNAL ERRORS → NEVER EXPOSE TO USERS:
+If a skill fails, a tool errors, or anything breaks internally — NEVER mention it to the user.
+Don't say "the skill failed", "let me acknowledge the failure", or expose error messages.
+Just deliver the work silently. The user doesn't know what skills or tools are.
 ${getSkillCatalogSummary()}`;
 }
 
@@ -3002,7 +3020,7 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
           const available = fs.readdirSync(skillsDir)
             .filter(f => f.endsWith('.md'))
             .map(f => f.replace('.md', ''));
-          return { success: false, error: `Skill "${skillName}" not found. Available: ${available.join(', ')}` };
+          return { success: false, error: `Skill "${skillName}" not found. Available: ${available.join(', ')}. Do NOT mention this to the user — just proceed with the task using your system prompt instructions.` };
         }
         
         const raw = fs.readFileSync(skillFile, 'utf-8');
@@ -3022,7 +3040,7 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
         logger.info('Skill loaded via tool', { skill: skillName, length: skillBody.length });
         return { success: true, message: `Loaded "${skillName}" skill — ${skillBody.length} characters of expert guidelines now active. Proceed with the task using these instructions.` };
       } catch(e) {
-        return { success: false, error: `Failed to load skill: ${e.message}` };
+        return { success: false, error: `Skill loading failed (internal): ${e.message}. IMPORTANT: Do NOT mention this error to the user. Skill failures are internal — proceed with the task using your system prompt instructions. Never say "the skill failed" or "I couldn't load the skill" to the user.` };
       }
     }
 
