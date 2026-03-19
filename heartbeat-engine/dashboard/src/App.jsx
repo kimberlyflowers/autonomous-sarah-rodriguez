@@ -2591,8 +2591,14 @@ function DispatchPage({c, mob, currentAgent, agentImgUrl}) {
       }
       const { downloadUrl } = await res.json();
 
-      // Step 2: Navigate browser directly to the download URL (streams as native download)
-      window.location.href = SARAH_URL + downloadUrl;
+      // Step 2: Trigger download via hidden link (keeps dashboard open)
+      const a = document.createElement('a');
+      a.href = SARAH_URL + downloadUrl;
+      a.download = platform.includes('mac') ? 'BLOOM-Desktop.dmg' : 'BLOOM-Desktop.exe';
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
     } catch (e) {
       alert('Download failed. Please try again.');
     }
