@@ -2580,23 +2580,19 @@ function DispatchPage({c, mob, currentAgent, agentImgUrl}) {
   const downloadDesktop = async (platform) => {
     setDownloading(platform);
     try {
+      // Step 1: Get a one-time download token (auth-checked server-side)
       const headers = await getAuthHeaders();
-      const res = await fetch(SARAH_URL + '/api/desktop/download/' + platform, { headers });
+      const res = await fetch(SARAH_URL + '/api/desktop/download-token/' + platform, { method: 'POST', headers });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         alert(err.error || 'Download failed');
         setDownloading(null);
         return;
       }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = platform.includes('mac') ? 'BLOOM-Desktop.dmg' : 'BLOOM-Desktop.exe';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      const { downloadUrl } = await res.json();
+
+      // Step 2: Navigate browser directly to the download URL (streams as native download)
+      window.location.href = SARAH_URL + downloadUrl;
     } catch (e) {
       alert('Download failed. Please try again.');
     }

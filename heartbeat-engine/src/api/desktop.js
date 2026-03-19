@@ -3,6 +3,7 @@
 // Desktop polls GET /api/desktop/pending, executes tools, POSTs results back
 
 import express from 'express';
+import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { createClient } from '@supabase/supabase-js';
@@ -186,34 +187,27 @@ const DOWNLOAD_FILES = {
 // Directory where desktop builds are stored on Railway
 const BUILDS_DIR = process.env.DESKTOP_BUILDS_DIR || '/app/desktop-builds';
 
-router.get('/download/:platform', async (req, res) => {
+// Short-lived download tokens (valid 60s)
+const downloadTokens = new Map();
+
+// POST /api/desktop/download-token/:platform
+// Dashboard calls this with auth header → gets a one-time token
+// Then navigates browser to /api/desktop/download/:platform?token=xxx
+router.post('/download-token/:platform', async (req, res) => {
   const { platform } = req.params;
   const fileInfo = DOWNLOAD_FILES[platform];
+  if (!fileInfo) return res.status(400).json({ error: 'Invalid platform' });
 
-  if (!fileInfo) {
-    return res.status(400).json({
-      error: 'Invalid platform',
-      validPlatforms: Object.keys(DOWNLOAD_FILES),
-    });
-  }
-
-  // Verify auth — must have a valid Supabase JWT
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Authentication required. Sign in to your BLOOM dashboard to download.' });
+  if (!authHeader?.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Authentication required.' });
   }
-
-  const token = authHeader.replace('Bearer ', '');
 
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    const { data: { user }, error } = await supabase.auth.getUser(token);
+    const { data: { user }, error } = await supabase.auth.getUser(authHeader.replace('Bearer ', ''));
+    if (error || !user) return res.status(401).json({ error: 'Invalid session.' });
 
-    if (error || !user) {
-      return res.status(401).json({ error: 'Invalid or expired session. Please sign in again.' });
-    }
-
-    // User is authenticated — check if they have an org membership (paying client)
     const { data: membership } = await supabase
       .from('organization_members')
       .select('organization_id')
@@ -221,33 +215,51 @@ router.get('/download/:platform', async (req, res) => {
       .limit(1)
       .single();
 
-    if (!membership) {
-      return res.status(403).json({ error: 'No active BLOOM organization found.' });
-    }
+    if (!membership) return res.status(403).json({ error: 'No active BLOOM organization.' });
 
-    logger.info(`Desktop download: ${platform} by ${user.email} (org: ${membership.organization_id})`);
+    // Generate one-time download token
+    const token = crypto.randomBytes(32).toString('hex');
+    downloadTokens.set(token, { platform, userId: user.id, email: user.email, orgId: membership.organization_id, createdAt: Date.now() });
+    setTimeout(() => downloadTokens.delete(token), 60000); // expires in 60s
 
-    // Serve the file from local builds directory
-    const filePath = path.join(BUILDS_DIR, fileInfo.filename);
-
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({
-        error: `${platform} build not yet available. Check back soon.`,
-        platform,
-      });
-    }
-
-    const stat = fs.statSync(filePath);
-    res.setHeader('Content-Type', fileInfo.contentType);
-    res.setHeader('Content-Length', stat.size);
-    res.setHeader('Content-Disposition', `attachment; filename="${fileInfo.filename}"`);
-
-    const stream = fs.createReadStream(filePath);
-    stream.pipe(res);
+    logger.info(`Download token issued: ${platform} for ${user.email}`);
+    res.json({ token, downloadUrl: `/api/desktop/download/${platform}?token=${token}` });
   } catch (err) {
-    logger.error('Download error:', err.message);
-    res.status(500).json({ error: 'Download failed. Please try again.' });
+    logger.error('Token error:', err.message);
+    res.status(500).json({ error: 'Failed to generate download token.' });
   }
+});
+
+// GET /api/desktop/download/:platform?token=xxx
+// Direct browser navigation — streams the file as a download
+router.get('/download/:platform', (req, res) => {
+  const { platform } = req.params;
+  const { token } = req.query;
+  const fileInfo = DOWNLOAD_FILES[platform];
+
+  if (!fileInfo) return res.status(400).json({ error: 'Invalid platform' });
+  if (!token) return res.status(401).json({ error: 'Download token required. Use the dashboard to download.' });
+
+  const tokenData = downloadTokens.get(token);
+  if (!tokenData || tokenData.platform !== platform) {
+    return res.status(401).json({ error: 'Invalid or expired download token.' });
+  }
+
+  // Consume the token (one-time use)
+  downloadTokens.delete(token);
+
+  const filePath = path.join(BUILDS_DIR, fileInfo.filename);
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ error: `${platform} build not yet available.` });
+  }
+
+  logger.info(`Desktop download: ${platform} by ${tokenData.email}`);
+
+  const stat = fs.statSync(filePath);
+  res.setHeader('Content-Type', fileInfo.contentType);
+  res.setHeader('Content-Length', stat.size);
+  res.setHeader('Content-Disposition', `attachment; filename="${fileInfo.filename}"`);
+  fs.createReadStream(filePath).pipe(res);
 });
 
 // ─────────────────────────────────────────────
