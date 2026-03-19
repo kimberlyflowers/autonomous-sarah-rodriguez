@@ -18,6 +18,8 @@ import { ModelFormatter, modelSelector } from '../context/model-formatter.js';
 import { enhancedExecutor } from '../tools/enhanced-executor.js';
 import { systemMonitor } from '../monitoring/system-monitor.js';
 import { broadcastExecutionProgress } from '../api/events.js';
+import { verifyAction } from './verify.js';
+import { appendProgress, getProgressText } from './progress-log.js';
 
 const logger = createLogger('agent-executor');
 
@@ -199,6 +201,41 @@ Use the available tools to complete this task. Work step by step and explain you
       const contextStats = this.contextManager.getContextStats();
       const systemHealth = this.systemMonitor.getHealthSummary();
 
+      // === RALPH PROGRESS LOG: Append what happened for cross-cycle memory ===
+      try {
+        const planStatus = this.currentPlan ? {
+          title: this.currentPlan.title,
+          stepsCompleted: (this.currentPlan.steps || [])
+            .filter(s => s.status === 'completed' && s.verified)
+            .map(s => s.content),
+          stepsFailed: (this.currentPlan.steps || [])
+            .filter(s => s.status === 'failed')
+            .map(s => ({ content: s.content, reason: s.failure_reason || 'unknown' })),
+          allPassing: this.allStepsPassing || false
+        } : null;
+
+        await appendProgress({
+          cycleId: this.executionId,
+          type: status === EXECUTION_STATUS.COMPLETED ? 'task_completed' : 'task_failed',
+          summary: `${status === EXECUTION_STATUS.COMPLETED ? 'Completed' : 'Failed'}: ${task.substring(0, 100)}${planStatus?.allPassing ? ' (all steps verified)' : ''}`,
+          details: {
+            status,
+            turns: currentTurn,
+            toolsUsed: this.toolExecutionHistory.length,
+            duration,
+            model: this.modelFormatter.model
+          },
+          stepsCompleted: planStatus?.stepsCompleted || [],
+          stepsFailed: planStatus?.stepsFailed || [],
+          nextPriority: planStatus && !planStatus.allPassing
+            ? `Retry failed steps or continue unfinished plan: ${planStatus.title}`
+            : null,
+          verificationResults: this.lastVerificationResult || null
+        });
+      } catch (progressError) {
+        logger.warn('Failed to append progress log (non-fatal):', progressError.message);
+      }
+
       return {
         status,
         result: finalResult,
@@ -208,6 +245,13 @@ Use the available tools to complete this task. Work step by step and explain you
         conversationHistory: this.conversationHistory,
         toolHistory: this.toolExecutionHistory,
         contextStats,
+        // Ralph verification status
+        verification: {
+          allStepsPassing: this.allStepsPassing || false,
+          planStatus: this.currentPlan?.verification_status || 'no_plan',
+          verifiedSteps: (this.currentPlan?.steps || []).filter(s => s.verified).length,
+          totalSteps: (this.currentPlan?.steps || []).length
+        },
         systemHealth: {
           status: systemHealth.overallHealth,
           uptime: systemHealth.uptime,
@@ -334,10 +378,18 @@ Use the available tools to complete this task. Work step by step and explain you
     // Process each content block
     for (const block of content) {
       if (block.type === 'text') {
-        // Check for completion signal
-        if (block.text.includes('TASK COMPLETED')) {
+        // Check for completion signal — HYBRID approach:
+        // 1. Ralph style: all plan steps verified as passing
+        // 2. Legacy: text includes TASK COMPLETED (fallback)
+        if (this.allStepsPassing) {
           completed = true;
           result = block.text;
+          logger.info('Task completed via Ralph verification: all steps passing');
+        } else if (block.text.includes('TASK COMPLETED')) {
+          // Legacy completion — still works but flagged
+          completed = true;
+          result = block.text;
+          logger.warn('Task completed via text signal (legacy) — plan verification not confirmed');
         }
 
         // Add text to conversation using context manager
@@ -410,9 +462,73 @@ Use the available tools to complete this task. Work step by step and explain you
           success: toolResult.success
         });
 
-        // Claude Code behavior: After bloom_todo_write, inject current plan state
+        // === RALPH VERIFICATION HOOK ===
+        // After every tool execution, run automatic verification
+        // This is the structural enforcement that Cowork does behaviorally
+        if (block.name !== 'bloom_todo_write' && block.name !== 'bloom_clarify' &&
+            block.name !== 'bloom_log_decision' && block.name !== 'bloom_log_observation') {
+          try {
+            const verification = await verifyAction(block.name, toolResult, block.input, {
+              executeGHL: async (tool, params) => enhancedExecutor.executeTool(tool, params),
+              executeInternal: async (tool, params) => executeInternalTool(tool, params)
+            });
+
+            // Inject verification result into conversation so Claude knows
+            if (verification && !verification.verified && verification.confidence !== 'low') {
+              await this.contextManager.addConversationTurn('user', [{
+                type: 'tool_result',
+                tool_use_id: block.id + '_verification',
+                content: JSON.stringify({
+                  _verification_result: true,
+                  tool: block.name,
+                  verified: verification.verified,
+                  confidence: verification.confidence,
+                  reason: verification.reason,
+                  evidence: verification.evidence
+                })
+              }], {
+                type: 'verification_result',
+                tool: block.name,
+                verified: verification.verified,
+                priority: 9
+              });
+
+              logger.warn(`Verification failed for ${block.name}`, {
+                reason: verification.reason,
+                confidence: verification.confidence
+              });
+            }
+
+            // Store verification result for progress log
+            this.lastVerificationResult = verification;
+          } catch (verifyError) {
+            logger.warn('Verification hook error (non-fatal):', verifyError.message);
+          }
+        }
+
+        // === CLARIFICATION PAUSE ===
+        // If bloom_clarify was called, pause execution and wait for user
+        if (block.name === 'bloom_clarify' && toolResult.pauseExecution) {
+          logger.info('Execution paused for clarification', { question: toolResult.question });
+          return {
+            completed: false,
+            blocked: true,
+            reason: 'clarification_needed',
+            clarification: toolResult,
+            hasToolUse: false
+          };
+        }
+
+        // === PLAN STATE TRACKING (Cowork TodoWrite behavior) ===
         if (block.name === 'bloom_todo_write' && toolResult.success && toolResult.currentState) {
           this.currentPlan = toolResult.currentState;
+
+          // Check if all steps are passing (Ralph completion signal)
+          if (toolResult.all_steps_passing) {
+            logger.info('ALL STEPS PASSING — task verified complete (Ralph promise)');
+            this.allStepsPassing = true;
+          }
+
           await this.injectPlanStateReminder();
         }
       }
@@ -615,131 +731,92 @@ Use the available tools to complete this task. Work step by step and explain you
       timeStyle: 'short'
     });
 
+    // Load recent progress for cross-cycle memory (Ralph's progress.txt)
+    let progressContext = '';
+    try {
+      progressContext = await getProgressText({ hours: 48, limit: 10 });
+    } catch (err) {
+      logger.warn('Could not load progress context:', err.message);
+    }
+
     return `You are Sarah Rodriguez, an autonomous AI operations agent for BLOOM Ecosystem.
 
 ## Your Core Identity
 - **Name**: ${agentConfig.name}
 - **Role**: ${agentConfig.role}
-- **Autonomy Level**: Level ${agentConfig.currentAutonomyLevel} (Observer)
+- **Autonomy Level**: Level ${agentConfig.currentAutonomyLevel}
 - **Organization**: BLOOM Ecosystem
 
-## Execution Guidelines
-You are now in AGENTIC EXECUTION MODE. You have access to tools and can work autonomously to complete tasks through multi-turn conversations.
+## EXECUTION DISCIPLINE (MANDATORY — READ CAREFULLY)
 
-### Key Principles:
-1. **Work systematically** - Break complex tasks into steps
-2. **Use tools purposefully** - Each tool call should have clear intent
-3. **Explain your reasoning** - Be transparent about your decision-making
-4. **Escalate when needed** - If something exceeds your autonomy level, escalate
-5. **Complete tasks thoroughly** - Don't stop until the task is fully done
+You follow a strict 5-step execution protocol. This is not optional.
 
-### Available Tools:
-- **GHL Tools**: GoHighLevel API access (limited by autonomy level)
-- **Planning Tools**: Create tasks and track progress
-- **Logging Tools**: Record decisions and reasoning
-- **Escalation Tools**: Hand off to humans when appropriate
-- **Delegation Tools**: Delegate specialized tasks to expert sub-agents
+### Step 1: CLARIFY (Chat tasks only)
+If a user's request is ambiguous, call \`bloom_clarify\` BEFORE doing anything else.
+Ask 1 focused question with 2-4 options. Wait for the answer.
+Skip this for heartbeat/scheduled tasks — those are already well-defined.
 
-### Sub-Agent Architecture:
-You have access to specialized sub-agents for complex tasks:
+### Step 2: PLAN (Always required for multi-step tasks)
+Call \`bloom_todo_write\` to create your plan BEFORE executing ANY tools.
+Every step MUST include:
+- \`success_criteria\`: What "done" looks like in concrete terms
+- \`verification_method\`: How you'll verify it ('api_check', 'result_check', 'llm_judgment')
+- \`activeForm\`: Present-tense description (e.g., "Creating contact in GHL")
+ALWAYS include a final step: "Verify all steps completed successfully"
 
-**GHL Operations Specialist**: Expert in GoHighLevel CRM operations
-- Expertise: contacts, opportunities, calendars, workflows, pipelines, tasks
-- Use for: Complex GHL operations, data management, workflow optimization
+### Step 3: EXECUTE (One step at a time)
+- Mark the current step \`in_progress\` via \`bloom_todo_write\` BEFORE starting it
+- Execute ONLY that one step
+- Only ONE step may be \`in_progress\` at any time
+- NEVER skip ahead or batch-complete steps
 
-**Communication Specialist**: Expert in client communication and relationships
-- Expertise: messaging, communication, relationships, follow-ups, campaigns
-- Use for: Complex messaging strategies, relationship management, campaign analysis
+### Step 4: VERIFY (After every step)
+After executing a step, VERIFY it actually worked:
+- **api_check**: Query the target system (GHL, database) to confirm the change exists
+- **result_check**: Inspect the tool's return value for expected data
+- **llm_judgment**: Evaluate content quality against the success criteria
+Then update the plan via \`bloom_todo_write\`:
+- If verified: set \`status: 'completed'\`, \`verified: true\`, \`verification_evidence: '...'\`
+- If NOT verified: set \`status: 'failed'\`, \`verified: false\`, \`failure_reason: '...'\`
+- If failed: you may retry up to 2 times (increment \`retry_count\`), then escalate
 
-**Data Analysis Specialist**: Expert in pattern recognition and insights
-- Expertise: analysis, patterns, metrics, reporting, insights
-- Use for: Complex data analysis, trend identification, performance reporting
+### Step 5: COMPLETE
+The task is complete when ALL steps in your plan have \`verified: true\`.
+When all steps pass, respond with "TASK COMPLETED" and a summary.
+Do NOT say "TASK COMPLETED" until all steps are verified.
 
-**Task Planning & Coordination Specialist**: Expert in workflow optimization
-- Expertise: planning, coordination, workflows, optimization, task_management
-- Use for: Complex project planning, workflow design, coordination challenges
+## RULES THAT MUST NOT BE BROKEN
+1. NEVER mark a step 'completed' without setting verified: true and providing evidence
+2. NEVER have more than one step 'in_progress' at a time
+3. NEVER skip creating a plan for multi-step tasks
+4. NEVER batch-complete steps — one at a time, verified, then next
+5. If a step fails verification twice, ESCALATE — do not keep retrying silently
 
-**Escalation & Issue Resolution Specialist**: Expert in problem escalation
-- Expertise: escalation, issue_resolution, risk_assessment, decision_support
-- Use for: Complex issues requiring human escalation, risk assessment
+## Available Tools
+- **GHL Tools**: GoHighLevel CRM API (limited by autonomy level)
+- **Planning Tools**: bloom_todo_write, bloom_clarify, bloom_create_task
+- **Logging Tools**: bloom_log_decision, bloom_log_observation
+- **Escalation Tools**: bloom_escalate_issue
+- **Delegation Tools**: bloom_delegate_task (for specialized sub-agents)
+- **Browser Tools**: Web scraping and automation
+- **Search Tools**: Web search capabilities
 
-**When to Delegate:**
-- Complex multi-step operations requiring domain expertise
-- Tasks that would benefit from specialized knowledge
-- Operations requiring multiple tool interactions
-- Analysis or planning that exceeds basic execution
+## Sub-Agent Delegation
+Delegate to specialists when tasks need domain expertise:
+- **GHL Specialist**: Complex CRM operations, data management
+- **Communication Specialist**: Messaging strategies, relationship management
+- **Data Analyst**: Pattern recognition, reporting, insights
+- **Task Coordinator**: Workflow optimization, project planning
+- **Escalation Specialist**: Issue resolution, risk assessment
 
-### Enhanced Tool Execution:
-You have access to advanced tool execution capabilities:
+## Trust Gate (Level ${agentConfig.currentAutonomyLevel})
+- Read Operations: ✅ Always allowed
+- Write Operations: ${agentConfig.currentAutonomyLevel >= 2 ? '✅ Limited' : '❌ Blocked — escalate if needed'}
+- Delete Operations: ${agentConfig.currentAutonomyLevel >= 3 ? '✅ Restricted' : '❌ Blocked'}
+- Admin Operations: ${agentConfig.currentAutonomyLevel >= 4 ? '✅ Allowed' : '❌ Blocked'}
 
-**Retry Logic**: Tools automatically retry on recoverable failures
-- Rate limits, timeouts, and temporary service issues
-- Exponential backoff with jitter to prevent overload
-- Different retry strategies per tool category (GHL API, Internal, etc.)
-
-**Performance Monitoring**: All tool executions are monitored
-- Execution time tracking and success rate analysis
-- Performance optimization recommendations
-- Failed execution analysis and pattern detection
-
-**Parallel Execution**: Execute multiple independent tools simultaneously
-- Automatically detect when tools can run in parallel
-- Respect concurrency limits and resource constraints
-- Batch processing for improved efficiency
-
-**Dependency Management**: Handle complex tool workflows
-- Execute tools in correct order based on dependencies
-- Pass results between dependent tools automatically
-- Handle partial failures gracefully with rollback options
-
-**Enhanced Error Handling**: Intelligent error recovery
-- Categorize errors by type (temporary vs permanent)
-- Automatic retry for recoverable errors
-- Detailed error context and resolution suggestions
-
-### System Monitoring & Self-Healing:
-You operate within a comprehensive monitoring and self-healing environment:
-
-**Health Monitoring**: All system components are continuously monitored
-- Context manager utilization and compression triggers
-- Tool performance and success rates
-- Trust gate violations and security metrics
-- Database connectivity and API service health
-- Memory usage and resource optimization
-
-**Auto-Healing Capabilities**: System automatically recovers from issues
-- Context compression when approaching token limits
-- Tool retry logic for transient failures
-- Resource cleanup and garbage collection
-- API rate limit handling and backoff strategies
-- Database reconnection and failover procedures
-
-**System Alerts**: Real-time notification of system issues
-- Performance degradation warnings
-- Security violation alerts
-- Resource utilization thresholds
-- Service connectivity problems
-- Auto-healing action confirmations
-
-**Current System Health**: ${this.systemHealth}
-**Auto-Healing**: ${this.systemMonitor.autoHealingEnabled ? 'Enabled' : 'Disabled'}
-
-### Trust Gate Enforcement:
-You are operating under Trust Gate protection. All tool use is monitored and enforced based on your autonomy level:
-
-**Level ${agentConfig.currentAutonomyLevel} Permissions:**
-- **Read Operations**: ✅ Search contacts, view data, list resources
-- **Write Operations**: ${agentConfig.currentAutonomyLevel >= 2 ? '✅ Limited' : '❌ Blocked'} Send messages, update contacts, create records
-- **Delete Operations**: ${agentConfig.currentAutonomyLevel >= 3 ? '✅ Restricted' : '❌ Blocked'} Delete data (with constraints)
-- **Admin Operations**: ${agentConfig.currentAutonomyLevel >= 4 ? '✅ Allowed' : '❌ Blocked'} System configuration
-
-**IMPORTANT**: If a tool is blocked, you'll receive a clear error message. When this happens:
-1. Acknowledge the constraint transparently
-2. Suggest alternative approaches within your level
-3. Escalate to humans if the blocked action is critical
-
-### Completion Signal:
-When you have completed the task, respond with "TASK COMPLETED" followed by a clear summary of what was accomplished.
+## Recent Progress (Cross-Cycle Memory)
+${progressContext || 'No recent progress entries — this may be a fresh work session.'}
 
 ## Current Context (${now}):
 ${JSON.stringify(context, null, 2)}
@@ -747,7 +824,7 @@ ${JSON.stringify(context, null, 2)}
 ## Standing Instructions:
 ${agentConfig.standingInstructions}
 
-Remember: You operate at Level 1 autonomy, so focus on observation, analysis, and appropriate escalation. Use your tools wisely and work systematically toward task completion.`;
+Remember: Plan first. Execute one step. Verify it worked. Then move on.`;
   }
 
   /**
@@ -878,14 +955,22 @@ Remember: You operate at Level 1 autonomy, so focus on observation, analysis, an
   async injectPlanStateReminder() {
     if (!this.currentPlan) return;
 
-    const planReminder = `## Current Task Plan:
-**${this.currentPlan.title}**
+    const verifiedCount = (this.currentPlan.steps || []).filter(s => s.verified).length;
+    const totalCount = (this.currentPlan.steps || []).length;
+    const allPassing = this.currentPlan.all_steps_passing || this.allStepsPassing;
 
-${this.currentPlan.steps.map(step =>
-  `${step.id}. [${step.status.toUpperCase()}] ${step.content} (${step.priority} priority)`
-).join('\n')}
+    const planReminder = `## Current Task Plan: ${this.currentPlan.title}
+**Verification: ${verifiedCount}/${totalCount} steps verified${allPassing ? ' — ALL PASSING ✅' : ''}**
 
-Remember: Mark steps 'in_progress' BEFORE starting them. Mark 'completed' ONLY after verifying success.`;
+${this.currentPlan.steps.map(step => {
+  const statusIcon = step.verified ? '✅' : step.status === 'failed' ? '❌' : step.status === 'in_progress' ? '🔄' : '⬜';
+  const verifyTag = step.verified ? ` [VERIFIED: ${step.verification_evidence || 'confirmed'}]` :
+    step.status === 'failed' ? ` [FAILED: ${step.failure_reason || 'unknown'}]` : '';
+  return `${statusIcon} ${step.id}. [${step.status.toUpperCase()}] ${step.content}${verifyTag}`;
+}).join('\n')}
+
+NEXT ACTION: Find the highest-priority pending step, mark it in_progress, execute it, then VERIFY before marking complete.
+${allPassing ? 'ALL STEPS VERIFIED — you may now respond with TASK COMPLETED.' : ''}`;
 
     await this.contextManager.addConversationTurn('system', planReminder, {
       type: 'system_critical',

@@ -7,6 +7,8 @@ import { sense } from './agent/sense.js';
 import { think } from './agent/think.js';
 import { act } from './agent/act.js';
 import { escalate } from './agent/escalate.js';
+import { verifyAction } from './agent/verify.js';
+import { appendProgress, getProgressText, getRecentProgress } from './agent/progress-log.js';
 import { lettaClient } from './memory/letta-client.js';
 import { logHeartbeat, logAction, logRejection, logHandoff, initCycleRow } from './logging/index.js';
 import { isWithinScope } from './config/autonomy-levels.js';
@@ -45,13 +47,30 @@ export async function runHeartbeat(agentConfig, trigger = {}) {
       }
     });
 
+    // PHASE 1.5: PROGRESS CONTEXT (Ralph pattern — read progress.txt equivalent)
+    logger.info('📋 PHASE 1.5: Loading cross-cycle progress memory...');
+    let progressContext = [];
+    try {
+      progressContext = await getRecentProgress({ hours: 48, limit: 15 });
+      if (progressContext.length > 0) {
+        logger.info(`Loaded ${progressContext.length} progress entries for context`, {
+          latestType: progressContext[0]?.entry_type,
+          latestSummary: progressContext[0]?.summary?.substring(0, 80)
+        });
+      }
+    } catch (progressError) {
+      logger.warn('Could not load progress context (non-fatal):', progressError.message);
+    }
+
     // PHASE 2: REMEMBER - Load relevant memory from Letta
     logger.info('🧠 PHASE 2: Loading relevant memories...');
     const memory = await lettaClient.getRelevantMemory({
       agentId: agentConfig.agentId,
       currentContext: environment,
       recentActions: await getRecentActions(agentConfig.agentId, 24), // last 24 hours
-      triggerContext: trigger
+      triggerContext: trigger,
+      // Inject progress context so THINK has cross-cycle awareness
+      progressLog: progressContext
     });
 
     // PHASE 3: THINK - Call Claude with full context
@@ -89,11 +108,36 @@ export async function runHeartbeat(agentConfig, trigger = {}) {
             });
 
             const result = await act(decision, agentConfig);
-            await logAction(cycleId, decision, result);
-            results.actions.push({ decision, result });
 
-            logger.info(`✅ Action completed: ${decision.action_type}`, {
-              success: result.success
+            // === RALPH VERIFICATION: Verify the action actually worked ===
+            let verification = null;
+            try {
+              verification = await verifyAction(
+                decision.action_type,
+                result,
+                decision.context || {},
+                {} // tools object for verification callbacks
+              );
+              result.verified = verification.verified;
+              result.verification_confidence = verification.confidence;
+              result.verification_evidence = verification.evidence;
+
+              if (!verification.verified) {
+                logger.warn(`⚠️ Verification FAILED for ${decision.action_type}`, {
+                  reason: verification.reason,
+                  confidence: verification.confidence
+                });
+              }
+            } catch (verifyError) {
+              logger.warn('Verification error (non-fatal):', verifyError.message);
+            }
+
+            await logAction(cycleId, decision, result);
+            results.actions.push({ decision, result, verification });
+
+            logger.info(`${verification?.verified ? '✅' : '⚠️'} Action ${verification?.verified ? 'completed and verified' : 'completed (unverified)'}: ${decision.action_type}`, {
+              success: result.success,
+              verified: verification?.verified || false
             });
           } else {
             // Action outside scope - convert to escalation
@@ -180,6 +224,44 @@ export async function runHeartbeat(agentConfig, trigger = {}) {
       }
     } catch (schedError) {
       logger.error('Scheduled task check failed', { error: schedError.message });
+    }
+
+    // PHASE 5.75: PROGRESS LOG (Ralph pattern — append to progress.txt equivalent)
+    logger.info('📝 PHASE 5.75: Appending cycle progress...');
+    try {
+      const verifiedActions = results.actions.filter(a => a.verification?.verified);
+      const failedVerifications = results.actions.filter(a => a.verification && !a.verification.verified);
+
+      if (results.actions.length > 0 || results.handoffs.length > 0) {
+        await appendProgress({
+          cycleId,
+          type: 'cycle_summary',
+          summary: `Heartbeat cycle ${cycleId}: ${results.actions.length} actions (${verifiedActions.length} verified), ${results.rejections.length} rejections, ${results.handoffs.length} escalations`,
+          details: {
+            trigger: trigger.type || 'scheduled',
+            environment: {
+              newInquiries: environment.ghl?.newInquiries?.length || 0,
+              overdueFollowups: environment.ghl?.overdueFollowups?.length || 0,
+              pendingTasks: environment.tasks?.pending?.length || 0
+            }
+          },
+          stepsCompleted: verifiedActions.map(a => `${a.decision.action_type}: ${a.decision.description || ''}`),
+          stepsFailed: failedVerifications.map(a => ({
+            action: a.decision.action_type,
+            reason: a.verification?.reason || 'verification failed'
+          })),
+          nextPriority: failedVerifications.length > 0
+            ? `Retry failed verifications: ${failedVerifications.map(a => a.decision.action_type).join(', ')}`
+            : null,
+          verificationResults: {
+            total: results.actions.length,
+            verified: verifiedActions.length,
+            failed: failedVerifications.length
+          }
+        });
+      }
+    } catch (progressError) {
+      logger.warn('Failed to append progress log (non-fatal):', progressError.message);
     }
 
     // PHASE 6: LOG - Record cycle completion

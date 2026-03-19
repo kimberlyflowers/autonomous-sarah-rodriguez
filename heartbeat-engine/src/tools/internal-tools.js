@@ -201,10 +201,30 @@ export const internalToolDefinitions = {
     operation: "write"
   },
 
-  // SARAH'S INTERNAL PLANNING SYSTEM (Claude Code TodoWrite pattern)
+  // SARAH'S INTERNAL PLANNING SYSTEM (Cowork TodoWrite + Ralph Verification Hybrid)
   bloom_todo_write: {
     name: "bloom_todo_write",
-    description: "Create or update a structured task plan. You MUST call this before executing any multi-step task. The plan keeps you focused and gives users visibility into your progress. Rules: Mark a step 'in_progress' BEFORE starting it. Mark 'completed' ONLY after verifying success via actual API response. Only ONE step 'in_progress' at a time. NEVER batch-complete steps. After creating or updating a plan, you will receive the current plan state as a reminder before your next action.",
+    description: `Create or update a structured task plan with verification tracking.
+
+## MANDATORY RULES (Cowork Discipline):
+1. You MUST call this BEFORE executing any multi-step task — no exceptions.
+2. Mark a step 'in_progress' BEFORE starting it.
+3. Only ONE step may be 'in_progress' at a time.
+4. NEVER batch-complete steps — complete them one at a time.
+5. Mark 'completed' ONLY after verification confirms success.
+6. ALWAYS include a final 'Verify all steps completed successfully' step.
+
+## VERIFICATION RULES (Ralph Pattern):
+- Every step MUST have success_criteria describing what "done" looks like.
+- Every step MUST have a verification_method: 'api_check', 'result_check', or 'llm_judgment'.
+- When marking a step 'completed', you MUST also set verified: true and provide verification_evidence.
+- If verification fails, set verified: false and status: 'failed' with the reason.
+- The system will automatically verify your claims — do not mark verified: true unless you have evidence.
+
+## STEP LIFECYCLE:
+pending → in_progress → (execute) → (verify) → completed/failed
+
+After creating or updating a plan, you will receive the current plan state as a reminder.`,
     parameters: {
       type: "object",
       properties: {
@@ -217,10 +237,18 @@ export const internalToolDefinitions = {
             properties: {
               id: { type: "number", description: "Sequential step number" },
               content: { type: "string", description: "What this step does" },
+              activeForm: { type: "string", description: "Present continuous form shown during execution (e.g., 'Creating contact in GHL')" },
               status: { type: "string", enum: ["pending","in_progress","completed","failed"], description: "Current step status" },
-              priority: { type: "string", enum: ["high","medium","low"], description: "Step priority" }
+              priority: { type: "string", enum: ["high","medium","low"], description: "Step priority" },
+              success_criteria: { type: "string", description: "REQUIRED: What 'done' looks like. E.g., 'Contact exists in GHL with email and tags applied'" },
+              verification_method: { type: "string", enum: ["api_check","result_check","llm_judgment","manual"], description: "REQUIRED: How to verify this step succeeded" },
+              verified: { type: "boolean", description: "Whether this step has been independently verified as passing. Only set true with evidence." },
+              verification_evidence: { type: "string", description: "Evidence that verification passed (e.g., 'Contact ID abc123 confirmed in GHL')" },
+              failure_reason: { type: "string", description: "If failed or verification failed, explain why" },
+              tool_used: { type: "string", description: "Which tool was used to execute this step" },
+              retry_count: { type: "number", description: "How many times this step has been attempted", default: 0 }
             },
-            required: ["id", "content", "status", "priority"]
+            required: ["id", "content", "status", "priority", "success_criteria", "verification_method"]
           }
         }
       },
@@ -228,6 +256,44 @@ export const internalToolDefinitions = {
     },
     category: "planning",
     operation: "write"
+  },
+
+  // CLARIFICATION TOOL (Cowork AskUserQuestion equivalent)
+  bloom_clarify: {
+    name: "bloom_clarify",
+    description: `Ask the user a clarifying question before starting work. Use this BEFORE creating a task plan when the request is ambiguous or underspecified. Present 2-4 options for the user to choose from. This pauses execution until the user responds.
+
+Examples of when to use:
+- "Create content for the client" → Ask: what type of content? blog post, social media, email?
+- "Follow up with leads" → Ask: which leads? how should I follow up? email, SMS, call?
+- "Update the pipeline" → Ask: which pipeline? what changes?
+
+Do NOT use for:
+- Clear, specific instructions
+- Heartbeat-triggered autonomous tasks
+- Emergency escalations`,
+    parameters: {
+      type: "object",
+      properties: {
+        question: { type: "string", description: "The clarifying question to ask" },
+        options: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              label: { type: "string", description: "Short option label (1-5 words)" },
+              description: { type: "string", description: "What this option means" }
+            },
+            required: ["label", "description"]
+          },
+          description: "2-4 options for the user to choose from"
+        },
+        context: { type: "string", description: "Why you need this clarification" }
+      },
+      required: ["question", "options"]
+    },
+    category: "planning",
+    operation: "read"
   },
 
   // LOGGING TOOLS
@@ -1004,21 +1070,25 @@ export const internalToolExecutors = {
     }
   },
 
-  // SARAH'S INTERNAL PLANNING SYSTEM EXECUTORS (Claude Code TodoWrite pattern)
+  // SARAH'S INTERNAL PLANNING SYSTEM EXECUTORS (Cowork + Ralph Hybrid)
   bloom_todo_write: async (params) => {
     try {
       const pool = await getPool();
       const { v4: uuidv4 } = await import('uuid');
 
-      // Create task_plans table if it doesn't exist (Claude Code format)
+      // Create task_plans table if it doesn't exist
       await pool.query(`
         CREATE TABLE IF NOT EXISTS task_plans (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
           task_id VARCHAR(100) UNIQUE NOT NULL,
           agent_id VARCHAR(100) DEFAULT 'bloomie-sarah-rodriguez',
+          organization_id VARCHAR(100),
           title TEXT NOT NULL,
           steps JSONB NOT NULL,
           status VARCHAR(50) DEFAULT 'active',
+          verification_status VARCHAR(50) DEFAULT 'unverified',
+          all_steps_passing BOOLEAN DEFAULT FALSE,
+          last_verified_at TIMESTAMP WITH TIME ZONE,
           created_at TIMESTAMP DEFAULT NOW(),
           updated_at TIMESTAMP DEFAULT NOW()
         );
@@ -1026,25 +1096,81 @@ export const internalToolExecutors = {
 
       const taskId = params.task_id || uuidv4();
 
-      // Insert or update the entire plan (Claude Code updates whole list each time)
+      // Validate Cowork discipline: only one step in_progress at a time
+      const inProgressSteps = params.steps.filter(s => s.status === 'in_progress');
+      if (inProgressSteps.length > 1) {
+        logger.warn('DISCIPLINE VIOLATION: Multiple steps marked in_progress', {
+          inProgressCount: inProgressSteps.length,
+          steps: inProgressSteps.map(s => s.id)
+        });
+        // Fix it: only keep the first one as in_progress
+        let foundFirst = false;
+        params.steps = params.steps.map(s => {
+          if (s.status === 'in_progress') {
+            if (!foundFirst) {
+              foundFirst = true;
+              return s;
+            }
+            return { ...s, status: 'pending' };
+          }
+          return s;
+        });
+      }
+
+      // Validate Ralph verification: don't allow completed without verified
+      for (const step of params.steps) {
+        if (step.status === 'completed' && step.verified !== true) {
+          logger.warn('VERIFICATION DISCIPLINE: Step marked completed without verified=true', {
+            stepId: step.id,
+            content: step.content
+          });
+          // Don't block it but flag it — the system prompt will reinforce this
+        }
+      }
+
+      // Calculate verification status
+      const allStepsPassing = params.steps.length > 0 &&
+        params.steps.every(s => s.status === 'completed' && s.verified === true);
+      const verificationStatus = allStepsPassing ? 'all_passing' :
+        params.steps.some(s => s.verified === true) ? 'partial' : 'unverified';
+
+      // Insert or update the entire plan
       const upsertResult = await pool.query(`
-        INSERT INTO task_plans (task_id, title, steps)
-        VALUES ($1, $2, $3)
+        INSERT INTO task_plans (task_id, title, steps, verification_status, all_steps_passing, last_verified_at)
+        VALUES ($1, $2, $3, $4, $5, $6)
         ON CONFLICT (task_id)
         DO UPDATE SET
           title = EXCLUDED.title,
           steps = EXCLUDED.steps,
+          verification_status = EXCLUDED.verification_status,
+          all_steps_passing = EXCLUDED.all_steps_passing,
+          last_verified_at = EXCLUDED.last_verified_at,
           updated_at = NOW()
-        RETURNING task_id, title, steps, updated_at
-      `, [taskId, params.title, JSON.stringify(params.steps)]);
-
+        RETURNING task_id, title, steps, updated_at, verification_status, all_steps_passing
+      `, [
+        taskId,
+        params.title,
+        JSON.stringify(params.steps),
+        verificationStatus,
+        allStepsPassing,
+        allStepsPassing ? new Date().toISOString() : null
+      ]);
 
       const plan = upsertResult.rows[0];
+
+      // Build progress summary for logging
+      const completed = params.steps.filter(s => s.status === 'completed').length;
+      const verified = params.steps.filter(s => s.verified === true).length;
+      const failed = params.steps.filter(s => s.status === 'failed').length;
+      const pending = params.steps.filter(s => s.status === 'pending').length;
 
       logger.info('Created/updated task plan', {
         taskId: plan.task_id,
         title: plan.title,
-        stepCount: params.steps.length
+        stepCount: params.steps.length,
+        completed, verified, failed, pending,
+        allStepsPassing,
+        verificationStatus
       });
 
       return {
@@ -1052,11 +1178,16 @@ export const internalToolExecutors = {
         task_id: plan.task_id,
         title: plan.title,
         steps: params.steps,
-        message: `Plan "${plan.title}" created with ${params.steps.length} steps`,
+        verification_status: verificationStatus,
+        all_steps_passing: allStepsPassing,
+        progress: { total: params.steps.length, completed, verified, failed, pending },
+        message: `Plan "${plan.title}": ${verified}/${params.steps.length} verified passing${allStepsPassing ? ' — ALL PASSING ✅' : ''}`,
         // Return current state for system message injection
         currentState: {
           title: plan.title,
-          steps: params.steps
+          steps: params.steps,
+          verification_status: verificationStatus,
+          all_steps_passing: allStepsPassing
         }
       };
 
@@ -1066,6 +1197,35 @@ export const internalToolExecutors = {
         success: false,
         error: error.message,
         message: 'Failed to create task plan'
+      };
+    }
+  },
+
+  // CLARIFICATION TOOL EXECUTOR
+  bloom_clarify: async (params) => {
+    try {
+      logger.info('Clarification requested', {
+        question: params.question,
+        optionCount: params.options?.length || 0
+      });
+
+      // Store clarification request for the dashboard to display
+      // The chat handler will pick this up and show it to the user
+      return {
+        success: true,
+        type: 'clarification_needed',
+        question: params.question,
+        options: params.options || [],
+        context: params.context || '',
+        message: `Clarification needed: ${params.question}`,
+        // Signal to the executor to pause and wait for user input
+        pauseExecution: true
+      };
+    } catch (error) {
+      logger.error('Failed to create clarification request:', error);
+      return {
+        success: false,
+        error: error.message
       };
     }
   }
