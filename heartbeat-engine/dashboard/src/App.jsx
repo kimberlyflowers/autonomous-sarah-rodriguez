@@ -2559,6 +2559,49 @@ function DispatchPage({c, mob, currentAgent, agentImgUrl}) {
   const dispatchUrl = SARAH_URL + '/dispatch';
   const [copied, setCopied] = useState(false);
   const [qrVisible, setQrVisible] = useState(false);
+  const [downloading, setDownloading] = useState(null);
+  const [desktopAvail, setDesktopAvail] = useState(null);
+
+  // Detect platform
+  const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
+  const isMac = ua.includes('Macintosh') || ua.includes('Mac OS');
+  const isWin = ua.includes('Windows');
+  const isArm = ua.includes('ARM') || (typeof navigator !== 'undefined' && navigator?.userAgentData?.architecture === 'arm');
+  const defaultPlatform = isMac ? (isArm ? 'mac-arm64' : 'mac-intel') : isWin ? 'windows' : null;
+
+  // Check available builds
+  useEffect(() => {
+    fetch(SARAH_URL + '/api/desktop/downloads')
+      .then(r => r.json())
+      .then(d => setDesktopAvail(d.platforms))
+      .catch(() => setDesktopAvail(null));
+  }, []);
+
+  const downloadDesktop = async (platform) => {
+    setDownloading(platform);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(SARAH_URL + '/api/desktop/download/' + platform, { headers });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || 'Download failed');
+        setDownloading(null);
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = platform.includes('mac') ? 'BLOOM-Desktop.dmg' : 'BLOOM-Desktop.exe';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert('Download failed. Please try again.');
+    }
+    setDownloading(null);
+  };
 
   const copyLink = () => {
     navigator.clipboard?.writeText(dispatchUrl).then(() => {
@@ -2607,6 +2650,61 @@ function DispatchPage({c, mob, currentAgent, agentImgUrl}) {
             <span style={{width:6, height:6, borderRadius:'50%', background:'#34a853', animation:'pulse 1.5s ease infinite'}}/>
             <span style={{fontSize:11, color:'#34a853', fontWeight:600}}>Online via Dispatch</span>
           </div>
+        </div>
+      </div>
+
+      {/* Desktop App Download */}
+      <div style={{padding:24, borderRadius:16, background:c.cd, border:'1px solid '+c.ln, marginBottom:16}}>
+        <div style={{display:'flex', alignItems:'center', gap:10, marginBottom:4}}>
+          <svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke={c.tx} strokeWidth='2' strokeLinecap='round'>
+            <rect x='2' y='3' width='20' height='14' rx='2'/><line x1='8' y1='21' x2='16' y2='21'/><line x1='12' y1='17' x2='12' y2='21'/>
+          </svg>
+          <span style={{fontSize:14, fontWeight:700, color:c.tx}}>BLOOM Desktop</span>
+        </div>
+        <div style={{fontSize:12, color:c.so, marginBottom:20, lineHeight:1.6}}>
+          Let {agentFirst} work directly on your computer — screen control, browser automation, and file access. Download and sign in with your BLOOM account.
+        </div>
+
+        <div style={{display:'flex', gap:10, flexWrap:'wrap', marginBottom:16}}>
+          {/* macOS Button */}
+          <button
+            onClick={() => downloadDesktop(defaultPlatform === 'mac-arm64' ? 'mac-arm64' : 'mac-intel')}
+            disabled={downloading !== null}
+            style={{flex:1, minWidth:140, padding:'14px 20px', borderRadius:12, border:'none', background: isMac ? 'linear-gradient(135deg,#F4A261,#E76F8B)' : c.sf, color: isMac ? '#fff' : c.tx, cursor: downloading ? 'wait' : 'pointer', fontSize:13, fontWeight:700, fontFamily:'inherit', display:'flex', alignItems:'center', justifyContent:'center', gap:8, transition:'transform .1s', opacity: downloading === 'mac-arm64' || downloading === 'mac-intel' ? 0.6 : 1}}>
+            <svg width='18' height='18' viewBox='0 0 24 24' fill={isMac ? '#fff' : c.so}>
+              <path d='M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z'/>
+            </svg>
+            {downloading === 'mac-arm64' || downloading === 'mac-intel' ? 'Downloading...' : 'Download for macOS'}
+          </button>
+
+          {/* Windows Button */}
+          <button
+            onClick={() => downloadDesktop('windows')}
+            disabled={downloading !== null}
+            style={{flex:1, minWidth:140, padding:'14px 20px', borderRadius:12, border:'none', background: isWin ? 'linear-gradient(135deg,#F4A261,#E76F8B)' : c.sf, color: isWin ? '#fff' : c.tx, cursor: downloading ? 'wait' : 'pointer', fontSize:13, fontWeight:700, fontFamily:'inherit', display:'flex', alignItems:'center', justifyContent:'center', gap:8, transition:'transform .1s', opacity: downloading === 'windows' ? 0.6 : 1}}>
+            <svg width='16' height='16' viewBox='0 0 24 24' fill={isWin ? '#fff' : c.so}>
+              <path d='M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801'/>
+            </svg>
+            {downloading === 'windows' ? 'Downloading...' : 'Download for Windows'}
+          </button>
+        </div>
+
+        {/* Mac chip picker (only show on Mac) */}
+        {isMac && (
+          <div style={{display:'flex', gap:6, marginBottom:12}}>
+            <button onClick={() => downloadDesktop('mac-arm64')} disabled={downloading !== null}
+              style={{padding:'6px 14px', borderRadius:8, border:'1px solid '+c.ln, background:c.sf, fontSize:11, fontWeight:600, color:c.so, cursor:'pointer', fontFamily:'inherit'}}>
+              Apple Silicon (M1/M2/M3)
+            </button>
+            <button onClick={() => downloadDesktop('mac-intel')} disabled={downloading !== null}
+              style={{padding:'6px 14px', borderRadius:8, border:'1px solid '+c.ln, background:c.sf, fontSize:11, fontWeight:600, color:c.so, cursor:'pointer', fontFamily:'inherit'}}>
+              Intel Mac
+            </button>
+          </div>
+        )}
+
+        <div style={{fontSize:11, color:c.fa, lineHeight:1.5}}>
+          Requires macOS 12+ or Windows 10+. After installing, sign in with your BLOOM email and password.
         </div>
       </div>
 

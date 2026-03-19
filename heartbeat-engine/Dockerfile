@@ -65,6 +65,9 @@ RUN npm run build
 
 WORKDIR /app
 
+# Create desktop builds directory for Dispatch downloads
+RUN mkdir -p /app/desktop-builds
+
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
   CMD node -e "process.exit(0)"
 
