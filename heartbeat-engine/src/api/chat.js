@@ -3285,8 +3285,14 @@ async function callAnthropicWithRetry(params, maxRetries = 3, client = null) {
       ]);
     } catch (err) {
       const status = err?.status || err?.error?.status;
+      const errMsg = err?.message || '';
+      // Don't retry on invalid_request_error (prompt too long, bad params) — retrying won't help
+      if (status === 400 || errMsg.includes('prompt is too long') || errMsg.includes('invalid_request_error')) {
+        logger.error(`Anthropic API invalid request (not retryable): ${errMsg.slice(0, 200)}`);
+        throw err;
+      }
       const isOverloaded = status === 529 || status === 529 ||
-        err?.message?.includes('overloaded') || err?.message?.includes('529');
+        errMsg.includes('overloaded') || errMsg.includes('529');
       const isRateLimit = status === 429;
       if ((isOverloaded || isRateLimit) && attempt < maxRetries) {
         const delay = Math.pow(2, attempt) * 2000 + Math.random() * 1000; // 2s, 4s, 8s
@@ -3419,6 +3425,95 @@ When a user asks you to edit, modify, or update something you previously created
   const { tools: availableTools } = getAvailableTools();
   const capabilityNotes = getCapabilityNotes();
   if (capabilityNotes) systemPrompt += capabilityNotes;
+
+  // ── CONTEXT WINDOW MANAGEMENT — prevent "prompt is too long" errors ────
+  // Anthropic's max context is 200k tokens. We estimate ~4 chars per token.
+  // Budget: ~180k tokens for messages (reserve 20k for system prompt + tools + output).
+  const MAX_MESSAGE_CHARS = 720000; // ~180k tokens × 4 chars/token
+  function estimateMessageChars(msgs) {
+    let total = 0;
+    for (const msg of msgs) {
+      if (typeof msg.content === 'string') {
+        total += msg.content.length;
+      } else if (Array.isArray(msg.content)) {
+        for (const block of msg.content) {
+          if (block.type === 'text') total += (block.text || '').length;
+          else if (block.type === 'image' && block.source?.type === 'base64') {
+            // Base64 images are huge — estimate their token cost
+            total += (block.source.data || '').length;
+          } else if (block.type === 'image' && block.source?.type === 'url') {
+            // URL images are fetched by Anthropic — estimate ~1600 tokens per image
+            total += 6400;
+          } else if (block.type === 'tool_use') {
+            total += JSON.stringify(block.input || {}).length + 200;
+          } else if (block.type === 'tool_result') {
+            total += typeof block.content === 'string' ? block.content.length : JSON.stringify(block.content || '').length;
+          } else {
+            total += JSON.stringify(block).length;
+          }
+        }
+      } else if (msg.content) {
+        total += JSON.stringify(msg.content).length;
+      }
+    }
+    return total;
+  }
+
+  function trimMessagesToFit(msgs) {
+    let totalChars = estimateMessageChars(msgs);
+    if (totalChars <= MAX_MESSAGE_CHARS) return msgs;
+
+    logger.warn(`Context too large (${totalChars} chars, ~${Math.round(totalChars/4)} tokens). Trimming...`);
+    let trimmed = [...msgs];
+
+    // Phase 1: Strip base64 image data from older messages (keep the last 2 user messages intact)
+    const userMsgIndices = trimmed.map((m, i) => m.role === 'user' ? i : -1).filter(i => i >= 0);
+    const keepIntactFrom = userMsgIndices.length >= 2 ? userMsgIndices[userMsgIndices.length - 2] : userMsgIndices[userMsgIndices.length - 1] || 0;
+
+    for (let i = 0; i < keepIntactFrom; i++) {
+      const msg = trimmed[i];
+      if (Array.isArray(msg.content)) {
+        let changed = false;
+        const newContent = msg.content.map(block => {
+          if (block.type === 'image' && block.source?.type === 'base64') {
+            changed = true;
+            return { type: 'text', text: '[Previous image removed to save context space]' };
+          }
+          if (block.type === 'image' && block.source?.type === 'url') {
+            changed = true;
+            return { type: 'text', text: `[Previous image: ${block.source.url?.slice(0, 100)}]` };
+          }
+          return block;
+        });
+        if (changed) trimmed[i] = { ...msg, content: newContent };
+      }
+    }
+
+    totalChars = estimateMessageChars(trimmed);
+    if (totalChars <= MAX_MESSAGE_CHARS) {
+      logger.info(`Context trimmed to ${totalChars} chars after stripping old images`);
+      return trimmed;
+    }
+
+    // Phase 2: Drop oldest messages (keep at least the last 6 messages for coherent context)
+    const minKeep = Math.min(6, trimmed.length);
+    while (trimmed.length > minKeep && estimateMessageChars(trimmed) > MAX_MESSAGE_CHARS) {
+      const removed = trimmed.shift();
+      // Ensure messages still alternate correctly — if we removed a user msg,
+      // the next must be user too or we need to drop the orphaned assistant response
+      if (trimmed.length > 0 && trimmed[0].role === 'assistant') {
+        trimmed.shift();
+      }
+      logger.info(`Dropped oldest message (role: ${removed.role}) to fit context window`);
+    }
+
+    totalChars = estimateMessageChars(trimmed);
+    logger.info(`Context trimmed to ${totalChars} chars (~${Math.round(totalChars/4)} tokens) after dropping old messages`);
+    return trimmed;
+  }
+
+  // Apply initial trimming
+  currentMessages = trimMessagesToFit(currentMessages);
 
   const toolsUsed = [];
   const toolResults = []; // Track what tools returned for history
@@ -3582,6 +3677,9 @@ When a user asks you to edit, modify, or update something you previously created
   let verificationAttempted = false;
 
   for (let round = 0; round < MAX_EXEC_ROUNDS + MAX_VERIFY_ROUNDS; round++) {
+    // Trim context before each API call (tool results accumulate during the loop)
+    currentMessages = trimMessagesToFit(currentMessages);
+
     const response = await callAnthropicWithRetry({
       model: chatModel,
       max_tokens: 8192,
