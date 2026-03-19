@@ -250,21 +250,30 @@ router.get('/download/:platform', (req, res) => {
     return res.status(401).json({ error: 'Invalid or expired download token.' });
   }
 
-  // Consume the token (one-time use)
-  downloadTokens.delete(token);
+  // Don't consume immediately — allow retry within 60s TTL
+  logger.info(`Download token used: ${token.substring(0, 8)}... for ${platform}`);
 
   const filePath = path.join(BUILDS_DIR, fileInfo.filename);
   if (!fs.existsSync(filePath)) {
     return res.status(404).json({ error: `${platform} build not yet available.` });
   }
 
-  logger.info(`Desktop download: ${platform} by ${tokenData.email}`);
-
-  const stat = fs.statSync(filePath);
-  res.setHeader('Content-Type', fileInfo.contentType);
-  res.setHeader('Content-Length', stat.size);
-  res.setHeader('Content-Disposition', `attachment; filename="${fileInfo.filename}"`);
-  fs.createReadStream(filePath).pipe(res);
+  try {
+    const stat = fs.statSync(filePath);
+    logger.info(`Desktop download starting: ${platform} by ${tokenData.email} (${Math.round(stat.size/1024/1024)}MB)`);
+    res.setHeader('Content-Type', fileInfo.contentType);
+    res.setHeader('Content-Length', stat.size);
+    res.setHeader('Content-Disposition', `attachment; filename="${fileInfo.filename}"`);
+    const stream = fs.createReadStream(filePath);
+    stream.on('error', (err) => {
+      logger.error(`Stream error for ${platform}: ${err.message}`);
+      if (!res.headersSent) res.status(500).json({ error: 'File stream failed' });
+    });
+    stream.pipe(res);
+  } catch (err) {
+    logger.error(`Download serve error: ${err.message}`);
+    if (!res.headersSent) res.status(500).json({ error: 'Download failed: ' + err.message });
+  }
 });
 
 // ─────────────────────────────────────────────
