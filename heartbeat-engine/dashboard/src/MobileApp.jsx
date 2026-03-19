@@ -1,265 +1,308 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from './supabase.js';
 
-// ── THEME ──────────────────────────────────────────────────────────────
 const themes = {
-  dark: {
-    bg: '#0d0d0d', sf: '#1a1a1a', card: '#1e1e1e', border: '#2a2a2e',
-    tx: '#f0f0f0', sub: '#999', muted: '#555', accent: '#F4A261', accent2: '#E76F8B',
-    gradient: 'linear-gradient(135deg, #F4A261, #E76F8B)',
-    userBubble: 'linear-gradient(135deg, #F4A261, #E76F8B)',
-    agentBubble: '#1e1e1e', agentBorder: '#2a2a2e',
-    input: '#1a1a1a', inputBorder: '#2a2a2e',
-  },
-  light: {
-    bg: '#f7f5f2', sf: '#ffffff', card: '#ffffff', border: '#e5e5e5',
-    tx: '#111', sub: '#666', muted: '#aaa', accent: '#F4A261', accent2: '#E76F8B',
-    gradient: 'linear-gradient(135deg, #F4A261, #E76F8B)',
-    userBubble: 'linear-gradient(135deg, #F4A261, #E76F8B)',
-    agentBubble: '#ffffff', agentBorder: '#e5e5e5',
-    input: '#ffffff', inputBorder: '#e5e5e5',
-  },
+  dark: { bg:'#0d0d0d', sf:'#1a1a1a', card:'#1e1e1e', border:'#2a2a2e', tx:'#f0f0f0', sub:'#999', muted:'#555', accent:'#F4A261', accent2:'#E76F8B', gradient:'linear-gradient(135deg,#F4A261,#E76F8B)', userBubble:'linear-gradient(135deg,#F4A261,#E76F8B)', agentBubble:'#1e1e1e', agentBorder:'#2a2a2e', input:'#1a1a1a', inputBorder:'#2a2a2e' },
+  light: { bg:'#f7f5f2', sf:'#ffffff', card:'#ffffff', border:'#e5e5e5', tx:'#111', sub:'#666', muted:'#aaa', accent:'#F4A261', accent2:'#E76F8B', gradient:'linear-gradient(135deg,#F4A261,#E76F8B)', userBubble:'linear-gradient(135deg,#F4A261,#E76F8B)', agentBubble:'#ffffff', agentBorder:'#e5e5e5', input:'#ffffff', inputBorder:'#e5e5e5' },
 };
 
-const SARAH_URL = window.location.origin;
-
-async function getAuthHeaders() {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) return { 'Content-Type': 'application/json' };
-  return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` };
+const API = window.location.origin;
+async function authHeaders() {
+  const { data:{session} } = await supabase.auth.getSession();
+  return session ? { 'Content-Type':'application/json', 'Authorization':`Bearer ${session.access_token}` } : { 'Content-Type':'application/json' };
 }
+function initials(name) { return (name||'').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase(); }
+function ts() { return new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}); }
 
-// ── MOBILE LOGIN ───────────────────────────────────────────────────────
+// ── LOGIN ──────────────────────────────────────────────────────────────
 function MobileLogin({ onLogin }) {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    if (!email || !password) { setError('Enter your email and password'); return; }
-    setError(''); setLoading(true);
-    const { error: err } = await supabase.auth.signInWithPassword({ email, password });
-    if (err) { setError(err.message); setLoading(false); return; }
-    onLogin();
-  };
-
+  const [email,setEmail]=useState(''); const [pw,setPw]=useState(''); const [err,setErr]=useState(''); const [busy,setBusy]=useState(false);
+  const go = async(e)=>{ e.preventDefault(); if(!email||!pw){setErr('Enter email and password');return;} setErr('');setBusy(true);
+    const{error}=await supabase.auth.signInWithPassword({email,password:pw}); if(error){setErr(error.message);setBusy(false);return;} onLogin(); };
   return (
-    <div style={{ minHeight: '100vh', background: '#0d0d0d', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, fontFamily: "'DM Sans', system-ui, sans-serif" }}>
-      <div style={{ width: 56, height: 56, borderRadius: 14, background: 'linear-gradient(135deg, #F4A261, #E76F8B)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, fontWeight: 800, color: '#fff', marginBottom: 16 }}>B</div>
-      <div style={{ fontSize: 20, fontWeight: 700, color: '#f0f0f0', marginBottom: 4 }}>BLOOM</div>
-      <div style={{ fontSize: 13, color: '#666', marginBottom: 32 }}>Sign in to chat with your Bloomie</div>
-      <form onSubmit={handleLogin} style={{ width: '100%', maxWidth: 320, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <input value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="Email" autoComplete="email"
-          style={{ padding: '14px 16px', borderRadius: 12, border: '1px solid #2a2a2e', background: '#1a1a1a', color: '#f0f0f0', fontSize: 15, fontFamily: 'inherit', outline: 'none' }} />
-        <input value={password} onChange={e => setPassword(e.target.value)} type="password" placeholder="Password" autoComplete="current-password"
-          style={{ padding: '14px 16px', borderRadius: 12, border: '1px solid #2a2a2e', background: '#1a1a1a', color: '#f0f0f0', fontSize: 15, fontFamily: 'inherit', outline: 'none' }} />
-        <button type="submit" disabled={loading}
-          style={{ padding: 14, borderRadius: 12, border: 'none', background: 'linear-gradient(135deg, #F4A261, #E76F8B)', color: '#fff', fontSize: 15, fontWeight: 700, fontFamily: 'inherit', cursor: loading ? 'wait' : 'pointer', opacity: loading ? 0.6 : 1 }}>
-          {loading ? 'Signing in...' : 'Sign In'}
-        </button>
-        {error && <div style={{ fontSize: 13, color: '#ef4444', textAlign: 'center', marginTop: 4 }}>{error}</div>}
+    <div style={{minHeight:'100vh',background:'#0d0d0d',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:24,fontFamily:"'DM Sans',system-ui,sans-serif"}}>
+      <div style={{width:56,height:56,borderRadius:14,background:'linear-gradient(135deg,#F4A261,#E76F8B)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:22,fontWeight:800,color:'#fff',marginBottom:16}}>B</div>
+      <div style={{fontSize:20,fontWeight:700,color:'#f0f0f0',marginBottom:4}}>BLOOM</div>
+      <div style={{fontSize:13,color:'#666',marginBottom:32}}>Sign in to chat with your Bloomie</div>
+      <form onSubmit={go} style={{width:'100%',maxWidth:320,display:'flex',flexDirection:'column',gap:10}}>
+        <input value={email} onChange={e=>setEmail(e.target.value)} type="email" placeholder="Email" autoComplete="email" style={{padding:'14px 16px',borderRadius:12,border:'1px solid #2a2a2e',background:'#1a1a1a',color:'#f0f0f0',fontSize:15,fontFamily:'inherit',outline:'none'}}/>
+        <input value={pw} onChange={e=>setPw(e.target.value)} type="password" placeholder="Password" autoComplete="current-password" style={{padding:'14px 16px',borderRadius:12,border:'1px solid #2a2a2e',background:'#1a1a1a',color:'#f0f0f0',fontSize:15,fontFamily:'inherit',outline:'none'}}/>
+        <button type="submit" disabled={busy} style={{padding:14,borderRadius:12,border:'none',background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',fontSize:15,fontWeight:700,fontFamily:'inherit',cursor:busy?'wait':'pointer',opacity:busy?0.6:1}}>{busy?'Signing in...':'Sign In'}</button>
+        {err&&<div style={{fontSize:13,color:'#ef4444',textAlign:'center',marginTop:4}}>{err}</div>}
       </form>
     </div>
   );
 }
 
-// ── TYPING INDICATOR ───────────────────────────────────────────────────
-function TypingDots({ c }) {
-  return (
-    <div style={{ display: 'flex', gap: 4, padding: '12px 16px', background: c.agentBubble, border: '1px solid ' + c.agentBorder, borderRadius: '18px 18px 18px 4px', width: 'fit-content' }}>
-      {[0, 1, 2].map(i => (
-        <div key={i} style={{ width: 7, height: 7, borderRadius: '50%', background: c.muted, animation: `typingBounce 1.2s ease-in-out ${i * 0.15}s infinite` }} />
-      ))}
-    </div>
-  );
-}
+function TypingDots({c}){ return(<div style={{display:'flex',gap:4,padding:'12px 16px',background:c.agentBubble,border:'1px solid '+c.agentBorder,borderRadius:'18px 18px 18px 4px',width:'fit-content'}}>{[0,1,2].map(i=><div key={i} style={{width:7,height:7,borderRadius:'50%',background:c.muted,animation:`typingBounce 1.2s ease-in-out ${i*0.15}s infinite`}}/>)}</div>); }
 
-// ── MAIN MOBILE APP ────────────────────────────────────────────────────
+// ── SVG ICONS ──────────────────────────────────────────────────────────
+const PlusIcon = ({color})=><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>;
+const CameraIcon = ({color})=><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>;
+const ImageIcon = ({color})=><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>;
+const FileIcon = ({color})=><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>;
+const SendIcon = ()=><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>;
+const ChevronDown = ({color})=><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round"><polyline points="6 9 12 15 18 9"/></svg>;
+
+// ── MAIN APP ───────────────────────────────────────────────────────────
 export default function MobileApp({ user: authUser }) {
-  const [dark, setDark] = useState(() => localStorage.getItem('bloom-mobile-theme') !== 'light');
+  const [dark,setDark]=useState(()=>localStorage.getItem('bloom-mobile-theme')!=='light');
   const c = dark ? themes.dark : themes.light;
-  const [tab, setTab] = useState('text');
-  const [user, setUser] = useState(authUser || null);
-  const [agent, setAgent] = useState(null);
-  const [orgId, setOrgId] = useState(null);
-  const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState('');
-  const [sending, setSending] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const chatEndRef = useRef(null);
-  const sessionRef = useRef('mobile-' + Date.now());
-  const inputRef = useRef(null);
+  const [tab,setTab]=useState('text');
+  const [user,setUser]=useState(authUser||null);
+  const [allAgents,setAllAgents]=useState([]);   // all Bloomies for this org
+  const [agent,setAgent]=useState(null);          // currently active Bloomie
+  const [orgId,setOrgId]=useState(null);
+  const [messages,setMessages]=useState([]);
+  const [input,setInput]=useState('');
+  const [sending,setSending]=useState(false);
+  const [loading,setLoading]=useState(true);
+  const [showAgentPicker,setShowAgentPicker]=useState(false);
+  const [showAttach,setShowAttach]=useState(false);
+  const [pendingFiles,setPendingFiles]=useState([]);  // [{name,type,data,dataUrl}]
+  const chatEndRef=useRef(null);
+  const sessionRef=useRef('mobile-'+Date.now());
+  const inputRef=useRef(null);
+  const fileInputRef=useRef(null);
+  const cameraInputRef=useRef(null);
 
-  const toggleTheme = () => {
-    const next = !dark;
-    setDark(next);
-    localStorage.setItem('bloom-mobile-theme', next ? 'dark' : 'light');
-  };
+  const toggleTheme=()=>{const n=!dark;setDark(n);localStorage.setItem('bloom-mobile-theme',n?'dark':'light');};
 
-  // ── Auth check ──
-  useEffect(() => {
-    if (user) return;
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) setUser(session.user);
-    });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
-      setUser(session?.user ?? null);
-    });
-    return () => subscription.unsubscribe();
-  }, []);
+  // ── Auth ──
+  useEffect(()=>{
+    if(user)return;
+    supabase.auth.getSession().then(({data:{session}})=>{if(session?.user)setUser(session.user);});
+    const{data:{subscription}}=supabase.auth.onAuthStateChange((_e,s)=>{setUser(s?.user??null);});
+    return ()=>subscription.unsubscribe();
+  },[]);
 
-  // ── Load agent + messages ──
-  useEffect(() => {
-    if (!user) return;
-    (async () => {
+  // ── Load all agents for org + messages for active agent ──
+  useEffect(()=>{
+    if(!user)return;
+    (async()=>{
       try {
-        const { data: mem } = await supabase.from('organization_members')
-          .select('organization_id').eq('user_id', user.id).limit(1).single();
-        const oid = mem?.organization_id;
-        if (oid) setOrgId(oid);
+        const{data:mem}=await supabase.from('organization_members').select('organization_id').eq('user_id',user.id).limit(1).single();
+        const oid=mem?.organization_id; if(oid)setOrgId(oid);
+        if(!oid){setLoading(false);return;}
 
-        let agentData = null;
-        if (oid) {
-          const { data: assignment } = await supabase.from('agent_assignments')
-            .select('agent_id, agents(id, name, role, avatar_url)')
-            .eq('organization_id', oid).eq('active', true).limit(1).single();
-          if (assignment?.agents) agentData = assignment.agents;
-        }
-        if (!agentData && oid) {
-          const { data: fallback } = await supabase.from('agents')
-            .select('id, name, role, avatar_url').eq('organization_id', oid).limit(1).single();
-          if (fallback) agentData = fallback;
-        }
-        if (agentData) setAgent(agentData);
+        // Get ALL agents for this org
+        const{data:agents}=await supabase.from('agents').select('id,name,role,avatar_url,job_title').eq('organization_id',oid).order('created_at',{ascending:true});
+        if(agents?.length) setAllAgents(agents);
 
-        if (agentData && oid) {
-          const { data: msgs } = await supabase.from('messages')
-            .select('id, role, content, created_at')
-            .eq('agent_id', agentData.id)
-            .order('created_at', { ascending: false })
-            .limit(50);
-          if (msgs) {
-            setMessages(msgs.reverse().map(m => ({
-              id: m.id, isUser: m.role === 'user', text: m.content,
-              time: new Date(m.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
-            })));
-          }
-        }
-      } catch (e) { console.error('Mobile init error:', e); }
+        // Pick the assigned one, or first
+        let active=null;
+        const{data:assignment}=await supabase.from('agent_assignments').select('agent_id').eq('organization_id',oid).eq('active',true).limit(1).single();
+        if(assignment) active=agents?.find(a=>a.id===assignment.agent_id);
+        if(!active&&agents?.length) active=agents[0];
+        if(active) setAgent(active);
+      } catch(e){console.error('Init error:',e);}
       setLoading(false);
     })();
-  }, [user]);
+  },[user]);
 
-  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, sending]);
+  // ── Load messages when agent changes ──
+  useEffect(()=>{
+    if(!agent) return;
+    sessionRef.current = 'mobile-'+agent.id.slice(0,8)+'-'+Date.now();
+    (async()=>{
+      const{data:msgs}=await supabase.from('messages').select('id,role,content,created_at')
+        .eq('agent_id',agent.id).order('created_at',{ascending:false}).limit(50);
+      if(msgs) setMessages(msgs.reverse().map(m=>({id:m.id,isUser:m.role==='user',text:m.content,time:new Date(m.created_at).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})})));
+      else setMessages([]);
+    })();
+  },[agent]);
 
-  const sendMessage = useCallback(async () => {
-    const text = input.trim();
-    if (!text || sending) return;
-    setInput(''); setSending(true);
-    setMessages(prev => [...prev, { id: 'u-' + Date.now(), isUser: true, text, time: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) }]);
+  useEffect(()=>{chatEndRef.current?.scrollIntoView({behavior:'smooth'});},[messages,sending]);
 
-    try {
-      const headers = await getAuthHeaders();
-      const res = await fetch(SARAH_URL + '/api/chat/message', {
-        method: 'POST', headers,
-        body: JSON.stringify({ message: text, sessionId: sessionRef.current, agentId: agent?.id }),
-      });
-      const data = await res.json();
-      const responseText = (data.response || data.message || 'Done.').replace(/\s*\[Session context[\s\S]*$/, '').replace(/\s*\[Tool:.*?\]\s*/g, '').trim();
-      setMessages(prev => [...prev, { id: 'a-' + Date.now(), isUser: false, text: responseText, time: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) }]);
-    } catch (e) {
-      setMessages(prev => [...prev, { id: 'e-' + Date.now(), isUser: false, text: 'Sorry, something went wrong. Please try again.', time: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) }]);
-    }
-    setSending(false);
-    inputRef.current?.focus();
-  }, [input, sending, agent]);
+  // ── Switch agent ──
+  const switchAgent=(a)=>{setAgent(a);setShowAgentPicker(false);setMessages([]);setLoading(true);setTimeout(()=>setLoading(false),100);};
 
-  const handleSignOut = async () => { await supabase.auth.signOut(); setUser(null); };
+  // ── Send text message ──
+  const sendMessage=useCallback(async()=>{
+    const text=input.trim(); if(!text||sending)return;
+    setInput('');setSending(true);
+    setMessages(p=>[...p,{id:'u-'+Date.now(),isUser:true,text,time:ts()}]);
+    try{
+      const h=await authHeaders();
+      const r=await fetch(API+'/api/chat/message',{method:'POST',headers:h,body:JSON.stringify({message:text,sessionId:sessionRef.current,agentId:agent?.id})});
+      const d=await r.json();
+      const rt=(d.response||d.message||'Done.').replace(/\s*\[Session context[\s\S]*$/,'').replace(/\s*\[Tool:.*?\]\s*/g,'').trim();
+      setMessages(p=>[...p,{id:'a-'+Date.now(),isUser:false,text:rt,time:ts()}]);
+    }catch(e){setMessages(p=>[...p,{id:'e-'+Date.now(),isUser:false,text:'Something went wrong. Try again.',time:ts()}]);}
+    setSending(false);inputRef.current?.focus();
+  },[input,sending,agent]);
 
-  if (!user) return <MobileLogin onLogin={() => supabase.auth.getSession().then(({ data: { session } }) => setUser(session?.user))} />;
+  // ── Send files ──
+  const sendFiles=useCallback(async(files,text='')=>{
+    if(!files.length)return;
+    setSending(true);setShowAttach(false);
+    const encoded=await Promise.all(files.map(f=>new Promise((res,rej)=>{
+      const r=new FileReader();r.onload=()=>res({name:f.name,type:f.type,data:r.result.split(',')[1],dataUrl:r.result});r.onerror=rej;r.readAsDataURL(f);
+    })));
+    const previewMsg={id:'u-'+Date.now(),isUser:true,text:text||(files.length===1?files[0].name:`${files.length} files`),time:ts(),files:encoded};
+    setMessages(p=>[...p,previewMsg]);
+    try{
+      const h=await authHeaders();
+      const r=await fetch(API+'/api/chat/upload',{method:'POST',headers:h,body:JSON.stringify({message:text||'',sessionId:sessionRef.current,agentId:agent?.id,files:encoded})});
+      const d=await r.json();
+      const rt=(d.response||d.message||'Got it.').replace(/\s*\[Session context[\s\S]*$/,'').replace(/\s*\[Tool:.*?\]\s*/g,'').trim();
+      setMessages(p=>[...p,{id:'a-'+Date.now(),isUser:false,text:rt,time:ts()}]);
+    }catch(e){setMessages(p=>[...p,{id:'e-'+Date.now(),isUser:false,text:'File upload failed. Try again.',time:ts()}]);}
+    setSending(false);setPendingFiles([]);
+  },[agent]);
 
-  const agentName = agent?.name || 'Your Bloomie';
-  const agentInitials = agentName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+  const handleFileSelect=(e)=>{const f=Array.from(e.target.files||[]);if(f.length)sendFiles(f,input.trim());e.target.value='';};
+  const handleSignOut=async()=>{await supabase.auth.signOut();setUser(null);};
+
+  if(!user) return <MobileLogin onLogin={()=>supabase.auth.getSession().then(({data:{session}})=>setUser(session?.user))}/>;
+
+  const agentName=agent?.name||'Your Bloomie';
+  const agentIni=initials(agentName);
 
   return (
-    <div style={{ minHeight: '100vh', maxHeight: '100vh', background: c.bg, display: 'flex', flexDirection: 'column', fontFamily: "'DM Sans', system-ui, sans-serif", overflow: 'hidden', paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
+    <div style={{minHeight:'100vh',maxHeight:'100vh',background:c.bg,display:'flex',flexDirection:'column',fontFamily:"'DM Sans',system-ui,sans-serif",overflow:'hidden',paddingTop:'env(safe-area-inset-top)',paddingBottom:'env(safe-area-inset-bottom)'}}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { margin: 0; overflow: hidden; }
-        @keyframes typingBounce { 0%,60%,100% { transform: translateY(0); } 30% { transform: translateY(-4px); } }
-        input:focus, textarea:focus { outline: none; }
-        ::-webkit-scrollbar { width: 0; }
+        *{margin:0;padding:0;box-sizing:border-box;}body{margin:0;overflow:hidden;}
+        @keyframes typingBounce{0%,60%,100%{transform:translateY(0);}30%{transform:translateY(-4px);}}
+        input:focus,textarea:focus{outline:none;}::-webkit-scrollbar{width:0;}
       `}</style>
 
-      {/* HEADER */}
-      <div style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid ' + c.border, background: c.sf, flexShrink: 0 }}>
-        {agent?.avatar_url
-          ? <img src={agent.avatar_url} alt="" style={{ width: 36, height: 36, borderRadius: 10, objectFit: 'cover' }} />
-          : <div style={{ width: 36, height: 36, borderRadius: 10, background: c.gradient, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: '#fff' }}>{agentInitials}</div>}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: c.tx, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{agentName}</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#34a853' }} />
-            <span style={{ fontSize: 11, color: '#34a853', fontWeight: 600 }}>Online</span>
-          </div>
+      {/* ═══ HEADER ═══ */}
+      <div style={{padding:'14px 16px',display:'flex',alignItems:'center',gap:10,borderBottom:'1px solid '+c.border,background:c.sf,flexShrink:0,position:'relative'}}>
+        {/* Agent avatar — tap to switch if multiple */}
+        <div onClick={()=>allAgents.length>1&&setShowAgentPicker(!showAgentPicker)} style={{cursor:allAgents.length>1?'pointer':'default',position:'relative'}}>
+          {agent?.avatar_url
+            ? <img src={agent.avatar_url} alt="" style={{width:36,height:36,borderRadius:10,objectFit:'cover'}}/>
+            : <div style={{width:36,height:36,borderRadius:10,background:c.gradient,display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:700,color:'#fff'}}>{agentIni}</div>}
+          {allAgents.length>1&&<div style={{position:'absolute',bottom:-2,right:-2,width:14,height:14,borderRadius:7,background:c.sf,border:'1px solid '+c.border,display:'flex',alignItems:'center',justifyContent:'center'}}><ChevronDown color={c.accent}/></div>}
         </div>
-        <button onClick={toggleTheme} style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid ' + c.border, background: c.card, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: 14 }}>
-          {dark ? '\u2600\uFE0F' : '\uD83C\uDF19'}
-        </button>
-        <button onClick={handleSignOut} style={{ fontSize: 11, color: c.muted, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>Sign out</button>
+        <div style={{flex:1,minWidth:0}} onClick={()=>allAgents.length>1&&setShowAgentPicker(!showAgentPicker)}>
+          <div style={{fontSize:15,fontWeight:700,color:c.tx,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',display:'flex',alignItems:'center',gap:4}}>
+            {agentName}
+            {allAgents.length>1&&<ChevronDown color={c.muted}/>}
+          </div>
+          <div style={{fontSize:11,color:c.sub}}>{agent?.job_title||agent?.role||'AI Employee'}</div>
+        </div>
+        <div style={{display:'flex',alignItems:'center',gap:5}}>
+          <span style={{width:6,height:6,borderRadius:'50%',background:'#34a853'}}/>
+          <span style={{fontSize:10,color:'#34a853',fontWeight:600}}>Online</span>
+        </div>
+        <button onClick={toggleTheme} style={{width:30,height:30,borderRadius:8,border:'1px solid '+c.border,background:c.card,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:13}}>{dark?'\u2600\uFE0F':'\uD83C\uDF19'}</button>
+        <button onClick={handleSignOut} style={{fontSize:10,color:c.muted,background:'none',border:'none',cursor:'pointer',fontFamily:'inherit'}}>Sign out</button>
+
+        {/* Agent picker dropdown */}
+        {showAgentPicker&&allAgents.length>1&&(
+          <div style={{position:'absolute',top:'100%',left:12,right:12,zIndex:100,background:c.sf,border:'1px solid '+c.border,borderRadius:12,boxShadow:'0 8px 30px rgba(0,0,0,0.3)',overflow:'hidden',marginTop:4}}>
+            {allAgents.map(a=>(
+              <button key={a.id} onClick={()=>switchAgent(a)}
+                style={{width:'100%',padding:'12px 14px',display:'flex',alignItems:'center',gap:10,background:a.id===agent?.id?c.card:'transparent',border:'none',borderBottom:'1px solid '+c.border,cursor:'pointer',fontFamily:'inherit',textAlign:'left'}}>
+                {a.avatar_url
+                  ? <img src={a.avatar_url} style={{width:32,height:32,borderRadius:8,objectFit:'cover'}}/>
+                  : <div style={{width:32,height:32,borderRadius:8,background:c.gradient,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,color:'#fff'}}>{initials(a.name)}</div>}
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:13,fontWeight:600,color:c.tx}}>{a.name}</div>
+                  <div style={{fontSize:11,color:c.sub}}>{a.job_title||a.role||'AI Employee'}</div>
+                </div>
+                {a.id===agent?.id&&<div style={{width:8,height:8,borderRadius:4,background:c.accent}}/>}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* TABS */}
-      <div style={{ display: 'flex', borderBottom: '1px solid ' + c.border, background: c.sf, flexShrink: 0 }}>
-        {['Text', 'Call', 'Conference'].map(t => {
-          const active = tab === t.toLowerCase();
-          return (<button key={t} onClick={() => setTab(t.toLowerCase())}
-            style={{ flex: 1, padding: '10px 0', background: 'none', border: 'none', borderBottom: '2px solid ' + (active ? c.accent : 'transparent'), color: active ? c.accent : c.muted, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', transition: 'all .2s' }}>{t}</button>);
+      {/* ═══ TABS ═══ */}
+      <div style={{display:'flex',borderBottom:'1px solid '+c.border,background:c.sf,flexShrink:0}}>
+        {['Text','Call','Conference'].map(t=>{const a=tab===t.toLowerCase();
+          return <button key={t} onClick={()=>{setTab(t.toLowerCase());setShowAgentPicker(false);setShowAttach(false);}}
+            style={{flex:1,padding:'10px 0',background:'none',border:'none',borderBottom:'2px solid '+(a?c.accent:'transparent'),color:a?c.accent:c.muted,fontSize:13,fontWeight:600,cursor:'pointer',fontFamily:'inherit',transition:'all .2s'}}>{t}</button>;
         })}
       </div>
 
-      {/* CONTENT */}
-      {tab === 'text' ? (<>
-        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 12px 8px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {loading ? (<div style={{ textAlign: 'center', color: c.muted, fontSize: 13, marginTop: 40 }}>Loading messages...</div>)
-           : messages.length === 0 ? (
-            <div style={{ textAlign: 'center', marginTop: 60, padding: '0 20px' }}>
-              <div style={{ fontSize: 15, fontWeight: 600, color: c.tx, marginBottom: 4 }}>Chat with {agentName.split(' ')[0]}</div>
-              <div style={{ fontSize: 13, color: c.sub, lineHeight: 1.5 }}>Send a message to get started. Your Bloomie is ready to help.</div>
+      {/* ═══ CONTENT ═══ */}
+      {tab==='text'?(<>
+        {/* Chat thread */}
+        <div onClick={()=>{setShowAttach(false);setShowAgentPicker(false);}} style={{flex:1,overflowY:'auto',padding:'16px 12px 8px',display:'flex',flexDirection:'column',gap:6}}>
+          {loading?(<div style={{textAlign:'center',color:c.muted,fontSize:13,marginTop:40}}>Loading...</div>)
+           :messages.length===0?(
+            <div style={{textAlign:'center',marginTop:60,padding:'0 20px'}}>
+              <div style={{fontSize:15,fontWeight:600,color:c.tx,marginBottom:4}}>Chat with {agentName.split(' ')[0]}</div>
+              <div style={{fontSize:13,color:c.sub,lineHeight:1.5}}>Send a message to get started.</div>
             </div>)
-           : messages.map(msg => (
-            <div key={msg.id} style={{ display: 'flex', justifyContent: msg.isUser ? 'flex-end' : 'flex-start', padding: '2px 0' }}>
-              <div style={{ maxWidth: '80%', padding: '10px 14px', borderRadius: msg.isUser ? '18px 18px 4px 18px' : '18px 18px 18px 4px', background: msg.isUser ? c.userBubble : c.agentBubble, border: msg.isUser ? 'none' : '1px solid ' + c.agentBorder, color: msg.isUser ? '#fff' : c.tx, fontSize: 14, lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                {msg.text}
-                <div style={{ fontSize: 10, color: msg.isUser ? 'rgba(255,255,255,0.6)' : c.muted, marginTop: 4, textAlign: msg.isUser ? 'right' : 'left' }}>{msg.time}</div>
+           :messages.map(msg=>(
+            <div key={msg.id} style={{display:'flex',justifyContent:msg.isUser?'flex-end':'flex-start',padding:'2px 0'}}>
+              <div style={{maxWidth:'80%'}}>
+                {/* File previews */}
+                {msg.files?.map((f,i)=>(
+                  f.type?.startsWith('image/')?
+                    <img key={i} src={f.dataUrl} alt={f.name} style={{maxWidth:'100%',borderRadius:12,marginBottom:4,display:'block'}}/>
+                    :<div key={i} style={{padding:'8px 12px',borderRadius:10,background:c.card,border:'1px solid '+c.border,fontSize:12,color:c.sub,marginBottom:4,display:'flex',alignItems:'center',gap:6}}><FileIcon color={c.muted}/>{f.name}</div>
+                ))}
+                <div style={{padding:'10px 14px',borderRadius:msg.isUser?'18px 18px 4px 18px':'18px 18px 18px 4px',background:msg.isUser?c.userBubble:c.agentBubble,border:msg.isUser?'none':'1px solid '+c.agentBorder,color:msg.isUser?'#fff':c.tx,fontSize:14,lineHeight:1.5,whiteSpace:'pre-wrap',wordBreak:'break-word'}}>
+                  {msg.text}
+                  <div style={{fontSize:10,color:msg.isUser?'rgba(255,255,255,0.6)':c.muted,marginTop:4,textAlign:msg.isUser?'right':'left'}}>{msg.time}</div>
+                </div>
               </div>
             </div>))}
-          {sending && <div style={{ display: 'flex', justifyContent: 'flex-start', padding: '2px 0' }}><TypingDots c={c} /></div>}
-          <div ref={chatEndRef} />
+          {sending&&<div style={{display:'flex',justifyContent:'flex-start',padding:'2px 0'}}><TypingDots c={c}/></div>}
+          <div ref={chatEndRef}/>
         </div>
-        <div style={{ padding: '8px 12px', paddingBottom: 'max(8px, env(safe-area-inset-bottom))', borderTop: '1px solid ' + c.border, background: c.sf, display: 'flex', gap: 8, alignItems: 'flex-end', flexShrink: 0 }}>
-          <textarea ref={inputRef} value={input} onChange={e => setInput(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
-            placeholder={'Message ' + agentName.split(' ')[0] + '...'} rows={1}
-            style={{ flex: 1, padding: '10px 14px', borderRadius: 20, border: '1px solid ' + c.inputBorder, background: c.input, color: c.tx, fontSize: 15, fontFamily: 'inherit', resize: 'none', maxHeight: 120, lineHeight: 1.4 }} />
-          <button onClick={sendMessage} disabled={!input.trim() || sending}
-            style={{ width: 40, height: 40, borderRadius: 20, border: 'none', background: (!input.trim() || sending) ? c.border : c.gradient, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: (!input.trim() || sending) ? 'default' : 'pointer', flexShrink: 0 }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"><line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>
-          </button>
+
+        {/* ═══ INPUT BAR ═══ */}
+        <div style={{borderTop:'1px solid '+c.border,background:c.sf,flexShrink:0,position:'relative'}}>
+          {/* Attach menu */}
+          {showAttach&&(
+            <div style={{position:'absolute',bottom:'100%',left:8,background:c.sf,border:'1px solid '+c.border,borderRadius:12,boxShadow:'0 -4px 20px rgba(0,0,0,0.2)',overflow:'hidden',marginBottom:4,minWidth:180}}>
+              {[
+                {icon:<ImageIcon color={c.tx}/>,label:'Photo & Video',accept:'image/*,video/*',ref:fileInputRef},
+                {icon:<CameraIcon color={c.tx}/>,label:'Take Photo',accept:'image/*',capture:true,ref:cameraInputRef},
+                {icon:<FileIcon color={c.tx}/>,label:'Document',accept:'*/*',ref:fileInputRef},
+              ].map((item,i)=>(
+                <button key={i} onClick={()=>{
+                  if(item.capture){
+                    cameraInputRef.current?.click();
+                  } else {
+                    if(fileInputRef.current){fileInputRef.current.accept=item.accept;fileInputRef.current.click();}
+                  }
+                  setShowAttach(false);
+                }} style={{width:'100%',padding:'12px 14px',display:'flex',alignItems:'center',gap:10,background:'transparent',border:'none',borderBottom:i<2?'1px solid '+c.border:'none',cursor:'pointer',fontFamily:'inherit'}}>
+                  {item.icon}
+                  <span style={{fontSize:14,fontWeight:500,color:c.tx}}>{item.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div style={{padding:'8px 12px',paddingBottom:'max(8px,env(safe-area-inset-bottom))',display:'flex',gap:6,alignItems:'flex-end'}}>
+            {/* Attach button */}
+            <button onClick={()=>{setShowAttach(!showAttach);setShowAgentPicker(false);}}
+              style={{width:36,height:36,borderRadius:18,border:'1px solid '+c.inputBorder,background:showAttach?c.accent+'20':c.input,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexShrink:0}}>
+              <PlusIcon color={showAttach?c.accent:c.muted}/>
+            </button>
+
+            {/* Hidden file inputs */}
+            <input ref={fileInputRef} type="file" multiple style={{display:'none'}} onChange={handleFileSelect}/>
+            <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" style={{display:'none'}} onChange={handleFileSelect}/>
+
+            {/* Text input */}
+            <textarea ref={inputRef} value={input} onChange={e=>setInput(e.target.value)}
+              onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();}}}
+              placeholder={'Message '+agentName.split(' ')[0]+'...'} rows={1}
+              style={{flex:1,padding:'9px 14px',borderRadius:20,border:'1px solid '+c.inputBorder,background:c.input,color:c.tx,fontSize:15,fontFamily:'inherit',resize:'none',maxHeight:120,lineHeight:1.4}}/>
+
+            {/* Send */}
+            <button onClick={sendMessage} disabled={!input.trim()||sending}
+              style={{width:36,height:36,borderRadius:18,border:'none',background:(!input.trim()||sending)?c.border:c.gradient,display:'flex',alignItems:'center',justifyContent:'center',cursor:(!input.trim()||sending)?'default':'pointer',flexShrink:0}}>
+              <SendIcon/>
+            </button>
+          </div>
         </div>
-      </>) : (
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 40, textAlign: 'center' }}>
-          <div style={{ width: 64, height: 64, borderRadius: 16, background: c.card, border: '1px solid ' + c.border, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, marginBottom: 16 }}>
-            {tab === 'call' ? '\uD83D\uDCDE' : '\uD83C\uDF10'}
-          </div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: c.tx, marginBottom: 6 }}>{tab === 'call' ? 'Voice Calls' : 'Video Conference'}</div>
-          <div style={{ fontSize: 13, color: c.sub, lineHeight: 1.5, maxWidth: 260 }}>
-            {tab === 'call' ? 'Call your Bloomie directly from your phone. Coming soon.' : 'Face-to-face meetings with your Bloomie and team. Coming soon.'}
-          </div>
-          <div style={{ marginTop: 20, padding: '8px 20px', borderRadius: 20, background: c.card, border: '1px solid ' + c.border, fontSize: 12, fontWeight: 600, color: c.accent }}>Coming Soon</div>
+      </>):(
+        <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:40,textAlign:'center'}}>
+          <div style={{width:64,height:64,borderRadius:16,background:c.card,border:'1px solid '+c.border,display:'flex',alignItems:'center',justifyContent:'center',fontSize:28,marginBottom:16}}>{tab==='call'?'\uD83D\uDCDE':'\uD83C\uDF10'}</div>
+          <div style={{fontSize:16,fontWeight:700,color:c.tx,marginBottom:6}}>{tab==='call'?'Voice Calls':'Video Conference'}</div>
+          <div style={{fontSize:13,color:c.sub,lineHeight:1.5,maxWidth:260}}>{tab==='call'?'Call your Bloomie directly. Coming soon.':'Face-to-face meetings with your team. Coming soon.'}</div>
+          <div style={{marginTop:20,padding:'8px 20px',borderRadius:20,background:c.card,border:'1px solid '+c.border,fontSize:12,fontWeight:600,color:c.accent}}>Coming Soon</div>
         </div>
       )}
     </div>
