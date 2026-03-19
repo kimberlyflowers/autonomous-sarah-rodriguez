@@ -303,9 +303,10 @@ router.post('/upload-build', upload.single('file'), async (req, res) => {
     fs.mkdirSync(BUILDS_DIR, { recursive: true });
   }
 
-  // Move uploaded file to builds directory
+  // Move uploaded file to builds directory (copyFileSync + unlinkSync to handle cross-device)
   const destPath = path.join(BUILDS_DIR, fileInfo.filename);
-  fs.renameSync(req.file.path, destPath);
+  fs.copyFileSync(req.file.path, destPath);
+  try { fs.unlinkSync(req.file.path); } catch {};
 
   const stat = fs.statSync(destPath);
   logger.info(`Desktop build uploaded: ${platform} (${Math.round(stat.size / 1024 / 1024)}MB)`);
