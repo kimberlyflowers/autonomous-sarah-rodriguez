@@ -24,7 +24,7 @@ import executeRoutes from './api/execute.js';
 import browserRoutes from './api/browser.js';
 import skillsRoutes from './api/skills.js';
 import voiceRoutes from './api/voice.js';
-import desktopRoutes from './api/desktop.js';import projectsRoutes from './api/projects-supabase.js'; // Supabase-based projects
+import desktopRoutes from './api/desktop.js';import mobileRoutes from './api/mobile.js';import projectsRoutes from './api/projects-supabase.js'; // Supabase-based projects
 
 // Get the current directory for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -378,7 +378,7 @@ app.use('/api/browser', browserRoutes);
 app.use('/api/skills', skillsRoutes);
 app.use('/api/voice', voiceRoutes);
 
-app.use('/api/desktop', desktopRoutes);// ── PUBLIC SITES — clean URLs for published pages (/p/summer-camp) ──────────
+app.use('/api/desktop', desktopRoutes);app.use('/api/mobile', mobileRoutes);// ── PUBLIC SITES — clean URLs for published pages (/p/summer-camp) ──────────
 const servePublishedPage = async (req, res) => {
   try {
     const { createClient } = await import('@supabase/supabase-js');
