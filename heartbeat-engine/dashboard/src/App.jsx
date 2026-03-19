@@ -4494,15 +4494,16 @@ function App({ authUser }) {
 
               {/* How to install */}
               <div style={{padding:24,borderRadius:16,background:c.cd,border:"1px solid "+c.ln,marginBottom:16}}>
-                <div style={{fontSize:14,fontWeight:700,color:c.tx,marginBottom:4}}>Add to your home screen</div>
-                <div style={{fontSize:12,color:c.so,marginBottom:20}}>Works on iPhone and Android — installs like a native app, no App Store required.</div>
+                <div style={{fontSize:14,fontWeight:700,color:c.tx,marginBottom:4}}>Add Bloomie to your home screen</div>
+                <div style={{fontSize:12,color:c.so,marginBottom:4}}>You only have to do this once. After that, open Bloomie like any other app — no browser, no steps.</div>
+                <div style={{fontSize:11,color:"#F4A261",fontWeight:600,marginBottom:20}}>⚠️ iPhone users: Safari is required for this step. Chrome on iPhone cannot add apps to your home screen.</div>
 
                 <div style={{display:"flex",flexDirection:"column",gap:14}}>
                   {[
-                    {n:"1",title:"Open this dashboard on your phone",desc:"Go to "+window.location.origin+" in Safari (iPhone) or Chrome (Android)",highlight:window.location.origin},
-                    {n:"2",title:"iPhone — tap the Share button",desc:"Tap the Share icon at the bottom of Safari, then tap 'Add to Home Screen'"},
-                    {n:"3",title:"Android — tap the menu",desc:"Tap the three-dot menu in Chrome, then tap 'Add to Home screen'"},
-                    {n:"4",title:"Tap Add — you're done",desc:"BLOOM Mobile appears on your home screen. Open it anytime to chat with "+aFN},
+                    {n:"1",title:"Open Safari on your iPhone",desc:"Just this once — open Safari (not Chrome) and go to:",highlight:window.location.origin},
+                    {n:"2",title:"Tap the Share button",desc:"The box with an arrow pointing up — at the bottom of Safari. Tap it."},
+                    {n:"3",title:"Scroll down and tap 'Add to Home Screen'",desc:"It's in the list that slides up. Scroll down a little if you don't see it right away."},
+                    {n:"4",title:"Tap Add — done forever",desc:"Bloomie now lives on your home screen. Every time after this, just tap the icon. No browser, no URL, no steps."},
                   ].map((step,i)=>(
                     <div key={i} style={{display:"flex",alignItems:"flex-start",gap:12}}>
                       <div style={{width:28,height:28,borderRadius:8,background:"linear-gradient(135deg,#F4A261,#E76F8B)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"#fff",flexShrink:0,marginTop:1}}>{step.n}</div>
