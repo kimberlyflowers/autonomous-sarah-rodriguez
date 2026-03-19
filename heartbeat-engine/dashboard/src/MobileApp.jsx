@@ -20,7 +20,8 @@ function MobileLogin({ onLogin }) {
   const go = async(e)=>{ e.preventDefault(); if(!email||!pw){setErr('Enter email and password');return;} setErr('');setBusy(true);
     const{error}=await supabase.auth.signInWithPassword({email,password:pw}); if(error){setErr(error.message);setBusy(false);return;} onLogin(); };
   return (
-    <div style={{minHeight:'100vh',background:'#0d0d0d',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:24,fontFamily:"'DM Sans',system-ui,sans-serif"}}>
+    <div style={{position:'fixed',inset:0,background:'#0d0d0d',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:24,paddingTop:'max(24px,env(safe-area-inset-top))',fontFamily:"'DM Sans',system-ui,sans-serif"}}>
+      <style>{`html{padding:0 !important;min-height:100vh !important;background:#0d0d0d !important;overflow:hidden !important;}body{margin:0;overflow:hidden;background:#0d0d0d;}`}</style>
       <div style={{width:56,height:56,borderRadius:14,background:'linear-gradient(135deg,#F4A261,#E76F8B)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:22,fontWeight:800,color:'#fff',marginBottom:16}}>B</div>
       <div style={{fontSize:20,fontWeight:700,color:'#f0f0f0',marginBottom:4}}>BLOOM</div>
       <div style={{fontSize:13,color:'#666',marginBottom:32}}>Sign in to chat with your Bloomie</div>
@@ -76,26 +77,34 @@ export default function MobileApp({ user: authUser }) {
     return ()=>subscription.unsubscribe();
   },[]);
 
-  // ── Load all agents for org + messages for active agent ──
+  // ── Load all agents for org ──
   useEffect(()=>{
     if(!user)return;
     (async()=>{
       try {
-        const{data:mem}=await supabase.from('organization_members').select('organization_id').eq('user_id',user.id).limit(1).single();
+        const{data:mem,error:memErr}=await supabase.from('organization_members').select('organization_id').eq('user_id',user.id).limit(1).single();
+        console.log('[Mobile] org lookup:', mem, memErr);
         const oid=mem?.organization_id; if(oid)setOrgId(oid);
-        if(!oid){setLoading(false);return;}
+        if(!oid){console.warn('[Mobile] No org found for user');setLoading(false);return;}
 
         // Get ALL agents for this org
-        const{data:agents}=await supabase.from('agents').select('id,name,role,avatar_url,job_title').eq('organization_id',oid).order('created_at',{ascending:true});
-        if(agents?.length) setAllAgents(agents);
-
-        // Pick the assigned one, or first
-        let active=null;
-        const{data:assignment}=await supabase.from('agent_assignments').select('agent_id').eq('organization_id',oid).eq('active',true).limit(1).single();
-        if(assignment) active=agents?.find(a=>a.id===assignment.agent_id);
-        if(!active&&agents?.length) active=agents[0];
-        if(active) setAgent(active);
-      } catch(e){console.error('Init error:',e);}
+        const{data:agents,error:agErr}=await supabase.from('agents').select('id,name,role,avatar_url,job_title').eq('organization_id',oid).order('created_at',{ascending:true});
+        console.log('[Mobile] agents loaded:', agents?.length, agErr);
+        if(agents?.length){
+          setAllAgents(agents);
+          // Pick the assigned one, or first
+          let active=null;
+          try{
+            const{data:assignment}=await supabase.from('agent_assignments').select('agent_id').eq('organization_id',oid).eq('active',true).limit(1).single();
+            if(assignment) active=agents.find(a=>a.id===assignment.agent_id);
+          }catch(e){/* no assignment, use first */}
+          if(!active) active=agents[0];
+          console.log('[Mobile] active agent:', active?.name);
+          setAgent(active);
+        } else {
+          console.warn('[Mobile] No agents found for org', oid);
+        }
+      } catch(e){console.error('[Mobile] Init error:',e);}
       setLoading(false);
     })();
   },[user]);
@@ -175,15 +184,18 @@ export default function MobileApp({ user: authUser }) {
     ).join('\n');
     const contextPrefix=threadContext?`[Group chat context — other messages in this thread:\n${threadContext}\n\nNew message from client:]\n`:''
 
+    console.log('[Conference] Sending to', allAgents.length, 'agents:', allAgents.map(a=>a.name));
     const agentPromises=allAgents.map(async(a)=>{
       try{
+        console.log('[Conference] Sending to', a.name, a.id);
         const h=await authHeaders();
         const r=await fetch(API+'/api/chat/message',{method:'POST',headers:h,
           body:JSON.stringify({message:contextPrefix+text,sessionId:groupSessionRef.current+'-'+a.id.slice(0,8),agentId:a.id})});
         const d=await r.json();
+        console.log('[Conference] Response from', a.name, ':', d.response?.slice(0,80));
         const rt=(d.response||d.message||'').replace(/\s*\[Session context[\s\S]*$/,'').replace(/\s*\[Tool:.*?\]\s*/g,'').replace(/\[Group chat context[\s\S]*?New message from client:\]\n?/,'').trim();
         if(rt) return {id:'ga-'+a.id.slice(0,8)+'-'+Date.now(),from:'agent',fromAgent:a.name,agentId:a.id,avatar:a.avatar_url,text:rt,time:ts()};
-      }catch(e){console.error('Group send to '+a.name+' failed:',e);}
+      }catch(e){console.error('[Conference] Send to '+a.name+' failed:',e);}
       return null;
     });
 
@@ -199,12 +211,22 @@ export default function MobileApp({ user: authUser }) {
   const agentIni=initials(agentName);
 
   return (
-    <div style={{minHeight:'100vh',maxHeight:'100vh',background:c.bg,display:'flex',flexDirection:'column',fontFamily:"'DM Sans',system-ui,sans-serif",overflow:'hidden',paddingTop:'env(safe-area-inset-top)',paddingBottom:'env(safe-area-inset-bottom)'}}>
+    <div style={{position:'fixed',inset:0,background:c.bg,display:'flex',flexDirection:'column',fontFamily:"'DM Sans',system-ui,sans-serif",overflow:'hidden',
+      /* PWA safe areas per web.dev/learn/pwa/app-design — pad content away from notch/home indicator */
+      paddingTop:'env(safe-area-inset-top)',paddingLeft:'env(safe-area-inset-left)',paddingRight:'env(safe-area-inset-right)'}}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
-        *{margin:0;padding:0;box-sizing:border-box;}body{margin:0;overflow:hidden;}
+        *{margin:0;padding:0;box-sizing:border-box;}
+        /* Override dashboard html padding — mobile app handles its own safe areas */
+        html{padding:0 !important;min-height:100vh !important;background:${c.bg} !important;overflow:hidden !important;}
+        body{margin:0;padding:0;overflow:hidden;height:100vh;background:${c.bg};overscroll-behavior-y:contain;-webkit-overflow-scrolling:touch;}
+        #root{height:100vh;overflow:hidden;}
         @keyframes typingBounce{0%,60%,100%{transform:translateY(0);}30%{transform:translateY(-4px);}}
         input:focus,textarea:focus{outline:none;}::-webkit-scrollbar{width:0;}
+        /* Disable user selection on UI elements per PWA best practices */
+        button,.unselectable{-webkit-user-select:none;user-select:none;}
+        /* Standalone PWA mode */
+        @media(display-mode:standalone){html{background:${c.bg} !important;}}
       `}</style>
 
       {/* ═══ HEADER ═══ */}
@@ -312,28 +334,31 @@ export default function MobileApp({ user: authUser }) {
             </div>
           )}
 
-          <div style={{padding:'8px 12px',paddingBottom:'max(8px,env(safe-area-inset-bottom))',display:'flex',gap:6,alignItems:'flex-end'}}>
-            {/* Attach button */}
-            <button onClick={()=>{setShowAttach(!showAttach);setShowAgentPicker(false);}}
-              style={{width:36,height:36,borderRadius:18,border:'1px solid '+c.inputBorder,background:showAttach?c.accent+'20':c.input,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexShrink:0}}>
-              <PlusIcon color={showAttach?c.accent:c.muted}/>
-            </button>
+          {/* Hidden file inputs */}
+          <input ref={fileInputRef} type="file" multiple style={{display:'none'}} onChange={handleFileSelect}/>
+          <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" style={{display:'none'}} onChange={handleFileSelect}/>
 
-            {/* Hidden file inputs */}
-            <input ref={fileInputRef} type="file" multiple style={{display:'none'}} onChange={handleFileSelect}/>
-            <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" style={{display:'none'}} onChange={handleFileSelect}/>
+          {/* Single input container — plus | textarea | send all inside one rounded pill */}
+          <div style={{padding:'6px 8px',paddingBottom:'max(6px,env(safe-area-inset-bottom))',display:'flex',alignItems:'flex-end'}}>
+            <div style={{flex:1,display:'flex',alignItems:'flex-end',gap:0,border:'1px solid '+c.inputBorder,borderRadius:24,background:c.input,padding:'4px 4px 4px 6px'}}>
+              {/* Plus/attach inside the pill */}
+              <button onClick={()=>{setShowAttach(!showAttach);setShowAgentPicker(false);}}
+                style={{width:30,height:30,borderRadius:15,border:'none',background:showAttach?c.accent+'20':'transparent',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexShrink:0}}>
+                <PlusIcon color={showAttach?c.accent:c.muted}/>
+              </button>
 
-            {/* Text input */}
-            <textarea ref={inputRef} value={input} onChange={e=>setInput(e.target.value)}
-              onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();}}}
-              placeholder={'Message '+agentName.split(' ')[0]+'...'} rows={1}
-              style={{flex:1,padding:'9px 14px',borderRadius:20,border:'1px solid '+c.inputBorder,background:c.input,color:c.tx,fontSize:15,fontFamily:'inherit',resize:'none',maxHeight:120,lineHeight:1.4}}/>
+              {/* Textarea */}
+              <textarea ref={inputRef} value={input} onChange={e=>setInput(e.target.value)}
+                onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();}}}
+                placeholder={'Message '+agentName.split(' ')[0]+'...'} rows={1}
+                style={{flex:1,padding:'5px 6px',border:'none',background:'transparent',color:c.tx,fontSize:15,fontFamily:'inherit',resize:'none',maxHeight:100,lineHeight:1.4,outline:'none'}}/>
 
-            {/* Send */}
-            <button onClick={sendMessage} disabled={!input.trim()||sending}
-              style={{width:36,height:36,borderRadius:18,border:'none',background:(!input.trim()||sending)?c.border:c.gradient,display:'flex',alignItems:'center',justifyContent:'center',cursor:(!input.trim()||sending)?'default':'pointer',flexShrink:0}}>
-              <SendIcon/>
-            </button>
+              {/* Send inside the pill */}
+              <button onClick={sendMessage} disabled={!input.trim()||sending}
+                style={{width:30,height:30,borderRadius:15,border:'none',background:(!input.trim()||sending)?'transparent':c.gradient,display:'flex',alignItems:'center',justifyContent:'center',cursor:(!input.trim()||sending)?'default':'pointer',flexShrink:0,transition:'background .15s'}}>
+                <SendIcon/>
+              </button>
+            </div>
           </div>
         </div>
       </>):tab==='conference'?(<>
@@ -399,16 +424,18 @@ export default function MobileApp({ user: authUser }) {
           <div ref={groupEndRef}/>
         </div>
 
-        {/* Group input bar */}
-        <div style={{padding:'8px 12px',paddingBottom:'max(8px,env(safe-area-inset-bottom))',borderTop:'1px solid '+c.border,background:c.sf,display:'flex',gap:6,alignItems:'flex-end',flexShrink:0}}>
-          <textarea value={groupInput} onChange={e=>setGroupInput(e.target.value)}
-            onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendGroupMessage();}}}
-            placeholder="Message the team..." rows={1}
-            style={{flex:1,padding:'9px 14px',borderRadius:20,border:'1px solid '+c.inputBorder,background:c.input,color:c.tx,fontSize:15,fontFamily:'inherit',resize:'none',maxHeight:120,lineHeight:1.4}}/>
-          <button onClick={sendGroupMessage} disabled={!groupInput.trim()||groupSending}
-            style={{width:36,height:36,borderRadius:18,border:'none',background:(!groupInput.trim()||groupSending)?c.border:c.gradient,display:'flex',alignItems:'center',justifyContent:'center',cursor:(!groupInput.trim()||groupSending)?'default':'pointer',flexShrink:0}}>
-            <SendIcon/>
-          </button>
+        {/* Group input bar — same pill style */}
+        <div style={{padding:'6px 8px',paddingBottom:'max(6px,env(safe-area-inset-bottom))',borderTop:'1px solid '+c.border,background:c.sf,flexShrink:0}}>
+          <div style={{display:'flex',alignItems:'flex-end',border:'1px solid '+c.inputBorder,borderRadius:24,background:c.input,padding:'4px 4px 4px 12px'}}>
+            <textarea value={groupInput} onChange={e=>setGroupInput(e.target.value)}
+              onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendGroupMessage();}}}
+              placeholder="Message the team..." rows={1}
+              style={{flex:1,padding:'5px 6px',border:'none',background:'transparent',color:c.tx,fontSize:15,fontFamily:'inherit',resize:'none',maxHeight:100,lineHeight:1.4,outline:'none'}}/>
+            <button onClick={sendGroupMessage} disabled={!groupInput.trim()||groupSending}
+              style={{width:30,height:30,borderRadius:15,border:'none',background:(!groupInput.trim()||groupSending)?'transparent':c.gradient,display:'flex',alignItems:'center',justifyContent:'center',cursor:(!groupInput.trim()||groupSending)?'default':'pointer',flexShrink:0}}>
+              <SendIcon/>
+            </button>
+          </div>
         </div>
       </>):(
         /* Call — coming soon */
