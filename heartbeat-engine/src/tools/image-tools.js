@@ -19,7 +19,7 @@ function getGeminiKey() { return process.env.GEMINI_API_KEY || ""; }
 export const imageToolDefinitions = {
   image_generate: {
     name: "image_generate",
-    description: "Generate an image from a text description. Perfect for creating flyers, social media posts, banners, book covers, logos, product mockups, brand assets, and any visual content. Be very specific and detailed in your prompt for the best results. Include exact text you want in the image, colors, layout details, and style preferences. For character consistency (same person across multiple images), set engine to gemini and pass reference_image_url or reference_image_base64 — Nano Banana will lock the character's identity from the reference photo.",
+    description: "Generate an image from a text description. Perfect for creating flyers, social media posts, banners, book covers, logos, product mockups, brand assets, and any visual content. Be very specific and detailed in your prompt for the best results. Include exact text you want in the image, colors, layout details, and style preferences. For character consistency (same person across multiple images), set engine to gemini and pass reference_image_url or reference_image_base64 — Nano Banana will lock the character's identity from the reference photo. IMPORTANT: When creating platform-specific images (Facebook covers, Instagram posts, Eventbrite headers, etc.), ALWAYS set target_width and target_height to the exact pixel dimensions required by that platform. The AI generates at fixed base sizes, then the image is automatically resized/cropped to your target dimensions. Common sizes: Facebook cover 820x312, Instagram post 1080x1080, Instagram story 1080x1920, Eventbrite header 2160x1080, Twitter header 1500x500, LinkedIn banner 1128x191.",
     parameters: {
       type: "object",
       properties: {
@@ -30,8 +30,16 @@ export const imageToolDefinitions = {
         size: {
           type: "string",
           enum: ["1024x1024", "1024x1536", "1536x1024"],
-          description: "Image dimensions. 1024x1024 for square (social posts, logos). 1024x1536 for portrait/tall (flyers, book covers, stories). 1536x1024 for landscape/wide (banners, headers, presentations).",
+          description: "Base generation size (closest aspect ratio to your target). 1024x1024 for square. 1024x1536 for portrait/tall. 1536x1024 for landscape/wide. The image will be resized to target_width x target_height after generation.",
           default: "1024x1024"
+        },
+        target_width: {
+          type: "integer",
+          description: "REQUIRED for platform-specific images. Exact output width in pixels (e.g. 820 for Facebook cover, 1080 for Instagram post). The generated image will be resized and cropped to exactly this width."
+        },
+        target_height: {
+          type: "integer",
+          description: "REQUIRED for platform-specific images. Exact output height in pixels (e.g. 312 for Facebook cover, 1080 for Instagram post). The generated image will be resized and cropped to exactly this height."
         },
         quality: {
           type: "string",
@@ -626,6 +634,41 @@ export async function executeImageTool(toolName, parameters) {
     const result = await imageToolExecutors[toolName](parameters);
     const duration = Date.now() - startTime;
     logger.info(`Image tool completed: ${toolName} (${duration}ms)`, { engine: result.engine });
+
+    // ── POST-PROCESS RESIZE: Crop/resize to exact platform dimensions ──
+    // AI generators output fixed sizes (1024x1024, 1536x1024, etc.)
+    // This step resizes to the exact target_width x target_height the user needs
+    if (result.success && result.image_base64 && parameters.target_width && parameters.target_height) {
+      try {
+        const tw = parseInt(parameters.target_width);
+        const th = parseInt(parameters.target_height);
+        if (tw > 0 && th > 0 && tw <= 4096 && th <= 4096) {
+          logger.info(`Resizing image to exact platform dimensions: ${tw}x${th}`);
+          const imgBuffer = Buffer.from(result.image_base64, 'base64');
+          const Jimp = (await import('jimp')).default;
+          const image = await Jimp.read(imgBuffer);
+
+          // Use cover (resize + center-crop) to fill exact dimensions without distortion
+          image.cover(tw, th);
+
+          const resizedBuffer = await image.getBufferAsync(Jimp.MIME_PNG);
+          result.image_base64 = resizedBuffer.toString('base64');
+
+          // Update the file on disk too
+          if (result.filepath) {
+            fs.writeFileSync(result.filepath, resizedBuffer);
+          }
+
+          result.target_width = tw;
+          result.target_height = th;
+          result.message = `Image generated and resized to exact ${tw}x${th} dimensions. ${result.message || ''}`;
+          logger.info(`Image resized to ${tw}x${th} successfully`);
+        }
+      } catch (resizeErr) {
+        logger.error('Image resize failed (using original size):', resizeErr.message);
+        // Non-fatal — keep the original-sized image
+      }
+    }
 
     // Upload to Supabase Storage for permanent CDN-backed URL
     // Falls back to local /api/files/preview/ if Supabase not configured

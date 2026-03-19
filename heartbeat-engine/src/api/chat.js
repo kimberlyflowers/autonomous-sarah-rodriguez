@@ -365,6 +365,21 @@ Use image_edit to modify existing images — change text, swap backgrounds, adju
 Your primary engine is GPT Image 1.5 (incredible for design work). If text rendering needs fixing,
 switch to Nano Banana by setting engine to 'gemini'. For portrait/tall assets like flyers use
 size '1024x1536'. For landscape/banners use '1536x1024'. For social posts use '1024x1024'.
+
+PLATFORM-SPECIFIC IMAGE SIZES (MANDATORY):
+When creating images for specific platforms, you MUST set target_width and target_height to the
+exact pixel dimensions. The AI generates at fixed base sizes, then automatically resizes to your
+target. ALWAYS use these exact sizes:
+- Facebook cover: target_width=820, target_height=312, size="1536x1024"
+- Instagram post (square): target_width=1080, target_height=1080, size="1024x1024"
+- Instagram post (portrait): target_width=1080, target_height=1350, size="1024x1536"
+- Instagram story: target_width=1080, target_height=1920, size="1024x1536"
+- Eventbrite header: target_width=2160, target_height=1080, size="1536x1024"
+- Twitter/X header: target_width=1500, target_height=500, size="1536x1024"
+- LinkedIn banner: target_width=1128, target_height=191, size="1536x1024"
+- YouTube thumbnail: target_width=1280, target_height=720, size="1536x1024"
+NEVER skip target_width and target_height when a user asks for platform-specific images.
+The output MUST be the exact pixel dimensions the platform requires — not the AI's default size.
 CHARACTER CONSISTENCY (CRITICAL — READ CAREFULLY):
 When the user uploads a photo of a person and later asks you to generate images featuring "this person",
 "this guy", "her", "him", "me", "the man/woman in the photo", or ANY reference to someone from an
@@ -1469,12 +1484,14 @@ const _ALL_TOOLS = [
   // ── IMAGE GENERATION & EDITING ───────────────────────────────────────────
   {
     name: "image_generate",
-    description: "Generate an image from a text description. Perfect for creating flyers, social media posts, banners, book covers, logos, product mockups, brand assets, and any visual content. Be very specific and detailed in your prompt — include exact text you want displayed, colors, layout, and style. Uses GPT Image 1.5 by default (best for design assets). Set engine to 'gemini' for Nano Banana if text consistency needs fixing.",
+    description: "Generate an image from a text description. Perfect for creating flyers, social media posts, banners, book covers, logos, product mockups, brand assets, and any visual content. Be very specific and detailed in your prompt — include exact text you want displayed, colors, layout, and style. Uses GPT Image 1.5 by default (best for design assets). Set engine to 'gemini' for Nano Banana if text consistency needs fixing. IMPORTANT: When creating platform-specific images (Facebook covers, Instagram posts, Eventbrite headers, etc.), ALWAYS set target_width and target_height to the exact pixel dimensions required. Common sizes: Facebook cover 820x312, Instagram post 1080x1080, Instagram story 1080x1920, Eventbrite header 2160x1080, Twitter header 1500x500, LinkedIn banner 1128x191.",
     input_schema: {
       type: "object",
       properties: {
         prompt: { type: "string", description: "Detailed description of the image to generate. Include exact text, colors, layout, style, and mood." },
-        size: { type: "string", enum: ["1024x1024", "1024x1536", "1536x1024"], description: "1024x1024=square (social), 1024x1536=portrait (flyers/covers), 1536x1024=landscape (banners)", default: "1024x1024" },
+        size: { type: "string", enum: ["1024x1024", "1024x1536", "1536x1024"], description: "Base generation size (closest aspect ratio). 1024x1024=square, 1024x1536=portrait, 1536x1024=landscape. Image is resized to target_width x target_height after generation.", default: "1024x1024" },
+        target_width: { type: "integer", description: "REQUIRED for platform-specific images. Exact output width in pixels (e.g. 820 for Facebook cover, 1080 for Instagram post)." },
+        target_height: { type: "integer", description: "REQUIRED for platform-specific images. Exact output height in pixels (e.g. 312 for Facebook cover, 1080 for Instagram post)." },
         quality: { type: "string", enum: ["low", "medium", "high"], description: "Image quality level", default: "high" },
         background: { type: "string", enum: ["opaque", "transparent"], description: "Use 'transparent' for logos/overlays", default: "opaque" },
         engine: { type: "string", enum: ["auto", "gpt", "gemini"], description: "'auto' picks best engine. 'gpt' = GPT Image 1.5. 'gemini' = Nano Banana / Imagen for text-heavy fixes.", default: "auto" }
