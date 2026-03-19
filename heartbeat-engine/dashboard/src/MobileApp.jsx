@@ -108,8 +108,9 @@ export default function MobileApp({ user: authUser }) {
           const assigned = data.agents.find(a => a.id === data.assignedAgentId);
           const active = assigned || data.agents[0];
           setAgent(active);
-          // Use an existing session for dashboard sync, or create a deterministic one
-          sessionRef.current = 'mobile-' + active.id.slice(0, 8);
+          // Unique session per mobile visit — won't collide with dashboard sessions
+          // Messages still sync to dashboard because they're stored by agent_id in the messages table
+          sessionRef.current = 'mobile-' + active.id.slice(0, 8) + '-' + Date.now().toString(36);
           // Load messages for active agent
           const agentMsgs = data.messages?.[active.id] || [];
           setMessages(agentMsgs.map(m => ({
@@ -125,7 +126,7 @@ export default function MobileApp({ user: authUser }) {
   // ── Switch agent ──
   const switchAgent = async (a) => {
     setAgent(a); setShowPicker(false); setMessages([]); setSending(false);
-    sessionRef.current = 'mobile-' + a.id.slice(0, 8);
+    sessionRef.current = 'mobile-' + a.id.slice(0, 8) + '-' + Date.now().toString(36);
     try {
       const h = await authHeaders();
       const res = await fetch(API+'/api/mobile/messages/'+a.id, { headers: h });
@@ -174,28 +175,50 @@ export default function MobileApp({ user: authUser }) {
 
   const handleFile=(e)=>{const f=Array.from(e.target.files||[]);if(f.length)sendFiles(f,input.trim());e.target.value='';};
 
-  // ── Group chat send ──
+  // ── Group chat send (SEQUENTIAL — agents respond one at a time, seeing prior replies) ──
   const sendGroupMessage=useCallback(async()=>{
     const text=groupInput.trim(); if(!text||groupSending||!allAgents.length)return;
     setGroupInput('');setGroupSending(true);
     setGroupMsgs(p=>[...p,{id:'gu-'+Date.now(),from:'user',text,time:ts()}]);
 
-    const ctx=groupMsgs.slice(-20).map(m=>m.from==='user'?`Client: ${m.text}`:`${m.fromAgent||'Agent'}: ${m.text}`).join('\n');
-    const prefix=ctx?`[Group chat thread:\n${ctx}\n\nNew message from client:]\n`:'';
-
-    const promises=allAgents.map(async(a)=>{
-      try{
-        const h=await authHeaders();
-        const r=await fetch(API+'/api/chat/message',{method:'POST',headers:h,
-          body:JSON.stringify({message:prefix+text,sessionId:groupSessionRef.current+'-'+a.id.slice(0,8),agentId:a.id})});
-        const d=await r.json();
-        const rt=(d.response||d.message||'').replace(/\s*\[Session context[\s\S]*$/,'').replace(/\s*\[Tool:.*?\]\s*/g,'').replace(/\[Group chat thread[\s\S]*?client:\]\n?/i,'').trim();
-        if(rt) return {id:'ga-'+a.id.slice(0,8)+'-'+Date.now(),from:'agent',fromAgent:a.name,agentId:a.id,avatar:a.avatar_url,text:rt,time:ts()};
-      }catch(e){console.error('Group send to '+a.name+' failed:',e);}
-      return null;
+    // Smart routing: detect which agent(s) are being addressed
+    const textLower = text.toLowerCase();
+    const addressed = allAgents.filter(a => {
+      const first = a.name.split(' ')[0].toLowerCase();
+      const full = a.name.toLowerCase();
+      return textLower.includes(first) || textLower.includes(full);
     });
-    const results=(await Promise.all(promises)).filter(Boolean);
-    setGroupMsgs(p=>[...p,...results]);
+    // If specific agent(s) named, only they respond. Otherwise all respond.
+    const respondingAgents = addressed.length > 0 ? addressed : allAgents;
+
+    // Build thread context from recent messages
+    const recentThread = [...groupMsgs.slice(-30), {from:'user',text}];
+    const threadText = recentThread.map(m =>
+      m.from==='user' ? `Client: ${m.text}` : `${m.fromAgent}: ${m.text}`
+    ).join('\n');
+
+    // Send to each agent SEQUENTIALLY — each sees the full thread including prior agent replies
+    let runningThread = threadText;
+    for (const a of respondingAgents) {
+      const contextMsg = `[You are ${a.name} in a group chat with the client and ${allAgents.length-1} other Bloomie(s): ${allAgents.filter(x=>x.id!==a.id).map(x=>x.name).join(', ')}. Here is the conversation so far:\n${runningThread}\n\nRespond naturally as ${a.name}. Only speak if the message is relevant to you — if someone else was asked a direct question and you weren't, just stay silent. Keep it conversational.]`;
+
+      try {
+        const h = await authHeaders();
+        const r = await fetch(API+'/api/chat/message',{method:'POST',headers:h,
+          body:JSON.stringify({message:contextMsg,sessionId:groupSessionRef.current+'-'+a.id.slice(0,8),agentId:a.id})});
+        const d = await r.json();
+        let rt = (d.response||d.message||'').replace(/\s*\[Session context[\s\S]*$/,'').replace(/\s*\[Tool:.*?\]\s*/g,'').trim();
+        // Strip any context prefix the agent might echo back
+        rt = rt.replace(/^\[You are[\s\S]*?conversational\.\]\s*/,'').trim();
+
+        if (rt && !rt.match(/^(\*stays silent\*|\*silent\*|\.\.\.|\*no response\*)/i)) {
+          const msg = {id:'ga-'+a.id.slice(0,8)+'-'+Date.now(),from:'agent',fromAgent:a.name,agentId:a.id,avatar:a.avatar_url,text:rt,time:ts()};
+          setGroupMsgs(p=>[...p,msg]);
+          // Add this response to running thread so next agent sees it
+          runningThread += `\n${a.name}: ${rt}`;
+        }
+      } catch(e) { console.error('Group send to '+a.name+' failed:',e); }
+    }
     setGroupSending(false);
   },[groupInput,groupSending,allAgents,groupMsgs]);
 
