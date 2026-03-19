@@ -3225,7 +3225,7 @@ function App({ authUser }) {
     {k:"chat",l:"Chat",icon:ChatIcon},
     {k:"monitor",l:"Status",icon:StatusIcon},
     {k:"activity",l:"Activity",icon:ActivityIcon},
-    {k:"calls",l:"Mobile",icon:CallsIcon},
+    {k:"mobile",l:"Mobile",icon:CallsIcon},
   ];
 
   return(
