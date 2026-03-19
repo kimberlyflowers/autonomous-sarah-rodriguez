@@ -154,6 +154,45 @@ export default function MobileApp({ user: authUser }) {
   const handleFileSelect=(e)=>{const f=Array.from(e.target.files||[]);if(f.length)sendFiles(f,input.trim());e.target.value='';};
   const handleSignOut=async()=>{await supabase.auth.signOut();setUser(null);};
 
+  // ── GROUP CHAT (Conference tab) ──
+  const [groupMessages,setGroupMessages]=useState([]);
+  const [groupInput,setGroupInput]=useState('');
+  const [groupSending,setGroupSending]=useState(false);
+  const groupEndRef=useRef(null);
+  const groupSessionRef=useRef('group-'+Date.now());
+
+  useEffect(()=>{groupEndRef.current?.scrollIntoView({behavior:'smooth'});},[groupMessages,groupSending]);
+
+  const sendGroupMessage=useCallback(async()=>{
+    const text=groupInput.trim(); if(!text||groupSending)return;
+    setGroupInput('');setGroupSending(true);
+    // Add user message
+    setGroupMessages(p=>[...p,{id:'gu-'+Date.now(),from:'user',text,time:ts()}]);
+
+    // Send to each agent in parallel — each gets the full group thread context
+    const threadContext=groupMessages.slice(-20).map(m=>
+      m.from==='user'?`You (client): ${m.text}`:m.fromAgent?`${m.fromAgent}: ${m.text}`:m.text
+    ).join('\n');
+    const contextPrefix=threadContext?`[Group chat context — other messages in this thread:\n${threadContext}\n\nNew message from client:]\n`:''
+
+    const agentPromises=allAgents.map(async(a)=>{
+      try{
+        const h=await authHeaders();
+        const r=await fetch(API+'/api/chat/message',{method:'POST',headers:h,
+          body:JSON.stringify({message:contextPrefix+text,sessionId:groupSessionRef.current+'-'+a.id.slice(0,8),agentId:a.id})});
+        const d=await r.json();
+        const rt=(d.response||d.message||'').replace(/\s*\[Session context[\s\S]*$/,'').replace(/\s*\[Tool:.*?\]\s*/g,'').replace(/\[Group chat context[\s\S]*?New message from client:\]\n?/,'').trim();
+        if(rt) return {id:'ga-'+a.id.slice(0,8)+'-'+Date.now(),from:'agent',fromAgent:a.name,agentId:a.id,avatar:a.avatar_url,text:rt,time:ts()};
+      }catch(e){console.error('Group send to '+a.name+' failed:',e);}
+      return null;
+    });
+
+    const results=await Promise.all(agentPromises);
+    const responses=results.filter(Boolean);
+    setGroupMessages(p=>[...p,...responses]);
+    setGroupSending(false);
+  },[groupInput,groupSending,allAgents,groupMessages]);
+
   if(!user) return <MobileLogin onLogin={()=>supabase.auth.getSession().then(({data:{session}})=>setUser(session?.user))}/>;
 
   const agentName=agent?.name||'Your Bloomie';
@@ -297,11 +336,86 @@ export default function MobileApp({ user: authUser }) {
             </button>
           </div>
         </div>
+      </>):tab==='conference'?(<>
+        {/* ═══ GROUP CHAT ═══ */}
+        {/* Participants bar */}
+        <div style={{padding:'8px 12px',borderBottom:'1px solid '+c.border,background:c.sf,display:'flex',alignItems:'center',gap:6,flexShrink:0,overflowX:'auto'}}>
+          <span style={{fontSize:11,color:c.muted,fontWeight:600,flexShrink:0}}>Team:</span>
+          {allAgents.map(a=>(
+            <div key={a.id} style={{display:'flex',alignItems:'center',gap:4,padding:'4px 8px',borderRadius:16,background:c.card,border:'1px solid '+c.border,flexShrink:0}}>
+              {a.avatar_url
+                ?<img src={a.avatar_url} style={{width:18,height:18,borderRadius:5,objectFit:'cover'}}/>
+                :<div style={{width:18,height:18,borderRadius:5,background:c.gradient,display:'flex',alignItems:'center',justifyContent:'center',fontSize:8,fontWeight:700,color:'#fff'}}>{initials(a.name)}</div>}
+              <span style={{fontSize:11,fontWeight:600,color:c.tx,whiteSpace:'nowrap'}}>{a.name.split(' ')[0]}</span>
+            </div>
+          ))}
+          <div style={{display:'flex',alignItems:'center',gap:4,padding:'4px 8px',borderRadius:16,background:c.accent+'15',border:'1px solid '+c.accent+'30',flexShrink:0}}>
+            <span style={{fontSize:11,fontWeight:600,color:c.accent}}>You</span>
+          </div>
+        </div>
+
+        {/* Group thread */}
+        <div onClick={()=>setShowAttach(false)} style={{flex:1,overflowY:'auto',padding:'12px 12px 8px',display:'flex',flexDirection:'column',gap:8}}>
+          {groupMessages.length===0?(
+            <div style={{textAlign:'center',marginTop:40,padding:'0 24px'}}>
+              <div style={{fontSize:24,marginBottom:8}}>{allAgents.length>1?'\uD83D\uDC65':'\uD83D\uDCAC'}</div>
+              <div style={{fontSize:15,fontWeight:600,color:c.tx,marginBottom:4}}>Team Chat</div>
+              <div style={{fontSize:13,color:c.sub,lineHeight:1.6}}>
+                Send a message and all {allAgents.length} Bloomie{allAgents.length>1?'s':''} will see it and respond. They can see each other's replies too — like a group text.
+              </div>
+            </div>
+          ):groupMessages.map(msg=>(
+            <div key={msg.id}>
+              {msg.from==='user'?(
+                <div style={{display:'flex',justifyContent:'flex-end',padding:'2px 0'}}>
+                  <div style={{maxWidth:'80%',padding:'10px 14px',borderRadius:'18px 18px 4px 18px',background:c.userBubble,color:'#fff',fontSize:14,lineHeight:1.5,whiteSpace:'pre-wrap',wordBreak:'break-word'}}>
+                    {msg.text}
+                    <div style={{fontSize:10,color:'rgba(255,255,255,0.6)',marginTop:4,textAlign:'right'}}>{msg.time}</div>
+                  </div>
+                </div>
+              ):(
+                <div style={{display:'flex',gap:8,alignItems:'flex-start',padding:'2px 0'}}>
+                  {/* Agent avatar */}
+                  {msg.avatar
+                    ?<img src={msg.avatar} style={{width:28,height:28,borderRadius:8,objectFit:'cover',marginTop:2,flexShrink:0}}/>
+                    :<div style={{width:28,height:28,borderRadius:8,background:c.gradient,display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:700,color:'#fff',marginTop:2,flexShrink:0}}>{initials(msg.fromAgent)}</div>}
+                  <div style={{maxWidth:'75%'}}>
+                    <div style={{fontSize:11,fontWeight:700,color:c.accent,marginBottom:2}}>{msg.fromAgent}</div>
+                    <div style={{padding:'10px 14px',borderRadius:'4px 18px 18px 18px',background:c.agentBubble,border:'1px solid '+c.agentBorder,color:c.tx,fontSize:14,lineHeight:1.5,whiteSpace:'pre-wrap',wordBreak:'break-word'}}>
+                      {msg.text}
+                      <div style={{fontSize:10,color:c.muted,marginTop:4}}>{msg.time}</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+          {groupSending&&(
+            <div style={{display:'flex',gap:8,alignItems:'flex-start',padding:'2px 0'}}>
+              <div style={{width:28,height:28,borderRadius:8,background:c.card,border:'1px solid '+c.border,display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,marginTop:2,flexShrink:0}}>...</div>
+              <div><div style={{fontSize:11,fontWeight:600,color:c.muted,marginBottom:2}}>Team is typing</div><TypingDots c={c}/></div>
+            </div>
+          )}
+          <div ref={groupEndRef}/>
+        </div>
+
+        {/* Group input bar */}
+        <div style={{padding:'8px 12px',paddingBottom:'max(8px,env(safe-area-inset-bottom))',borderTop:'1px solid '+c.border,background:c.sf,display:'flex',gap:6,alignItems:'flex-end',flexShrink:0}}>
+          <textarea value={groupInput} onChange={e=>setGroupInput(e.target.value)}
+            onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendGroupMessage();}}}
+            placeholder="Message the team..." rows={1}
+            style={{flex:1,padding:'9px 14px',borderRadius:20,border:'1px solid '+c.inputBorder,background:c.input,color:c.tx,fontSize:15,fontFamily:'inherit',resize:'none',maxHeight:120,lineHeight:1.4}}/>
+          <button onClick={sendGroupMessage} disabled={!groupInput.trim()||groupSending}
+            style={{width:36,height:36,borderRadius:18,border:'none',background:(!groupInput.trim()||groupSending)?c.border:c.gradient,display:'flex',alignItems:'center',justifyContent:'center',cursor:(!groupInput.trim()||groupSending)?'default':'pointer',flexShrink:0}}>
+            <SendIcon/>
+          </button>
+        </div>
       </>):(
+        /* Call — coming soon */
         <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:40,textAlign:'center'}}>
-          <div style={{width:64,height:64,borderRadius:16,background:c.card,border:'1px solid '+c.border,display:'flex',alignItems:'center',justifyContent:'center',fontSize:28,marginBottom:16}}>{tab==='call'?'\uD83D\uDCDE':'\uD83C\uDF10'}</div>
-          <div style={{fontSize:16,fontWeight:700,color:c.tx,marginBottom:6}}>{tab==='call'?'Voice Calls':'Video Conference'}</div>
-          <div style={{fontSize:13,color:c.sub,lineHeight:1.5,maxWidth:260}}>{tab==='call'?'Call your Bloomie directly. Coming soon.':'Face-to-face meetings with your team. Coming soon.'}</div>
+          <div style={{width:64,height:64,borderRadius:16,background:c.card,border:'1px solid '+c.border,display:'flex',alignItems:'center',justifyContent:'center',fontSize:28,marginBottom:16}}>{'\uD83D\uDCDE'}</div>
+          <div style={{fontSize:16,fontWeight:700,color:c.tx,marginBottom:6}}>Voice Calls</div>
+          <div style={{fontSize:13,color:c.sub,lineHeight:1.5,maxWidth:260}}>Call your Bloomie directly from your phone. Coming soon.</div>
           <div style={{marginTop:20,padding:'8px 20px',borderRadius:20,background:c.card,border:'1px solid '+c.border,fontSize:12,fontWeight:600,color:c.accent}}>Coming Soon</div>
         </div>
       )}
