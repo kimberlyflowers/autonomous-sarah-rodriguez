@@ -3,6 +3,7 @@
 // ALL endpoints verified against: marketplace.gohighlevel.com/docs
 
 import axios from 'axios';
+import { createClient } from '@supabase/supabase-js';
 import { createLogger } from '../logging/logger.js';
 
 const logger = createLogger('ghl-tools');
@@ -10,13 +11,57 @@ const logger = createLogger('ghl-tools');
 const GHL_BASE_URL = 'https://services.leadconnectorhq.com';
 const GHL_API_VERSION = '2021-07-28';
 
-// Generic GHL API caller
-async function callGHL(endpoint, method = 'GET', data = null, params = {}) {
-  const apiKey = process.env.GHL_API_KEY;
-  const locationId = process.env.GHL_LOCATION_ID;
+// Cache org GHL credentials to avoid repeated Supabase lookups (5 min TTL)
+const _orgCredCache = new Map();
+const CRED_CACHE_TTL = 5 * 60 * 1000;
+
+async function getOrgGHLCredentials(orgId) {
+  if (!orgId) return null;
+
+  // Check cache
+  const cached = _orgCredCache.get(orgId);
+  if (cached && Date.now() - cached.fetchedAt < CRED_CACHE_TTL) {
+    return cached.creds;
+  }
+
+  try {
+    const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const { data } = await sb
+      .from('user_connectors')
+      .select('api_key, external_account_id, connectors!inner(slug)')
+      .eq('organization_id', orgId)
+      .eq('connectors.slug', 'ghl')
+      .eq('status', 'active')
+      .limit(1)
+      .single();
+
+    if (data?.api_key) {
+      const creds = { apiKey: data.api_key, locationId: data.external_account_id };
+      _orgCredCache.set(orgId, { creds, fetchedAt: Date.now() });
+      logger.info(`GHL credentials loaded for org ${orgId} (location: ${creds.locationId})`);
+      return creds;
+    }
+  } catch (err) {
+    logger.warn(`No GHL credentials found for org ${orgId}: ${err.message}`);
+  }
+
+  _orgCredCache.set(orgId, { creds: null, fetchedAt: Date.now() });
+  return null;
+}
+
+// Generic GHL API caller — orgId triggers per-org credential lookup
+async function callGHL(endpoint, method = 'GET', data = null, params = {}, orgId = null) {
+  // Try org-specific credentials first, fall back to env vars
+  const orgCreds = orgId ? await getOrgGHLCredentials(orgId) : null;
+  const apiKey = orgCreds?.apiKey || process.env.GHL_API_KEY;
+  const locationId = orgCreds?.locationId || process.env.GHL_LOCATION_ID;
 
   if (!apiKey) {
-    throw new Error('GHL_API_KEY environment variable not configured');
+    throw new Error('GHL_API_KEY not configured (no org credentials and no env var)');
+  }
+
+  if (orgCreds) {
+    logger.info(`Using org-specific GHL credentials (org: ${orgId}, location: ${locationId})`);
   }
 
   const config = {
@@ -46,6 +91,15 @@ async function callGHL(endpoint, method = 'GET', data = null, params = {}) {
     logger.error(`GHL API error: ${method} ${endpoint}`, error.response?.data || error.message);
     throw new Error(`GHL API Error: ${error.response?.data?.message || error.message}`);
   }
+}
+
+// Resolve locationId from orgId (cached) or fall back to env var
+async function resolveLocationId(orgId) {
+  if (orgId) {
+    const creds = await getOrgGHLCredentials(orgId);
+    if (creds?.locationId) return creds.locationId;
+  }
+  return process.env.GHL_LOCATION_ID;
 }
 
 // Tool definitions in model-agnostic format
@@ -903,41 +957,42 @@ export const ghlExecutors = {
   // CONTACTS
   // POST /contacts/search — requires page + pageLimit in body
   ghl_search_contacts: async (params) => {
-    const locationId = process.env.GHL_LOCATION_ID;
+    const locationId = await resolveLocationId(params._orgId);
     return await callGHL('/contacts/search', 'POST', {
       locationId,
       page: params.page || 1,
       pageLimit: params.limit || 20,
       query: params.query
-    }, null);
+    }, null, params._orgId);
   },
 
   // GET /contacts/{contactId}
   ghl_get_contact: async (params) => {
-    return await callGHL(`/contacts/${params.contactId}`);
+    return await callGHL(`/contacts/${params.contactId}`, 'GET', null, {}, params._orgId);
   },
 
   // POST /contacts/
   ghl_create_contact: async (params) => {
-    const locationId = process.env.GHL_LOCATION_ID;
-    return await callGHL('/contacts/', 'POST', { locationId, ...params });
+    const locationId = await resolveLocationId(params._orgId);
+    const { _orgId, ...contactData } = params;
+    return await callGHL('/contacts/', 'POST', { locationId, ...contactData }, {}, _orgId);
   },
 
   // PUT /contacts/{contactId}
   ghl_update_contact: async (params) => {
-    const { contactId, ...updateData } = params;
-    return await callGHL(`/contacts/${contactId}`, 'PUT', updateData);
+    const { contactId, _orgId, ...updateData } = params;
+    return await callGHL(`/contacts/${contactId}`, 'PUT', updateData, {}, _orgId);
   },
 
   // DELETE /contacts/{contactId}
   ghl_delete_contact: async (params) => {
-    return await callGHL(`/contacts/${params.contactId}`, 'DELETE');
+    return await callGHL(`/contacts/${params.contactId}`, 'DELETE', null, {}, params._orgId);
   },
 
   // CONVERSATIONS
   // GET /conversations/search?locationId=&contactId=
   ghl_get_conversations: async (params) => {
-    const locationId = process.env.GHL_LOCATION_ID;
+    const locationId = await resolveLocationId(params._orgId);
     return await callGHL('/conversations/search', 'GET', null, { locationId, contactId: params.contactId, limit: params.limit || 20 });
   },
 
@@ -971,7 +1026,7 @@ export const ghlExecutors = {
     if (!ownerContactId) {
       throw new Error('notify_owner: no owner_ghl_contact_id found in Supabase organizations table or OWNER_GHL_CONTACT_ID env var');
     }
-    const locationId = process.env.GHL_LOCATION_ID;
+    const locationId = await resolveLocationId(params._orgId);
     const messageType = params.type || 'SMS';
 
     logger.info('notify_owner firing', { urgency: params.urgency, type: messageType, preview: params.message.slice(0, 80) });
@@ -1044,13 +1099,13 @@ export const ghlExecutors = {
 
   // POST /calendars/events/appointments
   ghl_create_appointment: async (params) => {
-    const locationId = process.env.GHL_LOCATION_ID;
+    const locationId = await resolveLocationId(params._orgId);
     return await callGHL('/calendars/events/appointments', 'POST', { locationId, ...params });
   },
 
   // GET /calendars/events?calendarId=&locationId=&startTime=&endTime=
   ghl_get_appointments: async (params) => {
-    const locationId = process.env.GHL_LOCATION_ID;
+    const locationId = await resolveLocationId(params._orgId);
     return await callGHL('/calendars/events', 'GET', null, {
       locationId,
       calendarId: params.calendarId,
@@ -1062,7 +1117,7 @@ export const ghlExecutors = {
   // OPPORTUNITIES
   // POST /opportunities/search — requires location_id in body
   ghl_search_opportunities: async (params) => {
-    const locationId = process.env.GHL_LOCATION_ID;
+    const locationId = await resolveLocationId(params._orgId);
     return await callGHL('/opportunities/search', 'POST', {
       location_id: locationId,
       page: 1,
@@ -1080,7 +1135,7 @@ export const ghlExecutors = {
 
   // POST /opportunities/
   ghl_create_opportunity: async (params) => {
-    const locationId = process.env.GHL_LOCATION_ID;
+    const locationId = await resolveLocationId(params._orgId);
     return await callGHL('/opportunities/', 'POST', { locationId, ...params });
   },
 
@@ -1159,7 +1214,7 @@ export const ghlExecutors = {
 
   // GET /locations/{locationId}/tags
   ghl_list_location_tags: async (params) => {
-    const locationId = process.env.GHL_LOCATION_ID;
+    const locationId = await resolveLocationId(params._orgId);
     return await callGHL(`/locations/${locationId}/tags`);
   },
 
@@ -1183,7 +1238,7 @@ export const ghlExecutors = {
 
   // GET /locations/{locationId}
   ghl_get_location_info: async (params) => {
-    const locationId = process.env.GHL_LOCATION_ID;
+    const locationId = await resolveLocationId(params._orgId);
     return await callGHL(`/locations/${locationId}`);
   },
 
@@ -1229,7 +1284,7 @@ export const ghlExecutors = {
 
   // POST /invoices/
   ghl_create_invoice: async (params) => {
-    const locationId = process.env.GHL_LOCATION_ID;
+    const locationId = await resolveLocationId(params._orgId);
     return await callGHL('/invoices/', 'POST', { locationId, ...params });
   },
 
@@ -1246,7 +1301,7 @@ export const ghlExecutors = {
 
   // POST /products/
   ghl_create_product: async (params) => {
-    const locationId = process.env.GHL_LOCATION_ID;
+    const locationId = await resolveLocationId(params._orgId);
     return await callGHL('/products/', 'POST', { locationId, ...params });
   },
 
@@ -1286,20 +1341,20 @@ export const ghlExecutors = {
 
   // POST /emails/builder
   ghl_create_email_template: async (params) => {
-    const locationId = process.env.GHL_LOCATION_ID;
+    const locationId = await resolveLocationId(params._orgId);
     return await callGHL('/emails/builder', 'POST', { locationId, ...params });
   },
 
   // SOCIAL PLANNER
   // GET /social-media-posting/{locationId}/posts
   ghl_list_social_posts: async (params) => {
-    const locationId = process.env.GHL_LOCATION_ID;
+    const locationId = await resolveLocationId(params._orgId);
     return await callGHL(`/social-media-posting/${locationId}/posts`);
   },
 
   // POST /social-media-posting/{locationId}/posts
   ghl_create_social_post: async (params) => {
-    const locationId = process.env.GHL_LOCATION_ID;
+    const locationId = await resolveLocationId(params._orgId);
     return await callGHL(`/social-media-posting/${locationId}/posts`, 'POST', params);
   },
 
@@ -1311,7 +1366,7 @@ export const ghlExecutors = {
 
   // POST /blogs/posts
   ghl_create_blog_post: async (params) => {
-    const locationId = process.env.GHL_LOCATION_ID;
+    const locationId = await resolveLocationId(params._orgId);
     return await callGHL('/blogs/posts', 'POST', { locationId, ...params });
   },
 
@@ -1334,7 +1389,7 @@ export const ghlExecutors = {
 
   // POST /links/
   ghl_create_trigger_link: async (params) => {
-    const locationId = process.env.GHL_LOCATION_ID;
+    const locationId = await resolveLocationId(params._orgId);
     return await callGHL('/links/', 'POST', { locationId, ...params });
   },
 
@@ -1352,16 +1407,19 @@ export const ghlExecutors = {
 };
 
 // Execute any GHL tool by name
-export async function executeGHLTool(toolName, parameters) {
+// orgId is optional — when provided, credentials are loaded from Supabase per org
+export async function executeGHLTool(toolName, parameters, orgId = null) {
   const startTime = Date.now();
-  logger.info(`Executing GHL tool: ${toolName}`, parameters);
+  logger.info(`Executing GHL tool: ${toolName}`, { orgId, params: parameters });
 
   if (!ghlExecutors[toolName]) {
     throw new Error(`Unknown GHL tool: ${toolName}`);
   }
 
   try {
-    const result = await ghlExecutors[toolName](parameters);
+    // Inject _orgId into params so executors can pass it to callGHL
+    const paramsWithOrg = { ...parameters, _orgId: orgId };
+    const result = await ghlExecutors[toolName](paramsWithOrg);
     const duration = Date.now() - startTime;
     logger.info(`GHL tool completed: ${toolName} (${duration}ms)`);
     return { success: true, data: result, executionTime: duration };

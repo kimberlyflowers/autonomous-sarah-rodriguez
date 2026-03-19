@@ -2056,7 +2056,7 @@ function getCapabilityNotes() {
 }
 
 // TOOL EXECUTION — routes all tool calls to the appropriate executor
-async function executeTool(toolName, toolInput, sessionId = null, agentConfig = null) {
+async function executeTool(toolName, toolInput, sessionId = null, agentConfig = null, orgId = null) {
   logger.info(`Executing tool: ${toolName}`, { input: toolInput });
   try {
     // bloom_log goes to database
@@ -2113,7 +2113,7 @@ async function executeTool(toolName, toolInput, sessionId = null, agentConfig = 
     // All GHL tools + notify_owner route through the unified executor
     if (toolName.startsWith('ghl_') || toolName === 'notify_owner') {
       const { executeGHLTool } = await import('../tools/ghl-tools.js');
-      return await executeGHLTool(toolName, toolInput);
+      return await executeGHLTool(toolName, toolInput, orgId);
     }
 
     // Web search & fetch tools — model-agnostic
@@ -3174,7 +3174,7 @@ async function callAnthropicWithRetry(params, maxRetries = 3, client = null) {
   }
 }
 
-async function chatWithAgent(userMessage, history, agentConfig, sessionId = null) {
+async function chatWithAgent(userMessage, history, agentConfig, sessionId = null, orgId = null) {
   // Get the right Anthropic client — per-agent key if configured, otherwise platform key
   const agentClient = getAnthropicClient(agentConfig);
   let systemPrompt = buildSystemPrompt(agentConfig);
@@ -3324,10 +3324,10 @@ When a user asks you to edit, modify, or update something you previously created
   // Retries once with same params before reporting failure to the agent.
   // Skips retry for tools where retry doesn't make sense (task_progress, bloom_log).
   const noRetryTools = new Set(['task_progress', 'bloom_log', 'bloom_take_screenshot', 'load_skill']);
-  async function executeWithRetry(toolName, toolInput, sid, agentCfg = null) {
+  async function executeWithRetry(toolName, toolInput, sid, agentCfg = null, orgIdForTool = null) {
     let result;
     try {
-      result = await executeTool(toolName, toolInput, sid, agentCfg);
+      result = await executeTool(toolName, toolInput, sid, agentCfg, orgIdForTool);
     } catch (toolError) {
       logger.error(`Tool ${toolName} threw error (attempt 1):`, toolError.message);
       result = { success: false, error: `Tool error: ${toolError.message}` };
@@ -3350,7 +3350,7 @@ When a user asks you to edit, modify, or update something you previously created
           taskProgress.set(trackingKey, { todos: currentTodos, updatedAt: Date.now() });
         }
         try {
-          result = await executeTool(toolName, toolInput, sid, agentCfg);
+          result = await executeTool(toolName, toolInput, sid, agentCfg, orgIdForTool);
         } catch (retryError) {
           logger.error(`Tool ${toolName} threw error (attempt 2):`, retryError.message);
           result = { success: false, error: `Tool error after retry: ${retryError.message}` };
@@ -3713,7 +3713,7 @@ When a user asks you to edit, modify, or update something you previously created
           toolsUsed.push({ name: block.name, input: block.input });
 
           // Execute with automatic retry on failure
-          const result = await executeWithRetry(block.name, block.input, sessionId, agentConfig);
+          const result = await executeWithRetry(block.name, block.input, sessionId, agentConfig, orgId);
           toolResults.push(result);
 
           // Passive tracking
@@ -4058,7 +4058,23 @@ router.post('/message', async (req, res) => {
       }
     }
 
-    const response = await chatWithAgent(enrichedMessage, history, agentConfig, sessionId);
+    // Resolve user's org for per-org tool credentials (e.g., GHL)
+    let userOrgId = null;
+    try {
+      const { createClient: _sc } = await import('@supabase/supabase-js');
+      const _sb = _sc(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+      const { data: membership } = await _sb
+        .from('organization_members')
+        .select('organization_id')
+        .eq('user_id', userId)
+        .limit(1)
+        .single();
+      if (membership) userOrgId = membership.organization_id;
+    } catch (e) {
+      // Fall through — orgId stays null, GHL uses env var defaults
+    }
+
+    const response = await chatWithAgent(enrichedMessage, history, agentConfig, sessionId, userOrgId);
     logger.info(`💬 Chat [${sessionId}] User: ${message.slice(0, 100)}${message.length > 100 ? '...' : ''}`);
     logger.info(`💬 Chat [${sessionId}] ${agentConfig.name || 'Agent'}: ${response.replace(/\[Session context[\s\S]*$/, '').slice(0, 100)}${response.length > 100 ? '...' : ''}`);
     await saveMessages(null, sessionId, message, response, null, userId, agentConfig.agentId);
@@ -4170,7 +4186,22 @@ router.post('/upload', async (req, res) => {
     if (textMsg) userContent.push({ type: 'text', text: textMsg });
 
     const content = userContent.length === 1 && userContent[0].type === 'text' ? userContent[0].text : userContent;
-    const response = await chatWithAgent(content, history, agentConfig, sessionId);
+
+    // Resolve user's org for per-org tool credentials
+    let userOrgId = null;
+    try {
+      const { createClient: _sc } = await import('@supabase/supabase-js');
+      const _sb = _sc(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+      const { data: membership } = await _sb
+        .from('organization_members')
+        .select('organization_id')
+        .eq('user_id', userId)
+        .limit(1)
+        .single();
+      if (membership) userOrgId = membership.organization_id;
+    } catch (e) { /* falls back to env var defaults */ }
+
+    const response = await chatWithAgent(content, history, agentConfig, sessionId, userOrgId);
 
     // Save uploaded images to chat_uploads (separate from artifacts/Files tab)
     // These are user-provided context images, NOT Bloomie-created deliverables
