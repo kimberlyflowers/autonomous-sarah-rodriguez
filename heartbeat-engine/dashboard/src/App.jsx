@@ -2838,6 +2838,50 @@ function App({ authUser }) {
   useEffect(()=>{ const t=setInterval(fetchSessions,8000); return()=>clearInterval(t); },[]);
   const connected=agentOnline; // true online/offline from health poll
 
+  // ── CONFERENCE MODE (group chat with all agents) ──────────────────────
+  const [conferenceMode,setConferenceMode]=useState(false);
+  const [confMessages,setConfMessages]=useState([]);
+  const [confInput,setConfInput]=useState('');
+  const [confSending,setConfSending]=useState(false);
+  const confSessionRef=useRef('conf-'+Date.now());
+  const confEndRef=useRef(null);
+
+  useEffect(()=>{confEndRef.current?.scrollIntoView({behavior:'smooth'});},[confMessages,confSending]);
+
+  const sendConfMessage=async()=>{
+    const text=confInput.trim(); if(!text||confSending||!agents.length)return;
+    setConfInput('');setConfSending(true);
+    setConfMessages(p=>[...p,{id:'cu-'+Date.now(),from:'user',text,time:new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}]);
+
+    // Smart routing: only addressed agents respond
+    const textLower=text.toLowerCase();
+    const addressed=agents.filter(a=>{const fn=a.name.split(' ')[0].toLowerCase();return textLower.includes(fn)||textLower.includes(a.name.toLowerCase());});
+    const responding=addressed.length>0?addressed:agents;
+
+    // Build thread context
+    const recent=[...confMessages.slice(-30),{from:'user',text}];
+    const threadText=recent.map(m=>m.from==='user'?`Client: ${m.text}`:`${m.fromAgent||'Agent'}: ${m.text}`).join('\n');
+
+    // Sequential: each agent sees prior agent replies
+    let running=threadText;
+    for(const a of responding){
+      const ctx=`[You are ${a.name} in a group chat with the client and ${agents.filter(x=>x.id!==a.id).map(x=>x.name).join(', ')}. Thread so far:\n${running}\n\nRespond naturally as ${a.name}. Only speak if relevant to you — if someone else was asked, stay silent. Be conversational.]`;
+      try{
+        const h=await getAuthHeaders();
+        const r=await fetch('/api/chat/message',{method:'POST',headers:h,body:JSON.stringify({message:ctx,sessionId:confSessionRef.current+'-'+a.id.slice(0,8),agentId:a.id})});
+        const d=await r.json();
+        let rt=(d.response||d.message||'').replace(/\s*\[Session context[\s\S]*$/,'').replace(/\s*\[Tool:.*?\]\s*/g,'').trim();
+        rt=rt.replace(/^\[You are[\s\S]*?conversational\.\]\s*/,'').trim();
+        if(rt&&!rt.match(/^(\*stays silent\*|\*silent\*|\.\.\.|\*no response\*)/i)){
+          const msg={id:'ca-'+a.id.slice(0,8)+'-'+Date.now(),from:'agent',fromAgent:a.name,agentId:a.id,avatar:a.avatar_url,text:rt,time:new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}),skills:d.skillsUsed||[],hasArtifact:!!rt.match(/Created "|I've created|I created|saved as|saved it to|in your Files tab|saved to.*Files/i)};
+          setConfMessages(p=>[...p,msg]);
+          running+=`\n${a.name}: ${rt}`;
+        }
+      }catch(e){console.error('Conference send to '+a.name+' failed:',e);}
+    }
+    setConfSending(false);
+  };
+
   const [pg,setPg]=useState("chat");
   const [tx,setTx]=useState("");
   const [isNew,setNew]=useState(true);
@@ -3352,11 +3396,15 @@ function App({ authUser }) {
                     )}
                   </div>
 
-                  {/* Agent switcher — switch between Bloomies */}
-                  {agents.length>1&&(
+                  {/* Agent switcher — switch between Bloomies + Conference */}
+                  {agents.length>0&&(
                     <div style={{padding:"6px 14px 0",flexShrink:0}}>
-                      <select value={currentAgentId||""} onChange={e=>switchAgent(e.target.value)} style={{width:"100%",padding:"7px 10px",borderRadius:8,border:"1px solid "+c.ln,background:c.sf,color:c.tx,fontSize:12,fontWeight:600,cursor:"pointer",appearance:"auto"}}>
-                        {agents.map(a=><option key={a.id} value={a.id}>{a.name} — {a.role}</option>)}
+                      <select value={conferenceMode?"conference":currentAgentId||""} onChange={e=>{
+                        if(e.target.value==='conference'){setConferenceMode(true);}
+                        else{setConferenceMode(false);switchAgent(e.target.value);}
+                      }} style={{width:"100%",padding:"7px 10px",borderRadius:8,border:"1px solid "+(conferenceMode?c.ac:c.ln),background:conferenceMode?"rgba(244,162,97,0.08)":c.sf,color:conferenceMode?c.ac:c.tx,fontSize:12,fontWeight:600,cursor:"pointer",appearance:"auto"}}>
+                        {agents.map(a=><option key={a.id} value={a.id}>{a.name} — {a.role||'AI Employee'}</option>)}
+                        {agents.length>1&&<option value="conference">Team Conference — All Bloomies</option>}
                       </select>
                     </div>
                   )}
@@ -3594,7 +3642,79 @@ function App({ authUser }) {
         <div style={{flex:1,minWidth:0,height:"calc(100vh - 52px)",overflow:pg==="chat"?"hidden":"auto"}}>
 
           {/* ══ CHAT ══ */}
-          {pg==="chat"&&(
+          {pg==="chat"&&conferenceMode&&(
+            <div style={{height:"calc(100vh - 52px)",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+              {/* Conference header — shows all agents */}
+              <div style={{padding:mob?"8px 12px":"10px 16px",display:"flex",alignItems:"center",gap:10,borderBottom:"1px solid "+c.ln,background:c.cd,flexShrink:0}}>
+                <div style={{display:"flex",gap:-4}}>
+                  {agents.map((a,i)=><div key={a.id} style={{marginLeft:i>0?-8:0,zIndex:agents.length-i}}><Face sz={mob?28:32} agent={{nm:a.name,img:a.avatar_url,grad:c.gradient}}/></div>)}
+                </div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:mob?14:15,fontWeight:700,color:c.tx}}>Team Conference</div>
+                  <div style={{fontSize:11,color:c.so}}>{agents.map(a=>a.name.split(' ')[0]).join(', ')} + You</div>
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:5}}>
+                  <span style={{width:6,height:6,borderRadius:"50%",background:c.gr,animation:"pulse 1.5s ease infinite"}}/>
+                  <span style={{fontSize:11,color:c.gr}}>{agents.length} online</span>
+                </div>
+              </div>
+
+              {/* Conference messages */}
+              <div style={{flex:1,overflowY:"auto",padding:mob?"12px":"16px 20px",display:"flex",flexDirection:"column",gap:8}}>
+                {confMessages.length===0?(
+                  <div style={{textAlign:"center",margin:"auto",padding:"40px 20px"}}>
+                    <div style={{display:"flex",justifyContent:"center",gap:6,marginBottom:16}}>
+                      {agents.map(a=><Face key={a.id} sz={40} agent={{nm:a.name,img:a.avatar_url,grad:c.gradient}}/>)}
+                    </div>
+                    <div style={{fontSize:18,fontWeight:700,color:c.tx,marginBottom:6}}>Team Conference</div>
+                    <div style={{fontSize:13,color:c.so,lineHeight:1.6,maxWidth:400,margin:"0 auto"}}>
+                      Message all {agents.length} Bloomie{agents.length>1?"s":""} at once. They'll respond in order and can see each other's replies — like a group chat.
+                    </div>
+                  </div>
+                ):confMessages.map(msg=>(
+                  <div key={msg.id}>
+                    {msg.from==='user'?(
+                      <div style={{display:'flex',justifyContent:'flex-end',padding:'2px 0'}}>
+                        <div style={{maxWidth:'75%',padding:'10px 16px',borderRadius:'18px 18px 4px 18px',background:c.gradient,color:'#fff',fontSize:14,lineHeight:1.5,whiteSpace:'pre-wrap',wordBreak:'break-word'}}>
+                          {msg.text}
+                          <div style={{fontSize:10,color:'rgba(255,255,255,0.6)',marginTop:4,textAlign:'right'}}>{msg.time}</div>
+                        </div>
+                      </div>
+                    ):(
+                      <div style={{display:'flex',gap:8,alignItems:'flex-start',padding:'2px 0'}}>
+                        <Face sz={28} agent={{nm:msg.fromAgent,img:msg.avatar,grad:c.gradient}}/>
+                        <div style={{maxWidth:'70%'}}>
+                          <div style={{fontSize:11,fontWeight:700,color:c.ac,marginBottom:2}}>{msg.fromAgent}</div>
+                          <div style={{padding:'10px 14px',borderRadius:'4px 18px 18px 18px',background:c.cd,border:'1px solid '+c.ln,color:c.tx,fontSize:14,lineHeight:1.5,whiteSpace:'pre-wrap',wordBreak:'break-word'}}>
+                            {msg.text}
+                            {msg.hasArtifact&&<div style={{marginTop:6,padding:'4px 8px',borderRadius:6,background:c.sf,border:'1px solid '+c.ln,fontSize:11,color:c.ac,fontWeight:600}}>📎 File created — check {msg.fromAgent.split(' ')[0]}'s Files tab</div>}
+                            <div style={{fontSize:10,color:c.fa,marginTop:4}}>{msg.time}</div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {confSending&&<div style={{display:'flex',gap:8,alignItems:'center',padding:'4px 0'}}><div style={{fontSize:12,color:c.so,fontStyle:'italic'}}>Team is responding...</div></div>}
+                <div ref={confEndRef}/>
+              </div>
+
+              {/* Conference input */}
+              <div style={{padding:mob?"8px 12px":"10px 16px",borderTop:"1px solid "+c.ln,background:c.cd,flexShrink:0}}>
+                <div style={{display:"flex",alignItems:"flex-end",gap:8,padding:"10px 14px",borderRadius:20,border:"1.5px solid "+c.ln,background:c.inp}}>
+                  <textarea value={confInput} onChange={e=>setConfInput(e.target.value)}
+                    onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendConfMessage();}}}
+                    placeholder="Message the team..." rows={1}
+                    style={{flex:1,border:"none",background:"transparent",color:c.tx,fontSize:mob?15:16,fontFamily:"inherit",resize:"none",maxHeight:120,lineHeight:1.4,outline:"none",padding:0}}/>
+                  <button onClick={sendConfMessage} disabled={!confInput.trim()||confSending}
+                    style={{width:34,height:34,borderRadius:17,border:"none",background:(!confInput.trim()||confSending)?"transparent":c.gradient,display:"flex",alignItems:"center",justifyContent:"center",cursor:(!confInput.trim()||confSending)?"default":"pointer",flexShrink:0}}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+          {pg==="chat"&&!conferenceMode&&(
             <div style={{height:"calc(100vh - 52px)",display:"flex",flexDirection:"column",overflow:"hidden"}}>
               {!isNew&&(
                 <div style={{padding:mob?"8px 12px":"10px 16px",display:"flex",alignItems:"center",gap:mob?8:10,borderBottom:"1px solid "+c.ln,background:c.cd,flexShrink:0}}>
