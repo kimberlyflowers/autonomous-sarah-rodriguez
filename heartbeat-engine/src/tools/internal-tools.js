@@ -487,6 +487,65 @@ ONLY skip when:
     },
     category: "delegation",
     operation: "read"
+  },
+
+  // ── SELF-SCHEDULING TOOLS ──────────────────────────────────
+  bloom_schedule_task: {
+    name: "bloom_schedule_task",
+    description: "Create a new scheduled/recurring task for yourself. Use when user asks you to do something on a recurring basis.",
+    parameters: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Short task name" },
+        description: { type: "string", description: "What this task does" },
+        instruction: { type: "string", description: "Detailed instruction to execute each time" },
+        frequency: { type: "string", enum: ["every_10_min", "every_30_min", "hourly", "daily", "weekdays", "weekly", "monthly"] },
+        runTime: { type: "string", description: "HH:MM format (24-hour). Default: 09:00" },
+        taskType: { type: "string", enum: ["content", "email", "followup", "reporting", "monitoring", "custom"] }
+      },
+      required: ["name", "instruction", "frequency"]
+    },
+    category: "scheduling",
+    operation: "write"
+  },
+
+  bloom_list_scheduled_tasks: {
+    name: "bloom_list_scheduled_tasks",
+    description: "List all your currently scheduled/recurring tasks.",
+    parameters: { type: "object", properties: {}, required: [] },
+    category: "scheduling",
+    operation: "read"
+  },
+
+  bloom_update_scheduled_task: {
+    name: "bloom_update_scheduled_task",
+    description: "Update or pause/resume a scheduled task.",
+    parameters: {
+      type: "object",
+      properties: {
+        taskId: { type: "string" },
+        enabled: { type: "boolean" },
+        name: { type: "string" },
+        instruction: { type: "string" },
+        frequency: { type: "string", enum: ["every_10_min", "every_30_min", "hourly", "daily", "weekdays", "weekly", "monthly"] },
+        runTime: { type: "string" }
+      },
+      required: ["taskId"]
+    },
+    category: "scheduling",
+    operation: "write"
+  },
+
+  bloom_delete_scheduled_task: {
+    name: "bloom_delete_scheduled_task",
+    description: "Permanently delete a scheduled task.",
+    parameters: {
+      type: "object",
+      properties: { taskId: { type: "string" } },
+      required: ["taskId"]
+    },
+    category: "scheduling",
+    operation: "write"
   }
 };
 
@@ -1234,6 +1293,93 @@ export const internalToolExecutors = {
         success: false,
         error: error.message
       };
+    }
+  },
+
+  // ── SELF-SCHEDULING EXECUTORS ──────────────────────────────
+  bloom_schedule_task: async (params) => {
+    try {
+      const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3001}`;
+      const resp = await fetch(`${BASE_URL}/api/agent/tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: params.name,
+          description: params.description || '',
+          instruction: params.instruction,
+          frequency: params.frequency || 'daily',
+          runTime: params.runTime || '09:00',
+          taskType: params.taskType || 'custom'
+        })
+      });
+      const data = await resp.json();
+      if (!resp.ok || data.error) throw new Error(data.error || 'Failed to create scheduled task');
+      logger.info('Bloomie self-scheduled task via heartbeat', { taskId: data.task?.task_id, name: params.name });
+      return {
+        success: true,
+        taskId: data.task?.task_id,
+        name: params.name,
+        frequency: params.frequency,
+        runTime: params.runTime || '09:00',
+        nextRunAt: data.task?.next_run_at,
+        message: `Scheduled task "${params.name}" created — runs ${params.frequency} at ${params.runTime || '09:00'}`
+      };
+    } catch (e) {
+      logger.error('bloom_schedule_task failed:', e.message);
+      return { success: false, error: e.message };
+    }
+  },
+
+  bloom_list_scheduled_tasks: async () => {
+    try {
+      const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3001}`;
+      const resp = await fetch(`${BASE_URL}/api/agent/tasks`);
+      const data = await resp.json();
+      if (!resp.ok) throw new Error('Failed to list tasks');
+      return {
+        success: true,
+        tasks: data.tasks || [],
+        message: `Found ${(data.tasks || []).length} scheduled tasks`
+      };
+    } catch (e) {
+      logger.error('bloom_list_scheduled_tasks failed:', e.message);
+      return { success: false, error: e.message };
+    }
+  },
+
+  bloom_update_scheduled_task: async (params) => {
+    try {
+      const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3001}`;
+      const body = {};
+      if (params.enabled !== undefined) body.enabled = params.enabled;
+      if (params.name) body.name = params.name;
+      if (params.instruction) body.instruction = params.instruction;
+      if (params.frequency) body.frequency = params.frequency;
+      if (params.runTime) body.runTime = params.runTime;
+      const resp = await fetch(`${BASE_URL}/api/agent/tasks/${params.taskId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await resp.json();
+      if (!resp.ok || data.error) throw new Error(data.error || 'Failed to update task');
+      return { success: true, taskId: params.taskId, message: `Updated task ${params.taskId}` };
+    } catch (e) {
+      logger.error('bloom_update_scheduled_task failed:', e.message);
+      return { success: false, error: e.message };
+    }
+  },
+
+  bloom_delete_scheduled_task: async (params) => {
+    try {
+      const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3001}`;
+      const resp = await fetch(`${BASE_URL}/api/agent/tasks/${params.taskId}`, { method: 'DELETE' });
+      const data = await resp.json();
+      if (!resp.ok || data.error) throw new Error(data.error || 'Failed to delete task');
+      return { success: true, message: `Deleted task ${params.taskId}` };
+    } catch (e) {
+      logger.error('bloom_delete_scheduled_task failed:', e.message);
+      return { success: false, error: e.message };
     }
   }
 };

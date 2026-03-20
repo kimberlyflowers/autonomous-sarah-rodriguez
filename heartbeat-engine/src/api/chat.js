@@ -770,11 +770,16 @@ WHY this order: Images take time. HTML takes seconds. Always generate images fir
 A site that takes 2 minutes to generate with real photos is worth infinitely more than an instant
 site with gradient boxes and emojis. Never sacrifice images for speed.
 
-EXCEPTION — communication tools must ALWAYS report real errors:
-If notify_owner fails, ghl_send_message fails, or ANY tool that sends a message to a real person fails —
-do NOT cover it up or write a polite explanation. Tell ${operatorFirstName} the EXACT error message immediately.
+EXCEPTION — communication AND scheduling tools must ALWAYS report real errors:
+If notify_owner fails, ghl_send_message fails, bloom_schedule_task fails, or ANY tool that sends a message
+or creates a scheduled task fails — do NOT cover it up or write a polite explanation. Tell ${operatorFirstName}
+the EXACT error message immediately.
 Example: "notify_owner failed — OWNER_GHL_CONTACT_ID is not configured in Railway. Please add it."
-Never say "the SMS system is unavailable" or similar vague messages. Show the real error. Always.
+Example: "bloom_schedule_task failed — Error: 'scheduled_tasks' table not found. The database needs setup."
+Never say "the SMS system is unavailable" or "I've scheduled that for you" when it actually failed.
+Show the real error. Always. NEVER FAKE TASK COMPLETION — especially for scheduling, sending, or any
+action the user expects to happen in the future. If you say "scheduled" and it didn't work, the user
+will be waiting for something that will never happen. That's worse than admitting the error.
 
 CRITICAL — NEVER claim you sent something before you've sent it:
 The sequence must always be: call the tool → get success result → THEN tell ${operatorFirstName} it's done.
@@ -898,6 +903,7 @@ Skill mapping (try loading these BEFORE starting work):
 - Writing a blog post or article → load_skill("blog-content")
 - Writing an email campaign → load_skill("email-marketing")
 - Creating an email for a list (blog announcement, newsletter, promotional) → load_skill("email-creator")
+- Scheduling a recurring task, automating something, or assigning yourself a repeating job → load_skill("task-scheduling")
 - Creating social media content → load_skill("social-media")
 - Working with CRM/contacts → load_skill("ghl-crm")
 - Writing a book/chapter → load_skill("book-writing")
@@ -1902,13 +1908,76 @@ const _ALL_TOOLS = [
       required: ["question", "options"]
     }
   },
+  // ── SELF-SCHEDULING TOOLS ──────────────────────────────────────────
+  // These let any Bloomie create, list, update, pause, and delete their own scheduled tasks.
+  // Backed by the existing /api/agent/tasks endpoints + Supabase scheduled_tasks table.
+  {
+    name: "bloom_schedule_task",
+    description: `Create a new scheduled/recurring task for yourself. Use this when the user asks you to do something on a recurring basis (daily, hourly, weekly, etc.) or at a specific time. ALWAYS use bloom_clarify FIRST to confirm: what exactly to do, how often, and what time.
+
+Examples of when to use:
+- "Check my emails every morning" → schedule a daily email-check task
+- "Write a blog post every day" → schedule a daily blog-creation task
+- "Follow up with new leads every hour" → schedule an hourly lead-followup task
+- "Send me a weekly report every Monday" → schedule a weekly reporting task
+
+After creating, confirm to the user exactly what was scheduled, the frequency, and the time. NEVER fake this — if it fails, report the real error.`,
+    input_schema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Short task name (e.g., 'Daily Blog Post', 'Hourly Email Check')" },
+        description: { type: "string", description: "What this task does and why" },
+        instruction: { type: "string", description: "The detailed instruction you will execute each time this task runs. Write this as if you're giving yourself instructions. Be specific — include skills to load, tools to use, and expected outputs." },
+        frequency: { type: "string", enum: ["every_10_min", "every_30_min", "hourly", "daily", "weekdays", "weekly", "monthly"], description: "How often to run" },
+        runTime: { type: "string", description: "Time to run in HH:MM format (24-hour). Default: '09:00'. For every_10_min/every_30_min/hourly, this sets the minute offset." },
+        taskType: { type: "string", enum: ["content", "email", "followup", "reporting", "monitoring", "custom"], description: "Category of task" }
+      },
+      required: ["name", "instruction", "frequency"]
+    }
+  },
+  {
+    name: "bloom_list_scheduled_tasks",
+    description: "List all your currently scheduled/recurring tasks. Use this to check what's already scheduled before creating duplicates, or when the user asks 'what tasks do you have?' or 'what are you doing automatically?'",
+    input_schema: {
+      type: "object",
+      properties: {},
+      required: []
+    }
+  },
+  {
+    name: "bloom_update_scheduled_task",
+    description: "Update an existing scheduled task — change its frequency, time, instruction, or pause/resume it. Use when the user says 'change that to weekly', 'pause the blog task', 'update the email check to run at 8am', etc.",
+    input_schema: {
+      type: "object",
+      properties: {
+        taskId: { type: "string", description: "The task_id to update (get from bloom_list_scheduled_tasks)" },
+        enabled: { type: "boolean", description: "true to enable/resume, false to pause" },
+        name: { type: "string", description: "Updated task name" },
+        instruction: { type: "string", description: "Updated instruction" },
+        frequency: { type: "string", enum: ["every_10_min", "every_30_min", "hourly", "daily", "weekdays", "weekly", "monthly"], description: "Updated frequency" },
+        runTime: { type: "string", description: "Updated run time (HH:MM, 24-hour)" }
+      },
+      required: ["taskId"]
+    }
+  },
+  {
+    name: "bloom_delete_scheduled_task",
+    description: "Permanently delete a scheduled task. Use bloom_clarify FIRST to confirm the user really wants to delete it. Pausing (via bloom_update_scheduled_task with enabled:false) is usually better than deleting.",
+    input_schema: {
+      type: "object",
+      properties: {
+        taskId: { type: "string", description: "The task_id to delete (get from bloom_list_scheduled_tasks)" }
+      },
+      required: ["taskId"]
+    }
+  },
   {
     name: "load_skill",
     description: "Load detailed expert instructions for a specific skill before doing complex work. Call this BEFORE starting any major creative or document task. The skill provides data-driven best practices, formatting standards, and quality requirements. Available skills are listed in your system prompt — match the skill name exactly.",
     input_schema: {
       type: "object",
       properties: {
-        skill_name: { type: "string", description: "The skill to load. Must be one of these exact names: 'website-creation', 'docx', 'pptx', 'pdf', 'xlsx', 'blog-content', 'email-creator', 'email-marketing', 'social-media', 'book-writing', 'ghl-crm', 'flyer-generation', 'image-generation', 'lead-scraper'" },
+        skill_name: { type: "string", description: "The skill to load. Must match a filename in the skills catalog (without .md). Common skills: 'website-creation', 'docx', 'pptx', 'pdf', 'xlsx', 'blog-content', 'email-creator', 'email-marketing', 'social-media', 'book-writing', 'ghl-crm', 'flyer-generation', 'image-generation', 'lead-scraper', 'task-scheduling'" },
         context: { type: "string", description: "Brief description of what you're about to create — helps select the right guidelines" }
       },
       required: ["skill_name"]
@@ -2397,6 +2466,105 @@ async function executeTool(toolName, toolInput, sessionId = null, agentConfig = 
         message: `Clarification needed: ${toolInput.question}`,
         pauseExecution: true
       };
+    }
+
+    // ── SELF-SCHEDULING TOOLS ──────────────────────────────────────
+    if (toolName === 'bloom_schedule_task') {
+      try {
+        const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3001}`;
+        const resp = await fetch(`${BASE_URL}/api/agent/tasks`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: toolInput.name,
+            description: toolInput.description || '',
+            instruction: toolInput.instruction,
+            frequency: toolInput.frequency || 'daily',
+            runTime: toolInput.runTime || '09:00',
+            taskType: toolInput.taskType || 'custom'
+          })
+        });
+        const data = await resp.json();
+        if (!resp.ok || data.error) throw new Error(data.error || 'Failed to create scheduled task');
+        logger.info('Bloomie self-scheduled task', { taskId: data.task?.task_id, name: toolInput.name, frequency: toolInput.frequency });
+        return {
+          success: true,
+          taskId: data.task?.task_id,
+          name: toolInput.name,
+          frequency: toolInput.frequency,
+          runTime: toolInput.runTime || '09:00',
+          nextRunAt: data.task?.next_run_at,
+          message: `Scheduled task "${toolInput.name}" created — runs ${toolInput.frequency} at ${toolInput.runTime || '09:00'}`
+        };
+      } catch (e) {
+        logger.error('bloom_schedule_task failed:', e.message);
+        return { success: false, error: e.message, message: `FAILED to schedule task: ${e.message}. Tell the user the exact error.` };
+      }
+    }
+
+    if (toolName === 'bloom_list_scheduled_tasks') {
+      try {
+        const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3001}`;
+        const resp = await fetch(`${BASE_URL}/api/agent/tasks`);
+        const data = await resp.json();
+        if (!resp.ok) throw new Error('Failed to list scheduled tasks');
+        const tasks = (data.tasks || []).map(t => ({
+          taskId: t.taskId, name: t.name, instruction: t.instruction,
+          frequency: t.frequency, runTime: t.runTime, enabled: t.enabled,
+          lastRunAt: t.lastRunAt, nextRunAt: t.nextRunAt, runCount: t.runCount
+        }));
+        return {
+          success: true,
+          tasks,
+          totalActive: tasks.filter(t => t.enabled).length,
+          totalPaused: tasks.filter(t => !t.enabled).length,
+          message: `Found ${tasks.length} scheduled tasks (${tasks.filter(t => t.enabled).length} active, ${tasks.filter(t => !t.enabled).length} paused)`
+        };
+      } catch (e) {
+        logger.error('bloom_list_scheduled_tasks failed:', e.message);
+        return { success: false, error: e.message };
+      }
+    }
+
+    if (toolName === 'bloom_update_scheduled_task') {
+      try {
+        const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3001}`;
+        const body = {};
+        if (toolInput.enabled !== undefined) body.enabled = toolInput.enabled;
+        if (toolInput.name) body.name = toolInput.name;
+        if (toolInput.instruction) body.instruction = toolInput.instruction;
+        if (toolInput.frequency) body.frequency = toolInput.frequency;
+        if (toolInput.runTime) body.runTime = toolInput.runTime;
+        const resp = await fetch(`${BASE_URL}/api/agent/tasks/${toolInput.taskId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        const data = await resp.json();
+        if (!resp.ok || data.error) throw new Error(data.error || 'Failed to update scheduled task');
+        return {
+          success: true,
+          taskId: toolInput.taskId,
+          updates: body,
+          message: `Updated scheduled task ${toolInput.taskId}`
+        };
+      } catch (e) {
+        logger.error('bloom_update_scheduled_task failed:', e.message);
+        return { success: false, error: e.message, message: `FAILED to update task: ${e.message}. Tell the user the exact error.` };
+      }
+    }
+
+    if (toolName === 'bloom_delete_scheduled_task') {
+      try {
+        const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3001}`;
+        const resp = await fetch(`${BASE_URL}/api/agent/tasks/${toolInput.taskId}`, { method: 'DELETE' });
+        const data = await resp.json();
+        if (!resp.ok || data.error) throw new Error(data.error || 'Failed to delete scheduled task');
+        return { success: true, message: `Deleted scheduled task ${toolInput.taskId}` };
+      } catch (e) {
+        logger.error('bloom_delete_scheduled_task failed:', e.message);
+        return { success: false, error: e.message, message: `FAILED to delete task: ${e.message}. Tell the user the exact error.` };
+      }
     }
 
     // All GHL tools + notify_owner route through the unified executor
