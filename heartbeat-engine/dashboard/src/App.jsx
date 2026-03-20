@@ -1331,7 +1331,7 @@ function parseClarification(text) {
 
 // ClarificationCard — renders Sarah's question with clickable option buttons
 function ClarificationCardInline({ clarification, onSelect, c, disabled }) {
-  const [selected, setSelected] = React.useState(null);
+  const [selected, setSelected] = useState(null);
   const handleClick = (opt, i) => {
     if (disabled || selected !== null) return;
     setSelected(i);
