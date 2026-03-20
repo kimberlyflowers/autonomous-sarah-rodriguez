@@ -175,50 +175,89 @@ export default function MobileApp({ user: authUser }) {
 
   const handleFile=(e)=>{const f=Array.from(e.target.files||[]);if(f.length)sendFiles(f,input.trim());e.target.value='';};
 
-  // ── Group chat send (SEQUENTIAL — agents respond one at a time, seeing prior replies) ──
+  // ── Group chat send (SEQUENTIAL + AUTO-CONTINUATION for agent-to-agent conversations) ──
   const sendGroupMessage=useCallback(async()=>{
     const text=groupInput.trim(); if(!text||groupSending||!allAgents.length)return;
     setGroupInput('');setGroupSending(true);
     setGroupMsgs(p=>[...p,{id:'gu-'+Date.now(),from:'user',text,time:ts()}]);
 
-    // Smart routing: detect which agent(s) are being addressed
-    const textLower = text.toLowerCase();
-    const addressed = allAgents.filter(a => {
-      const first = a.name.split(' ')[0].toLowerCase();
-      const full = a.name.toLowerCase();
-      return textLower.includes(first) || textLower.includes(full);
-    });
-    // If specific agent(s) named, only they respond. Otherwise all respond.
-    const respondingAgents = addressed.length > 0 ? addressed : allAgents;
+    // Helper: detect which agents are addressed in a message
+    const detectMentions = (msg, excludeAgent) => {
+      const lower = msg.toLowerCase();
+      return allAgents.filter(a => {
+        if (excludeAgent && a.id === excludeAgent.id) return false;
+        const first = a.name.split(' ')[0].toLowerCase();
+        const full = a.name.toLowerCase();
+        return lower.includes(first) || lower.includes(full);
+      });
+    };
 
-    // Build thread context from recent messages
-    const recentThread = [...groupMsgs.slice(-30), {from:'user',text}];
-    const threadText = recentThread.map(m =>
-      m.from==='user' ? `Client: ${m.text}` : `${m.fromAgent}: ${m.text}`
-    ).join('\n');
-
-    // Send to each agent SEQUENTIALLY — each sees the full thread including prior agent replies
-    let runningThread = threadText;
-    for (const a of respondingAgents) {
-      const contextMsg = `[You are ${a.name} in a group chat with the client and ${allAgents.length-1} other Bloomie(s): ${allAgents.filter(x=>x.id!==a.id).map(x=>x.name).join(', ')}. Here is the conversation so far:\n${runningThread}\n\nRespond naturally as ${a.name}. Only speak if the message is relevant to you — if someone else was asked a direct question and you weren't, just stay silent. Keep it conversational.]`;
-
+    // Helper: send a message to one agent and get response
+    const sendToAgent = async (a, thread) => {
+      const contextMsg = `[You are ${a.name} in a group chat with the client and ${allAgents.length-1} other Bloomie(s): ${allAgents.filter(x=>x.id!==a.id).map(x=>x.name).join(', ')}. Here is the conversation so far:\n${thread}\n\nRespond naturally as ${a.name}. If another team member asked you a question or made a point, engage with them directly — you can talk to each other without waiting for the client. Keep it conversational and collaborative. If the message has nothing to do with you, stay silent.]`;
       try {
         const h = await authHeaders();
         const r = await fetch(API+'/api/chat/message',{method:'POST',headers:h,
           body:JSON.stringify({message:contextMsg,sessionId:groupSessionRef.current+'-'+a.id.slice(0,8),agentId:a.id})});
         const d = await r.json();
         let rt = (d.response||d.message||'').replace(/\s*\[Session context[\s\S]*$/,'').replace(/\s*\[Tool:.*?\]\s*/g,'').trim();
-        // Strip any context prefix the agent might echo back
         rt = rt.replace(/^\[You are[\s\S]*?conversational\.\]\s*/,'').trim();
-
-        if (rt && !rt.match(/^(\*stays silent\*|\*silent\*|\.\.\.|\*no response\*)/i)) {
-          const msg = {id:'ga-'+a.id.slice(0,8)+'-'+Date.now(),from:'agent',fromAgent:a.name,agentId:a.id,avatar:a.avatar_url,text:rt,time:ts()};
-          setGroupMsgs(p=>[...p,msg]);
-          // Add this response to running thread so next agent sees it
-          runningThread += `\n${a.name}: ${rt}`;
-        }
+        if (rt && !rt.match(/^(\*stays silent\*|\*silent\*|\.\.\.|\*no response\*)/i)) return rt;
       } catch(e) { console.error('Group send to '+a.name+' failed:',e); }
+      return null;
+    };
+
+    // Smart routing: detect which agent(s) are being addressed
+    const addressed = detectMentions(text, null);
+    const respondingAgents = addressed.length > 0 ? addressed : allAgents;
+
+    // Build thread context from recent messages
+    const recentThread = [...groupMsgs.slice(-30), {from:'user',text}];
+    let runningThread = recentThread.map(m =>
+      m.from==='user' ? `Client: ${m.text}` : `${m.fromAgent}: ${m.text}`
+    ).join('\n');
+
+    // Phase 1: Initial agent responses (to the user's message)
+    let lastResponders = [];
+    for (const a of respondingAgents) {
+      const rt = await sendToAgent(a, runningThread);
+      if (rt) {
+        const msg = {id:'ga-'+a.id.slice(0,8)+'-'+Date.now(),from:'agent',fromAgent:a.name,agentId:a.id,avatar:a.avatar_url,text:rt,time:ts()};
+        setGroupMsgs(p=>[...p,msg]);
+        runningThread += `\n${a.name}: ${rt}`;
+        lastResponders.push({agent:a, text:rt});
+      }
     }
+
+    // Phase 2: Auto-continuation — if an agent addressed another agent, trigger them to respond
+    // Max 8 rounds to prevent infinite loops
+    for (let round = 0; round < 8; round++) {
+      if (lastResponders.length === 0) break;
+
+      // Check all responses from last round for mentions of other agents
+      let nextResponders = new Map(); // agentId -> agent (deduplicate)
+      for (const {agent: responder, text: respText} of lastResponders) {
+        const mentioned = detectMentions(respText, responder);
+        for (const m of mentioned) {
+          if (!nextResponders.has(m.id)) nextResponders.set(m.id, m);
+        }
+      }
+
+      if (nextResponders.size === 0) break; // No one was addressed — conversation done
+
+      // Send to each mentioned agent
+      lastResponders = [];
+      for (const [, a] of nextResponders) {
+        const rt = await sendToAgent(a, runningThread);
+        if (rt) {
+          const msg = {id:'ga-'+a.id.slice(0,8)+'-'+Date.now()+'-r'+round,from:'agent',fromAgent:a.name,agentId:a.id,avatar:a.avatar_url,text:rt,time:ts()};
+          setGroupMsgs(p=>[...p,msg]);
+          runningThread += `\n${a.name}: ${rt}`;
+          lastResponders.push({agent:a, text:rt});
+        }
+      }
+    }
+
     setGroupSending(false);
   },[groupInput,groupSending,allAgents,groupMsgs]);
 

@@ -2920,34 +2920,73 @@ function App({ authUser }) {
   const sendConfMessage=async()=>{
     const text=confInput.trim(); if(!text||confSending||!agents.length)return;
     setConfInput('');setConfSending(true);
-    setConfMessages(p=>[...p,{id:'cu-'+Date.now(),from:'user',text,time:new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}]);
+    const tstamp=()=>new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
+    setConfMessages(p=>[...p,{id:'cu-'+Date.now(),from:'user',text,time:tstamp()}]);
 
-    // Smart routing: only addressed agents respond
-    const textLower=text.toLowerCase();
-    const addressed=agents.filter(a=>{const fn=a.name.split(' ')[0].toLowerCase();return textLower.includes(fn)||textLower.includes(a.name.toLowerCase());});
-    const responding=addressed.length>0?addressed:agents;
+    // Helper: detect which agents are mentioned in text (excluding the speaker)
+    const detectMentions=(msg,excludeAgent)=>{
+      const lower=msg.toLowerCase();
+      return agents.filter(a=>{
+        if(excludeAgent&&a.id===excludeAgent.id)return false;
+        const first=a.name.split(' ')[0].toLowerCase();
+        return lower.includes(first)||lower.includes(a.name.toLowerCase());
+      });
+    };
 
-    // Build thread context
-    const recent=[...confMessages.slice(-30),{from:'user',text}];
-    const threadText=recent.map(m=>m.from==='user'?`Client: ${m.text}`:`${m.fromAgent||'Agent'}: ${m.text}`).join('\n');
-
-    // Sequential: each agent sees prior agent replies
-    let running=threadText;
-    for(const a of responding){
-      const ctx=`[You are ${a.name} in a group chat with the client and ${agents.filter(x=>x.id!==a.id).map(x=>x.name).join(', ')}. Thread so far:\n${running}\n\nRespond naturally as ${a.name}. Only speak if relevant to you — if someone else was asked, stay silent. Be conversational.]`;
+    // Helper: send to one agent and get response
+    const sendToOne=async(a,thread)=>{
+      const ctx=`[You are ${a.name} in a group chat with the client and ${agents.filter(x=>x.id!==a.id).map(x=>x.name).join(', ')}. Thread so far:\n${thread}\n\nRespond naturally as ${a.name}. If another team member asked you a question or made a point, engage with them directly — you can talk to each other without waiting for the client. Keep it conversational and collaborative. If the message has nothing to do with you, stay silent.]`;
       try{
         const h=await getAuthHeaders();
         const r=await fetch('/api/chat/message',{method:'POST',headers:h,body:JSON.stringify({message:ctx,sessionId:confSessionRef.current+'-'+a.id.slice(0,8),agentId:a.id})});
         const d=await r.json();
         let rt=(d.response||d.message||'').replace(/\s*\[Session context[\s\S]*$/,'').replace(/\s*\[Tool:.*?\]\s*/g,'').trim();
         rt=rt.replace(/^\[You are[\s\S]*?conversational\.\]\s*/,'').trim();
-        if(rt&&!rt.match(/^(\*stays silent\*|\*silent\*|\.\.\.|\*no response\*)/i)){
-          const msg={id:'ca-'+a.id.slice(0,8)+'-'+Date.now(),from:'agent',fromAgent:a.name,agentId:a.id,avatar:a.avatar_url,text:rt,time:new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}),skills:d.skillsUsed||[],hasArtifact:!!rt.match(/Created "|I've created|I created|saved as|saved it to|in your Files tab|saved to.*Files/i)};
-          setConfMessages(p=>[...p,msg]);
-          running+=`\n${a.name}: ${rt}`;
-        }
+        if(rt&&!rt.match(/^(\*stays silent\*|\*silent\*|\.\.\.|\*no response\*)/i))return{rt,skills:d.skillsUsed||[]};
       }catch(e){console.error('Conference send to '+a.name+' failed:',e);}
+      return null;
+    };
+
+    // Smart routing: only addressed agents respond
+    const addressed=detectMentions(text,null);
+    const responding=addressed.length>0?addressed:agents;
+
+    // Build thread context
+    const recent=[...confMessages.slice(-30),{from:'user',text}];
+    let running=recent.map(m=>m.from==='user'?`Client: ${m.text}`:`${m.fromAgent||'Agent'}: ${m.text}`).join('\n');
+
+    // Phase 1: Initial agent responses
+    let lastResponders=[];
+    for(const a of responding){
+      const res=await sendToOne(a,running);
+      if(res){
+        const msg={id:'ca-'+a.id.slice(0,8)+'-'+Date.now(),from:'agent',fromAgent:a.name,agentId:a.id,avatar:a.avatar_url,text:res.rt,time:tstamp(),skills:res.skills,hasArtifact:!!res.rt.match(/Created "|I've created|I created|saved as|saved it to|in your Files tab|saved to.*Files/i)};
+        setConfMessages(p=>[...p,msg]);
+        running+=`\n${a.name}: ${res.rt}`;
+        lastResponders.push({agent:a,text:res.rt});
+      }
     }
+
+    // Phase 2: Auto-continuation — if an agent addressed another agent, trigger them
+    for(let round=0;round<8;round++){
+      if(!lastResponders.length)break;
+      const nextMap=new Map();
+      for(const{agent:resp,text:rText}of lastResponders){
+        for(const m of detectMentions(rText,resp)){if(!nextMap.has(m.id))nextMap.set(m.id,m);}
+      }
+      if(!nextMap.size)break;
+      lastResponders=[];
+      for(const[,a]of nextMap){
+        const res=await sendToOne(a,running);
+        if(res){
+          const msg={id:'ca-'+a.id.slice(0,8)+'-'+Date.now()+'-r'+round,from:'agent',fromAgent:a.name,agentId:a.id,avatar:a.avatar_url,text:res.rt,time:tstamp(),skills:res.skills,hasArtifact:!!res.rt.match(/Created "|I've created|I created|saved as|saved it to|in your Files tab|saved to.*Files/i)};
+          setConfMessages(p=>[...p,msg]);
+          running+=`\n${a.name}: ${res.rt}`;
+          lastResponders.push({agent:a,text:res.rt});
+        }
+      }
+    }
+
     setConfSending(false);
   };
 
