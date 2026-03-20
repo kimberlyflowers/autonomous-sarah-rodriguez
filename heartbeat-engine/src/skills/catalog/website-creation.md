@@ -556,6 +556,80 @@ Works on desktop, breaks on phone → FAIL
 
 ---
 
+## FORMS — AUTOMATIC CRM INTEGRATION (MANDATORY)
+
+**EVERY website you create MUST have forms that send leads directly to BLOOM CRM (GoHighLevel).**
+This is NON-NEGOTIABLE. When someone fills out a form on a Bloomie-created site, that person
+must automatically become a contact in GHL. No exceptions.
+
+### How It Works
+All forms POST to `/api/forms/submit` (same domain as the published site). The endpoint:
+- Creates a GHL contact with name, email, phone
+- Tags them as "website-lead" (or custom tags)
+- Sets the source to the page title so the user knows which site generated the lead
+- Adds message/extra fields as a note on the contact
+
+### REQUIRED JavaScript Pattern — Use in ALL Websites
+
+```html
+<form id="contact-form" onsubmit="handleSubmit(event)">
+  <input type="text" name="name" placeholder="Your Name" required />
+  <input type="email" name="email" placeholder="Your Email" required />
+  <input type="tel" name="phone" placeholder="Phone (optional)" />
+  <textarea name="message" placeholder="Tell us about your project..." required></textarea>
+  <button type="submit">Get Started</button>
+</form>
+<script>
+async function handleSubmit(e) {
+  e.preventDefault();
+  const form = e.target;
+  const btn = form.querySelector('button[type="submit"]');
+  const origText = btn.textContent;
+  btn.textContent = 'Sending...';
+  btn.disabled = true;
+  try {
+    const data = Object.fromEntries(new FormData(form));
+    data.source = document.title + ' — Contact Form';
+    data.tags = ['website-lead'];
+    const res = await fetch('/api/forms/submit', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(data)
+    });
+    const result = await res.json();
+    if (result.success) {
+      form.innerHTML = '<div style="text-align:center;padding:40px 20px"><h3 style="color:#27ae60">Thank you!</h3><p>We will be in touch soon.</p></div>';
+    } else { btn.textContent = 'Try Again'; btn.disabled = false; }
+  } catch { btn.textContent = 'Try Again'; btn.disabled = false; }
+}
+</script>
+```
+
+### Form Types (adjust fields and tags per use case)
+- **Contact form**: name, email, phone, message → tags: ["website-lead"]
+- **Book a Demo**: name, email, phone, company, "What are you looking for?" → tags: ["demo-lead"]
+- **Sign Up**: name, email, phone → tags: ["signup-lead"]
+- **Get a Quote**: name, email, phone, service type, message → tags: ["quote-request"]
+- **Newsletter**: email only → tags: ["newsletter"]
+
+### Checkout / Payment Forms
+For checkout pages, FIRST check if a GHL order form exists:
+1. Call `ghl_list_forms` to find payment/order forms
+2. If found: embed via iframe → `<iframe src="https://api.leadconnectorhq.com/widget/form/{formId}" style="width:100%;min-height:600px;border:none;" scrolling="no"></iframe>`
+3. If not found: create a lead-capture form tagged "checkout-lead" + "payment-pending" and tell the user to set up a GHL order form for actual payment processing
+
+### Form Rules (MUST FOLLOW)
+1. ✅ EVERY website = at least one CRM-connected form
+2. ✅ Always use `/api/forms/submit` — NEVER `mailto:`, `formspree.io`, or empty action
+3. ✅ Always include `data.source = document.title` so leads are traceable
+4. ✅ Show success message after submission (replace form with thank you)
+5. ✅ Style forms to match brand kit (colors, fonts, border-radius)
+6. ✅ Full-width inputs on mobile
+7. ❌ NEVER create forms that don't connect to the CRM
+8. ❌ NEVER use placeholder action URLs or dummy endpoints
+
+---
+
 ## FINAL REMINDERS
 
 1. **Mobile first** - If it doesn't work on mobile, it's broken
@@ -565,6 +639,7 @@ Works on desktop, breaks on phone → FAIL
 5. **Single CTA** - ONE action per page
 6. **Real content** - No Lorem Ipsum, no placeholders
 7. **Save as `.html`** - Use `create_artifact` tool
+8. **CRM forms** - EVERY form must POST to `/api/forms/submit` — leads go straight to BLOOM CRM
 
-The goal: A website that converts visitors to action, looks professional, and works flawlessly on every device.
+The goal: A website that converts visitors to action, looks professional, works flawlessly on every device, and sends every lead directly to the CRM.
  
