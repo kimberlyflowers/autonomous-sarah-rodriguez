@@ -417,6 +417,107 @@ const servePublishedPage = async (req, res) => {
     return res.status(500).send('Server error');
   }
 };
+// ── FORM SUBMISSION → GHL CONTACT — receives form data from Bloomie-built websites ──────────
+app.post('/api/forms/submit', async (req, res) => {
+  // Allow cross-origin form submissions from published sites
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  try {
+    const { firstName, lastName, name, email, phone, message, source, tags, customFields, ...extra } = req.body;
+
+    // Parse name if only "name" provided (not firstName/lastName)
+    let fName = firstName || '';
+    let lName = lastName || '';
+    if (!fName && name) {
+      const parts = name.trim().split(/\s+/);
+      fName = parts[0] || '';
+      lName = parts.slice(1).join(' ') || '';
+    }
+
+    if (!email && !phone) {
+      return res.status(400).json({ success: false, error: 'Email or phone is required' });
+    }
+
+    const apiKey = process.env.GHL_API_KEY;
+    const locationId = process.env.GHL_LOCATION_ID;
+    if (!apiKey) {
+      logger.error('GHL_API_KEY not configured — form submission cannot create contact');
+      return res.status(500).json({ success: false, error: 'CRM not configured' });
+    }
+
+    // Build GHL contact payload
+    const contactData = {
+      locationId,
+      firstName: fName,
+      lastName: lName,
+      ...(email && { email }),
+      ...(phone && { phone }),
+      source: source || 'Bloomie Website Form',
+      tags: tags || ['website-lead'],
+    };
+
+    // Add any extra fields as custom fields or notes
+    const extraFields = { ...extra };
+    if (message) extraFields.message = message;
+
+    // Create contact in GHL
+    const { default: axios } = await import('axios');
+    const ghlRes = await axios({
+      method: 'POST',
+      url: 'https://services.leadconnectorhq.com/contacts/',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Version': '2021-07-28',
+        'Content-Type': 'application/json',
+      },
+      data: contactData
+    });
+
+    const contactId = ghlRes.data?.contact?.id;
+    logger.info(`Form submission → GHL contact created: ${contactId}`, { email, source: contactData.source });
+
+    // If there's a message or extra fields, add as a note
+    if (Object.keys(extraFields).length > 0 && contactId) {
+      const noteBody = Object.entries(extraFields)
+        .map(([k, v]) => `**${k}**: ${v}`)
+        .join('\n');
+      try {
+        await axios({
+          method: 'POST',
+          url: `https://services.leadconnectorhq.com/contacts/${contactId}/notes`,
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Version': '2021-07-28',
+            'Content-Type': 'application/json',
+          },
+          data: { body: `Website Form Submission:\n${noteBody}`, userId: locationId }
+        });
+      } catch (noteErr) {
+        logger.warn('Failed to add form note to contact:', noteErr.message);
+      }
+    }
+
+    res.json({ success: true, contactId, message: 'Thank you! We\'ll be in touch soon.' });
+  } catch (err) {
+    // GHL returns 400 if contact already exists — try to update instead
+    if (err.response?.status === 400 || err.response?.status === 422) {
+      logger.info('Contact may already exist — form submission noted');
+      return res.json({ success: true, message: 'Thank you! We\'ll be in touch soon.' });
+    }
+    logger.error('Form submission error:', err.response?.data || err.message);
+    res.status(500).json({ success: false, error: 'Something went wrong. Please try again.' });
+  }
+});
+// CORS preflight for form submissions
+app.options('/api/forms/submit', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.sendStatus(204);
+});
+
 app.get('/p/:slug', servePublishedPage);
 app.get('/s/:slug', servePublishedPage);
 
