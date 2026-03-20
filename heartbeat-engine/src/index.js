@@ -100,6 +100,31 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Model status — shows current LLM model, provider, available models, and failover chain
+app.get('/model-status', async (req, res) => {
+  try {
+    const { getLLMClient } = await import('./llm/unified-client.js');
+    const llm = getLLMClient();
+    res.json({
+      currentModel: llm.model,
+      currentProvider: llm.provider,
+      failoverActive: llm.isFailoverActive,
+      availableModels: llm.getAvailableModels(),
+      providerHealth: llm.getProviderHealth(),
+      envVars: {
+        LLM_MODEL: process.env.LLM_MODEL || '(not set)',
+        ANTHROPIC_MODEL: process.env.ANTHROPIC_MODEL || '(not set)',
+        hasAnthropicKey: !!process.env.ANTHROPIC_API_KEY,
+        hasOpenAIKey: !!process.env.OPENAI_API_KEY,
+        hasGeminiKey: !!process.env.GEMINI_API_KEY,
+        hasDeepSeekKey: !!process.env.DEEPSEEK_API_KEY,
+      }
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Detailed status endpoint with connection checks
 app.get('/status', async (req, res) => {
   try {

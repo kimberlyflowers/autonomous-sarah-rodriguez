@@ -1,7 +1,9 @@
-// BLOOM Chat API - Direct Anthropic API call (no executor)
+// BLOOM Chat API — Model-Agnostic via Unified LLM Client
+// Supports: Claude, GPT-4o, Gemini, DeepSeek with automatic failover
 import express from 'express';
 import mammoth from 'mammoth';
 import Anthropic from '@anthropic-ai/sdk';
+import { getLLMClient } from '../llm/unified-client.js';
 import { createLogger } from '../logging/logger.js';
 
 // Safe skill import — don't crash the whole chat if skills fail to load
@@ -3673,12 +3675,95 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
   }
 }
 
-// AGENTIC LOOP — handles multi-turn tool calling
+// ═══════════════════════════════════════════════════════════════════════════
+// MODEL-AGNOSTIC CHAT — uses Unified LLM Client with automatic failover
+// Supports: Claude, GPT-4o, GPT-4o-mini, Gemini, DeepSeek
+// Failover: primary model → next in chain → next → error
+// Response format: always returns Anthropic-compatible shape so the agentic
+// loop doesn't need to know which model is actually running.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Convert unified client response → Anthropic-native field names
+// so the rest of chatWithAgent works unchanged regardless of provider.
+function toAnthropicFormat(unifiedResponse) {
+  return {
+    content: unifiedResponse.content || [],
+    stop_reason: unifiedResponse.stopReason === 'tool_use' ? 'tool_use' : 'end_turn',
+    usage: {
+      input_tokens: unifiedResponse.usage?.inputTokens || 0,
+      output_tokens: unifiedResponse.usage?.outputTokens || 0,
+    },
+    model: unifiedResponse.model,
+    _provider: unifiedResponse.raw?.provider || 'unknown',
+  };
+}
+
+// Primary call path — uses unified client with failover + retry
 async function callAnthropicWithRetry(params, maxRetries = 3, client = null) {
-  const apiClient = client || anthropic;
+  const llm = getLLMClient();
+  const currentProvider = llm.provider;
+  const currentModel = llm.model;
+
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       // 150 second timeout per attempt
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('LLM API timeout (150s)')), 150000)
+      );
+
+      // The unified client handles format conversion internally:
+      // - Anthropic: sends native format
+      // - OpenAI/Gemini/DeepSeek: converts messages + tools to OpenAI format
+      // - Response is always normalized to Anthropic-style content blocks
+      const unifiedResult = await Promise.race([
+        llm.chat({
+          messages: params.messages,
+          system: params.system,
+          tools: params.tools || [],
+          maxTokens: params.max_tokens || 8192,
+          temperature: params.temperature || 0.1,
+        }),
+        timeoutPromise,
+      ]);
+
+      // Log which model actually handled the request (may differ during failover)
+      if (llm.model !== currentModel || llm.provider !== currentProvider) {
+        logger.info(`Request handled by failover: ${llm.provider}/${llm.model} (primary: ${currentProvider}/${currentModel})`);
+      }
+
+      return toAnthropicFormat(unifiedResult);
+    } catch (err) {
+      const status = err?.status || err?.error?.status;
+      const errMsg = err?.message || '';
+
+      // Don't retry on invalid_request_error (prompt too long, bad params) — retrying won't help
+      if (status === 400 || errMsg.includes('prompt is too long') || errMsg.includes('invalid_request_error')) {
+        logger.error(`LLM API invalid request (not retryable): ${errMsg.slice(0, 200)}`);
+        throw err;
+      }
+
+      // The unified client already handles failover for 429/529/5xx errors internally.
+      // This retry loop handles transient errors that the unified client didn't catch.
+      const isTransient = status === 429 || status === 529 ||
+        errMsg.includes('overloaded') || errMsg.includes('rate limit') || errMsg.includes('timeout');
+
+      if (isTransient && attempt < maxRetries) {
+        const delay = Math.pow(2, attempt) * 2000 + Math.random() * 1000;
+        logger.warn(`LLM API transient error, retrying in ${Math.round(delay/1000)}s (attempt ${attempt+1}/${maxRetries}): ${errMsg.slice(0, 100)}`);
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
+// Legacy direct Anthropic call — ONLY used for specialist dispatch fallback
+// and any code that explicitly needs the Anthropic SDK.
+async function callAnthropicDirect(params, maxRetries = 2, client = null) {
+  const apiClient = client || anthropic;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
       const timeoutPromise = new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Anthropic API timeout (150s)')), 150000)
       );
@@ -3689,17 +3774,12 @@ async function callAnthropicWithRetry(params, maxRetries = 3, client = null) {
     } catch (err) {
       const status = err?.status || err?.error?.status;
       const errMsg = err?.message || '';
-      // Don't retry on invalid_request_error (prompt too long, bad params) — retrying won't help
-      if (status === 400 || errMsg.includes('prompt is too long') || errMsg.includes('invalid_request_error')) {
-        logger.error(`Anthropic API invalid request (not retryable): ${errMsg.slice(0, 200)}`);
-        throw err;
-      }
-      const isOverloaded = status === 529 || status === 529 ||
-        errMsg.includes('overloaded') || errMsg.includes('529');
+      if (status === 400 || errMsg.includes('prompt is too long') || errMsg.includes('invalid_request_error')) throw err;
+      const isOverloaded = status === 529 || errMsg.includes('overloaded') || errMsg.includes('529');
       const isRateLimit = status === 429;
       if ((isOverloaded || isRateLimit) && attempt < maxRetries) {
-        const delay = Math.pow(2, attempt) * 2000 + Math.random() * 1000; // 2s, 4s, 8s
-        logger.warn(`Anthropic API overloaded, retrying in ${Math.round(delay/1000)}s (attempt ${attempt+1}/${maxRetries})`);
+        const delay = Math.pow(2, attempt) * 2000 + Math.random() * 1000;
+        logger.warn(`Anthropic direct call retry in ${Math.round(delay/1000)}s (attempt ${attempt+1}/${maxRetries})`);
         await new Promise(r => setTimeout(r, delay));
         continue;
       }
@@ -3927,10 +4007,11 @@ When a user asks you to edit, modify, or update something you previously created
   const toolFailureCounts = {}; // { toolName: count } — tracks how many times each tool has failed
   const failedTools = [];       // Array of { name, error, round } — full failure log
 
-  // Model selection — always use configured model unless explicitly overridden
+  // Model selection — uses unified client (reads LLM_MODEL or ANTHROPIC_MODEL env var)
   const messageText = Array.isArray(userMessage) ? userMessage.filter(b => b.type === 'text').map(b => b.text).join(' ') : userMessage;
-  const chatModel = process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001';
-  logger.info('Chat model selected', { model: chatModel });
+  const llmClient = getLLMClient();
+  const chatModel = llmClient.model;
+  logger.info('Chat model selected', { model: chatModel, provider: llmClient.provider, failoverReady: !llmClient.isFailoverActive });
 
   // ── PASSIVE TASK TRACKING — auto-populate Active Tasks panel ──────────
   const trackingKey = sessionId || 'default';
@@ -4040,10 +4121,10 @@ When a user asks you to edit, modify, or update something you previously created
 
   // ── HELPER: log cost and write usage metrics ───────────────────────────
   async function logCostAndUsage(round) {
-    const isHaiku = chatModel.includes('haiku');
-    const inputRate = isHaiku ? 0.80 : 3.00;
-    const outputRate = isHaiku ? 4.00 : 15.00;
-    const turnCostUSD = ((totalInputTokens / 1e6) * inputRate) + ((totalOutputTokens / 1e6) * outputRate);
+    // Use unified client's pricing table for accurate cost across all models
+    const { calculateCost } = await import('../llm/unified-client.js');
+    const costCents = calculateCost(chatModel, { inputTokens: totalInputTokens, outputTokens: totalOutputTokens });
+    const turnCostUSD = costCents / 100;
     logger.info(`💰 COST: $${turnCostUSD.toFixed(4)} this turn (${round + 1} API calls, ${totalInputTokens} in / ${totalOutputTokens} out, model: ${chatModel})`, {
       cost: turnCostUSD, rounds: round + 1, inputTokens: totalInputTokens, outputTokens: totalOutputTokens, model: chatModel, tools: toolsUsed.map(t=>t.name).join(',')
     });

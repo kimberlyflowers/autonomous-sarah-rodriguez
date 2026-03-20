@@ -54,9 +54,12 @@ const PROVIDERS = {
 // ── Failover Chain ─────────────────────────────────────────────────────────
 // When a provider fails, silently try the next one.
 // User never sees "Claude is down" — Sarah just keeps working.
+// Order: Claude (cheapest) → GPT-4o → GPT-4o-mini → Gemini Flash
+// The chain skips the current primary model and tries everything else.
 
 const FAILOVER_CHAIN = [
   { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
+  { provider: 'openai',    model: 'gpt-4o' },
   { provider: 'openai',    model: 'gpt-4o-mini' },
   { provider: 'gemini',    model: 'gemini-2.5-flash' },
 ];
