@@ -2948,10 +2948,25 @@ function App({ authUser }) {
             confSessionRef.current=latest.id.replace(/-[a-f0-9]{8}$/,'');
           }
           const activeBase=confSessionRef.current;
-          // Combine messages from all conference sub-sessions for the active conference
-          const allConfMsgs=[];
-          for(const cs of confSessions){
-            if(!cs.id.startsWith(activeBase))continue;
+          // Load conference sub-sessions: use FIRST sub-session for user messages, ALL for agent messages
+          // This avoids duplicate user messages entirely since each sub-session has the same user input
+          const extractUserMsg=(ctxText)=>{
+            if(!ctxText||!ctxText.startsWith('[You are '))return null;
+            const threadMatch=ctxText.match(/(?:Thread so far|Here is the conversation so far):\n([\s\S]*?)\n\nRespond naturally/);
+            if(!threadMatch)return null;
+            const lines=threadMatch[1].split('\n');
+            for(let i=lines.length-1;i>=0;i--){
+              if(lines[i].startsWith('Client: '))return lines[i].slice(8);
+            }
+            return null;
+          };
+
+          const matchingSessions=confSessions.filter(cs=>cs.id.startsWith(activeBase));
+          const agentMessages=[]; // collect all agent responses
+          const userMessages=[];  // collect user messages from first sub-session only
+          let firstSessionDone=false;
+
+          for(const cs of matchingSessions){
             try{
               const r3=await fetch('/api/chat/sessions/'+cs.id,{headers:h});
               const d3=await r3.json();
@@ -2959,60 +2974,36 @@ function App({ authUser }) {
               const agentAvatar=agents.find(a=>cs.id.includes(a.id.slice(0,8)))?.avatar_url;
               const agentId=agents.find(a=>cs.id.includes(a.id.slice(0,8)))?.id;
               for(const m of(d3.messages||[])){
-                allConfMsgs.push({
-                  id:m.id,
-                  from:m.role==='user'?'user':'agent',
-                  fromAgent:m.role==='assistant'?agentName:undefined,
-                  agentId:m.role==='assistant'?agentId:undefined,
-                  avatar:m.role==='assistant'?agentAvatar:undefined,
-                  text:m.content,
-                  time:new Date(m.created_at).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}),
-                  _ts:new Date(m.created_at).getTime()
-                });
+                const ts=new Date(m.created_at).getTime();
+                const time=new Date(m.created_at).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
+                if(m.role==='assistant'){
+                  agentMessages.push({id:m.id,from:'agent',fromAgent:agentName,agentId,avatar:agentAvatar,text:m.content,time,_ts:ts});
+                }else if(!firstSessionDone){
+                  // Only extract user messages from the first sub-session to prevent duplicates
+                  const txt=m.content;
+                  if(txt&&txt.startsWith('[You are ')){
+                    const realText=extractUserMsg(txt);
+                    if(realText)userMessages.push({id:m.id,from:'user',text:realText,time,_ts:ts});
+                  }else{
+                    userMessages.push({id:m.id,from:'user',text:txt,time,_ts:ts});
+                  }
+                }
               }
+              if(!firstSessionDone)firstSessionDone=true;
             }catch{}
           }
-          // Sort by timestamp and process messages
-          allConfMsgs.sort((a,b)=>a._ts-b._ts);
 
-          // Extract real user messages from context strings
-          // Context format: [You are {name}... Thread so far:\nClient: msg1\nAgent: resp\nClient: msg2\n\nRespond naturally...]
-          const extractUserMsg=(ctxText)=>{
-            if(!ctxText||!ctxText.startsWith('[You are '))return null;
-            // Find the transcript section
-            const threadMatch=ctxText.match(/(?:Thread so far|Here is the conversation so far):\n([\s\S]*?)\n\nRespond naturally/);
-            if(!threadMatch)return null;
-            const lines=threadMatch[1].split('\n');
-            // Get the LAST "Client:" line — that's the newest user message
-            for(let i=lines.length-1;i>=0;i--){
-              if(lines[i].startsWith('Client: ')){
-                return lines[i].slice(8); // remove "Client: " prefix
-              }
+          // Merge, sort by timestamp, and deduplicate any remaining user dupes by text
+          const allMerged=[...userMessages,...agentMessages].sort((a,b)=>a._ts-b._ts);
+          const seenUserTexts=new Set();
+          const deduped=allMerged.filter(m=>{
+            if(m.from==='user'){
+              const key=m.text?.slice(0,200);
+              if(seenUserTexts.has(key))return false;
+              seenUserTexts.add(key);
             }
-            return null;
-          };
-
-          const seen=new Set();
-          const processed=[];
-          for(const m of allConfMsgs){
-            if(m.from==='user'&&m.text&&m.text.startsWith('[You are ')){
-              // Transform context string into actual user message
-              const realText=extractUserMsg(m.text);
-              if(!realText)continue; // couldn't extract, skip
-              const key=realText.slice(0,100)+'-'+Math.floor(m._ts/5000);
-              if(seen.has(key))continue; // deduplicate across sub-sessions
-              seen.add(key);
-              processed.push({...m,text:realText});
-            }else if(m.from==='user'){
-              const key=m.text.slice(0,100)+'-'+Math.floor(m._ts/5000);
-              if(seen.has(key))continue;
-              seen.add(key);
-              processed.push(m);
-            }else{
-              processed.push(m); // agent messages pass through
-            }
-          }
-          const deduped=processed;
+            return true;
+          });
           if(deduped.length>0)setConfMessages(deduped);
         }
       }catch(e){console.error('Failed to load conference history:',e);}
