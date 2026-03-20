@@ -1386,21 +1386,38 @@ const _ALL_TOOLS = [
   },
   {
     name: "ghl_create_blog_post",
-    description: "Create a new blog post as draft in BLOOM CRM. The blogId defaults to the BLOOM blog (DHQrtpkQ3Cp7c96FCyDu). Always create as draft first so the user can review. After creating, notify the user with the blog link. Use the locked-in HTML template from the blog-content skill.",
+    description: "Create a blog post using the LOCKED BLOOM template. Pass structured data — the handler auto-assembles the HTML with the approved gradient header, orange H2s, peach callouts, and dark CTA card. Do NOT write raw HTML. Always draft first.",
     input_schema: {
       type: "object",
       properties: {
-        blogId: { type: "string", description: "Blog site ID. Defaults to BLOOM blog (DHQrtpkQ3Cp7c96FCyDu). You almost never need to set this." },
-        title: { type: "string", description: "Post title" },
-        content: { type: "string", description: "Full HTML content using the locked-in blog template." },
-        status: { type: "string", enum: ["draft", "published"], description: "Always 'draft' unless told to publish" },
-        imageUrl: { type: "string", description: "Featured image URL" },
+        title: { type: "string", description: "Blog post main title (h1, shown in gradient header)" },
+        subtitle: { type: "string", description: "Subtitle shown below title in gradient header" },
+        intro: { type: "string", description: "Opening hook (1-3 sentences, displayed as italic blockquote with orange border)" },
+        sections: {
+          type: "array",
+          description: "Blog content sections. Each gets an orange H2 heading with pink top border, paragraphs, optional highlight callout, optional bullet list.",
+          items: {
+            type: "object",
+            properties: {
+              heading: { type: "string", description: "Section heading (h2, orange)" },
+              paragraphs: { description: "String or array of paragraph strings" },
+              highlight: { type: "string", description: "Optional peach callout box text" },
+              highlightLabel: { type: "string", description: "Callout label (default: 'The impact:')" },
+              bullets: { type: "array", items: { type: "string" }, description: "Optional bullet points (orange triangle markers)" }
+            },
+            required: ["heading"]
+          }
+        },
+        ctaHeadline: { type: "string", description: "CTA card headline (connect to topic)" },
+        ctaBody: { type: "string", description: "CTA card body (1-2 sentences)" },
+        imageUrl: { type: "string", description: "Hero image URL from image_generate" },
         slug: { type: "string", description: "URL slug (lowercase, hyphenated, keyword-rich)" },
-        metaTitle: { type: "string", description: "SEO meta title (under 65 chars)" },
         metaDescription: { type: "string", description: "SEO meta description (150-160 chars)" },
+        keywords: { type: "string", description: "Comma-separated SEO keywords" },
+        status: { type: "string", enum: ["draft", "published"], description: "Always 'draft' unless told to publish" },
         tags: { type: "array", items: { type: "string" }, description: "Blog tags" }
       },
-      required: ["title", "content"]
+      required: ["title", "sections"]
     }
   },
   {
@@ -1474,19 +1491,27 @@ const _ALL_TOOLS = [
 
   {
     name: "ghl_create_email_template",
-    description: "Create a new email template as a DRAFT in the CRM. Always create as draft first so the user can review before sending. After creating, notify the user with the draft link. Use Inter font for headings in the HTML content. Include a hero image and Bloomie Staffing CTA.",
+    description: "Create an email using the LOCKED BLOOM template. Pass structured data — the handler auto-assembles the HTML with hero image, orange callout box, gradient CTA button, and dark Bloomie CTA card. Do NOT write raw HTML. Always draft first.",
     input_schema: {
       type: "object",
       properties: {
-        name: { type: "string", description: "Template name (internal reference)" },
-        subject: { type: "string", description: "Email subject line. 6-10 words, front-load value, personalize when possible." },
-        previewText: { type: "string", description: "Preview text (first 90 chars after subject). Complement the subject, don't repeat." },
-        html: { type: "string", description: "Full HTML email content with Inter font, hero image, single-column layout, and CTA." },
-        imageUrl: { type: "string", description: "Hero image URL for the email" },
-        type: { type: "string", enum: ["newsletter", "promotional", "welcome", "re-engagement", "blog-announcement"], description: "Email type/category" },
-        tags: { type: "array", items: { type: "string" }, description: "Tags for categorization" }
+        name: { type: "string", description: "Template name (e.g. 'Blog Announcement - 5 Signs AI Employee - Mar 2026')" },
+        subject: { type: "string", description: "Email subject line. 6-10 words, front-load value." },
+        previewText: { type: "string", description: "Preview text (first 90 chars). Complement subject, don't repeat." },
+        headline: { type: "string", description: "Email headline (h1). For blog emails: use the ACTUAL blog title, never 'New Blog Post'." },
+        openingHook: { type: "string", description: "Opening paragraph (1-2 conversational sentences)" },
+        calloutHeading: { type: "string", description: "Callout box heading. Blog: 'Inside the post:', Newsletter: 'This week:'" },
+        calloutItems: { type: "array", items: { type: "string" }, description: "3-5 takeaway items for the orange-bordered callout box" },
+        extraParagraph: { type: "string", description: "Optional extra paragraph after callout" },
+        ctaButtonText: { type: "string", description: "Main CTA button text (e.g. 'Read the Full Post')" },
+        ctaButtonUrl: { type: "string", description: "Main CTA button URL (blog URL, landing page, etc.)" },
+        ctaHeadline: { type: "string", description: "Bloomie CTA card headline (connect to email topic)" },
+        ctaBody: { type: "string", description: "Bloomie CTA card body (1-2 sentences)" },
+        imageUrl: { type: "string", description: "Hero image URL from image_generate" },
+        type: { type: "string", enum: ["newsletter", "promotional", "welcome", "re-engagement", "blog-announcement"], description: "Email type" },
+        tags: { type: "array", items: { type: "string" }, description: "Tags" }
       },
-      required: ["name", "subject", "html"]
+      required: ["name", "subject", "calloutItems"]
     }
   },
   {

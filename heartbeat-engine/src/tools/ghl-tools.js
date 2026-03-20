@@ -102,6 +102,245 @@ async function resolveLocationId(orgId) {
   return process.env.GHL_LOCATION_ID;
 }
 
+// ── LOCKED BLOG TEMPLATE ASSEMBLER ─────────────────────────────────────
+// Sarah provides structured data, this function assembles the final HTML.
+// She NEVER touches CSS or HTML structure directly.
+function assembleBlogHTML(data) {
+  const {
+    title, subtitle, heroImageUrl, altText,
+    metaDescription, keywords, canonicalUrl, companyName,
+    intro, sections, ctaHeadline, ctaBody
+  } = data;
+
+  const year = new Date().getFullYear();
+  const isoDate = new Date().toISOString().split('T')[0];
+  const company = companyName || 'Bloomie Staffing';
+  const canonical = canonicalUrl || '';
+  const kw = keywords || 'AI employee, business automation';
+  const metaDesc = metaDescription || '';
+
+  // Build section HTML
+  const sectionsHTML = (sections || []).map((s, i) => {
+    let html = `    <h2>${s.heading}</h2>\n`;
+    // Paragraphs
+    if (s.paragraphs) {
+      const paras = Array.isArray(s.paragraphs) ? s.paragraphs : [s.paragraphs];
+      paras.forEach(p => { html += `    <p>${p}</p>\n`; });
+    }
+    // Highlight callout
+    if (s.highlight) {
+      html += `    <div class="highlight">\n      <strong>${s.highlightLabel || 'The impact:'}</strong> ${s.highlight}\n    </div>\n`;
+    }
+    // Bullet list
+    if (s.bullets && s.bullets.length > 0) {
+      html += `    <ul>\n`;
+      s.bullets.forEach(b => { html += `      <li>${b}</li>\n`; });
+      html += `    </ul>\n`;
+    }
+    return html;
+  }).join('\n');
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${title} | ${company}</title>
+  <meta name="description" content="${metaDesc}">
+  <meta name="keywords" content="${kw}">
+  <meta property="og:title" content="${title}">
+  <meta property="og:description" content="${metaDesc}">
+  <meta property="og:image" content="${heroImageUrl || ''}">
+  <meta property="og:type" content="article">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="canonical" href="${canonical}">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    "headline": "${title}",
+    "description": "${metaDesc}",
+    "image": "${heroImageUrl || ''}",
+    "author": { "@type": "Organization", "name": "${company}" },
+    "publisher": { "@type": "Organization", "name": "${company}" },
+    "datePublished": "${isoDate}",
+    "mainEntityOfPage": { "@type": "WebPage", "@id": "${canonical}" }
+  }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Inter', sans-serif; line-height: 1.6; color: #2D3436; background-color: #FFFFFF; }
+    header { background: linear-gradient(135deg, #F4A261 0%, #E76F8B 100%); color: #FFFFFF; padding: 48px 24px; text-align: center; width: 100%; }
+    h1 { font-size: 36px; font-weight: 700; margin-bottom: 12px; color: #FFFFFF; line-height: 1.3; max-width: 800px; margin-left: auto; margin-right: auto; }
+    .subtitle { font-size: 16px; opacity: 0.95; margin-top: 8px; max-width: 800px; margin-left: auto; margin-right: auto; }
+    .hero-image { width: 100%; max-height: 420px; object-fit: cover; display: block; }
+    .content { max-width: 800px; margin: 0 auto; padding: 40px 30px; }
+    h2 { font-size: 28px; font-weight: 700; color: #F4A261; margin: 35px 0 15px 0; padding-top: 20px; border-top: 3px solid #E76F8B; }
+    h2:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
+    p { font-size: 16px; margin-bottom: 18px; line-height: 1.8; color: #2D3436; }
+    .intro { font-size: 18px; line-height: 1.8; color: #2D3436; margin-bottom: 30px; font-style: italic; border-left: 4px solid #F4A261; padding: 20px; background: #F5F5F5; }
+    ul { list-style: none; padding: 0; margin: 20px 0; }
+    li { padding: 12px 0 12px 30px; position: relative; font-size: 15px; line-height: 1.7; }
+    li:before { content: "\\25B8"; position: absolute; left: 0; color: #E76F8B; font-size: 20px; }
+    .highlight { background: #FFF3E0; padding: 25px; border-left: 4px solid #F4A261; margin: 25px 0; border-radius: 0 8px 8px 0; }
+    .highlight strong { color: #E76F8B; }
+    .cta-section { background: linear-gradient(135deg, #2D3436 0%, #404854 100%); color: #FFFFFF; padding: 40px 30px; margin-top: 40px; text-align: center; border-radius: 8px; }
+    .cta-section h3 { font-size: 24px; font-weight: 700; margin-bottom: 15px; color: #F4A261; }
+    .cta-section p { color: #FFFFFF; margin-bottom: 20px; font-size: 16px; }
+    .cta-buttons { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 20px; }
+    .cta-btn { display: inline-flex; align-items: center; gap: 8px; padding: 14px 28px; border-radius: 8px; font-family: 'Inter', sans-serif; font-weight: 600; font-size: 15px; text-decoration: none; transition: transform 0.2s; }
+    .cta-btn:hover { transform: translateY(-2px); }
+    .cta-primary { background: linear-gradient(135deg, #F4A261 0%, #E76F8B 100%); color: #FFFFFF; }
+    .cta-secondary { background: rgba(255,255,255,0.12); color: #FFFFFF; border: 1.5px solid rgba(255,255,255,0.3); }
+    .tagline { font-size: 14px; color: #E76F8B; margin-top: 12px; font-weight: 600; }
+    footer { padding: 30px; text-align: center; border-top: 1px solid #E0E0E0; font-size: 13px; color: #666; }
+    @media (max-width: 600px) {
+      .content { padding: 25px 20px; }
+      h1 { font-size: 26px; }
+      h2 { font-size: 22px; }
+      header { padding: 30px 20px; }
+      .hero-image { max-height: 250px; }
+      .intro { padding: 15px; }
+      .cta-section { padding: 28px 20px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>${title}</h1>
+    <p class="subtitle">${subtitle || ''}</p>
+  </header>
+
+  <img src="${heroImageUrl || ''}" alt="${altText || title}" class="hero-image">
+
+  <div class="content">
+    <div class="intro">
+      ${intro || ''}
+    </div>
+
+${sectionsHTML}
+
+    <div class="cta-section">
+      <h3>${ctaHeadline || 'Ready to Transform Your Operations?'}</h3>
+      <p>${ctaBody || 'See how AI automation can streamline your workflows and cut costs without cutting corners.'}</p>
+      <div class="cta-buttons">
+        <a href="tel:+18005551234" class="cta-btn cta-primary">Call Us Now</a>
+        <a href="https://bloomie.ai/demo" class="cta-btn cta-secondary">Schedule a Demo</a>
+        <a href="sms:+18005551234" class="cta-btn cta-secondary">Text Your Questions</a>
+      </div>
+      <p class="tagline">Hire an AI Employee. Get Work Done.</p>
+    </div>
+  </div>
+
+  <footer>
+    &copy; ${year} ${company}. All rights reserved.<br>
+    Empowering entrepreneurs with AI-powered business solutions.
+  </footer>
+</body>
+</html>`;
+}
+
+// ── LOCKED EMAIL TEMPLATE ASSEMBLER ────────────────────────────────────
+function assembleEmailHTML(data) {
+  const {
+    subject, headline, heroImageUrl, altText,
+    openingHook, calloutHeading, calloutItems,
+    extraParagraph, ctaButtonText, ctaButtonUrl,
+    ctaHeadline, ctaBody
+  } = data;
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject || ''}</title>
+  <!--[if mso]><style>* { font-family: Arial, sans-serif !important; }</style><![endif]-->
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Inter', Arial, Helvetica, sans-serif; font-size: 16px; line-height: 1.7; color: #2D3436; background: #f5f5f5; -webkit-text-size-adjust: 100%; }
+    .email-wrapper { max-width: 600px; margin: 0 auto; background: #ffffff; }
+    .email-header { padding: 32px 32px 0; }
+    .hero-img { width: 100%; max-height: 300px; object-fit: cover; border-radius: 8px; }
+    .email-body { padding: 32px; }
+    h1 { font-family: 'Inter', Arial, sans-serif; font-weight: 800; font-size: 28px; line-height: 1.2; color: #1a1a1a; margin-bottom: 16px; }
+    h2 { font-family: 'Inter', Arial, sans-serif; font-weight: 700; font-size: 20px; line-height: 1.3; color: #F4A261; margin-top: 24px; margin-bottom: 12px; }
+    p { margin-bottom: 16px; font-size: 16px; line-height: 1.7; color: #2D3436; }
+    a { color: #E76F8B; text-decoration: underline; }
+    .callout { background: #FFF3E0; padding: 20px; border-left: 4px solid #F4A261; border-radius: 0 8px 8px 0; margin: 20px 0; }
+    .callout h2 { color: #F4A261; margin-top: 0; font-size: 18px; }
+    .callout ul { list-style: none; padding: 0; margin: 12px 0 0 0; }
+    .callout li { padding: 6px 0 6px 24px; position: relative; font-size: 15px; line-height: 1.6; color: #2D3436; }
+    .callout li:before { content: "\\25B8"; position: absolute; left: 0; color: #E76F8B; font-size: 16px; }
+    .read-more-btn { display: block; width: fit-content; margin: 24px auto; padding: 14px 36px; background: linear-gradient(135deg, #F4A261 0%, #E76F8B 100%); color: #ffffff !important; text-decoration: none; border-radius: 10px; font-family: 'Inter', Arial, sans-serif; font-weight: 600; font-size: 15px; text-align: center; }
+    .divider { border: none; height: 3px; background: linear-gradient(135deg, #F4A261 0%, #E76F8B 100%); margin: 28px 0; border-radius: 2px; }
+    .cta-section { background: linear-gradient(135deg, #2D3436 0%, #404854 100%); border-radius: 12px; padding: 36px 28px; text-align: center; color: #ffffff; margin-top: 32px; }
+    .cta-section h3 { font-family: 'Inter', Arial, sans-serif; font-weight: 700; font-size: 22px; color: #F4A261; margin-bottom: 12px; }
+    .cta-section p { color: rgba(255,255,255,0.85); font-size: 14px; margin-bottom: 16px; }
+    .cta-buttons { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 20px; }
+    .cta-btn { display: inline-flex; align-items: center; gap: 6px; padding: 12px 24px; border-radius: 8px; font-family: 'Inter', sans-serif; font-weight: 600; font-size: 14px; text-decoration: none; transition: transform 0.2s; }
+    .cta-btn:hover { transform: translateY(-2px); }
+    .cta-primary { background: linear-gradient(135deg, #F4A261 0%, #E76F8B 100%); color: #ffffff !important; }
+    .cta-secondary { background: rgba(255,255,255,0.12); color: #ffffff !important; border: 1.5px solid rgba(255,255,255,0.3); }
+    .tagline { font-size: 14px; color: #E76F8B; margin-top: 12px; font-weight: 600; }
+    .email-footer { padding: 24px 32px; text-align: center; font-size: 12px; color: #999; background: #fafafa; }
+    .email-footer a { color: #999; }
+    @media (max-width: 600px) {
+      .email-body { padding: 20px 16px; }
+      h1 { font-size: 22px; }
+      h2 { font-size: 18px; }
+      .cta-section { padding: 24px 16px; }
+      .read-more-btn { padding: 12px 28px; font-size: 14px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="email-wrapper">
+    <div class="email-header">
+      <img src="${heroImageUrl || ''}" alt="${altText || headline || ''}" class="hero-img">
+    </div>
+
+    <div class="email-body">
+      <h1>${headline || ''}</h1>
+
+      <p>${openingHook || ''}</p>
+
+      <div class="callout">
+        <h2>${calloutHeading || 'Inside the post:'}</h2>
+        <ul>
+${(calloutItems || []).map(item => `          <li>${item}</li>`).join('\n')}
+        </ul>
+      </div>
+
+${extraParagraph ? `      <p>${extraParagraph}</p>\n` : ''}
+      <a href="${ctaButtonUrl || '#'}" class="read-more-btn">${ctaButtonText || 'Read the Full Post'}</a>
+
+      <hr class="divider">
+
+      <div class="cta-section">
+        <h3>${ctaHeadline || 'What If Your Business Ran Itself?'}</h3>
+        <p>${ctaBody || 'Bloomie AI employees handle your marketing, content, customer service, and operations — so you can focus on what matters.'}</p>
+        <div class="cta-buttons">
+          <a href="tel:+18005551234" class="cta-btn cta-primary">Call Us Now</a>
+          <a href="https://bloomie.ai/demo" class="cta-btn cta-secondary">Schedule a Demo</a>
+          <a href="sms:+18005551234" class="cta-btn cta-secondary">Text Your Questions</a>
+        </div>
+        <p class="tagline">Hire an AI Employee. Get Work Done.</p>
+      </div>
+    </div>
+
+    <div class="email-footer">
+      <p>You're receiving this because you subscribed to our updates.</p>
+      <p><a href="#">Unsubscribe</a> | <a href="#">Update Preferences</a></p>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
 // Tool definitions in model-agnostic format
 export const ghlToolDefinitions = {
   // CONTACTS
@@ -818,19 +1057,27 @@ export const ghlToolDefinitions = {
 
   ghl_create_email_template: {
     name: "ghl_create_email_template",
-    description: "Create a new email template as a DRAFT in the CRM. Always create as draft first so the user can review. Use Inter font for headings. Include hero image and Bloomie Staffing CTA.",
+    description: "Create an email using the LOCKED BLOOM template. Pass structured data (headline, openingHook, calloutItems) — the handler auto-assembles the HTML. Do NOT pass raw HTML — use the structured fields instead. Always draft first.",
     parameters: {
       type: "object",
       properties: {
-        name: { type: "string", description: "Template name (internal reference)" },
+        name: { type: "string", description: "Template name (internal reference, e.g. 'Blog Announcement - 5 Signs - Mar 2026')" },
         subject: { type: "string", description: "Email subject line. 6-10 words, front-load value." },
-        previewText: { type: "string", description: "Preview text (first 90 chars after subject)" },
-        html: { type: "string", description: "Full HTML email content with Inter font, hero image, and CTA" },
-        imageUrl: { type: "string", description: "Hero image URL" },
+        previewText: { type: "string", description: "Preview text (first 90 chars after subject). Complement the subject." },
+        headline: { type: "string", description: "Email headline (h1). For blog announcements, use the ACTUAL blog title — never 'New Blog Post'." },
+        openingHook: { type: "string", description: "Opening paragraph (1-2 conversational sentences about the topic)" },
+        calloutHeading: { type: "string", description: "Callout box heading. Blog: 'Inside the post:', Newsletter: 'This week:', Promo: 'What you get:'" },
+        calloutItems: { type: "array", items: { type: "string" }, description: "3-5 takeaway items shown in the orange-bordered callout box" },
+        extraParagraph: { type: "string", description: "Optional extra paragraph of context after the callout" },
+        ctaButtonText: { type: "string", description: "Main CTA button text. Blog: 'Read the Full Post', Newsletter: 'Read More'" },
+        ctaButtonUrl: { type: "string", description: "URL for the main CTA button (blog URL, landing page, etc.)" },
+        ctaHeadline: { type: "string", description: "Bloomie CTA card headline (connect to email topic)" },
+        ctaBody: { type: "string", description: "Bloomie CTA card body text (1-2 sentences)" },
+        imageUrl: { type: "string", description: "Hero image URL from image_generate" },
         type: { type: "string", enum: ["newsletter", "promotional", "welcome", "re-engagement", "blog-announcement"], description: "Email type" },
         tags: { type: "array", items: { type: "string" }, description: "Tags for categorization" }
       },
-      required: ["name", "subject", "html"]
+      required: ["name", "subject", "calloutItems"]
     },
     category: "email_builder",
     operation: "write"
@@ -878,21 +1125,44 @@ export const ghlToolDefinitions = {
 
   ghl_create_blog_post: {
     name: "ghl_create_blog_post",
-    description: "Create a new blog post as draft in the CRM. Always create as draft first so the user can review before publishing. After creating, send the user the blog URL for review.",
+    description: "Create a blog post using the LOCKED BLOOM template. Pass structured data (title, subtitle, intro, sections array) — the handler auto-assembles the HTML. Do NOT pass raw HTML in content — use the structured fields instead. Always draft first.",
     parameters: {
       type: "object",
       properties: {
-        blogId: { type: "string", description: "Blog site ID. Defaults to BLOOM blog (DHQrtpkQ3Cp7c96FCyDu)." },
-        title: { type: "string", description: "Post title" },
-        content: { type: "string", description: "Full HTML content of the blog post. Use the locked-in blog template from the blog-content skill." },
-        status: { type: "string", enum: ["draft", "published"], description: "Post status. Always use 'draft' unless user explicitly says to publish." },
-        imageUrl: { type: "string", description: "Featured image URL (use a generated image URL)" },
+        title: { type: "string", description: "Blog post main title (h1)" },
+        subtitle: { type: "string", description: "Subtitle shown below title in gradient header" },
+        intro: { type: "string", description: "Opening hook paragraph (1-3 sentences, shown in italic blockquote)" },
+        sections: {
+          type: "array",
+          description: "Blog content sections. Each section gets an orange H2 heading with pink top border.",
+          items: {
+            type: "object",
+            properties: {
+              heading: { type: "string", description: "Section heading (h2)" },
+              paragraphs: {
+                description: "One paragraph string or array of paragraph strings",
+                oneOf: [
+                  { type: "string" },
+                  { type: "array", items: { type: "string" } }
+                ]
+              },
+              highlight: { type: "string", description: "Optional peach callout box text (stat or key takeaway)" },
+              highlightLabel: { type: "string", description: "Label for highlight box (default: 'The impact:')" },
+              bullets: { type: "array", items: { type: "string" }, description: "Optional bullet points with orange triangle markers" }
+            },
+            required: ["heading"]
+          }
+        },
+        ctaHeadline: { type: "string", description: "CTA card headline (connect to blog topic). Default: 'Ready to Transform Your Operations?'" },
+        ctaBody: { type: "string", description: "CTA card body text (1-2 sentences)" },
+        imageUrl: { type: "string", description: "Hero image URL from image_generate" },
         slug: { type: "string", description: "URL slug (lowercase, hyphenated, keyword-rich)" },
-        metaTitle: { type: "string", description: "SEO meta title (under 65 chars)" },
         metaDescription: { type: "string", description: "SEO meta description (150-160 chars)" },
-        tags: { type: "array", items: { type: "string" }, description: "Blog post tags/categories" }
+        keywords: { type: "string", description: "Comma-separated SEO keywords" },
+        status: { type: "string", enum: ["draft", "published"], description: "Always 'draft' unless told to publish" },
+        tags: { type: "array", items: { type: "string" }, description: "Blog tags/categories" }
       },
-      required: ["title", "content"]
+      required: ["title", "sections"]
     },
     category: "blog",
     operation: "write"
@@ -1358,10 +1628,41 @@ export const ghlExecutors = {
   },
 
   // POST /emails/builder — create email template as draft
+  // If params.calloutItems is provided, assembles HTML from locked template automatically.
+  // If params.html is raw HTML, passes it through (legacy/fallback).
   ghl_create_email_template: async (params) => {
     const locationId = await resolveLocationId(params._orgId);
-    const { _orgId, ...templateData } = params;
-    return await callGHL('/emails/builder', 'POST', { locationId, ...templateData });
+
+    // Auto-assemble HTML from structured data if calloutItems are provided
+    let html = params.html;
+    if (params.calloutItems && Array.isArray(params.calloutItems)) {
+      html = assembleEmailHTML({
+        subject: params.subject,
+        headline: params.headline || params.subject,
+        heroImageUrl: params.imageUrl,
+        altText: params.altText,
+        openingHook: params.openingHook,
+        calloutHeading: params.calloutHeading,
+        calloutItems: params.calloutItems,
+        extraParagraph: params.extraParagraph,
+        ctaButtonText: params.ctaButtonText,
+        ctaButtonUrl: params.ctaButtonUrl,
+        ctaHeadline: params.ctaHeadline,
+        ctaBody: params.ctaBody
+      });
+      logger.info('Email HTML assembled from locked template', { calloutCount: params.calloutItems.length });
+    }
+
+    // Remove internal fields from payload
+    const { _orgId, calloutItems: _ci, calloutHeading: _ch2, openingHook: _oh,
+            extraParagraph: _ep, ctaButtonText: _cbt, ctaButtonUrl: _cbu,
+            ctaHeadline: _ch, ctaBody: _cb, headline: _hl, altText: _at, ...templateData } = params;
+
+    return await callGHL('/emails/builder', 'POST', {
+      locationId,
+      ...templateData,
+      html // Use assembled or raw HTML
+    });
   },
 
   // SOCIAL PLANNER
@@ -1386,12 +1687,42 @@ export const ghlExecutors = {
   },
 
   // POST /blogs/{blogId}/posts — create a post in a specific blog site
+  // If params.sections is provided, assembles HTML from locked template automatically.
+  // If params.content is raw HTML, passes it through (legacy/fallback).
   ghl_create_blog_post: async (params) => {
     const blogId = params.blogId || process.env.GHL_BLOG_ID || 'DHQrtpkQ3Cp7c96FCyDu';
     const locationId = await resolveLocationId(params._orgId);
-    // Remove blogId from payload — it goes in the URL
-    const { blogId: _bid, _orgId, ...postData } = params;
-    return await callGHL(`/blogs/${blogId}/posts`, 'POST', { locationId, ...postData });
+
+    // Auto-assemble HTML from structured data if sections are provided
+    let content = params.content;
+    if (params.sections && Array.isArray(params.sections)) {
+      content = assembleBlogHTML({
+        title: params.title,
+        subtitle: params.subtitle,
+        heroImageUrl: params.imageUrl,
+        altText: params.altText || params.title,
+        metaDescription: params.metaDescription,
+        keywords: params.keywords,
+        canonicalUrl: params.canonicalUrl,
+        companyName: params.companyName,
+        intro: params.intro,
+        sections: params.sections,
+        ctaHeadline: params.ctaHeadline,
+        ctaBody: params.ctaBody
+      });
+      logger.info('Blog HTML assembled from locked template', { sectionCount: params.sections.length });
+    }
+
+    // Remove internal fields from payload
+    const { blogId: _bid, _orgId, sections: _s, subtitle: _sub, intro: _intro,
+            ctaHeadline: _ch, ctaBody: _cb, altText: _at, keywords: _kw,
+            canonicalUrl: _cu, companyName: _cn, ...postData } = params;
+
+    return await callGHL(`/blogs/${blogId}/posts`, 'POST', {
+      locationId,
+      ...postData,
+      content // Use assembled or raw HTML
+    });
   },
 
   // DOCUMENTS/CONTRACTS
