@@ -2917,6 +2917,63 @@ function App({ authUser }) {
 
   useEffect(()=>{confEndRef.current?.scrollIntoView({behavior:'smooth'});},[confMessages,confSending]);
 
+  // Load conference history when entering conference mode
+  useEffect(()=>{
+    if(!conferenceMode) return;
+    (async()=>{
+      try{
+        const h=await getAuthHeaders();
+        const r=await fetch('/api/chat/sessions?conference=true',{headers:h});
+        const d=await r.json();
+        const confSessions=d.sessions||[];
+        if(confSessions.length>0){
+          // Load the most recent conference session
+          const latest=confSessions[0];
+          confSessionRef.current=latest.id.replace(/-[a-f0-9]{8}$/,''); // strip agent suffix
+          const r2=await fetch('/api/chat/sessions/'+latest.id,{headers:h});
+          const d2=await r2.json();
+          // Combine messages from all conference sub-sessions
+          const allConfMsgs=[];
+          for(const cs of confSessions){
+            if(!cs.id.startsWith(confSessionRef.current))continue;
+            try{
+              const r3=await fetch('/api/chat/sessions/'+cs.id,{headers:h});
+              const d3=await r3.json();
+              const agentName=agents.find(a=>cs.id.includes(a.id.slice(0,8)))?.name||'Agent';
+              const agentAvatar=agents.find(a=>cs.id.includes(a.id.slice(0,8)))?.avatar_url;
+              const agentId=agents.find(a=>cs.id.includes(a.id.slice(0,8)))?.id;
+              for(const m of(d3.messages||[])){
+                allConfMsgs.push({
+                  id:m.id,
+                  from:m.role==='user'?'user':'agent',
+                  fromAgent:m.role==='assistant'?agentName:undefined,
+                  agentId:m.role==='assistant'?agentId:undefined,
+                  avatar:m.role==='assistant'?agentAvatar:undefined,
+                  text:m.content,
+                  time:new Date(m.created_at).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}),
+                  _ts:new Date(m.created_at).getTime()
+                });
+              }
+            }catch{}
+          }
+          // Sort by timestamp and deduplicate user messages
+          allConfMsgs.sort((a,b)=>a._ts-b._ts);
+          const seen=new Set();
+          const deduped=allConfMsgs.filter(m=>{
+            if(m.from==='user'){
+              // User messages are duplicated across sub-sessions — keep first only
+              const key=m.text.slice(0,100)+'-'+Math.floor(m._ts/5000);
+              if(seen.has(key))return false;
+              seen.add(key);
+            }
+            return true;
+          });
+          if(deduped.length>0)setConfMessages(deduped);
+        }
+      }catch(e){console.error('Failed to load conference history:',e);}
+    })();
+  },[conferenceMode,agents]);
+
   const sendConfMessage=async()=>{
     const text=confInput.trim(); if(!text||confSending||!agents.length)return;
     setConfInput('');setConfSending(true);

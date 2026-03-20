@@ -4405,8 +4405,10 @@ router.get('/sessions', async (req, res) => {
         return res.json({ sessions: [] });
       }
       
+      // Filter out conference/group sessions from individual chat lists
+      const filteredData = (data || []).filter(s => !s.id.startsWith('conf-') && !s.id.startsWith('group-'));
       // message_count not stored in Supabase — omit Railway lookup
-      const sessionsWithCounts = await Promise.all((data || []).map(async (session) => {
+      const sessionsWithCounts = await Promise.all(filteredData.map(async (session) => {
         try {
           return {
             ...session,
@@ -4429,6 +4431,20 @@ router.get('/sessions', async (req, res) => {
     const { createClient } = await import('@supabase/supabase-js');
     const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
     const resolvedUserId = await getUserId(req); // Multi-tenant: resolves from JWT
+
+    // Conference mode: return only conference/group sessions
+    if (req.query.conference === 'true') {
+      const { data: confData, error: confErr } = await sb
+        .from('sessions')
+        .select('id, title, created_at, updated_at, agent_id')
+        .eq('user_id', resolvedUserId)
+        .or('id.like.conf-%,id.like.group-%')
+        .order('updated_at', { ascending: false })
+        .limit(20);
+      if (confErr) throw confErr;
+      return res.json({ sessions: confData || [] });
+    }
+
     let query = sb
       .from('sessions')
       .select('id, title, created_at, updated_at, agent_id')
@@ -4438,7 +4454,9 @@ router.get('/sessions', async (req, res) => {
       .order('updated_at', { ascending: false })
       .limit(50);
     if (error) throw error;
-    res.json({ sessions: data || [] });
+    // Filter out conference/group chat sessions — they should only appear in the conference tab
+    const filtered = (data || []).filter(s => !s.id.startsWith('conf-') && !s.id.startsWith('group-'));
+    res.json({ sessions: filtered });
   } catch (e) {
     logger.error('Sessions fetch error', { error: e.message });
     res.json({ sessions: [] });
