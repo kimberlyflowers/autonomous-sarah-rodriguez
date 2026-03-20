@@ -818,13 +818,17 @@ export const ghlToolDefinitions = {
 
   ghl_create_email_template: {
     name: "ghl_create_email_template",
-    description: "Create a new email template",
+    description: "Create a new email template as a DRAFT in the CRM. Always create as draft first so the user can review. Use Inter font for headings. Include hero image and Bloomie Staffing CTA.",
     parameters: {
       type: "object",
       properties: {
-        name: { type: "string", description: "Template name" },
-        subject: { type: "string", description: "Email subject" },
-        html: { type: "string", description: "HTML content" }
+        name: { type: "string", description: "Template name (internal reference)" },
+        subject: { type: "string", description: "Email subject line. 6-10 words, front-load value." },
+        previewText: { type: "string", description: "Preview text (first 90 chars after subject)" },
+        html: { type: "string", description: "Full HTML email content with Inter font, hero image, and CTA" },
+        imageUrl: { type: "string", description: "Hero image URL" },
+        type: { type: "string", enum: ["newsletter", "promotional", "welcome", "re-engagement", "blog-announcement"], description: "Email type" },
+        tags: { type: "array", items: { type: "string" }, description: "Tags for categorization" }
       },
       required: ["name", "subject", "html"]
     },
@@ -868,12 +872,18 @@ export const ghlToolDefinitions = {
 
   ghl_create_blog_post: {
     name: "ghl_create_blog_post",
-    description: "Create a new blog post",
+    description: "Create a new blog post as draft in the CRM. Always create as draft first so the user can review before publishing. After creating, send the user the blog URL for review.",
     parameters: {
       type: "object",
       properties: {
         title: { type: "string", description: "Post title" },
-        content: { type: "string", description: "Post content (HTML)" }
+        content: { type: "string", description: "Full HTML content of the blog post. Use Inter font for headings (font-family: 'Inter', sans-serif; font-weight: 700)." },
+        status: { type: "string", enum: ["draft", "published"], description: "Post status. Always use 'draft' unless user explicitly says to publish." },
+        imageUrl: { type: "string", description: "Featured image URL (use a generated image URL)" },
+        slug: { type: "string", description: "URL slug (lowercase, hyphenated, keyword-rich)" },
+        metaTitle: { type: "string", description: "SEO meta title (under 65 chars)" },
+        metaDescription: { type: "string", description: "SEO meta description (150-160 chars)" },
+        tags: { type: "array", items: { type: "string" }, description: "Blog post tags/categories" }
       },
       required: ["title", "content"]
     },

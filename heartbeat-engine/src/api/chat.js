@@ -897,6 +897,7 @@ Skill mapping (try loading these BEFORE starting work):
 - Generating other images (social posts, hero images, product photos) → load_skill("image-generation")
 - Writing a blog post or article → load_skill("blog-content")
 - Writing an email campaign → load_skill("email-marketing")
+- Creating an email for a list (blog announcement, newsletter, promotional) → load_skill("email-creator")
 - Creating social media content → load_skill("social-media")
 - Working with CRM/contacts → load_skill("ghl-crm")
 - Writing a book/chapter → load_skill("book-writing")
@@ -1373,11 +1374,18 @@ const _ALL_TOOLS = [
   },
   {
     name: "ghl_create_blog_post",
-    description: "Create a new blog post.",
+    description: "Create a new blog post as draft in BLOOM CRM. Always create as draft first so the user can review. After creating, notify the user with the blog link. Use Inter font (700 weight) for all headings in the HTML content.",
     input_schema: {
       type: "object",
       properties: {
-        title: { type: "string" }, content: { type: "string", description: "HTML content" }
+        title: { type: "string", description: "Post title" },
+        content: { type: "string", description: "Full HTML content. Use Inter font for headings." },
+        status: { type: "string", enum: ["draft", "published"], description: "Always 'draft' unless told to publish" },
+        imageUrl: { type: "string", description: "Featured image URL" },
+        slug: { type: "string", description: "URL slug (lowercase, hyphenated)" },
+        metaTitle: { type: "string", description: "SEO meta title" },
+        metaDescription: { type: "string", description: "SEO meta description" },
+        tags: { type: "array", items: { type: "string" }, description: "Blog tags" }
       },
       required: ["title", "content"]
     }
@@ -1453,13 +1461,17 @@ const _ALL_TOOLS = [
 
   {
     name: "ghl_create_email_template",
-    description: "Create a new email template.",
+    description: "Create a new email template as a DRAFT in the CRM. Always create as draft first so the user can review before sending. After creating, notify the user with the draft link. Use Inter font for headings in the HTML content. Include a hero image and Bloomie Staffing CTA.",
     input_schema: {
       type: "object",
       properties: {
-        name: { type: "string" },
-        subject: { type: "string" },
-        html: { type: "string", description: "HTML content" }
+        name: { type: "string", description: "Template name (internal reference)" },
+        subject: { type: "string", description: "Email subject line. 6-10 words, front-load value, personalize when possible." },
+        previewText: { type: "string", description: "Preview text (first 90 chars after subject). Complement the subject, don't repeat." },
+        html: { type: "string", description: "Full HTML email content with Inter font, hero image, single-column layout, and CTA." },
+        imageUrl: { type: "string", description: "Hero image URL for the email" },
+        type: { type: "string", enum: ["newsletter", "promotional", "welcome", "re-engagement", "blog-announcement"], description: "Email type/category" },
+        tags: { type: "array", items: { type: "string" }, description: "Tags for categorization" }
       },
       required: ["name", "subject", "html"]
     }
@@ -1896,7 +1908,7 @@ const _ALL_TOOLS = [
     input_schema: {
       type: "object",
       properties: {
-        skill_name: { type: "string", description: "The skill to load. Must be one of these exact names: 'website-creation', 'docx', 'pptx', 'pdf', 'xlsx', 'blog-content', 'email-marketing', 'social-media', 'book-writing', 'ghl-crm', 'flyer-generation', 'image-generation', 'lead-scraper'" },
+        skill_name: { type: "string", description: "The skill to load. Must be one of these exact names: 'website-creation', 'docx', 'pptx', 'pdf', 'xlsx', 'blog-content', 'email-creator', 'email-marketing', 'social-media', 'book-writing', 'ghl-crm', 'flyer-generation', 'image-generation', 'lead-scraper'" },
         context: { type: "string", description: "Brief description of what you're about to create — helps select the right guidelines" }
       },
       required: ["skill_name"]
