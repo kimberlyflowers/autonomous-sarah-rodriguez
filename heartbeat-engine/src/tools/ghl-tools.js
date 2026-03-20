@@ -864,8 +864,14 @@ export const ghlToolDefinitions = {
   // BLOG POSTS
   ghl_list_blog_posts: {
     name: "ghl_list_blog_posts",
-    description: "List blog posts",
-    parameters: { type: "object", properties: {}, required: [] },
+    description: "List blog posts from the BLOOM blog site.",
+    parameters: {
+      type: "object",
+      properties: {
+        blogId: { type: "string", description: "Blog site ID. Defaults to BLOOM blog (DHQrtpkQ3Cp7c96FCyDu)." }
+      },
+      required: []
+    },
     category: "blog",
     operation: "read"
   },
@@ -876,8 +882,9 @@ export const ghlToolDefinitions = {
     parameters: {
       type: "object",
       properties: {
+        blogId: { type: "string", description: "Blog site ID. Defaults to BLOOM blog (DHQrtpkQ3Cp7c96FCyDu)." },
         title: { type: "string", description: "Post title" },
-        content: { type: "string", description: "Full HTML content of the blog post. Use Inter font for headings (font-family: 'Inter', sans-serif; font-weight: 700)." },
+        content: { type: "string", description: "Full HTML content of the blog post. Use the locked-in blog template from the blog-content skill." },
         status: { type: "string", enum: ["draft", "published"], description: "Post status. Always use 'draft' unless user explicitly says to publish." },
         imageUrl: { type: "string", description: "Featured image URL (use a generated image URL)" },
         slug: { type: "string", description: "URL slug (lowercase, hyphenated, keyword-rich)" },
@@ -1344,15 +1351,17 @@ export const ghlExecutors = {
   },
 
   // EMAIL BUILDER
-  // GET /emails/builder?locationId=
+  // GET /emails/builder?locationId= — list email templates
   ghl_list_email_templates: async (params) => {
-    return await callGHL('/emails/builder');
+    const locationId = await resolveLocationId(params._orgId);
+    return await callGHL('/emails/builder', 'GET', null, { locationId });
   },
 
-  // POST /emails/builder
+  // POST /emails/builder — create email template as draft
   ghl_create_email_template: async (params) => {
     const locationId = await resolveLocationId(params._orgId);
-    return await callGHL('/emails/builder', 'POST', { locationId, ...params });
+    const { _orgId, ...templateData } = params;
+    return await callGHL('/emails/builder', 'POST', { locationId, ...templateData });
   },
 
   // SOCIAL PLANNER
@@ -1369,15 +1378,20 @@ export const ghlExecutors = {
   },
 
   // BLOG POSTS
-  // GET /blogs/posts?locationId=
+  // GET /blogs/{blogId}/posts — list posts for a specific blog site
   ghl_list_blog_posts: async (params) => {
-    return await callGHL('/blogs/posts');
+    const blogId = params.blogId || process.env.GHL_BLOG_ID || 'DHQrtpkQ3Cp7c96FCyDu';
+    const locationId = await resolveLocationId(params._orgId);
+    return await callGHL(`/blogs/${blogId}/posts`, 'GET', null, { locationId });
   },
 
-  // POST /blogs/posts
+  // POST /blogs/{blogId}/posts — create a post in a specific blog site
   ghl_create_blog_post: async (params) => {
+    const blogId = params.blogId || process.env.GHL_BLOG_ID || 'DHQrtpkQ3Cp7c96FCyDu';
     const locationId = await resolveLocationId(params._orgId);
-    return await callGHL('/blogs/posts', 'POST', { locationId, ...params });
+    // Remove blogId from payload — it goes in the URL
+    const { blogId: _bid, _orgId, ...postData } = params;
+    return await callGHL(`/blogs/${blogId}/posts`, 'POST', { locationId, ...postData });
   },
 
   // DOCUMENTS/CONTRACTS

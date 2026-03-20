@@ -1375,22 +1375,29 @@ const _ALL_TOOLS = [
   },
   {
     name: "ghl_list_blog_posts",
-    description: "List blog posts.",
-    input_schema: { type: "object", properties: {}, required: [] }
-  },
-  {
-    name: "ghl_create_blog_post",
-    description: "Create a new blog post as draft in BLOOM CRM. Always create as draft first so the user can review. After creating, notify the user with the blog link. Use Inter font (700 weight) for all headings in the HTML content.",
+    description: "List blog posts from the BLOOM blog site.",
     input_schema: {
       type: "object",
       properties: {
+        blogId: { type: "string", description: "Blog site ID. Defaults to BLOOM blog (DHQrtpkQ3Cp7c96FCyDu)." }
+      },
+      required: []
+    }
+  },
+  {
+    name: "ghl_create_blog_post",
+    description: "Create a new blog post as draft in BLOOM CRM. The blogId defaults to the BLOOM blog (DHQrtpkQ3Cp7c96FCyDu). Always create as draft first so the user can review. After creating, notify the user with the blog link. Use the locked-in HTML template from the blog-content skill.",
+    input_schema: {
+      type: "object",
+      properties: {
+        blogId: { type: "string", description: "Blog site ID. Defaults to BLOOM blog (DHQrtpkQ3Cp7c96FCyDu). You almost never need to set this." },
         title: { type: "string", description: "Post title" },
-        content: { type: "string", description: "Full HTML content. Use Inter font for headings." },
+        content: { type: "string", description: "Full HTML content using the locked-in blog template." },
         status: { type: "string", enum: ["draft", "published"], description: "Always 'draft' unless told to publish" },
         imageUrl: { type: "string", description: "Featured image URL" },
-        slug: { type: "string", description: "URL slug (lowercase, hyphenated)" },
-        metaTitle: { type: "string", description: "SEO meta title" },
-        metaDescription: { type: "string", description: "SEO meta description" },
+        slug: { type: "string", description: "URL slug (lowercase, hyphenated, keyword-rich)" },
+        metaTitle: { type: "string", description: "SEO meta title (under 65 chars)" },
+        metaDescription: { type: "string", description: "SEO meta description (150-160 chars)" },
         tags: { type: "array", items: { type: "string" }, description: "Blog tags" }
       },
       required: ["title", "content"]
