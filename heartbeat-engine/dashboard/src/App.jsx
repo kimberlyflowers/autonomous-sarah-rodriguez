@@ -367,11 +367,14 @@ function useSarahChat() {
       const data = await res.json();
       const ts2 = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
       const responseText = (data.response||data.message||"Done.").replace(/\s*\[Session context[\s\S]*$/,'').replace(/\s*\[Tool:.*?\]\s*/g,'').trim();
-      
+      const msgObj = {id:Date.now(),b:true,t:responseText,tm:ts2,skills:data.skillsUsed||[],hasArtifact:!!responseText.match(/Created "|I've created|I created|saved as|saved it to|in your Files tab|saved to.*Files/i)};
+      // Attach clarification data for bloom_clarify popup buttons
+      if(data.clarification) msgObj.clarification = data.clarification;
+
       if(ackId){
-        setMessages(p=>p.filter(m=>m.id!==ackId).concat([{id:Date.now(),b:true,t:responseText,tm:ts2,skills:data.skillsUsed||[],hasArtifact:!!responseText.match(/Created "|I've created|I created|saved as|saved it to|in your Files tab|saved to.*Files/i)}]));
+        setMessages(p=>p.filter(m=>m.id!==ackId).concat([msgObj]));
       } else {
-        setMessages(p=>[...p,{id:Date.now(),b:true,t:responseText,tm:ts2,skills:data.skillsUsed||[],hasArtifact:!!responseText.match(/Created "|I've created|I created|saved as|saved it to|in your Files tab|saved to.*Files/i)}]);
+        setMessages(p=>[...p,msgObj]);
       }
       fetchSessions();
       setTimeout(fetchSessions, 3000);
@@ -1299,9 +1302,66 @@ function cleanMessageText(text) {
   cleaned = cleaned.replace(/<!--\s*file:\s*[^>]+?-->\n?/g, '');
   // Remove legacy trigger phrases: "Here's your [type] — "filename.ext""
   cleaned = cleaned.replace(/Here's your .+?(?:—|–|-)\s*"[^"]+\.(?:html|md|docx|pdf|txt|js|css|jsx|json)"\n?/gi, '');
+  // Strip __clarification JSON from display text (will be rendered as card instead)
+  cleaned = cleaned.replace(/\{"__clarification"\s*:\s*true[\s\S]*$/g, '');
   // Clean up any resulting double blank lines
   cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
   return cleaned.trim();
+}
+
+// Parse __clarification JSON from message text (for history-loaded messages)
+function parseClarification(text) {
+  if (!text) return null;
+  try {
+    // Check if the whole message is a clarification JSON
+    if (text.trimStart().startsWith('{"__clarification"')) {
+      const parsed = JSON.parse(text.trim());
+      if (parsed.__clarification && parsed.clarification) return parsed.clarification;
+    }
+    // Check if clarification JSON is embedded at the end of the message
+    const idx = text.indexOf('{"__clarification"');
+    if (idx >= 0) {
+      const jsonStr = text.slice(idx);
+      const parsed = JSON.parse(jsonStr);
+      if (parsed.__clarification && parsed.clarification) return parsed.clarification;
+    }
+  } catch (e) { /* not valid JSON, skip */ }
+  return null;
+}
+
+// ClarificationCard — renders Sarah's question with clickable option buttons
+function ClarificationCardInline({ clarification, onSelect, c, disabled }) {
+  const [selected, setSelected] = React.useState(null);
+  const handleClick = (opt, i) => {
+    if (disabled || selected !== null) return;
+    setSelected(i);
+    if (onSelect) onSelect(opt);
+  };
+  return (
+    <div style={{background:c.sf,border:"2px solid "+c.ac,borderRadius:16,padding:16,marginTop:10,maxWidth:380}}>
+      <div style={{fontSize:14,fontWeight:600,color:c.tx,marginBottom:6,lineHeight:1.4}}>{clarification.question}</div>
+      {clarification.context&&<div style={{fontSize:12,color:c.so,marginBottom:12,lineHeight:1.4}}>{clarification.context}</div>}
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {(clarification.options||[]).map((opt,i)=>{
+          const isSel = selected===i;
+          const isDis = disabled||(selected!==null&&!isSel);
+          return (
+            <button key={i} onClick={()=>handleClick(opt,i)} disabled={isDis} style={{
+              display:"flex",flexDirection:"column",alignItems:"flex-start",padding:"10px 14px",borderRadius:12,
+              border:isSel?"2px solid "+c.ac:"1px solid "+c.ln,
+              background:isSel?c.ac+"15":isDis?c.so+"10":c.sf,
+              cursor:isDis?"default":"pointer",opacity:isDis&&!isSel?0.5:1,
+              transition:"all 0.15s ease",textAlign:"left",width:"100%"
+            }}>
+              <span style={{fontSize:13,fontWeight:600,color:isSel?c.ac:c.tx}}>{isSel?"✓ ":""}{opt.label}</span>
+              {opt.description&&<span style={{fontSize:11,color:c.so,lineHeight:1.3,marginTop:2}}>{opt.description}</span>}
+            </button>
+          );
+        })}
+      </div>
+      {selected!==null&&<div style={{fontSize:11,color:c.ac,marginTop:8,fontWeight:500}}>Sarah is working on it...</div>}
+    </div>
+  );
 }
 
 // ── SESSION FILES PANEL — right panel shows files from current chat ──────────
@@ -3806,6 +3866,7 @@ function App({ authUser }) {
                       {messages.map((m)=>{
                         const cards=m.b?parseMessageCards(m.t):[];
                         const displayText=m.b?cleanMessageText(m.t):m.t;
+                        const clarifyData=m.clarification||(m.b?parseClarification(m.t):null);
                         return (
                         <div key={m.id} style={{display:"flex",justifyContent:m.b?"flex-start":"flex-end",marginBottom:16,flexDirection:"column",alignItems:m.b?"flex-start":"flex-end"}}>
                           <div style={{display:"flex",justifyContent:m.b?"flex-start":"flex-end",width:"100%"}}>
@@ -3866,6 +3927,10 @@ function App({ authUser }) {
                                     </div>
                                   ))}
                                 </div>
+                              )}
+                              {/* Clarification card — renders bloom_clarify as interactive buttons */}
+                              {m.b&&clarifyData&&(
+                                <ClarificationCardInline clarification={clarifyData} onSelect={(opt)=>send(`${opt.label}: ${opt.description||''}`)} c={c} disabled={loading||!!messages.find(mm=>mm.id>m.id&&!mm.b)}/>
                               )}
                             </div>
                           </div>
