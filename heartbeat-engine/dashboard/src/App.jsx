@@ -2912,6 +2912,7 @@ function App({ authUser }) {
   const [confMessages,setConfMessages]=useState([]);
   const [confInput,setConfInput]=useState('');
   const [confSending,setConfSending]=useState(false);
+  const [confSessionsList,setConfSessionsList]=useState([]);
   const confSessionRef=useRef('conf-'+Date.now());
   const confEndRef=useRef(null);
 
@@ -2926,6 +2927,18 @@ function App({ authUser }) {
         const r=await fetch('/api/chat/sessions?conference=true',{headers:h});
         const d=await r.json();
         const confSessions=d.sessions||[];
+        // Group conference sub-sessions by their base ID (strip agent suffix)
+        const confGroups=new Map();
+        for(const cs of confSessions){
+          const base=cs.id.replace(/-[a-f0-9]{8}$/,'');
+          if(!confGroups.has(base)){
+            confGroups.set(base,{id:base,title:cs.title||'Team Conference',updated_at:cs.updated_at,created_at:cs.created_at,subSessions:[cs]});
+          }else{
+            confGroups.get(base).subSessions.push(cs);
+            if(new Date(cs.updated_at)>new Date(confGroups.get(base).updated_at))confGroups.get(base).updated_at=cs.updated_at;
+          }
+        }
+        setConfSessionsList(Array.from(confGroups.values()).sort((a,b)=>new Date(b.updated_at)-new Date(a.updated_at)));
         if(confSessions.length>0){
           // Load the most recent conference session
           const latest=confSessions[0];
@@ -2956,10 +2969,14 @@ function App({ authUser }) {
               }
             }catch{}
           }
-          // Sort by timestamp and deduplicate user messages
+          // Sort by timestamp, filter out context strings, and deduplicate user messages
           allConfMsgs.sort((a,b)=>a._ts-b._ts);
           const seen=new Set();
           const deduped=allConfMsgs.filter(m=>{
+            // Filter out context/system strings that were sent as "user" messages to agents
+            if(m.from==='user'&&m.text&&(m.text.startsWith('[You are ')||m.text.startsWith('[You are '))){
+              return false;
+            }
             if(m.from==='user'){
               // User messages are duplicated across sub-sessions — keep first only
               const key=m.text.slice(0,100)+'-'+Math.floor(m._ts/5000);
@@ -3643,7 +3660,37 @@ function App({ authUser }) {
                   {/* Session list - only show on Chat page */}
                   {pg==="chat"&&(
                   <div style={{flex:1,overflowY:"auto",padding:"8px 8px"}}>
-                    {sessions.filter(s=>{
+                    {conferenceMode?(
+                      /* Conference mode: show conference sessions */
+                      confSessionsList.length===0?(
+                        <div style={{padding:"20px 8px",textAlign:"center",fontSize:11,color:c.fa}}>No conference chats yet</div>
+                      ):confSessionsList.filter(s=>{
+                        if(!searchQuery.trim()) return true;
+                        return (s.title||'Team Conference').toLowerCase().includes(searchQuery.toLowerCase());
+                      }).map(s=>{
+                        const isActive=confSessionRef.current===s.id;
+                        const title=s.title||'Team Conference';
+                        const when=new Date(s.updated_at);
+                        const now=new Date();
+                        const diff=now-when;
+                        const timeLabel=diff<60000?"Just now":diff<3600000?Math.floor(diff/60000)+"m ago":diff<86400000?Math.floor(diff/3600000)+"h ago":diff<604800000?Math.floor(diff/86400000)+"d ago":when.toLocaleDateString([],{month:"short",day:"numeric"});
+                        return(
+                          <div key={s.id} style={{position:"relative",marginBottom:2}}>
+                            <button
+                              onClick={()=>{confSessionRef.current=s.id;/* reload this conference */setConfMessages([]);/* trigger re-load by toggling conferenceMode */setConferenceMode(false);setTimeout(()=>setConferenceMode(true),50);}}
+                              style={{width:"100%",textAlign:"left",padding:"9px 10px",borderRadius:10,border:"none",cursor:"pointer",background:isActive?c.ac+"15":"transparent",transition:"background .15s"}}
+                              onMouseEnter={e=>{if(!isActive)e.currentTarget.style.background=c.hv;}}
+                              onMouseLeave={e=>{if(!isActive)e.currentTarget.style.background="transparent";}}
+                            >
+                              <div style={{fontSize:15,fontWeight:isActive?600:500,color:isActive?c.ac:c.tx,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{title}</div>
+                              <div style={{fontSize:10,color:c.fa,marginTop:2}}>{timeLabel}</div>
+                            </button>
+                          </div>
+                        );
+                      })
+                    ):(
+                    /* Individual mode: show agent sessions */
+                    sessions.filter(s=>{
                       if(!searchQuery.trim()) return true;
                       const title = s.title || "New conversation";
                       return title.toLowerCase().includes(searchQuery.toLowerCase());
@@ -3740,7 +3787,8 @@ function App({ authUser }) {
                           )}
                         </div>
                       );
-                    })}
+                    })
+                    )}
                   </div>
                   )}
 
@@ -3836,7 +3884,7 @@ function App({ authUser }) {
                       Message all {agents.length} Bloomie{agents.length>1?"s":""} at once. They'll respond in order and can see each other's replies — like a group chat.
                     </div>
                   </div>
-                ):confMessages.map(msg=>(
+                ):confMessages.filter(msg=>!(msg.from==='user'&&msg.text&&msg.text.startsWith('[You are '))).map(msg=>(
                   <div key={msg.id}>
                     {msg.from==='user'?(
                       <div style={{display:'flex',justifyContent:'flex-end',padding:'2px 0'}}>
