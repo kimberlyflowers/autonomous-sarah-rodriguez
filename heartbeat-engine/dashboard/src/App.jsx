@@ -2940,15 +2940,18 @@ function App({ authUser }) {
         }
         setConfSessionsList(Array.from(confGroups.values()).sort((a,b)=>new Date(b.updated_at)-new Date(a.updated_at)));
         if(confSessions.length>0){
-          // Load the most recent conference session
-          const latest=confSessions[0];
-          confSessionRef.current=latest.id.replace(/-[a-f0-9]{8}$/,''); // strip agent suffix
-          const r2=await fetch('/api/chat/sessions/'+latest.id,{headers:h});
-          const d2=await r2.json();
-          // Combine messages from all conference sub-sessions
+          // Use the current ref if it matches an existing session, otherwise use latest
+          const currentBase=confSessionRef.current;
+          const matchesCurrent=currentBase&&confSessions.some(cs=>cs.id.startsWith(currentBase));
+          if(!matchesCurrent){
+            const latest=confSessions[0];
+            confSessionRef.current=latest.id.replace(/-[a-f0-9]{8}$/,'');
+          }
+          const activeBase=confSessionRef.current;
+          // Combine messages from all conference sub-sessions for the active conference
           const allConfMsgs=[];
           for(const cs of confSessions){
-            if(!cs.id.startsWith(confSessionRef.current))continue;
+            if(!cs.id.startsWith(activeBase))continue;
             try{
               const r3=await fetch('/api/chat/sessions/'+cs.id,{headers:h});
               const d3=await r3.json();
@@ -2969,22 +2972,47 @@ function App({ authUser }) {
               }
             }catch{}
           }
-          // Sort by timestamp, filter out context strings, and deduplicate user messages
+          // Sort by timestamp and process messages
           allConfMsgs.sort((a,b)=>a._ts-b._ts);
+
+          // Extract real user messages from context strings
+          // Context format: [You are {name}... Thread so far:\nClient: msg1\nAgent: resp\nClient: msg2\n\nRespond naturally...]
+          const extractUserMsg=(ctxText)=>{
+            if(!ctxText||!ctxText.startsWith('[You are '))return null;
+            // Find the transcript section
+            const threadMatch=ctxText.match(/(?:Thread so far|Here is the conversation so far):\n([\s\S]*?)\n\nRespond naturally/);
+            if(!threadMatch)return null;
+            const lines=threadMatch[1].split('\n');
+            // Get the LAST "Client:" line — that's the newest user message
+            for(let i=lines.length-1;i>=0;i--){
+              if(lines[i].startsWith('Client: ')){
+                return lines[i].slice(8); // remove "Client: " prefix
+              }
+            }
+            return null;
+          };
+
           const seen=new Set();
-          const deduped=allConfMsgs.filter(m=>{
-            // Filter out context/system strings that were sent as "user" messages to agents
-            if(m.from==='user'&&m.text&&(m.text.startsWith('[You are ')||m.text.startsWith('[You are '))){
-              return false;
-            }
-            if(m.from==='user'){
-              // User messages are duplicated across sub-sessions — keep first only
-              const key=m.text.slice(0,100)+'-'+Math.floor(m._ts/5000);
-              if(seen.has(key))return false;
+          const processed=[];
+          for(const m of allConfMsgs){
+            if(m.from==='user'&&m.text&&m.text.startsWith('[You are ')){
+              // Transform context string into actual user message
+              const realText=extractUserMsg(m.text);
+              if(!realText)continue; // couldn't extract, skip
+              const key=realText.slice(0,100)+'-'+Math.floor(m._ts/5000);
+              if(seen.has(key))continue; // deduplicate across sub-sessions
               seen.add(key);
+              processed.push({...m,text:realText});
+            }else if(m.from==='user'){
+              const key=m.text.slice(0,100)+'-'+Math.floor(m._ts/5000);
+              if(seen.has(key))continue;
+              seen.add(key);
+              processed.push(m);
+            }else{
+              processed.push(m); // agent messages pass through
             }
-            return true;
-          });
+          }
+          const deduped=processed;
           if(deduped.length>0)setConfMessages(deduped);
         }
       }catch(e){console.error('Failed to load conference history:',e);}
@@ -3884,7 +3912,7 @@ function App({ authUser }) {
                       Message all {agents.length} Bloomie{agents.length>1?"s":""} at once. They'll respond in order and can see each other's replies — like a group chat.
                     </div>
                   </div>
-                ):confMessages.filter(msg=>!(msg.from==='user'&&msg.text&&msg.text.startsWith('[You are '))).map(msg=>(
+                ):confMessages.map(msg=>(
                   <div key={msg.id}>
                     {msg.from==='user'?(
                       <div style={{display:'flex',justifyContent:'flex-end',padding:'2px 0'}}>

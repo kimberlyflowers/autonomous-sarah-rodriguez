@@ -413,7 +413,7 @@ export default function MobileApp({ user: authUser }) {
                   :'No agents loaded yet.'}
               </div>
             </div>
-          ):groupMsgs.filter(msg=>!(msg.from==='user'&&msg.text&&msg.text.startsWith('[You are '))).map(msg=>(
+          ):groupMsgs.map(msg=>(
             <div key={msg.id}>
               {msg.from==='user'?(
                 <div style={{display:'flex',justifyContent:'flex-end',padding:'2px 0'}}>
