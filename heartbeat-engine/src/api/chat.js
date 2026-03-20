@@ -450,11 +450,41 @@ WHEN TO USE image_edit vs image_generate:
   when people need to look the same across images.
 
 PERSON CONSISTENCY RULES (when using image_generate with people):
-- The reference image is auto-injected — you don't need to manually pass it
-- In your prompt, describe the person naturally (ethnicity, hair, features) so the model understands
-- Use engine: "gemini" for character consistency (auto-routing handles this)
+- Use engine: "gemini" for ALL people images (character consistency)
 - NEVER change a person's race, ethnicity, skin tone, or distinguishing features
-- NEVER describe a person's appearance from memory — the reference image handles it
+- In your prompt, describe the person naturally (ethnicity, hair, build, clothing style)
+
+CRITICAL — MULTI-CHARACTER PROJECTS (websites, team pages, group images):
+When a project has MULTIPLE different characters/people, you MUST track each character's reference image
+separately. The auto-inject uses the MOST RECENT image which will be WRONG when switching between characters.
+
+WORKFLOW FOR MULTI-CHARACTER CONSISTENCY:
+1. Generate the FIRST character image. Note the returned image URL.
+2. For each SUBSEQUENT character, generate their image WITHOUT a reference (new person each time).
+3. SAVE a mental map: "Marcus = [url1], Emma = [url2], Alex = [url3]"
+4. When you need to RE-GENERATE or CREATE A NEW SCENE with an EXISTING character:
+   - Pass reference_image_url with THAT CHARACTER'S specific image URL
+   - Call get_session_files to find the right character's image if needed
+   - NEVER rely on auto-inject when multiple characters exist — it will grab the wrong one
+5. For GROUP SHOTS with multiple existing characters:
+   - Use the FIRST/PRIMARY character's image as reference_image_url
+   - Describe ALL other characters in detail in the prompt (ethnicity, hair, build, clothing)
+   - Mention them by name and role so the model understands the composition
+
+EXAMPLE — wrong way:
+  generate Marcus (black man, suit) → auto-inject grabs Marcus
+  generate Emma (white woman, blazer) → auto-inject grabs Marcus ← WRONG! Emma will look like Marcus
+  generate group shot → auto-inject grabs Emma ← only Emma as reference, Marcus will be inconsistent
+
+EXAMPLE — correct way:
+  generate Marcus (first character — no_reference: true so auto-inject doesn't grab unrelated images)
+  generate Emma (NEW character — no_reference: true so she doesn't look like Marcus)
+  generate group shot → pass reference_image_url = Marcus's URL, describe Emma in detail in prompt
+  re-generate Emma in new scene → pass reference_image_url = Emma's specific URL
+  re-generate Marcus in new scene → pass reference_image_url = Marcus's specific URL
+
+KEY: Use no_reference: true when creating a BRAND NEW character.
+     Use reference_image_url when re-creating an EXISTING character in a new scene.
 
 ASPECT RATIO RULES (when generating from a reference or uploaded image):
 - ALWAYS match the original image's aspect ratio. If the original is landscape (wider than tall),
@@ -1585,7 +1615,9 @@ const _ALL_TOOLS = [
         target_height: { type: "integer", description: "REQUIRED for platform-specific images. Exact output height in pixels (e.g. 312 for Facebook cover, 1080 for Instagram post)." },
         quality: { type: "string", enum: ["low", "medium", "high"], description: "Image quality level", default: "high" },
         background: { type: "string", enum: ["opaque", "transparent"], description: "Use 'transparent' for logos/overlays", default: "opaque" },
-        engine: { type: "string", enum: ["auto", "gpt", "gemini"], description: "'auto' picks best engine. 'gpt' = GPT Image 1.5. 'gemini' = Nano Banana / Imagen for text-heavy fixes.", default: "auto" }
+        engine: { type: "string", enum: ["auto", "gpt", "gemini"], description: "'auto' picks best engine. 'gpt' = GPT Image 1.5. 'gemini' = Nano Banana / Imagen for text-heavy fixes.", default: "auto" },
+        reference_image_url: { type: "string", description: "URL of a reference image for character consistency. CRITICAL for multi-character projects — pass the SPECIFIC character's image URL to keep them looking the same. Get URLs from get_session_files or from previous image_generate results. If omitted, the most recent image is auto-injected." },
+        no_reference: { type: "boolean", description: "Set to true to generate a BRAND NEW character/person without any reference image. Use this when creating a NEW character that should NOT look like any previous character. Prevents auto-injection of the last image.", default: false }
       },
       required: ["prompt"]
     }
@@ -3960,7 +3992,7 @@ When a user asks you to edit, modify, or update something you previously created
             }
           }
 
-          if (block.name === 'image_generate' && !block.input.reference_image_url && !block.input.reference_image_base64) {
+          if (block.name === 'image_generate' && !block.input.reference_image_url && !block.input.reference_image_base64 && !block.input.no_reference) {
             let foundRefUrl = null;
             let foundRefBase64 = null;
             let foundRefMime = null;
