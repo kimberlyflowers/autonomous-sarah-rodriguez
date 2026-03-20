@@ -131,6 +131,76 @@ app.get('/status', async (req, res) => {
   }
 });
 
+// GHL diagnostics — test API connectivity and blog endpoint
+app.get('/ghl-diagnostics', async (req, res) => {
+  const { default: axios } = await import('axios');
+  const apiKey = process.env.GHL_API_KEY;
+  const locationId = process.env.GHL_LOCATION_ID;
+  const blogId = process.env.GHL_BLOG_ID || 'DHQrtpkQ3Cp7c96FCyDu';
+  const results = {
+    timestamp: new Date().toISOString(),
+    config: {
+      hasApiKey: !!apiKey,
+      apiKeyLength: apiKey?.length || 0,
+      apiKeyPrefix: apiKey ? apiKey.substring(0, 8) + '...' : 'MISSING',
+      locationId: locationId || 'MISSING',
+      blogId,
+      apiVersion: '2021-07-28'
+    },
+    tests: {}
+  };
+
+  const headers = {
+    'Authorization': `Bearer ${apiKey}`,
+    'Version': '2021-07-28',
+    'Content-Type': 'application/json',
+    'Accept': 'application/json'
+  };
+
+  // Test 1: List contacts (most basic GHL endpoint)
+  try {
+    const r = await axios.get('https://services.leadconnectorhq.com/contacts/', {
+      headers, params: { locationId, limit: 1 }, timeout: 10000
+    });
+    results.tests.contacts = { status: 'OK', httpStatus: r.status };
+  } catch (e) {
+    results.tests.contacts = { status: 'FAILED', httpStatus: e.response?.status, error: e.response?.data || e.message };
+  }
+
+  // Test 2: List blog posts (GET — tests if blog endpoint exists)
+  try {
+    const r = await axios.get(`https://services.leadconnectorhq.com/blogs/${blogId}/posts`, {
+      headers, params: { locationId, limit: 1 }, timeout: 10000
+    });
+    results.tests.blogList = { status: 'OK', httpStatus: r.status, responseKeys: Object.keys(r.data || {}) };
+  } catch (e) {
+    results.tests.blogList = { status: 'FAILED', httpStatus: e.response?.status, error: e.response?.data || e.message };
+  }
+
+  // Test 3: List email templates
+  try {
+    const r = await axios.get('https://services.leadconnectorhq.com/emails/builder', {
+      headers, params: { locationId, limit: 1 }, timeout: 10000
+    });
+    results.tests.emailTemplates = { status: 'OK', httpStatus: r.status, responseKeys: Object.keys(r.data || {}) };
+  } catch (e) {
+    results.tests.emailTemplates = { status: 'FAILED', httpStatus: e.response?.status, error: e.response?.data || e.message };
+  }
+
+  // Test 4: Try blog post with newer API version header
+  try {
+    const r = await axios.get(`https://services.leadconnectorhq.com/blogs/${blogId}/posts`, {
+      headers: { ...headers, 'Version': '2021-10-28' },
+      params: { locationId, limit: 1 }, timeout: 10000
+    });
+    results.tests.blogListNewVersion = { status: 'OK', httpStatus: r.status, note: 'Works with Version 2021-10-28' };
+  } catch (e) {
+    results.tests.blogListNewVersion = { status: 'FAILED', httpStatus: e.response?.status, error: e.response?.data || e.message };
+  }
+
+  res.json(results);
+});
+
 // Manual heartbeat trigger (for testing)
 app.post('/trigger-heartbeat', async (req, res) => {
   try {

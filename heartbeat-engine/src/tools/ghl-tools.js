@@ -83,17 +83,31 @@ async function callGHL(endpoint, method = 'GET', data = null, params = {}, orgId
     config.data = data;
   }
 
+  // Log full request details for debugging
+  logger.info(`GHL API request: ${method} ${config.url}`, {
+    queryParams: config.params,
+    hasBody: !!config.data,
+    bodyKeys: config.data ? Object.keys(config.data) : [],
+    version: GHL_API_VERSION
+  });
+
   try {
     const response = await axios(config);
-    logger.info(`GHL API success: ${method} ${endpoint}`, { status: response.status });
+    logger.info(`GHL API success: ${method} ${endpoint}`, { status: response.status, responseKeys: Object.keys(response.data || {}) });
     return response.data;
   } catch (error) {
     const status = error.response?.status || 'unknown';
     const errorData = error.response?.data;
     const errorMsg = errorData?.message || errorData?.msg || error.message;
     const errorDetail = JSON.stringify(errorData || {});
-    logger.error(`GHL API error: ${method} ${endpoint} [${status}]`, { errorData, errorMsg });
-    throw new Error(`GHL API Error (${status}): ${errorMsg}. Details: ${errorDetail}`);
+    logger.error(`GHL API error: ${method} ${endpoint} [${status}]`, {
+      errorData,
+      errorMsg,
+      fullUrl: config.url,
+      queryParams: config.params,
+      bodyKeys: config.data ? Object.keys(config.data) : []
+    });
+    throw new Error(`GHL API Error (${status}): ${errorMsg}. Full URL: ${config.url}. Details: ${errorDetail}`);
   }
 }
 
@@ -1673,13 +1687,34 @@ export const ghlExecutors = {
 
     logger.info('GHL email template payload', { title: ghlPayload.title, hasHTML: !!ghlPayload.html, preheaderLength: ghlPayload.preheaderText.length });
 
-    const result = await callGHL('/emails/builder', 'POST', ghlPayload);
+    try {
+      const result = await callGHL('/emails/builder', 'POST', ghlPayload);
 
-    // Attach assembled HTML to result so Sarah can use it for create_artifact
-    if (html) {
-      result._assembledHTML = html;
+      // ── MANDATORY RESULT VALIDATION ──
+      // Sarah MUST check _status before reporting success to the user.
+      const templateId = result?.id || result?.templateId || result?.data?.id;
+      if (templateId) {
+        result._status = 'SUCCESS';
+        result._templateId = templateId;
+        result._message = `EMAIL TEMPLATE SAVED SUCCESSFULLY. Template ID: ${templateId}. You may now tell the user it was saved.`;
+        logger.info(`Email template created successfully: ${templateId}`);
+      } else {
+        result._status = 'FAILED';
+        result._message = `EMAIL TEMPLATE SAVE FAILED — the API returned a response but NO template ID was found. Do NOT tell the user it was saved. Response keys: ${Object.keys(result || {}).join(', ')}`;
+        logger.error('Email template creation returned no ID', { resultKeys: Object.keys(result || {}) });
+      }
+
+      if (html) { result._assembledHTML = html; }
+      return result;
+    } catch (error) {
+      // Return structured failure — Sarah MUST report this error to the user
+      return {
+        _status: 'FAILED',
+        _message: `EMAIL TEMPLATE SAVE FAILED. Error: ${error.message}. You MUST tell the user this failed and show them the error. Do NOT say it was saved.`,
+        _error: error.message,
+        _assembledHTML: html || null
+      };
     }
-    return result;
   },
 
   // SOCIAL PLANNER
@@ -1758,13 +1793,34 @@ export const ghlExecutors = {
 
     logger.info('GHL blog payload', { title: ghlPayload.title, status: ghlPayload.status, slug: ghlPayload.slug, hasHTML: !!ghlPayload.rawHTML });
 
-    const result = await callGHL(`/blogs/${blogId}/posts`, 'POST', ghlPayload);
+    try {
+      const result = await callGHL(`/blogs/${blogId}/posts`, 'POST', ghlPayload);
 
-    // Attach the assembled HTML to the result so Sarah can use it for create_artifact
-    if (rawHTML) {
-      result._assembledHTML = rawHTML;
+      // ── MANDATORY RESULT VALIDATION ──
+      // Sarah MUST check _status before reporting success to the user.
+      const postId = result?.id || result?.data?.id || result?.postId;
+      if (postId) {
+        result._status = 'SUCCESS';
+        result._postId = postId;
+        result._message = `BLOG POST SAVED SUCCESSFULLY as draft. Post ID: ${postId}. You may now tell the user it was saved.`;
+        logger.info(`Blog post created successfully: ${postId}`);
+      } else {
+        result._status = 'FAILED';
+        result._message = `BLOG POST SAVE FAILED — the API returned a response but NO post ID was found. Do NOT tell the user it was saved. Response keys: ${Object.keys(result || {}).join(', ')}`;
+        logger.error('Blog post creation returned no ID', { resultKeys: Object.keys(result || {}) });
+      }
+
+      if (rawHTML) { result._assembledHTML = rawHTML; }
+      return result;
+    } catch (error) {
+      // Return structured failure — Sarah MUST report this error to the user
+      return {
+        _status: 'FAILED',
+        _message: `BLOG POST SAVE FAILED. Error: ${error.message}. You MUST tell the user this failed and show them the error. Do NOT say it was saved.`,
+        _error: error.message,
+        _assembledHTML: rawHTML || null
+      };
     }
-    return result;
   },
 
   // DOCUMENTS/CONTRACTS
