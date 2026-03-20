@@ -85,11 +85,15 @@ async function callGHL(endpoint, method = 'GET', data = null, params = {}, orgId
 
   try {
     const response = await axios(config);
-    logger.info(`GHL API success: ${method} ${endpoint}`);
+    logger.info(`GHL API success: ${method} ${endpoint}`, { status: response.status });
     return response.data;
   } catch (error) {
-    logger.error(`GHL API error: ${method} ${endpoint}`, error.response?.data || error.message);
-    throw new Error(`GHL API Error: ${error.response?.data?.message || error.message}`);
+    const status = error.response?.status || 'unknown';
+    const errorData = error.response?.data;
+    const errorMsg = errorData?.message || errorData?.msg || error.message;
+    const errorDetail = JSON.stringify(errorData || {});
+    logger.error(`GHL API error: ${method} ${endpoint} [${status}]`, { errorData, errorMsg });
+    throw new Error(`GHL API Error (${status}): ${errorMsg}. Details: ${errorDetail}`);
   }
 }
 
@@ -1628,13 +1632,13 @@ export const ghlExecutors = {
   },
 
   // POST /emails/builder — create email template as draft
+  // GHL email builder expects: locationId, title, html, preheaderText (optional)
   // If params.calloutItems is provided, assembles HTML from locked template automatically.
-  // If params.html is raw HTML, passes it through (legacy/fallback).
   ghl_create_email_template: async (params) => {
     const locationId = await resolveLocationId(params._orgId);
 
     // Auto-assemble HTML from structured data if calloutItems are provided
-    let html = params.html;
+    let html = params.html || '';
     if (params.calloutItems && Array.isArray(params.calloutItems)) {
       html = assembleEmailHTML({
         subject: params.subject,
@@ -1653,16 +1657,29 @@ export const ghlExecutors = {
       logger.info('Email HTML assembled from locked template', { calloutCount: params.calloutItems.length });
     }
 
-    // Remove internal fields from payload
-    const { _orgId, calloutItems: _ci, calloutHeading: _ch2, openingHook: _oh,
-            extraParagraph: _ep, ctaButtonText: _cbt, ctaButtonUrl: _cbu,
-            ctaHeadline: _ch, ctaBody: _cb, headline: _hl, altText: _at, ...templateData } = params;
-
-    return await callGHL('/emails/builder', 'POST', {
+    // GHL email builder expects these fields:
+    // - locationId (string, required)
+    // - title (string — template name)
+    // - html (string — full HTML content)
+    // - preheaderText (string — preview text)
+    // - type (string — "html" for raw HTML templates)
+    const ghlPayload = {
       locationId,
-      ...templateData,
-      html // Use assembled or raw HTML
-    });
+      title: params.name || params.subject || 'Email Template',
+      html,
+      preheaderText: params.previewText || '',
+      type: 'html'
+    };
+
+    logger.info('GHL email template payload', { title: ghlPayload.title, hasHTML: !!ghlPayload.html, preheaderLength: ghlPayload.preheaderText.length });
+
+    const result = await callGHL('/emails/builder', 'POST', ghlPayload);
+
+    // Attach assembled HTML to result so Sarah can use it for create_artifact
+    if (html) {
+      result._assembledHTML = html;
+    }
+    return result;
   },
 
   // SOCIAL PLANNER
@@ -1687,16 +1704,16 @@ export const ghlExecutors = {
   },
 
   // POST /blogs/{blogId}/posts — create a post in a specific blog site
+  // GHL required fields: title, description, rawHTML, slug, author, categories, status (UPPERCASE)
   // If params.sections is provided, assembles HTML from locked template automatically.
-  // If params.content is raw HTML, passes it through (legacy/fallback).
   ghl_create_blog_post: async (params) => {
     const blogId = params.blogId || process.env.GHL_BLOG_ID || 'DHQrtpkQ3Cp7c96FCyDu';
     const locationId = await resolveLocationId(params._orgId);
 
     // Auto-assemble HTML from structured data if sections are provided
-    let content = params.content;
+    let rawHTML = params.content || '';
     if (params.sections && Array.isArray(params.sections)) {
-      content = assembleBlogHTML({
+      rawHTML = assembleBlogHTML({
         title: params.title,
         subtitle: params.subtitle,
         heroImageUrl: params.imageUrl,
@@ -1713,16 +1730,41 @@ export const ghlExecutors = {
       logger.info('Blog HTML assembled from locked template', { sectionCount: params.sections.length });
     }
 
-    // Remove internal fields from payload
-    const { blogId: _bid, _orgId, sections: _s, subtitle: _sub, intro: _intro,
-            ctaHeadline: _ch, ctaBody: _cb, altText: _at, keywords: _kw,
-            canonicalUrl: _cu, companyName: _cn, ...postData } = params;
-
-    return await callGHL(`/blogs/${blogId}/posts`, 'POST', {
+    // GHL expects these exact field names:
+    // - title (string, required)
+    // - description (string, required — meta/SEO description)
+    // - rawHTML (string, required — the full HTML content)
+    // - slug (string, required — URL slug)
+    // - status (string, required — UPPERCASE: "DRAFT", "PUBLISHED", "SCHEDULED", "ARCHIVED")
+    // - author (object, required — { name, profileImage })
+    // - categories (array of category ID strings, required — can be empty [])
+    // - imageUrl (string — featured/cover image)
+    // - imageAltText (string — SEO alt text for cover image)
+    const ghlPayload = {
       locationId,
-      ...postData,
-      content // Use assembled or raw HTML
-    });
+      title: params.title,
+      description: params.metaDescription || params.description || params.title,
+      rawHTML,
+      slug: params.slug || params.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''),
+      status: (params.status || 'draft').toUpperCase(),
+      author: params.author || {
+        name: 'Bloomie Staffing',
+        profileImage: ''
+      },
+      categories: params.categories || params.tags || [],
+      imageUrl: params.imageUrl || '',
+      imageAltText: params.altText || params.title
+    };
+
+    logger.info('GHL blog payload', { title: ghlPayload.title, status: ghlPayload.status, slug: ghlPayload.slug, hasHTML: !!ghlPayload.rawHTML });
+
+    const result = await callGHL(`/blogs/${blogId}/posts`, 'POST', ghlPayload);
+
+    // Attach the assembled HTML to the result so Sarah can use it for create_artifact
+    if (rawHTML) {
+      result._assembledHTML = rawHTML;
+    }
+    return result;
   },
 
   // DOCUMENTS/CONTRACTS
