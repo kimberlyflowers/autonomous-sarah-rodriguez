@@ -2948,25 +2948,32 @@ function App({ authUser }) {
             confSessionRef.current=latest.id.replace(/-[a-f0-9]{8}$/,'');
           }
           const activeBase=confSessionRef.current;
-          // Load conference sub-sessions: use FIRST sub-session for user messages, ALL for agent messages
-          // This avoids duplicate user messages entirely since each sub-session has the same user input
-          const extractUserMsg=(ctxText)=>{
-            if(!ctxText||!ctxText.startsWith('[You are '))return null;
-            const threadMatch=ctxText.match(/(?:Thread so far|Here is the conversation so far):\n([\s\S]*?)\n\nRespond naturally/);
-            if(!threadMatch)return null;
-            const lines=threadMatch[1].split('\n');
-            for(let i=lines.length-1;i>=0;i--){
-              if(lines[i].startsWith('Client: '))return lines[i].slice(8);
-            }
-            return null;
-          };
-
+          // MASTER RECORD APPROACH:
+          // - User messages come from the -user sub-session (clean, saved once)
+          // - Agent responses come from each agent's sub-session
+          // - For legacy sessions (no -user sub-session), fall back to extracting from context strings
           const matchingSessions=confSessions.filter(cs=>cs.id.startsWith(activeBase));
-          const agentMessages=[]; // collect all agent responses
-          const userMessages=[];  // collect user messages from first sub-session only
-          let firstSessionDone=false;
+          const userSession=matchingSessions.find(cs=>cs.id.endsWith('-user'));
+          const agentSessions=matchingSessions.filter(cs=>!cs.id.endsWith('-user'));
 
-          for(const cs of matchingSessions){
+          const userMessages=[];
+          const agentMessages=[];
+
+          // 1. Load user messages from -user session (master record)
+          if(userSession){
+            try{
+              const r3=await fetch('/api/chat/sessions/'+userSession.id,{headers:h});
+              const d3=await r3.json();
+              for(const m of(d3.messages||[])){
+                if(m.role==='user'){
+                  userMessages.push({id:m.id,from:'user',text:m.content,time:new Date(m.created_at).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}),_ts:new Date(m.created_at).getTime()});
+                }
+              }
+            }catch{}
+          }
+
+          // 2. Load agent responses from agent sub-sessions
+          for(const cs of agentSessions){
             try{
               const r3=await fetch('/api/chat/sessions/'+cs.id,{headers:h});
               const d3=await r3.json();
@@ -2974,36 +2981,55 @@ function App({ authUser }) {
               const agentAvatar=agents.find(a=>cs.id.includes(a.id.slice(0,8)))?.avatar_url;
               const agentId=agents.find(a=>cs.id.includes(a.id.slice(0,8)))?.id;
               for(const m of(d3.messages||[])){
-                const ts=new Date(m.created_at).getTime();
-                const time=new Date(m.created_at).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
                 if(m.role==='assistant'){
-                  agentMessages.push({id:m.id,from:'agent',fromAgent:agentName,agentId,avatar:agentAvatar,text:m.content,time,_ts:ts});
-                }else if(!firstSessionDone){
-                  // Only extract user messages from the first sub-session to prevent duplicates
-                  const txt=m.content;
-                  if(txt&&txt.startsWith('[You are ')){
-                    const realText=extractUserMsg(txt);
-                    if(realText)userMessages.push({id:m.id,from:'user',text:realText,time,_ts:ts});
-                  }else{
-                    userMessages.push({id:m.id,from:'user',text:txt,time,_ts:ts});
-                  }
+                  agentMessages.push({id:m.id,from:'agent',fromAgent:agentName,agentId,avatar:agentAvatar,text:m.content,time:new Date(m.created_at).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}),_ts:new Date(m.created_at).getTime()});
                 }
               }
-              if(!firstSessionDone)firstSessionDone=true;
             }catch{}
           }
 
-          // Merge, sort by timestamp, and deduplicate any remaining user dupes by text
-          const allMerged=[...userMessages,...agentMessages].sort((a,b)=>a._ts-b._ts);
-          const seenUserTexts=new Set();
-          const deduped=allMerged.filter(m=>{
-            if(m.from==='user'){
-              const key=m.text?.slice(0,200);
-              if(seenUserTexts.has(key))return false;
-              seenUserTexts.add(key);
-            }
-            return true;
-          });
+          // 3. LEGACY FALLBACK: if no -user session exists (old conferences), extract from context strings
+          if(!userSession&&agentSessions.length>0){
+            const extractUserMsg=(ctxText)=>{
+              if(!ctxText)return null;
+              if(ctxText.startsWith('[You are ')){
+                const threadMatch=ctxText.match(/(?:Thread so far|Here is the conversation so far):\n([\s\S]*?)\n\nRespond naturally/);
+                if(!threadMatch)return null;
+                const lines=threadMatch[1].split('\n');
+                for(let i=lines.length-1;i>=0;i--){
+                  if(lines[i].startsWith('Client: '))return lines[i].slice(8);
+                }
+                return null;
+              }
+              // Old format: raw transcript pasted as message — extract Client: lines
+              const lines=ctxText.split('\n');
+              for(let i=lines.length-1;i>=0;i--){
+                if(lines[i].startsWith('Client: '))return lines[i].slice(8);
+                // Also try: "New message from client:]" format
+                if(lines[i].startsWith('New message from client:'))return lines[i+1]?.trim()||null;
+              }
+              return null;
+            };
+            // Only pull user messages from the FIRST agent session
+            try{
+              const cs=agentSessions[0];
+              const r3=await fetch('/api/chat/sessions/'+cs.id,{headers:h});
+              const d3=await r3.json();
+              const seenTexts=new Set();
+              for(const m of(d3.messages||[])){
+                if(m.role==='user'){
+                  const realText=extractUserMsg(m.content);
+                  if(realText&&!seenTexts.has(realText.slice(0,200))){
+                    seenTexts.add(realText.slice(0,200));
+                    userMessages.push({id:m.id,from:'user',text:realText,time:new Date(m.created_at).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}),_ts:new Date(m.created_at).getTime()});
+                  }
+                }
+              }
+            }catch{}
+          }
+
+          // Merge and sort by timestamp
+          const deduped=[...userMessages,...agentMessages].sort((a,b)=>a._ts-b._ts);
           if(deduped.length>0)setConfMessages(deduped);
         }
       }catch(e){console.error('Failed to load conference history:',e);}
@@ -3016,6 +3042,12 @@ function App({ authUser }) {
     const tstamp=()=>new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
     setConfMessages(p=>[...p,{id:'cu-'+Date.now(),from:'user',text,time:tstamp()}]);
 
+    // Save user message ONCE to a dedicated -user sub-session (master record)
+    try{
+      const h=await getAuthHeaders();
+      await fetch('/api/chat/conference/user-message',{method:'POST',headers:h,body:JSON.stringify({text,sessionId:confSessionRef.current+'-user'})});
+    }catch(e){console.error('Failed to save conference user message:',e);}
+
     // Helper: detect which agents are mentioned in text (excluding the speaker)
     const detectMentions=(msg,excludeAgent)=>{
       const lower=msg.toLowerCase();
@@ -3026,12 +3058,12 @@ function App({ authUser }) {
       });
     };
 
-    // Helper: send to one agent and get response
+    // Helper: send to one agent and get response (skipUserSave — user msg already saved in -user session)
     const sendToOne=async(a,thread)=>{
       const ctx=`[You are ${a.name} in a group chat with the client and ${agents.filter(x=>x.id!==a.id).map(x=>x.name).join(', ')}. Thread so far:\n${thread}\n\nRespond naturally as ${a.name}. If another team member asked you a question or made a point, engage with them directly — you can talk to each other without waiting for the client. Keep it conversational and collaborative. If the message has nothing to do with you, stay silent.]`;
       try{
         const h=await getAuthHeaders();
-        const r=await fetch('/api/chat/message',{method:'POST',headers:h,body:JSON.stringify({message:ctx,sessionId:confSessionRef.current+'-'+a.id.slice(0,8),agentId:a.id})});
+        const r=await fetch('/api/chat/message',{method:'POST',headers:h,body:JSON.stringify({message:ctx,sessionId:confSessionRef.current+'-'+a.id.slice(0,8),agentId:a.id,skipUserSave:true})});
         const d=await r.json();
         let rt=(d.response||d.message||'').replace(/\s*\[Session context[\s\S]*$/,'').replace(/\s*\[Tool:.*?\]\s*/g,'').trim();
         rt=rt.replace(/^\[You are[\s\S]*?conversational\.\]\s*/,'').trim();
@@ -3320,10 +3352,13 @@ function App({ authUser }) {
   ]);
 
   // Fetch deliverables when files tab opens, after approval, or when agent changes
+  // In conference mode, show files from ALL agents (no agentId filter)
   useEffect(()=>{
     if(pg!=="artifacts") return;
     setFilesLoading(true);
-    const url = currentAgentId ? `/api/files/artifacts?limit=50&agentId=${currentAgentId}` : "/api/files/artifacts?limit=50";
+    const url = conferenceMode
+      ? "/api/files/artifacts?limit=50"
+      : currentAgentId ? `/api/files/artifacts?limit=50&agentId=${currentAgentId}` : "/api/files/artifacts?limit=50";
     fetch(url)
       .then(r=>r.ok?r.json():null)
       .then(d=>{
@@ -3331,7 +3366,7 @@ function App({ authUser }) {
       })
       .catch(()=>{})
       .finally(()=>setFilesLoading(false));
-  },[pg,filesRefresh,currentAgentId]);
+  },[pg,filesRefresh,currentAgentId,conferenceMode]);
   const btm=useRef(null);
   const fRef=useRef(null);
   const [pendingFiles,setPendingFiles]=useState([]);
@@ -5048,7 +5083,7 @@ function App({ authUser }) {
               <div style={{marginBottom:16,display:"flex",flexDirection:mob?"column":"row",gap:12,alignItems:mob?"stretch":"center",justifyContent:"space-between"}}>
                 <div>
                   <h1 style={{fontSize:mob?20:24,fontWeight:700,color:c.tx,marginBottom:4}}>Files & Deliverables</h1>
-                  <p style={{fontSize:13,color:c.so}}>All content {aFN} has created for you</p>
+                  <p style={{fontSize:13,color:c.so}}>{conferenceMode?'All content from your team':'All content '+aFN+' has created for you'}</p>
                 </div>
                 <input value={filesSearch||''} onChange={e=>setFilesSearch(e.target.value)} placeholder="Search files..." style={{padding:"8px 14px",borderRadius:10,border:"1.5px solid "+c.ln,fontSize:13,fontFamily:"inherit",background:c.inp,color:c.tx,width:mob?"100%":240}}/>
               </div>
@@ -5672,22 +5707,22 @@ function App({ authUser }) {
                   <div style={{display:"flex",gap:24,alignItems:"flex-start",flexWrap:"wrap"}}>
                     <div style={{textAlign:"center",flexShrink:0}}>
                       <div style={{width:160,height:160,borderRadius:12,border:"1px solid "+c.ln,background:"#fff",display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
-                        <QRCanvas url={window.location.origin} size={140}/>
+                        <QRCanvas url={window.location.origin+'/mobile'} size={140}/>
                       </div>
                       <div style={{fontSize:10,color:c.so,marginTop:6}}>Scan with your phone camera</div>
                     </div>
                     <div style={{flex:1,minWidth:200}}>
                       <div style={{fontSize:11,fontWeight:700,color:c.so,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>Or copy the link</div>
                       <div style={{display:"flex",gap:6,marginBottom:16}}>
-                        <div style={{flex:1,padding:"10px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.sf,fontSize:12,fontFamily:"monospace",color:c.ac,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{window.location.origin}</div>
-                        <button onClick={()=>{navigator.clipboard?.writeText(window.location.origin);setOauthToast({type:"success",msg:"Link copied"});setTimeout(()=>setOauthToast(null),2000);}} style={{padding:"10px 16px",borderRadius:8,border:"none",background:"linear-gradient(135deg,#F4A261,#E76F8B)",cursor:"pointer",fontSize:12,fontWeight:700,color:"#fff",fontFamily:"inherit",flexShrink:0}}>Copy</button>
+                        <div style={{flex:1,padding:"10px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.sf,fontSize:12,fontFamily:"monospace",color:c.ac,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{window.location.origin+'/mobile'}</div>
+                        <button onClick={()=>{navigator.clipboard?.writeText(window.location.origin+'/mobile');setOauthToast({type:"success",msg:"Link copied"});setTimeout(()=>setOauthToast(null),2000);}} style={{padding:"10px 16px",borderRadius:8,border:"none",background:"linear-gradient(135deg,#F4A261,#E76F8B)",cursor:"pointer",fontSize:12,fontWeight:700,color:"#fff",fontFamily:"inherit",flexShrink:0}}>Copy</button>
                       </div>
                       <div style={{fontSize:11,fontWeight:700,color:c.so,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>Share via</div>
                       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                         {[
-                          {label:"Text",href:"sms:?body="+encodeURIComponent("Chat with "+aFN+" from your phone: "+window.location.origin)},
-                          {label:"Email",href:"mailto:?subject="+encodeURIComponent("Chat with "+aFN)+"&body="+encodeURIComponent("Open this link on your phone and add it to your home screen: "+window.location.origin)},
-                          {label:"WhatsApp",href:"https://wa.me/?text="+encodeURIComponent("Chat with "+aFN+" from your phone: "+window.location.origin)},
+                          {label:"Text",href:"sms:?body="+encodeURIComponent("Chat with "+aFN+" from your phone: "+window.location.origin+'/mobile')},
+                          {label:"Email",href:"mailto:?subject="+encodeURIComponent("Chat with "+aFN)+"&body="+encodeURIComponent("Open this link on your phone and add it to your home screen: "+window.location.origin+'/mobile')},
+                          {label:"WhatsApp",href:"https://wa.me/?text="+encodeURIComponent("Chat with "+aFN+" from your phone: "+window.location.origin+'/mobile')},
                         ].map((s,i)=>(
                           <a key={i} href={s.href} target="_blank" rel="noopener noreferrer" style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+c.ln,background:c.cd,fontSize:12,fontWeight:600,color:c.tx,textDecoration:"none"}} onMouseEnter={e=>e.currentTarget.style.borderColor=c.ac} onMouseLeave={e=>e.currentTarget.style.borderColor=c.ln}>{s.label}</a>
                         ))}

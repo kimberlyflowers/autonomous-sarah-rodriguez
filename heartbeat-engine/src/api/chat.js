@@ -4330,7 +4330,7 @@ Title:`;
   }
 }
 
-async function saveMessages(_pool, sessionId, userMsg, assistantMsg, files = null, userId = null, agentId = null) {
+async function saveMessages(_pool, sessionId, userMsg, assistantMsg, files = null, userId = null, agentId = null, opts = {}) {
   const userText = typeof userMsg === 'string' ? userMsg : JSON.stringify(userMsg);
 
   // Save messages to SUPABASE (source of truth for millions of users)
@@ -4343,18 +4343,20 @@ async function saveMessages(_pool, sessionId, userMsg, assistantMsg, files = nul
     const resolvedUserId = userId || process.env.BLOOM_OWNER_USER_ID || '823e2fb5-2f8f-4279-9c84-c8f4bf78bcce';
     const resolvedAgentId = agentId || process.env.AGENT_UUID || 'c3000000-0000-0000-0000-000000000003';
 
-    // Insert user message
-    await supabase
-      .from('messages')
-      .insert({
-        session_id: sessionId,
-        organization_id: process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001',
-        user_id: resolvedUserId,
-        agent_id: resolvedAgentId,
-        role: 'user',
-        content: userText,
-        files: files ? files : null
-      });
+    // Insert user message (skip for conference agent sub-sessions — user msg saved in -user session)
+    if (!opts.skipUserSave) {
+      await supabase
+        .from('messages')
+        .insert({
+          session_id: sessionId,
+          organization_id: process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001',
+          user_id: resolvedUserId,
+          agent_id: resolvedAgentId,
+          role: 'user',
+          content: userText,
+          files: files ? files : null
+        });
+    }
 
     // Insert assistant message
     await supabase
@@ -4508,10 +4510,48 @@ router.patch('/sessions/:id/title', async (req, res) => {
   }
 });
 
+// Save a clean user message to a conference -user sub-session (no AI call)
+router.post('/conference/user-message', async (req, res) => {
+  try {
+    const { text, sessionId } = req.body || {};
+    if (!text?.trim() || !sessionId) return res.status(400).json({ error: 'text and sessionId required' });
+    const userId = await getUserId(req);
+    const { createClient } = await import('@supabase/supabase-js');
+    const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const resolvedUserId = userId || process.env.BLOOM_OWNER_USER_ID || '823e2fb5-2f8f-4279-9c84-c8f4bf78bcce';
+    const orgId = process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001';
+    // Ensure the -user session exists
+    const { data: existing } = await sb.from('sessions').select('id').eq('id', sessionId).single();
+    if (!existing) {
+      await sb.from('sessions').insert({
+        id: sessionId,
+        user_id: resolvedUserId,
+        organization_id: orgId,
+        title: 'Team Conference',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      });
+    }
+    // Insert user message
+    await sb.from('messages').insert({
+      session_id: sessionId,
+      organization_id: orgId,
+      user_id: resolvedUserId,
+      role: 'user',
+      content: text
+    });
+    await sb.from('sessions').update({ updated_at: new Date().toISOString() }).eq('id', sessionId);
+    res.json({ success: true });
+  } catch (e) {
+    logger.error('Conference user-message save failed:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 router.post('/message', async (req, res) => {
   // Track which skills the agent loads during this turn — shown as badges in the dashboard
   let skillsUsedThisTurn = [];
-  const { message, sessionId = 'session-' + Date.now(), agentId } = req.body || {};
+  const { message, sessionId = 'session-' + Date.now(), agentId, skipUserSave } = req.body || {};
   try {
     if (!message?.trim()) return res.status(400).json({ error: 'Message required' });
 
@@ -4580,7 +4620,7 @@ router.post('/message', async (req, res) => {
       logger.info(`💬 Chat [${sessionId}] ${agentConfig.name || 'Agent'}: [CLARIFICATION] ${response.clarification?.question || ''}`);
       // Save the clarification as a message so conversation history is preserved
       const clarifyText = response.text || `I need to clarify something before I proceed.`;
-      await saveMessages(null, sessionId, message, clarifyText, null, userId, agentConfig.agentId);
+      await saveMessages(null, sessionId, message, clarifyText, null, userId, agentConfig.agentId, { skipUserSave: !!skipUserSave });
 
       if (history.length === 0) {
         generateSessionTitle(sessionId, message, clarifyText).catch(() => {});
@@ -4597,7 +4637,7 @@ router.post('/message', async (req, res) => {
 
     logger.info(`💬 Chat [${sessionId}] User: ${message.slice(0, 100)}${message.length > 100 ? '...' : ''}`);
     logger.info(`💬 Chat [${sessionId}] ${agentConfig.name || 'Agent'}: ${response.replace(/\[Session context[\s\S]*$/, '').slice(0, 100)}${response.length > 100 ? '...' : ''}`);
-    await saveMessages(null, sessionId, message, response, null, userId, agentConfig.agentId);
+    await saveMessages(null, sessionId, message, response, null, userId, agentConfig.agentId, { skipUserSave: !!skipUserSave });
 
     // Strip internal session context before sending to client
     const cleanResponse = response.replace(/\s*\[Session context[\s\S]*$/g, '').trim();

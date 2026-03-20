@@ -181,6 +181,12 @@ export default function MobileApp({ user: authUser }) {
     setGroupInput('');setGroupSending(true);
     setGroupMsgs(p=>[...p,{id:'gu-'+Date.now(),from:'user',text,time:ts()}]);
 
+    // Save user message ONCE to a dedicated -user sub-session (master record)
+    try{
+      const h=await authHeaders();
+      await fetch(API+'/api/chat/conference/user-message',{method:'POST',headers:h,body:JSON.stringify({text,sessionId:groupSessionRef.current+'-user'})});
+    }catch(e){console.error('Failed to save group user message:',e);}
+
     // Helper: detect which agents are addressed in a message
     const detectMentions = (msg, excludeAgent) => {
       const lower = msg.toLowerCase();
@@ -198,7 +204,7 @@ export default function MobileApp({ user: authUser }) {
       try {
         const h = await authHeaders();
         const r = await fetch(API+'/api/chat/message',{method:'POST',headers:h,
-          body:JSON.stringify({message:contextMsg,sessionId:groupSessionRef.current+'-'+a.id.slice(0,8),agentId:a.id})});
+          body:JSON.stringify({message:contextMsg,sessionId:groupSessionRef.current+'-'+a.id.slice(0,8),agentId:a.id,skipUserSave:true})});
         const d = await r.json();
         let rt = (d.response||d.message||'').replace(/\s*\[Session context[\s\S]*$/,'').replace(/\s*\[Tool:.*?\]\s*/g,'').trim();
         rt = rt.replace(/^\[You are[\s\S]*?conversational\.\]\s*/,'').trim();
