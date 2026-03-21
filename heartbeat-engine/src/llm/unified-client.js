@@ -514,4 +514,111 @@ async function _callModelDirect(model, provider, { system, messages, tools, maxT
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Model Tier Manager — per-org model assignment with time-based switching
+//
+// Tiers:
+//   "bloom"    → Sonnet 4.6 (primary instance, best quality)
+//   "premium"  → GPT-4o (first 30 days for new clients)
+//   "standard" → Gemini 2.5 Flash (after 30 days, cost-optimized)
+//   "custom"   → Any model string (per-org override)
+//
+// Usage:
+//   const model = resolveModelForOrg(orgConfig);
+//   // orgConfig = { tier: "premium", createdAt: "2025-12-01", customModel: null }
+//   // Returns the correct model string based on tier + account age
+// ═══════════════════════════════════════════════════════════════════════════
+
+const MODEL_TIERS = {
+  bloom: {
+    model: 'claude-sonnet-4-6-20250929',
+    description: 'BLOOM primary — Sonnet 4.6 (best quality, best honesty)',
+  },
+  premium: {
+    model: 'gpt-4o',
+    description: 'Client onboarding — GPT-4o (first 30 days)',
+    downgradeTo: 'standard',
+    downgradeAfterDays: 30,
+  },
+  standard: {
+    model: 'gemini-2.5-flash',
+    description: 'Client steady-state — Gemini Flash (cost-optimized)',
+  },
+  budget: {
+    model: 'gpt-4o-mini',
+    description: 'Budget tier — GPT-4o-mini (minimum viable)',
+  },
+  custom: {
+    model: null, // uses org.customModel
+    description: 'Custom model override',
+  },
+};
+
+export function getModelTiers() {
+  return { ...MODEL_TIERS };
+}
+
+/**
+ * Resolve the correct model for an organization based on tier + account age.
+ *
+ * @param {Object} orgConfig - Organization configuration
+ * @param {string} orgConfig.modelTier - Tier name: "bloom", "premium", "standard", "budget", "custom"
+ * @param {string} orgConfig.createdAt - ISO date string when the org was created
+ * @param {string} [orgConfig.customModel] - Full model string for "custom" tier
+ * @param {string} [orgConfig.modelOverride] - Temporary override (e.g., operator switched via tool)
+ * @returns {{ model: string, tier: string, reason: string }}
+ */
+export function resolveModelForOrg(orgConfig = {}) {
+  // Temporary override takes priority (from switch_model tool)
+  if (orgConfig.modelOverride) {
+    return {
+      model: orgConfig.modelOverride,
+      tier: 'override',
+      reason: `Manual override: ${orgConfig.modelOverride}`,
+    };
+  }
+
+  const tierName = orgConfig.modelTier || 'bloom';
+  const tier = MODEL_TIERS[tierName];
+
+  if (!tier) {
+    logger.warn(`Unknown model tier: ${tierName}, falling back to bloom`);
+    return { model: MODEL_TIERS.bloom.model, tier: 'bloom', reason: `Unknown tier "${tierName}", using bloom default` };
+  }
+
+  // Custom tier — use the org's specified model
+  if (tierName === 'custom') {
+    const customModel = orgConfig.customModel || MODEL_TIERS.bloom.model;
+    return { model: customModel, tier: 'custom', reason: `Custom model: ${customModel}` };
+  }
+
+  // Check for time-based downgrade (e.g., premium → standard after 30 days)
+  if (tier.downgradeAfterDays && tier.downgradeTo && orgConfig.createdAt) {
+    const createdDate = new Date(orgConfig.createdAt);
+    const now = new Date();
+    const daysSinceCreation = Math.floor((now - createdDate) / (1000 * 60 * 60 * 24));
+
+    if (daysSinceCreation > tier.downgradeAfterDays) {
+      const downgradeTier = MODEL_TIERS[tier.downgradeTo];
+      logger.info(`Org auto-downgraded: ${tierName} → ${tier.downgradeTo} (${daysSinceCreation} days old, threshold: ${tier.downgradeAfterDays})`, {
+        orgCreatedAt: orgConfig.createdAt, daysSinceCreation, fromTier: tierName, toTier: tier.downgradeTo
+      });
+      return {
+        model: downgradeTier.model,
+        tier: tier.downgradeTo,
+        reason: `Auto-switched from ${tierName} to ${tier.downgradeTo} after ${tier.downgradeAfterDays} days (account is ${daysSinceCreation} days old)`,
+      };
+    }
+
+    const daysRemaining = tier.downgradeAfterDays - daysSinceCreation;
+    return {
+      model: tier.model,
+      tier: tierName,
+      reason: `${tier.description} — ${daysRemaining} days until switch to ${tier.downgradeTo}`,
+    };
+  }
+
+  return { model: tier.model, tier: tierName, reason: tier.description };
+}
+
 export default UnifiedLLMClient;

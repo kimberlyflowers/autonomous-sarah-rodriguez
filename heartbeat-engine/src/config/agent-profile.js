@@ -76,6 +76,12 @@ function mergeWithEnvironment(dbConfig) {
       locationId: process.env.GHL_LOCATION_ID || dbConfig.config?.ghlConfig?.locationId,
       userId: process.env.GHL_USER_ID || dbConfig.config?.ghlConfig?.userId
     },
+    modelConfig: {
+      modelTier: process.env.MODEL_TIER || dbConfig.config?.modelConfig?.modelTier || 'bloom',
+      customModel: process.env.CUSTOM_MODEL || dbConfig.config?.modelConfig?.customModel || null,
+      tierStartDate: dbConfig.config?.modelConfig?.tierStartDate || dbConfig.createdAt || null,
+      modelOverride: dbConfig.config?.modelConfig?.modelOverride || null,
+    },
     emailConfig: {
       ...dbConfig.config?.emailConfig,
       smtpHost: process.env.SMTP_HOST,
@@ -126,6 +132,12 @@ function getDefaultConfig() {
     standingInstructions: getDefaultInstructions(),
     config: {},
     ghlConfig: { apiKey: process.env.GHL_API_KEY, locationId: process.env.GHL_LOCATION_ID, userId: null },
+    modelConfig: {
+      modelTier: process.env.MODEL_TIER || 'bloom', // bloom | premium | standard | budget | custom
+      customModel: process.env.CUSTOM_MODEL || null,
+      tierStartDate: null, // ISO date — for time-based tier downgrades
+      modelOverride: null, // Temporary override from switch_model tool
+    },
     emailConfig: { fromEmail: 'sarah@bloomiestaffing.com' },
     humanContact: { name: 'Kimberly Flowers', email: process.env.HUMAN_CONTACT_EMAIL || 'kimberly@bloomiestaffing.com', phone: null, method: 'email' },
     anthropicApiKey: process.env.ANTHROPIC_API_KEY,

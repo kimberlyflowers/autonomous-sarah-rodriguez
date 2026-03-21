@@ -2091,6 +2091,45 @@ Do NOT use this for simple questions, conversation, or tasks you can handle your
     }
   },
   {
+    name: "switch_model",
+    description: `Switch your AI model on the fly. Only use this when the operator explicitly tells you to switch models (e.g., "switch to GPT", "use Gemini", "go back to Claude").
+
+Available models:
+- "sonnet" → Claude Sonnet 4.6 (best quality, best instruction following)
+- "haiku" → Claude Haiku 4.5 (fast, cheap, less reliable)
+- "gpt4o" → GPT-4o (strong alternative, cheaper than Sonnet)
+- "gpt4o-mini" → GPT-4o-mini (very cheap, basic)
+- "gemini" → Gemini 2.5 Flash (cheapest, fast)
+- "deepseek" → DeepSeek Chat (cheap, good at code)
+
+You can also pass a full model string like "claude-sonnet-4-6-20250929".
+
+After switching, confirm which model you're now running on. Your tools and capabilities stay exactly the same — only your reasoning engine changes.`,
+    input_schema: {
+      type: "object",
+      properties: {
+        model: {
+          type: "string",
+          description: "Model shorthand (sonnet, haiku, gpt4o, gpt4o-mini, gemini, deepseek) or full model string"
+        },
+        reason: {
+          type: "string",
+          description: "Why the switch was requested (for logging)"
+        }
+      },
+      required: ["model"]
+    }
+  },
+  {
+    name: "get_model_status",
+    description: `Check which AI model you're currently running on, what provider is active, and what models are available for switching. Use this when the operator asks "what model are you on?" or "show me model status".`,
+    input_schema: {
+      type: "object",
+      properties: {},
+      required: []
+    }
+  },
+  {
     name: "edit_artifact",
     description: `Surgically edit an existing HTML artifact. This is the MANDATORY tool for modifying existing websites/pages.
 
@@ -3602,6 +3641,66 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
       }
     }
 
+    // ── MODEL SWITCHING — on-the-fly model changes ──────────────────────
+    if (toolName === 'switch_model') {
+      const { getLLMClient } = await import('../llm/unified-client.js');
+      const llm = getLLMClient();
+      const oldModel = llm.model;
+      const oldProvider = llm.provider;
+
+      // Shorthand → full model string mapping
+      const MODEL_SHORTHANDS = {
+        'sonnet':     'claude-sonnet-4-6-20250929',
+        'sonnet4.6':  'claude-sonnet-4-6-20250929',
+        'sonnet4.5':  'claude-sonnet-4-5-20250929',
+        'haiku':      'claude-haiku-4-5-20251001',
+        'gpt':        'gpt-4o',
+        'gpt4o':      'gpt-4o',
+        'gpt4o-mini': 'gpt-4o-mini',
+        'gpt-4o':     'gpt-4o',
+        'gpt-4o-mini':'gpt-4o-mini',
+        'gemini':     'gemini-2.5-flash',
+        'deepseek':   'deepseek-chat',
+        'opus':       'claude-opus-4-6-20250929',
+      };
+
+      const requestedModel = toolInput.model?.toLowerCase()?.trim();
+      const resolvedModel = MODEL_SHORTHANDS[requestedModel] || requestedModel;
+      const switched = llm.switchModel(resolvedModel);
+
+      if (switched) {
+        logger.info('Model switched via tool', { from: oldModel, to: resolvedModel, reason: toolInput.reason, provider: llm.provider });
+        return {
+          _status: 'SUCCESS',
+          _message: `Model switched successfully.`,
+          previousModel: oldModel,
+          previousProvider: oldProvider,
+          currentModel: llm.model,
+          currentProvider: llm.provider,
+          reason: toolInput.reason || 'Operator requested'
+        };
+      } else {
+        return {
+          _status: 'FAILED',
+          _message: `Could not switch to "${resolvedModel}" — the API key for that provider is not configured. Available models: ${llm.getAvailableModels().map(m => m.model).join(', ')}`,
+          requestedModel: resolvedModel,
+          availableModels: llm.getAvailableModels()
+        };
+      }
+    }
+
+    if (toolName === 'get_model_status') {
+      const { getLLMClient } = await import('../llm/unified-client.js');
+      const llm = getLLMClient();
+      return {
+        currentModel: llm.model,
+        currentProvider: llm.provider,
+        failoverActive: llm.isFailoverActive,
+        availableModels: llm.getAvailableModels(),
+        providerHealth: llm.getProviderHealth()
+      };
+    }
+
     // Browser tools — Sarah's own computer
     if (toolName.startsWith('browser_')) {
       // AI-driven browser automation via sidecar
@@ -4007,9 +4106,35 @@ When a user asks you to edit, modify, or update something you previously created
   const toolFailureCounts = {}; // { toolName: count } — tracks how many times each tool has failed
   const failedTools = [];       // Array of { name, error, round } — full failure log
 
-  // Model selection — uses unified client (reads LLM_MODEL or ANTHROPIC_MODEL env var)
+  // Model selection — per-org tier system with unified client failover
   const messageText = Array.isArray(userMessage) ? userMessage.filter(b => b.type === 'text').map(b => b.text).join(' ') : userMessage;
   const llmClient = getLLMClient();
+
+  // Apply per-org model tier if available (bloom=Sonnet, premium=GPT, standard=Gemini)
+  try {
+    const { resolveModelForOrg } = await import('../llm/unified-client.js');
+    const orgModelConfig = agentConfig?.config?.modelConfig || {};
+    // Also check for org-level tier from database
+    if (orgModelConfig.modelTier || orgModelConfig.customModel) {
+      const resolved = resolveModelForOrg({
+        modelTier: orgModelConfig.modelTier,
+        createdAt: orgModelConfig.tierStartDate || agentConfig?.createdAt,
+        customModel: orgModelConfig.customModel,
+        modelOverride: orgModelConfig.modelOverride,
+      });
+      if (resolved.model && resolved.model !== llmClient.model) {
+        const switched = llmClient.switchModel(resolved.model);
+        if (switched) {
+          logger.info(`Model tier applied: ${resolved.tier} → ${resolved.model}`, { reason: resolved.reason });
+        } else {
+          logger.warn(`Model tier "${resolved.tier}" requested ${resolved.model} but API key not available, staying on ${llmClient.model}`);
+        }
+      }
+    }
+  } catch (e) {
+    logger.warn('Model tier resolution failed (non-critical):', e.message);
+  }
+
   const chatModel = llmClient.model;
   logger.info('Chat model selected', { model: chatModel, provider: llmClient.provider, failoverReady: !llmClient.isFailoverActive });
 
