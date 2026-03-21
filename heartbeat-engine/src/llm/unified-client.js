@@ -23,8 +23,10 @@ const PROVIDERS = {
     name: 'Anthropic',
     models: [
       'claude-haiku-4-5-20251001',
+      'claude-sonnet-4-6-20250929',
       'claude-sonnet-4-5-20250929',
       'claude-sonnet-4-20250514',
+      'claude-opus-4-6-20250929',
       'claude-opus-4-5-20250414',
     ],
     envKey: 'ANTHROPIC_API_KEY',
@@ -58,6 +60,7 @@ const PROVIDERS = {
 // The chain skips the current primary model and tries everything else.
 
 const FAILOVER_CHAIN = [
+  { provider: 'anthropic', model: 'claude-sonnet-4-6-20250929' },
   { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
   { provider: 'openai',    model: 'gpt-4o' },
   { provider: 'openai',    model: 'gpt-4o-mini' },
@@ -79,10 +82,12 @@ function shouldFailover(error) {
 // ── Token Pricing (per 1M tokens, USD) ────────────────────────────────────
 
 const PRICING = {
-  'claude-haiku-4-5-20251001':   { input: 0.25,  output: 1.25  },
+  'claude-haiku-4-5-20251001':   { input: 1.00,  output: 5.00  },
+  'claude-sonnet-4-6-20250929':  { input: 3.00,  output: 15.00 },
   'claude-sonnet-4-5-20250929':  { input: 3.00,  output: 15.00 },
   'claude-sonnet-4-20250514':    { input: 3.00,  output: 15.00 },
-  'claude-opus-4-5-20250414':    { input: 15.00, output: 75.00 },
+  'claude-opus-4-6-20250929':    { input: 5.00,  output: 25.00 },
+  'claude-opus-4-5-20250414':    { input: 5.00,  output: 25.00 },
   'gpt-4o':                      { input: 2.50,  output: 10.00 },
   'gpt-4o-mini':                 { input: 0.15,  output: 0.60  },
   'gpt-4-turbo':                 { input: 10.00, output: 30.00 },
@@ -212,7 +217,7 @@ function formatAssistantMessageOpenAI(content) {
 export class UnifiedLLMClient {
   constructor() {
     this._anthropicClient = null;
-    this._currentModel = process.env.LLM_MODEL || process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001';
+    this._currentModel = process.env.LLM_MODEL || process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6-20250929';
     this._currentProvider = detectProvider(this._currentModel);
     this._failoverActive = false;
     this._originalProvider = null;
