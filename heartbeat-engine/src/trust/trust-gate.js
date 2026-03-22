@@ -88,7 +88,30 @@ const ACTION_PERMISSIONS = {
   'ghl_create_trigger_link': { level: 1, category: 'data_creation', risk: 'low' },
   'ghl_create_product': { level: 1, category: 'data_creation', risk: 'medium' },
 
+  // Gmail tools
+  'gmail_check_inbox': { level: 1, category: 'read', risk: 'low' },
+  'gmail_read_message': { level: 1, category: 'read', risk: 'low' },
+  'gmail_send_email': { level: 1, category: 'communication', risk: 'medium' },
+
+  // Web search & scrape tools
+  'web_search': { level: 1, category: 'read', risk: 'low' },
+  'web_fetch': { level: 1, category: 'read', risk: 'low' },
+  'scrape_url': { level: 1, category: 'read', risk: 'low' },
+  'scrape_website': { level: 1, category: 'read', risk: 'low' },
+  'scrape_structured': { level: 1, category: 'read', risk: 'low' },
+
+  // Browser tools
+  'browser_navigate': { level: 1, category: 'read', risk: 'low' },
+  'browser_screenshot': { level: 1, category: 'read', risk: 'low' },
+  'browser_click': { level: 1, category: 'data_modification', risk: 'medium' },
+  'browser_type': { level: 1, category: 'data_modification', risk: 'medium' },
+
+  // Image tools
+  'image_generate': { level: 1, category: 'data_creation', risk: 'low' },
+  'image_edit': { level: 1, category: 'data_creation', risk: 'low' },
+
   // Internal BLOOM tools
+  'bloom_todo_write': { level: 1, category: 'planning', risk: 'low' },
   'bloom_list_tasks': { level: 1, category: 'read', risk: 'low' },
   'bloom_log_decision': { level: 1, category: 'logging', risk: 'low' },
   'bloom_log_observation': { level: 1, category: 'logging', risk: 'low' },
@@ -177,7 +200,23 @@ export class TrustGate {
       const actionPermission = ACTION_PERMISSIONS[actionName];
 
       if (!actionPermission) {
-        // Unknown action - default to highest security level
+        // Unknown tool — allow known-safe prefixes at Level 1, block truly unknown tools
+        const safePrefixes = ['bloom_', 'ghl_', 'gmail_', 'web_', 'scrape_', 'browser_', 'image_'];
+        const isSafePrefix = safePrefixes.some(p => actionName.startsWith(p));
+        if (isSafePrefix) {
+          logger.warn(`Tool "${actionName}" not in permission matrix but has safe prefix — allowing at Level 1`, { agentId });
+          const cat = actionName.startsWith('gmail_send') || actionName.startsWith('ghl_send') ? 'communication' : 'read';
+          await this.recordAuthorizedAction(agentId, currentLevel, cat);
+          return {
+            authorized: true,
+            level: currentLevel,
+            category: cat,
+            risk: 'medium',
+            silent: true
+          };
+        }
+
+        // Truly unknown action — block
         const rejection = {
           authorized: false,
           reason: 'Unknown action not in permission matrix',

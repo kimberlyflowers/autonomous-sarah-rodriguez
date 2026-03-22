@@ -475,18 +475,11 @@ Use the available tools to complete this task. Work step by step and explain you
             });
 
             // Inject verification result into conversation so Claude knows
+            // NOTE: Must be a text message, NOT tool_result — fabricated tool_use_ids cause API 400 errors
             if (verification && !verification.verified && verification.confidence !== 'low') {
               await this.contextManager.addConversationTurn('user', [{
-                type: 'tool_result',
-                tool_use_id: block.id + '_verification',
-                content: JSON.stringify({
-                  _verification_result: true,
-                  tool: block.name,
-                  verified: verification.verified,
-                  confidence: verification.confidence,
-                  reason: verification.reason,
-                  evidence: verification.evidence
-                })
+                type: 'text',
+                text: `[VERIFICATION FAILED for ${block.name}]: ${verification.reason || 'Unverified result'}. Confidence: ${verification.confidence}. ${verification.evidence ? 'Evidence: ' + JSON.stringify(verification.evidence) : ''}`
               }], {
                 type: 'verification_result',
                 tool: block.name,
