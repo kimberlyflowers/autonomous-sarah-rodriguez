@@ -43,7 +43,33 @@ export class ContextManager {
       result.unshift({ role: t.role, content: t.content });
       tokens += t.metadata.tokens;
     }
-    return result;
+
+    // Safety: ensure every tool_result has a matching tool_use in the returned history.
+    // Collect tool_use IDs from assistant messages
+    const toolUseIds = new Set();
+    for (const msg of result) {
+      if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+        for (const block of msg.content) {
+          if (block.type === 'tool_use' && block.id) toolUseIds.add(block.id);
+        }
+      }
+    }
+    // Strip orphaned tool_result blocks
+    for (const msg of result) {
+      if (msg.role === 'user' && Array.isArray(msg.content)) {
+        msg.content = msg.content.filter(block => {
+          if (block.type === 'tool_result' && block.tool_use_id) {
+            return toolUseIds.has(block.tool_use_id);
+          }
+          return true;
+        });
+        // If emptied, replace with placeholder
+        if (msg.content.length === 0) {
+          msg.content = '[prior tool results trimmed]';
+        }
+      }
+    }
+    return result.filter(msg => msg.content && (typeof msg.content === 'string' ? msg.content.length > 0 : msg.content.length > 0));
   }
 
   async storeWorkingContext(key, data, priority = 'workflow_state', ttl = null) {

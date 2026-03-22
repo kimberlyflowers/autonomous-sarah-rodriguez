@@ -123,21 +123,40 @@ export class ModelFormatter {
    * Format messages for Anthropic (Claude) API
    */
   formatAnthropicMessages(messages) {
+    // First pass: collect all tool_use IDs from assistant messages
+    const toolUseIds = new Set();
+    for (const msg of messages) {
+      if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+        for (const block of msg.content) {
+          if (block.type === 'tool_use' && block.id) {
+            toolUseIds.add(block.id);
+          }
+        }
+      }
+    }
+
+    // Second pass: format messages, stripping orphaned tool_result blocks
     return messages.map(msg => {
-      // Handle tool calls and responses
       if (msg.content && Array.isArray(msg.content)) {
-        return {
-          role: msg.role,
-          content: msg.content
-        };
+        // Filter out tool_result blocks whose tool_use_id has no matching tool_use
+        const filtered = msg.content.filter(block => {
+          if (block.type === 'tool_result' && block.tool_use_id) {
+            return toolUseIds.has(block.tool_use_id);
+          }
+          return true;
+        });
+        // If all content was stripped, convert to a placeholder text message
+        if (filtered.length === 0) {
+          return { role: msg.role, content: '[tool results removed — context trimmed]' };
+        }
+        return { role: msg.role, content: filtered };
       }
 
-      // Standard text messages
       return {
-        role: msg.role === 'system' ? 'user' : msg.role, // Claude doesn't use system in messages array
+        role: msg.role === 'system' ? 'user' : msg.role,
         content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
       };
-    });
+    }).filter(msg => msg.content && (typeof msg.content === 'string' ? msg.content.length > 0 : msg.content.length > 0));
   }
 
   /**
