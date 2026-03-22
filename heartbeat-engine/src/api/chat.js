@@ -4110,29 +4110,39 @@ When a user asks you to edit, modify, or update something you previously created
   const messageText = Array.isArray(userMessage) ? userMessage.filter(b => b.type === 'text').map(b => b.text).join(' ') : userMessage;
   const llmClient = getLLMClient();
 
-  // Apply per-org model tier if available (bloom=Sonnet, premium=GPT, standard=Gemini)
+  // Apply per-org model tier from Supabase admin settings (bloom=Sonnet, premium=GPT, standard=Gemini)
+  let resolvedAdminConfig = null;
   try {
-    const { resolveModelForOrg } = await import('../llm/unified-client.js');
-    const orgModelConfig = agentConfig?.config?.modelConfig || {};
-    // Also check for org-level tier from database
-    if (orgModelConfig.modelTier || orgModelConfig.customModel) {
-      const resolved = resolveModelForOrg({
-        modelTier: orgModelConfig.modelTier,
-        createdAt: orgModelConfig.tierStartDate || agentConfig?.createdAt,
-        customModel: orgModelConfig.customModel,
-        modelOverride: orgModelConfig.modelOverride,
-      });
-      if (resolved.model && resolved.model !== llmClient.model) {
-        const switched = llmClient.switchModel(resolved.model);
-        if (switched) {
-          logger.info(`Model tier applied: ${resolved.tier} → ${resolved.model}`, { reason: resolved.reason });
-        } else {
-          logger.warn(`Model tier "${resolved.tier}" requested ${resolved.model} but API key not available, staying on ${llmClient.model}`);
-        }
+    const { getResolvedConfig } = await import('../config/admin-config.js');
+    const orgId = agentConfig?.organizationId || agentConfig?.organization_id || null;
+    resolvedAdminConfig = await getResolvedConfig(orgId);
+
+    if (resolvedAdminConfig?.model && resolvedAdminConfig.model !== llmClient.model) {
+      const switched = llmClient.switchModel(resolvedAdminConfig.model);
+      if (switched) {
+        logger.info(`Admin config applied: tier="${resolvedAdminConfig.tier}" → ${resolvedAdminConfig.model}`, { reason: resolvedAdminConfig.reason, orgId });
+      } else {
+        logger.warn(`Admin config tier "${resolvedAdminConfig.tier}" requested ${resolvedAdminConfig.model} but API key not available, staying on ${llmClient.model}`);
       }
     }
   } catch (e) {
-    logger.warn('Model tier resolution failed (non-critical):', e.message);
+    logger.warn('Admin config resolution failed (non-critical), using defaults:', e.message);
+    // Fallback to legacy env-var based resolution
+    try {
+      const { resolveModelForOrg } = await import('../llm/unified-client.js');
+      const orgModelConfig = agentConfig?.config?.modelConfig || {};
+      if (orgModelConfig.modelTier || orgModelConfig.customModel) {
+        const resolved = resolveModelForOrg({
+          modelTier: orgModelConfig.modelTier,
+          createdAt: orgModelConfig.tierStartDate || agentConfig?.createdAt,
+          customModel: orgModelConfig.customModel,
+          modelOverride: orgModelConfig.modelOverride,
+        });
+        if (resolved.model && resolved.model !== llmClient.model) {
+          llmClient.switchModel(resolved.model);
+        }
+      }
+    } catch (e2) { /* silent fallback */ }
   }
 
   const chatModel = llmClient.model;

@@ -11,8 +11,8 @@ const logger = createLogger('image-tools');
 
 // Read API keys fresh each call — not at module load time
 // Railway injects env vars before process starts, but dynamic reading is safer
-function getOpenAIKey() { return process.env.OPENAI_API_KEY || ""; }
-function getGeminiKey() { return process.env.GEMINI_API_KEY || ""; }
+function getOpenAIKey() { return (process.env.OPENAI_API_KEY || "").trim(); }
+function getGeminiKey() { return (process.env.GEMINI_API_KEY || "").trim(); }
 
 // ── TOOL DEFINITIONS ─────────────────────────────────────────────────────
 
@@ -323,11 +323,17 @@ async function generateWithGPTImage(prompt, size, quality, background) {
     // gpt-image-1.5 supports: 1024x1024, 1536x1024, 1024x1536, auto
     const validSize = ['1024x1024','1536x1024','1024x1536'].includes(size) ? size : '1024x1024';
 
+    const apiKey = getOpenAIKey().trim();
+    if (!apiKey) {
+      logger.error('OpenAI API key is empty after trim');
+      return { success: false, error: 'OPENAI_API_KEY is empty or not set', engine: 'gpt-image-1.5' };
+    }
+
     const response = await fetch('https://api.openai.com/v1/images/generations', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${getOpenAIKey()}`,
+        'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
         model: 'gpt-image-1.5',
@@ -335,12 +341,13 @@ async function generateWithGPTImage(prompt, size, quality, background) {
         n: 1,
         size: validSize,
         quality: quality === 'high' ? 'high' : quality === 'low' ? 'low' : 'medium',
+        output_format: 'png',
       }),
     });
 
     if (!response.ok) {
       const err = await response.text();
-      logger.error('GPT Image API error', { status: response.status, err });
+      logger.error('GPT Image API error', { status: response.status, err, keyPrefix: apiKey.substring(0, 8) });
 
       // If 1.5 fails, try gpt-image-1
       if (response.status === 404 || response.status === 400) {
@@ -398,11 +405,12 @@ async function generateWithGPTImage(prompt, size, quality, background) {
 
 async function generateWithGPTImageFallback(prompt, size, quality, background) {
   const validSize = ['1024x1024','1536x1024','1024x1536'].includes(size) ? size : '1024x1024';
+  const apiKey = getOpenAIKey().trim();
   const response = await fetch('https://api.openai.com/v1/images/generations', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${getOpenAIKey()}`,
+      'Authorization': `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
       model: 'gpt-image-1',
@@ -410,6 +418,7 @@ async function generateWithGPTImageFallback(prompt, size, quality, background) {
       n: 1,
       size: validSize,
       quality: quality === 'high' ? 'high' : quality === 'low' ? 'low' : 'medium',
+      output_format: 'png',
     }),
   });
 
@@ -468,7 +477,7 @@ async function editWithGPTImage(prompt, imageUrl, imageBase64, size, quality) {
     const response = await fetch('https://api.openai.com/v1/images/edits', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${getOpenAIKey()}`,
+        'Authorization': `Bearer ${getOpenAIKey().trim()}`,
       },
       body: formData,
     });

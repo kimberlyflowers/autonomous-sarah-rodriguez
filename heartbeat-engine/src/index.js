@@ -25,6 +25,8 @@ import browserRoutes from './api/browser.js';
 import skillsRoutes from './api/skills.js';
 import voiceRoutes from './api/voice.js';
 import desktopRoutes from './api/desktop.js';import mobileRoutes from './api/mobile.js';import projectsRoutes from './api/projects-supabase.js'; // Supabase-based projects
+import adminRoutes from './api/admin.js';
+import cookieParser from 'cookie-parser';
 
 // Get the current directory for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -49,6 +51,7 @@ app.use(helmet({
   }
 }));
 app.use(cors());
+app.use(cookieParser());
 app.use(express.json({ limit: '50mb' }));
 
 // Increase max listeners — Winston registers listeners per logger instance,
@@ -154,6 +157,117 @@ app.get('/status', async (req, res) => {
       timestamp: new Date().toISOString()
     });
   }
+});
+
+// Image generation diagnostics — test OpenAI + Gemini image API connectivity
+app.get('/image-diagnostics', async (req, res) => {
+  const openaiKey = process.env.OPENAI_API_KEY || '';
+  const geminiKey = process.env.GEMINI_API_KEY || '';
+  const results = {
+    timestamp: new Date().toISOString(),
+    config: {
+      hasOpenAIKey: !!openaiKey,
+      openaiKeyLength: openaiKey.length,
+      openaiKeyPrefix: openaiKey ? openaiKey.substring(0, 8) + '...' : 'MISSING',
+      openaiKeyHasWhitespace: openaiKey !== openaiKey.trim(),
+      hasGeminiKey: !!geminiKey,
+      geminiKeyLength: geminiKey.length,
+      geminiKeyPrefix: geminiKey ? geminiKey.substring(0, 8) + '...' : 'MISSING',
+      geminiKeyHasWhitespace: geminiKey !== geminiKey.trim(),
+    },
+    tests: {}
+  };
+
+  // Test 1: OpenAI API key validity (models endpoint — lightweight)
+  if (openaiKey) {
+    try {
+      const modelsResp = await fetch('https://api.openai.com/v1/models', {
+        headers: { 'Authorization': `Bearer ${openaiKey.trim()}` },
+      });
+      if (modelsResp.ok) {
+        const modelsData = await modelsResp.json();
+        const imageModels = modelsData.data?.filter(m =>
+          m.id.includes('image') || m.id.includes('dall-e')
+        ).map(m => m.id) || [];
+        results.tests.openai_key_valid = true;
+        results.tests.openai_image_models = imageModels;
+        results.tests.openai_has_image_access = imageModels.length > 0;
+      } else {
+        const errText = await modelsResp.text();
+        results.tests.openai_key_valid = false;
+        results.tests.openai_key_error = `${modelsResp.status}: ${errText.substring(0, 300)}`;
+      }
+    } catch (e) {
+      results.tests.openai_key_valid = false;
+      results.tests.openai_key_error = e.message;
+    }
+  } else {
+    results.tests.openai_key_valid = false;
+    results.tests.openai_key_error = 'OPENAI_API_KEY not set';
+  }
+
+  // Test 2: Actually try a tiny image generation (only if key is valid and ?live=true)
+  if (req.query.live === 'true' && openaiKey) {
+    try {
+      const imgResp = await fetch('https://api.openai.com/v1/images/generations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${openaiKey.trim()}`,
+        },
+        body: JSON.stringify({
+          model: 'gpt-image-1',
+          prompt: 'A simple blue circle on a white background',
+          n: 1,
+          size: '1024x1024',
+          quality: 'low',
+        }),
+      });
+      if (imgResp.ok) {
+        const imgData = await imgResp.json();
+        results.tests.openai_image_gen = {
+          success: true,
+          hasB64: !!imgData.data?.[0]?.b64_json,
+          hasUrl: !!imgData.data?.[0]?.url,
+          responseKeys: imgData.data?.[0] ? Object.keys(imgData.data[0]) : [],
+          usage: imgData.usage || null,
+        };
+      } else {
+        const errText = await imgResp.text();
+        results.tests.openai_image_gen = {
+          success: false,
+          status: imgResp.status,
+          error: errText.substring(0, 500),
+        };
+      }
+    } catch (e) {
+      results.tests.openai_image_gen = { success: false, error: e.message };
+    }
+  }
+
+  // Test 3: Gemini key check
+  if (geminiKey) {
+    try {
+      const gemResp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${geminiKey.trim()}`);
+      if (gemResp.ok) {
+        results.tests.gemini_key_valid = true;
+        const gemData = await gemResp.json();
+        const imageModels = gemData.models?.filter(m =>
+          m.name?.includes('imagen') || m.supportedGenerationMethods?.includes('generateImages')
+        ).map(m => m.name) || [];
+        results.tests.gemini_image_models = imageModels;
+      } else {
+        const errText = await gemResp.text();
+        results.tests.gemini_key_valid = false;
+        results.tests.gemini_key_error = `${gemResp.status}: ${errText.substring(0, 300)}`;
+      }
+    } catch (e) {
+      results.tests.gemini_key_valid = false;
+      results.tests.gemini_key_error = e.message;
+    }
+  }
+
+  res.json(results);
 });
 
 // GHL diagnostics — test API connectivity and blog endpoint
@@ -616,6 +730,9 @@ app.options('/api/forms/submit', (req, res) => {
 app.get('/p/:slug', servePublishedPage);
 app.get('/s/:slug', servePublishedPage);
 
+// Admin panel — BLOOM Command Center
+app.use('/admin', adminRoutes);
+
 // Serve React static files
 app.use(express.static(path.join(__dirname, '../dashboard/dist')));
 
@@ -842,8 +959,8 @@ async function runScheduledTasks(agentConfig) {
     const startedAt = new Date().toISOString();
 
     // Calculate next_run_at based on frequency
-    const nextRunOffsets = { daily: 86400000, weekdays: 86400000, weekly: 604800000, monthly: 2592000000 };
-    const nextRunAt = new Date(Date.now() + (nextRunOffsets[task.frequency] || 0)).toISOString();
+    const nextRunOffsets = { every_10_min: 600000, every_30_min: 1800000, hourly: 3600000, daily: 86400000, weekdays: 86400000, weekly: 604800000, monthly: 2592000000 };
+    const nextRunAt = new Date(Date.now() + (nextRunOffsets[task.frequency] || 86400000)).toISOString();
 
     // Mark as running — prevent double-execution
     try {
@@ -863,8 +980,8 @@ async function runScheduledTasks(agentConfig) {
     try {
       logger.info(`▶ Running task: ${task.name} — "${task.instruction.slice(0, 80)}"`);
       const { AgentExecutor } = await import('./agent/executor.js');
-      const executor = new AgentExecutor(agentConfig);
-      const result = await executor.execute(task.instruction, [], `scheduled_task_${task.id}`);
+      const executor = new AgentExecutor(agentConfig?.agentId || 'bloomie-sarah-rodriguez', agentConfig);
+      const result = await executor.executeTask(task.instruction, { trigger: 'scheduled', taskId: task.id, taskName: task.name, taskType: task.task_type });
       output = typeof result === 'string' ? result : result?.response || JSON.stringify(result);
       success = true;
       logger.info(`✅ Task complete: ${task.name}`);

@@ -3374,6 +3374,7 @@ function App({ authUser }) {
 
   const agent={nm:currentAgent?.name||"Sarah Rodriguez",role:currentAgent?.role||"Marketing & Operations Executive",img:agentImgUrl||currentAgent?.avatar_url||null,grad:"linear-gradient(135deg,#F4A261,#E76F8B)"};
   const aFN=(currentAgent?.name||"Sarah").split(" ")[0]; // agent first name for dynamic UI text
+  const fmtFreq=(f)=>({every_10_min:"Every 10 min",every_30_min:"Every 30 min",hourly:"Hourly",daily:"Daily",weekdays:"Weekdays",weekly:"Weekly",monthly:"Monthly"}[f]||f);
 
   useEffect(()=>{ if(btm.current) setTimeout(()=>btm.current?.scrollIntoView({behavior:"smooth"}),100); },[messages]);
 
@@ -4423,7 +4424,7 @@ function App({ authUser }) {
                             <option value="content">Content</option><option value="email">Email</option><option value="research">Research</option><option value="crm">CRM</option><option value="custom">Custom</option>
                           </select>
                           <select value={newTask.frequency} onChange={e=>setNewTask(p=>({...p,frequency:e.target.value}))} style={{flex:1,padding:"8px 10px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,fontSize:12,color:c.tx,fontFamily:"inherit"}}>
-                            <option value="daily">Daily</option><option value="weekdays">Weekdays</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option>
+                            <option value="every_10_min">Every 10 Min</option><option value="every_30_min">Every 30 Min</option><option value="hourly">Hourly</option><option value="daily">Daily</option><option value="weekdays">Weekdays</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option>
                           </select>
                           <input type="time" value={newTask.runTime} onChange={e=>setNewTask(p=>({...p,runTime:e.target.value}))} style={{width:100,padding:"8px 10px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,fontSize:12,color:c.tx,fontFamily:"inherit"}}/>
                         </div>
@@ -4545,7 +4546,7 @@ function App({ authUser }) {
                             <div style={{fontSize:12,color:c.so,marginTop:1}}>{task.description||task.instruction}</div>
                           </div>
                           <div style={{textAlign:"right",flexShrink:0,minWidth:80}}>
-                            <div style={{fontSize:11,fontWeight:600,color:c.tx,textTransform:"capitalize"}}>{task.frequency} · {task.runTime||"9:00"}</div>
+                            <div style={{fontSize:11,fontWeight:600,color:c.tx}}>{fmtFreq(task.frequency)} · {task.runTime||"9:00"}</div>
                             <div style={{fontSize:11,color:task.enabled?c.so:c.fa,marginTop:2}}>{task.enabled?"Active":"Paused"}</div>
                             {task.runCount>0&&<div style={{fontSize:10,color:c.fa,marginTop:1}}>{task.runCount} runs</div>}
                           </div>
@@ -4592,7 +4593,7 @@ function App({ authUser }) {
                       scheduledTasks.filter(t=>t.enabled).forEach(t=>{
                         for(let d=1;d<=daysInMonth;d++){
                           const dow=new Date(y,m,d).getDay();
-                          const shouldRun=t.frequency==='daily'||(t.frequency==='weekdays'&&dow>=1&&dow<=5)||(t.frequency==='weekly'&&dow===1)||(t.frequency==='monthly'&&d===1);
+                          const shouldRun=t.frequency==='daily'||t.frequency==='hourly'||t.frequency==='every_10_min'||t.frequency==='every_30_min'||(t.frequency==='weekdays'&&dow>=1&&dow<=5)||(t.frequency==='weekly'&&dow===1)||(t.frequency==='monthly'&&d===1);
                           if(shouldRun){
                             if(!scheduledByDay[d]) scheduledByDay[d]=[];
                             scheduledByDay[d].push(t);
@@ -4675,7 +4676,7 @@ function App({ authUser }) {
                               const y=calMonth.getFullYear(),m=calMonth.getMonth();
                               const dayRuns=(taskRuns||[]).filter(r=>{const d=new Date(r.completedAt||r.createdAt);return d.getDate()===calSelDay&&d.getMonth()===m&&d.getFullYear()===y;});
                               const dow=new Date(y,m,calSelDay).getDay();
-                              const dayScheduled=scheduledTasks.filter(t=>t.enabled).filter(t=>t.frequency==='daily'||(t.frequency==='weekdays'&&dow>=1&&dow<=5)||(t.frequency==='weekly'&&dow===1)||(t.frequency==='monthly'&&calSelDay===1));
+                              const dayScheduled=scheduledTasks.filter(t=>t.enabled).filter(t=>t.frequency==='daily'||t.frequency==='hourly'||t.frequency==='every_10_min'||t.frequency==='every_30_min'||(t.frequency==='weekdays'&&dow>=1&&dow<=5)||(t.frequency==='weekly'&&dow===1)||(t.frequency==='monthly'&&calSelDay===1));
                               return `${dayRuns.length} completed · ${dayScheduled.length} scheduled`;
                             })()}
                           </div>
@@ -4718,7 +4719,7 @@ function App({ authUser }) {
                         {(()=>{
                           const y=calMonth.getFullYear(),m=calMonth.getMonth();
                           const dow=new Date(y,m,calSelDay).getDay();
-                          const dayScheduled=scheduledTasks.filter(t=>t.enabled).filter(t=>t.frequency==='daily'||(t.frequency==='weekdays'&&dow>=1&&dow<=5)||(t.frequency==='weekly'&&dow===1)||(t.frequency==='monthly'&&calSelDay===1));
+                          const dayScheduled=scheduledTasks.filter(t=>t.enabled).filter(t=>t.frequency==='daily'||t.frequency==='hourly'||t.frequency==='every_10_min'||t.frequency==='every_30_min'||(t.frequency==='weekdays'&&dow>=1&&dow<=5)||(t.frequency==='weekly'&&dow===1)||(t.frequency==='monthly'&&calSelDay===1));
                           if(dayScheduled.length>0) return(
                             <div style={{marginBottom:16}}>
                               <div style={{fontSize:11,fontWeight:700,color:c.so,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>Scheduled</div>
@@ -4729,7 +4730,7 @@ function App({ authUser }) {
                                     <span style={{fontSize:16}}>{ic}</span>
                                     <div style={{flex:1}}>
                                       <div style={{fontSize:13,fontWeight:600,color:c.tx}}>{t.name}</div>
-                                      <div style={{fontSize:11,color:c.so,marginTop:1}}>{t.frequency} · {t.runTime||'9:00'}</div>
+                                      <div style={{fontSize:11,color:c.so,marginTop:1}}>{fmtFreq(t.frequency)} · {t.runTime||'9:00'}</div>
                                     </div>
                                   </div>
                                 );
@@ -4746,7 +4747,7 @@ function App({ authUser }) {
                           <textarea value={calTask.instruction} onChange={e=>setCalTask(p=>({...p,instruction:e.target.value}))} placeholder={"What should "+aFN+" do?"} rows={2} style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,fontSize:13,color:c.tx,marginBottom:6,fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
                           <div style={{display:"flex",gap:6,marginBottom:10}}>
                             <select value={calTask.frequency} onChange={e=>setCalTask(p=>({...p,frequency:e.target.value}))} style={{flex:1,padding:"8px 10px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,fontSize:12,color:c.tx,fontFamily:"inherit"}}>
-                              <option value="daily">Daily</option><option value="weekdays">Weekdays</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option>
+                              <option value="every_10_min">Every 10 Min</option><option value="every_30_min">Every 30 Min</option><option value="hourly">Hourly</option><option value="daily">Daily</option><option value="weekdays">Weekdays</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option>
                             </select>
                             <input type="time" value={calTask.runTime} onChange={e=>setCalTask(p=>({...p,runTime:e.target.value}))} style={{width:110,padding:"8px 10px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,fontSize:12,color:c.tx,fontFamily:"inherit"}}/>
                           </div>
@@ -5066,7 +5067,7 @@ function App({ authUser }) {
                         <span>{typeIc}</span>
                         <div style={{flex:1}}>
                           <div style={{fontSize:13,fontWeight:600,color:task.enabled?c.tx:c.so}}>{task.name}</div>
-                          <div style={{fontSize:11,color:c.so}}>{task.frequency} at {task.runTime||"9:00"}</div>
+                          <div style={{fontSize:11,color:c.so}}>{fmtFreq(task.frequency)} at {task.runTime||"9:00"}</div>
                         </div>
                         <span style={{fontSize:11,color:task.enabled?c.gr:c.fa}}>{task.enabled?"Active":"Paused"}</span>
                       </div>
@@ -5835,6 +5836,9 @@ function App({ authUser }) {
                         <option value="custom">Custom</option>
                       </select>
                       <select value={newTask.frequency} onChange={e=>setNewTask(p=>({...p,frequency:e.target.value}))} style={{flex:1,padding:"7px 8px",borderRadius:6,border:"1px solid "+c.ln,background:c.inp,fontSize:12,color:c.tx}}>
+                        <option value="every_10_min">Every 10 Min</option>
+                        <option value="every_30_min">Every 30 Min</option>
+                        <option value="hourly">Hourly</option>
                         <option value="daily">Daily</option>
                         <option value="weekdays">Weekdays</option>
                         <option value="weekly">Weekly</option>
@@ -5866,7 +5870,7 @@ function App({ authUser }) {
                     </button>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{fontSize:13,fontWeight:600,color:t.enabled?c.tx:c.so,opacity:t.enabled?1:0.5}}>{t.name}</div>
-                      <div style={{fontSize:11,color:c.so}}>{t.frequency} at {t.runTime || '9:00 AM'}{t.runCount>0?' · ran '+t.runCount+'x':''}</div>
+                      <div style={{fontSize:11,color:c.so}}>{fmtFreq(t.frequency)} at {t.runTime || '9:00 AM'}{t.runCount>0?' · ran '+t.runCount+'x':''}</div>
                     </div>
                     <button onClick={async()=>{
                       if(confirm('Delete this task?')){
