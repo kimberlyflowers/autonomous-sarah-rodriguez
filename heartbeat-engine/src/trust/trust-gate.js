@@ -195,7 +195,18 @@ const DAILY_ACTION_LIMITS = {
 
 /**
  * Trust Gate - Core authorization system
+ * Can be disabled via dashboard toggle or TRUST_GATE_ENABLED env var
  */
+
+// Module-level enabled flag — starts DISABLED until fully configured
+let _trustGateEnabled = (process.env.TRUST_GATE_ENABLED || 'false').toLowerCase() === 'true';
+
+export function isTrustGateEnabled() { return _trustGateEnabled; }
+export function setTrustGateEnabled(val) {
+  _trustGateEnabled = !!val;
+  logger.info(`Trust Gate ${_trustGateEnabled ? 'ENABLED' : 'DISABLED'}`);
+}
+
 export class TrustGate {
   constructor() {
     this.actionCounts = new Map(); // Track daily action counts
@@ -210,6 +221,18 @@ export class TrustGate {
    * @returns {Object} Authorization result
    */
   async authorizeAction(actionName, parameters, agentId, cycleId = null) {
+    // If trust gate is disabled, allow everything
+    if (!_trustGateEnabled) {
+      return {
+        authorized: true,
+        level: 99,
+        category: 'unrestricted',
+        risk: 'low',
+        silent: true,
+        trustGateDisabled: true
+      };
+    }
+
     try {
       logger.info('Authorizing action', {
         action: actionName,

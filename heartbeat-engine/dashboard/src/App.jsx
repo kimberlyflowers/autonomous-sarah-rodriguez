@@ -3278,6 +3278,8 @@ function App({ authUser }) {
   const [sbO,setSbO]=useState(!mob?"full":"closed");
   const [openChatMenu,setOpenChatMenu]=useState(null); // Track which chat's menu is open
   const [stab,setStab]=useState("General");
+  const [tgEnabled,setTgEnabled]=useState(false);
+  const [tgLoading,setTgLoading]=useState(false);
   const [hlpO,setHlpO]=useState(false);
   const [profileOpen,setProfileOpen]=useState(false);
   const [profileData,setProfileData]=useState(null);
@@ -3298,6 +3300,20 @@ function App({ authUser }) {
   const [calMonth,setCalMonth]=useState(new Date());
   const [calSelDay,setCalSelDay]=useState(null);
   const [calTask,setCalTask]=useState({name:'',instruction:'',frequency:'daily',runTime:'09:00'});
+
+  // Fetch trust gate status on mount
+  useEffect(()=>{
+    fetch("/api/dashboard/trust-gate-status").then(r=>r.ok?r.json():null).then(d=>{if(d)setTgEnabled(d.enabled)}).catch(()=>{});
+  },[]);
+
+  const toggleTrustGate=async()=>{
+    setTgLoading(true);
+    try{
+      const r=await fetch("/api/dashboard/trust-gate-status",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:!tgEnabled})});
+      if(r.ok){const d=await r.json();setTgEnabled(d.enabled);}
+    }catch{}
+    setTgLoading(false);
+  };
 
   const handleCSVFile=(file)=>{
     const reader=new FileReader();
@@ -5739,6 +5755,24 @@ function App({ authUser }) {
                             <div style={{fontSize:11,color:c.gr,marginTop:4,display:"flex",alignItems:"center",gap:4}}>
                               <span style={{width:6,height:6,borderRadius:"50%",background:c.gr}}/>Level 1 Assistant · 60 GHL Tools
                             </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{marginBottom:28}}>
+                        <div style={{fontSize:14,fontWeight:700,color:c.tx,marginBottom:10}}>Security</div>
+                        <div style={{padding:"14px 16px",borderRadius:10,background:c.sf,border:"1px solid "+c.ln}}>
+                          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+                            <div>
+                              <div style={{fontSize:13,fontWeight:600,color:c.tx}}>Trust Gate</div>
+                              <div style={{fontSize:11,color:c.so,marginTop:2}}>When enabled, restricts tool access based on permission levels. When disabled, all tools are unrestricted.</div>
+                            </div>
+                            <button onClick={toggleTrustGate} disabled={tgLoading} style={{width:48,height:26,borderRadius:13,border:"none",cursor:tgLoading?"wait":"pointer",background:tgEnabled?"#22c55e":"#94a3b8",position:"relative",transition:"background 0.2s",flexShrink:0,marginLeft:16}}>
+                              <div style={{width:20,height:20,borderRadius:"50%",background:"#fff",position:"absolute",top:3,left:tgEnabled?25:3,transition:"left 0.2s",boxShadow:"0 1px 3px rgba(0,0,0,0.2)"}}/>
+                            </button>
+                          </div>
+                          <div style={{fontSize:11,color:tgEnabled?c.gr:"#f59e0b",fontWeight:600,display:"flex",alignItems:"center",gap:4}}>
+                            <span style={{width:6,height:6,borderRadius:"50%",background:tgEnabled?c.gr:"#f59e0b"}}/>
+                            {tgEnabled?"Enabled — tools restricted by permission level":"Disabled — all tools unrestricted"}
                           </div>
                         </div>
                       </div>

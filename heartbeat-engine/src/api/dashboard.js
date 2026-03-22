@@ -5,6 +5,7 @@ import express from 'express';
 import { createLogger } from '../logging/logger.js';
 import { loadAgentConfig, getAgentStatus } from '../config/agent-profile.js';
 import { taskProgress } from './chat.js';
+import { isTrustGateEnabled, setTrustGateEnabled } from '../trust/trust-gate.js';
 
 const router = express.Router();
 const logger = createLogger('dashboard-api');
@@ -402,6 +403,22 @@ router.post('/brand-kit', async (req, res) => {
     logger.warn('brand-kit POST error', { error: e.message });
     res.json({ success: false, error: e.message });
   }
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// TRUST GATE TOGGLE — enable/disable from dashboard
+// ══════════════════════════════════════════════════════════════════════════
+
+router.get('/trust-gate-status', (req, res) => {
+  res.json({ enabled: isTrustGateEnabled() });
+});
+
+router.post('/trust-gate-status', (req, res) => {
+  const { enabled } = req.body;
+  if (typeof enabled !== 'boolean') return res.status(400).json({ error: 'enabled must be a boolean' });
+  setTrustGateEnabled(enabled);
+  logger.info(`Trust Gate toggled: ${enabled ? 'ENABLED' : 'DISABLED'} via dashboard`);
+  res.json({ success: true, enabled: isTrustGateEnabled() });
 });
 
 // ══════════════════════════════════════════════════════════════════════════
