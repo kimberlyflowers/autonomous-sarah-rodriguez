@@ -370,13 +370,40 @@ router.get('/tasks/runs', async (req, res) => {
     const supabase = await getSupabase();
     const { data, error } = await supabase
       .from('task_runs')
-      .select('*')
+      .select('*, scheduled_tasks(name, task_type, instruction, frequency, run_time)')
       .eq('agent_id', SARAH_AGENT_ID)
       .order('created_at', { ascending: false })
       .limit(50);
 
     if (error) throw new Error(error.message);
-    return res.json({ runs: data || [] });
+
+    const runs = (data || []).map(r => {
+      const st = r.scheduled_tasks || {};
+      const elapsed = r.completed_at && r.started_at ? new Date(r.completed_at) - new Date(r.started_at) : null;
+      return {
+        id: r.id,
+        runId: r.run_id,
+        taskId: r.task_id,
+        taskName: r.task_name || st.name || 'Unknown Task',
+        taskType: r.task_type || st.task_type || 'custom',
+        instruction: r.instruction || st.instruction || '',
+        frequency: st.frequency || null,
+        runTime: st.run_time || null,
+        status: r.status,
+        result: r.result || r.error || null,
+        evidence: r.evidence || {},
+        model: r.worker_model || r.routing_model || null,
+        provider: r.worker_provider || null,
+        totalCostCents: parseFloat(r.total_cost_cents || 0),
+        time: r.started_at ? new Date(r.started_at).toLocaleString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '',
+        duration: elapsed ? (elapsed < 60000 ? `${Math.round(elapsed/1000)}s` : `${Math.round(elapsed/60000)}m`) : null,
+        startedAt: r.started_at,
+        completedAt: r.completed_at,
+        createdAt: r.created_at
+      };
+    });
+
+    return res.json({ runs });
   } catch (error) {
     logger.error('Get task runs error', { error: error.message });
     return res.json({ runs: [] });

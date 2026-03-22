@@ -996,8 +996,12 @@ async function runScheduledTasks(agentConfig) {
         scheduled_task_id: task.id,
         agent_id: task.agent_id,
         organization_id: task.organization_id,
+        task_id: task.task_id,
+        task_name: task.name,
+        task_type: task.task_type,
+        instruction: task.instruction,
         status: success ? 'completed' : 'failed',
-        output: success ? output : null,
+        result: success ? output : null,
         error: success ? null : output,
         started_at: startedAt,
         completed_at: new Date().toISOString()

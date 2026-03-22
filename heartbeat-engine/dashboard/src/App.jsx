@@ -3217,6 +3217,8 @@ function App({ authUser }) {
   const [actTab,setActTab]=useState("scheduled"); // scheduled | history | calendar
   const [taskRuns,setTaskRuns]=useState([]);
   const [expandedRun,setExpandedRun]=useState(null);
+  const [editTask,setEditTask]=useState(null); // task being edited
+  const [editForm,setEditForm]=useState({name:'',instruction:'',taskType:'custom',frequency:'daily',runTime:'09:00'});
   const [previewFileIdx,setPreviewFileIdx]=useState(null);
   const [bulkImportOpen,setBulkImportOpen]=useState(false);
   const [bulkText,setBulkText]=useState('');
@@ -4533,27 +4535,92 @@ function App({ authUser }) {
                     {scheduledTasks.map((task,i)=>{
                       const typeIc={content:null,email:null,research:null,crm:null,custom:null}[task.taskType]||null;
                       return(
-                        <div key={task.taskId} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 16px",borderRadius:10,background:c.sf,border:"1px solid "+c.ln,opacity:task.enabled?1:0.45,marginBottom:6}}>
-                          <button onClick={async()=>{
-                            await fetch(`/api/agent/tasks/${task.taskId}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:!task.enabled})});
-                            loadActivity();
+                        <div key={task.taskId} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 16px",borderRadius:10,background:c.sf,border:"1px solid "+(editTask?.taskId===task.taskId?c.ac:c.ln),opacity:task.enabled?1:0.45,marginBottom:6,cursor:"pointer",transition:"border-color .15s"}} onClick={()=>{
+                          if(editTask?.taskId===task.taskId){setEditTask(null);}else{
+                            setEditTask(task);
+                            setEditForm({name:task.name||'',instruction:task.instruction||task.description||'',taskType:task.taskType||'custom',frequency:task.frequency||'daily',runTime:task.runTime||'09:00'});
+                          }
+                        }}>
+                          <button onClick={(e)=>{
+                            e.stopPropagation();
+                            (async()=>{await fetch(`/api/agent/tasks/${task.taskId}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:!task.enabled})});loadActivity();})();
                           }} style={{width:38,height:22,borderRadius:11,border:"none",background:task.enabled?c.gr:"#444",cursor:"pointer",position:"relative",flexShrink:0}}>
                             <div style={{width:16,height:16,borderRadius:"50%",background:"#fff",position:"absolute",top:3,left:task.enabled?19:3,transition:"left .2s",boxShadow:"0 1px 3px rgba(0,0,0,.3)"}}/>
                           </button>
                           <span style={{fontSize:18,flexShrink:0}}>{typeIc}</span>
                           <div style={{flex:1,minWidth:0}}>
                             <div style={{fontSize:14,fontWeight:600,color:c.tx}}>{task.name}</div>
-                            <div style={{fontSize:12,color:c.so,marginTop:1}}>{task.description||task.instruction}</div>
+                            <div style={{fontSize:12,color:c.so,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{task.description||task.instruction}</div>
                           </div>
                           <div style={{textAlign:"right",flexShrink:0,minWidth:80}}>
                             <div style={{fontSize:11,fontWeight:600,color:c.tx}}>{fmtFreq(task.frequency)} · {task.runTime||"9:00"}</div>
                             <div style={{fontSize:11,color:task.enabled?c.so:c.fa,marginTop:2}}>{task.enabled?"Active":"Paused"}</div>
                             {task.runCount>0&&<div style={{fontSize:10,color:c.fa,marginTop:1}}>{task.runCount} runs</div>}
                           </div>
-                          <button onClick={async()=>{if(confirm('Delete this task?')){await fetch(`/api/agent/tasks/${task.taskId}`,{method:'DELETE'});loadActivity();}}} style={{width:28,height:28,borderRadius:6,border:"1px solid "+c.ln,background:"transparent",cursor:"pointer",color:c.fa,fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>✕</button>
+                          <button onClick={(e)=>{e.stopPropagation();if(confirm('Delete this task?')){(async()=>{await fetch(`/api/agent/tasks/${task.taskId}`,{method:'DELETE'});loadActivity();})();}}} style={{width:28,height:28,borderRadius:6,border:"1px solid "+c.ln,background:"transparent",cursor:"pointer",color:c.fa,fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>✕</button>
                         </div>
                       );
                     })}
+
+                    {/* ── Task Edit Panel ── */}
+                    {editTask&&(
+                      <div style={{background:c.cd,border:"1px solid "+c.ac,borderRadius:12,padding:20,marginBottom:12}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+                          <div style={{fontSize:14,fontWeight:700,color:c.tx}}>Edit Task</div>
+                          <button onClick={()=>setEditTask(null)} style={{background:"transparent",border:"none",color:c.fa,cursor:"pointer",fontSize:16,padding:4}}>✕</button>
+                        </div>
+                        <div style={{marginBottom:10}}>
+                          <div style={{fontSize:11,fontWeight:600,color:c.so,marginBottom:4,textTransform:"uppercase",letterSpacing:"0.5px"}}>Task Name</div>
+                          <input value={editForm.name} onChange={e=>setEditForm(p=>({...p,name:e.target.value}))} style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,fontSize:13,color:c.tx,fontFamily:"inherit",boxSizing:"border-box"}}/>
+                        </div>
+                        <div style={{marginBottom:10}}>
+                          <div style={{fontSize:11,fontWeight:600,color:c.so,marginBottom:4,textTransform:"uppercase",letterSpacing:"0.5px"}}>Instructions</div>
+                          <textarea value={editForm.instruction} onChange={e=>setEditForm(p=>({...p,instruction:e.target.value}))} rows={3} style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,fontSize:13,color:c.tx,fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
+                        </div>
+                        <div style={{display:"flex",gap:8,marginBottom:14}}>
+                          <div style={{flex:1}}>
+                            <div style={{fontSize:11,fontWeight:600,color:c.so,marginBottom:4,textTransform:"uppercase",letterSpacing:"0.5px"}}>Type</div>
+                            <select value={editForm.taskType} onChange={e=>setEditForm(p=>({...p,taskType:e.target.value}))} style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,fontSize:12,color:c.tx,fontFamily:"inherit"}}>
+                              <option value="content">Content</option><option value="email">Email</option><option value="research">Research</option><option value="crm">CRM</option><option value="custom">Custom</option>
+                            </select>
+                          </div>
+                          <div style={{flex:1}}>
+                            <div style={{fontSize:11,fontWeight:600,color:c.so,marginBottom:4,textTransform:"uppercase",letterSpacing:"0.5px"}}>Frequency</div>
+                            <select value={editForm.frequency} onChange={e=>setEditForm(p=>({...p,frequency:e.target.value}))} style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,fontSize:12,color:c.tx,fontFamily:"inherit"}}>
+                              <option value="every_10_min">Every 10 Min</option><option value="every_30_min">Every 30 Min</option><option value="hourly">Hourly</option><option value="daily">Daily</option><option value="weekdays">Weekdays</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option>
+                            </select>
+                          </div>
+                          <div style={{width:110}}>
+                            <div style={{fontSize:11,fontWeight:600,color:c.so,marginBottom:4,textTransform:"uppercase",letterSpacing:"0.5px"}}>Run Time</div>
+                            <input type="time" value={editForm.runTime} onChange={e=>setEditForm(p=>({...p,runTime:e.target.value}))} style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,fontSize:12,color:c.tx,fontFamily:"inherit",boxSizing:"border-box"}}/>
+                          </div>
+                        </div>
+                        <div style={{display:"flex",gap:8,marginBottom:8}}>
+                          <div style={{flex:1,fontSize:11,color:c.fa}}>
+                            {editTask.lastRunAt?`Last run: ${new Date(editTask.lastRunAt).toLocaleString('en-US',{timeZone:'America/Chicago',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}`:'Never run'}
+                            {editTask.nextRunAt?` · Next: ${new Date(editTask.nextRunAt).toLocaleString('en-US',{timeZone:'America/Chicago',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}`:''}
+                          </div>
+                        </div>
+                        <div style={{display:"flex",gap:8}}>
+                          <button onClick={async()=>{
+                            const body={};
+                            if(editForm.name!==editTask.name) body.name=editForm.name;
+                            if(editForm.instruction!==(editTask.instruction||editTask.description)) body.instruction=editForm.instruction;
+                            if(editForm.frequency!==editTask.frequency) body.frequency=editForm.frequency;
+                            if(editForm.runTime!==editTask.runTime) body.runTime=editForm.runTime;
+                            if(Object.keys(body).length===0){setEditTask(null);return;}
+                            await fetch(`/api/agent/tasks/${editTask.taskId}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+                            setEditTask(null);
+                            loadActivity();
+                          }} style={{flex:1,padding:"10px 16px",borderRadius:8,border:"none",background:c.ac,color:"#fff",fontSize:13,fontWeight:600,cursor:"pointer"}}>
+                            Save Changes
+                          </button>
+                          <button onClick={()=>setEditTask(null)} style={{padding:"10px 16px",borderRadius:8,border:"1px solid "+c.ln,background:"transparent",color:c.so,fontSize:13,fontWeight:600,cursor:"pointer"}}>
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
 
                     {scheduledTasks.length===0&&!taskFormOpen&&(
                       <div style={{textAlign:"center",padding:60,color:c.so}}>
@@ -4780,7 +4847,7 @@ function App({ authUser }) {
                       <div style={{display:"flex",flexDirection:"column",gap:2}}>
                         {taskRuns.map((run,i)=>{
                           const sdColors={queued:c.warn,pending:c.ac,completed:c.gr,failed:c.err};
-                          const sdLabels={pending:"Running...",queued:"Queued",failed:"Failed"};
+                          const sdLabels={pending:"Running...",queued:"Queued",failed:"Failed",completed:"Completed"};
                           const typeIc={content:null,email:null,research:null,crm:null,custom:null}[run.taskType]||null;
                           const expanded=expandedRun===run.id;
                           const ev=run.evidence||{};
@@ -4788,26 +4855,31 @@ function App({ authUser }) {
                             <div key={run.id}>
                               <div onClick={()=>setExpandedRun(expanded?null:run.id)} style={{
                                 display:"flex",alignItems:"center",gap:12,padding:"13px 16px",borderRadius:expanded?"10px 10px 0 0":10,
-                                background:c.sf,border:"1px solid "+c.ln,borderBottom:expanded?"1px solid "+c.ln+"60":"1px solid "+c.ln,
+                                background:c.sf,border:"1px solid "+(run.status==="failed"?c.err+"40":c.ln),borderBottom:expanded?"1px solid "+c.ln+"60":"1px solid "+(run.status==="failed"?c.err+"40":c.ln),
                                 cursor:"pointer",marginBottom:expanded?0:6
                               }}>
                                 <span style={{width:8,height:8,borderRadius:"50%",background:sdColors[run.status]||c.so,flexShrink:0,animation:run.status==="pending"?"pulse 1.5s ease infinite":"none"}}/>
                                 <span style={{fontSize:16,flexShrink:0}}>{typeIc}</span>
                                 <div style={{flex:1,minWidth:0}}>
                                   <div style={{display:"flex",alignItems:"baseline",gap:6}}>
-                                    <span style={{fontSize:13,fontWeight:600,color:c.tx}}>{run.taskName}</span>
-                                    {sdLabels[run.status]&&<span style={{fontSize:11,color:sdColors[run.status],fontWeight:500}}>{sdLabels[run.status]}</span>}
+                                    <span style={{fontSize:13,fontWeight:600,color:c.tx}}>{run.taskName||'Unknown Task'}</span>
+                                    <span style={{fontSize:11,color:sdColors[run.status],fontWeight:500}}>{sdLabels[run.status]||run.status}</span>
                                   </div>
-                                  {run.result&&!expanded&&<div style={{fontSize:12,color:c.so,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{run.result}</div>}
+                                  {run.status==="failed"&&run.result&&!expanded&&<div style={{fontSize:12,color:c.err,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{run.result}</div>}
+                                  {run.status!=="failed"&&run.result&&!expanded&&<div style={{fontSize:12,color:c.so,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{run.result}</div>}
+                                  {!run.result&&!expanded&&run.instruction&&<div style={{fontSize:12,color:c.so,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{run.instruction}</div>}
                                 </div>
                                 <div style={{textAlign:"right",flexShrink:0}}>
                                   <span style={{fontSize:11,color:c.fa}}>{run.time||""}</span>
                                   {run.duration&&<div style={{fontSize:10,color:c.fa,marginTop:1}}>{run.duration}</div>}
+                                  {run.model&&<div style={{fontSize:10,color:c.fa,marginTop:1}}>{run.model}</div>}
                                 </div>
                               </div>
                               {expanded&&(
                                 <div style={{background:c.sf,borderRadius:"0 0 10px 10px",border:"1px solid "+c.ln,borderTop:"none",marginBottom:6}}>
-                                  {run.result&&<div style={{padding:"12px 16px",fontSize:13,color:c.tx,lineHeight:1.6,borderBottom:ev.actions?.length?"1px solid "+c.ln+"40":"none"}}>{run.result}</div>}
+                                  {run.instruction&&<div style={{padding:"10px 16px",borderBottom:"1px solid "+c.ln+"40"}}><div style={{fontSize:11,fontWeight:700,color:c.so,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:4}}>Task Instructions</div><div style={{fontSize:12,color:c.tx,lineHeight:1.5}}>{run.instruction}</div>{run.frequency&&<div style={{fontSize:11,color:c.fa,marginTop:4}}>{fmtFreq(run.frequency)} at {run.runTime||'9:00'}</div>}</div>}
+                                  {run.status==="failed"&&run.result&&<div style={{padding:"10px 16px",borderBottom:ev.actions?.length?"1px solid "+c.ln+"40":"none"}}><div style={{fontSize:11,fontWeight:700,color:c.err,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:4}}>Error</div><div style={{fontSize:12,color:c.err,lineHeight:1.5,fontFamily:"monospace",background:c.cd,padding:8,borderRadius:6}}>{run.result}</div></div>}
+                                  {run.status!=="failed"&&run.result&&<div style={{padding:"12px 16px",fontSize:13,color:c.tx,lineHeight:1.6,borderBottom:ev.actions?.length?"1px solid "+c.ln+"40":"none"}}>{run.result}</div>}
                                   {ev.actions?.length>0&&(
                                     <div style={{padding:"10px 16px"}}>
                                       <div style={{fontSize:11,fontWeight:700,color:c.so,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>What {aFN} did</div>
