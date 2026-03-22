@@ -19,8 +19,8 @@ const CONNECTORS = {
       'https://www.googleapis.com/auth/gmail.modify',
     ],
     extraParams: { access_type: 'offline', prompt: 'consent' },
-    envClientId: 'GOOGLE_CLIENT_ID',
-    envClientSecret: 'GOOGLE_CLIENT_SECRET',
+    envClientId: 'GOOGLE_OAUTH_CLIENT_ID',
+    envClientSecret: 'GOOGLE_OAUTH_CLIENT_SECRET',
   },
 
   'google-calendar': {
@@ -32,8 +32,8 @@ const CONNECTORS = {
       'https://www.googleapis.com/auth/calendar.events',
     ],
     extraParams: { access_type: 'offline', prompt: 'consent' },
-    envClientId: 'GOOGLE_CLIENT_ID',
-    envClientSecret: 'GOOGLE_CLIENT_SECRET',
+    envClientId: 'GOOGLE_OAUTH_CLIENT_ID',
+    envClientSecret: 'GOOGLE_OAUTH_CLIENT_SECRET',
   },
 
   'google-drive': {
@@ -46,8 +46,8 @@ const CONNECTORS = {
       'https://www.googleapis.com/auth/drive.readonly',
     ],
     extraParams: { access_type: 'offline', prompt: 'consent' },
-    envClientId: 'GOOGLE_CLIENT_ID',
-    envClientSecret: 'GOOGLE_CLIENT_SECRET',
+    envClientId: 'GOOGLE_OAUTH_CLIENT_ID',
+    envClientSecret: 'GOOGLE_OAUTH_CLIENT_SECRET',
   },
 
   // ══════════════════════════════════════════════════════
