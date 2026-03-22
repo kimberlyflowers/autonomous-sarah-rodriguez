@@ -4772,29 +4772,43 @@ async function loadHistory(_pool, sessionId) {
 
 
 async function generateSessionTitle(sessionId, userMsg, assistantMsg) {
-  try {
-    const msgText = typeof userMsg === 'string' ? userMsg : JSON.stringify(userMsg);
-    const prompt = `Based on this conversation, generate a short specific chat title (4-6 words max). No punctuation at the end. No quotes. Just the title.
+  const maxRetries = 3;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const msgText = typeof userMsg === 'string' ? userMsg : JSON.stringify(userMsg);
+      const prompt = `Based on this conversation, generate a short specific chat title (4-6 words max). No punctuation at the end. No quotes. Just the title.
 
 User: ${msgText.slice(0, 300)}
 Assistant: ${assistantMsg.slice(0, 300)}
 
 Title:`;
-    const result = await callAnthropicWithRetry({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 20,
-      messages: [{ role: 'user', content: prompt }]
-    });
-    const title = result.content[0]?.text?.trim().replace(/^["'']|["'']$/g, '').slice(0, 60);
-    if (title) {
-      const { createClient } = await import('@supabase/supabase-js');
-      const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-      await sb.from('sessions').update({ title, updated_at: new Date().toISOString() }).eq('id', sessionId);
-      logger.info(`Session title set: "${title}"`, { sessionId });
+      const result = await callAnthropicWithRetry({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 20,
+        messages: [{ role: 'user', content: prompt }]
+      });
+      const title = result.content[0]?.text?.trim().replace(/^["'']|["'']$/g, '').slice(0, 60);
+      if (title) {
+        const { createClient } = await import('@supabase/supabase-js');
+        const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+        await sb.from('sessions').update({ title, updated_at: new Date().toISOString() }).eq('id', sessionId);
+        logger.info(`Session title set: "${title}"`, { sessionId });
+        return; // Success — stop retrying
+      }
+    } catch (e) {
+      logger.warn(`Session title generation attempt ${attempt}/${maxRetries} failed`, { sessionId, error: e.message });
+      if (attempt < maxRetries) await new Promise(r => setTimeout(r, 2000 * attempt));
     }
-  } catch (e) {
-    // Non-critical
   }
+  // All retries failed — set a fallback title from the user message
+  try {
+    const msgText = typeof userMsg === 'string' ? userMsg : JSON.stringify(userMsg);
+    const fallback = msgText.slice(0, 50) + (msgText.length > 50 ? '...' : '');
+    const { createClient } = await import('@supabase/supabase-js');
+    const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    await sb.from('sessions').update({ title: fallback, updated_at: new Date().toISOString() }).eq('id', sessionId);
+    logger.info(`Session title set (fallback): "${fallback}"`, { sessionId });
+  } catch {}
 }
 
 async function saveMessages(_pool, sessionId, userMsg, assistantMsg, files = null, userId = null, agentId = null, opts = {}) {
@@ -4925,7 +4939,27 @@ router.get('/sessions', async (req, res) => {
     if (error) throw error;
     // Filter out conference/group chat sessions — they should only appear in the conference tab
     const filtered = (data || []).filter(s => !s.id.startsWith('conf-') && !s.id.startsWith('group-'));
-    res.json({ sessions: filtered });
+
+    // For sessions with null titles, fetch first user message as fallback title
+    const sessionsWithTitles = await Promise.all(filtered.map(async (s) => {
+      if (s.title) return s;
+      try {
+        const { data: msgs } = await sb
+          .from('messages')
+          .select('content')
+          .eq('session_id', s.id)
+          .eq('role', 'user')
+          .order('created_at', { ascending: true })
+          .limit(1);
+        if (msgs && msgs.length > 0 && msgs[0].content) {
+          const preview = msgs[0].content.slice(0, 50) + (msgs[0].content.length > 50 ? '...' : '');
+          return { ...s, title: preview };
+        }
+      } catch {}
+      return s;
+    }));
+
+    res.json({ sessions: sessionsWithTitles });
   } catch (e) {
     logger.error('Sessions fetch error', { error: e.message });
     res.json({ sessions: [] });
