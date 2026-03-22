@@ -404,6 +404,357 @@ router.post('/brand-kit', async (req, res) => {
   }
 });
 
+// ══════════════════════════════════════════════════════════════════════════
+// OPERATIONS MONITOR ENDPOINTS — powers the 8 cards on the Status page
+// ══════════════════════════════════════════════════════════════════════════
+
+// GET /api/dashboard/health — System Health card
+router.get('/health', async (req, res) => {
+  try {
+    const supabase = await getSupabase();
+    const components = [];
+
+    // 1. Database — try a simple query
+    const dbStart = Date.now();
+    const { error: dbErr } = await supabase.from('agents').select('id').limit(1);
+    const dbMs = Date.now() - dbStart;
+    components.push({
+      name: 'Database',
+      status: dbErr ? 'critical' : dbMs > 2000 ? 'warning' : 'healthy',
+      message: dbErr ? dbErr.message : `${dbMs}ms response`
+    });
+
+    // 2. LLM API — check if we have a key and last successful call
+    const hasAnthropicKey = !!process.env.ANTHROPIC_API_KEY;
+    const hasOpenAIKey = !!process.env.OPENAI_API_KEY;
+    try {
+      const { getLLMClient } = await import('../llm/unified-client.js');
+      const llm = getLLMClient();
+      components.push({
+        name: 'LLM API',
+        status: hasAnthropicKey || hasOpenAIKey ? 'healthy' : 'critical',
+        message: `${llm.provider}/${llm.model}`
+      });
+    } catch {
+      components.push({ name: 'LLM API', status: hasAnthropicKey ? 'healthy' : 'critical', message: hasAnthropicKey ? 'Anthropic active' : 'No API key' });
+    }
+
+    // 3. BLOOM CRM
+    const hasGHL = !!process.env.GHL_API_KEY;
+    components.push({
+      name: 'BLOOM CRM API',
+      status: hasGHL ? 'healthy' : 'warning',
+      message: hasGHL ? 'Connected' : 'No API key'
+    });
+
+    // 4. Memory — check recent snapshots
+    const { data: memSnap } = await supabase.from('memory_snapshots').select('created_at').order('created_at', { ascending: false }).limit(1);
+    const lastMem = memSnap?.[0]?.created_at;
+    const memAge = lastMem ? (Date.now() - new Date(lastMem).getTime()) / 60000 : Infinity;
+    components.push({
+      name: 'Memory',
+      status: memAge < 30 ? 'healthy' : memAge < 120 ? 'warning' : 'critical',
+      message: lastMem ? `Last snapshot ${Math.round(memAge)}m ago` : 'No snapshots'
+    });
+
+    // 5. Scheduled Tasks engine
+    const { data: recentRuns } = await supabase.from('task_runs').select('status, created_at').order('created_at', { ascending: false }).limit(5);
+    const lastRun = recentRuns?.[0];
+    const runAge = lastRun ? (Date.now() - new Date(lastRun.created_at).getTime()) / 60000 : Infinity;
+    components.push({
+      name: 'Task Engine',
+      status: runAge < 15 ? 'healthy' : runAge < 60 ? 'warning' : 'critical',
+      message: lastRun ? `Last run ${Math.round(runAge)}m ago` : 'No runs yet'
+    });
+
+    // 6. OAuth / Connectors
+    const { data: connectors } = await supabase.from('user_connectors').select('connector_slug, status').eq('organization_id', ORG_ID);
+    const activeConns = (connectors || []).filter(c => c.status === 'active').length;
+    components.push({
+      name: 'Connectors',
+      status: activeConns > 0 ? 'healthy' : 'warning',
+      message: `${activeConns} active`
+    });
+
+    const criticalCount = components.filter(c => c.status === 'critical').length;
+    const warnCount = components.filter(c => c.status === 'warning').length;
+    const overall = criticalCount > 0 ? 'critical' : warnCount > 1 ? 'warning' : 'healthy';
+
+    res.json({ overall, components });
+  } catch (e) {
+    logger.error('health endpoint error', { error: e.message });
+    res.json({ overall: 'critical', components: [{ name: 'System', status: 'critical', message: e.message }] });
+  }
+});
+
+// GET /api/dashboard/trust-gate — Trust Gate card
+router.get('/trust-gate', async (req, res) => {
+  try {
+    const supabase = await getSupabase();
+    const agentId = req.query.agentId || AGENT_ID;
+
+    // Load agent config for autonomy level
+    let autonomyLevel = 1;
+    try {
+      const config = await loadAgentConfig(agentId);
+      autonomyLevel = config?.currentAutonomyLevel || config?.autonomy_level || 1;
+    } catch {}
+
+    // Count today's actions from task_runs
+    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+    const { data: todayRuns } = await supabase.from('task_runs').select('status')
+      .eq('agent_id', agentId).gte('created_at', todayStart.toISOString());
+
+    const totalActions = todayRuns?.length || 0;
+    const communications = todayRuns?.filter(r => r.status === 'completed').length || 0;
+
+    // Count rejections today
+    const { count: violationCount } = await supabase.from('rejection_log')
+      .select('id', { count: 'exact', head: true })
+      .eq('agent_id', agentId).gte('created_at', todayStart.toISOString());
+
+    res.json({
+      autonomyLevel,
+      usage: { total: totalActions, communication: communications, data_modification: 0 },
+      limits: { total: 500, communication: 100 },
+      violations: violationCount || 0
+    });
+  } catch (e) {
+    logger.error('trust-gate error', { error: e.message });
+    res.json({ autonomyLevel: 1, usage: { total: 0 }, limits: { total: 500 }, violations: 0 });
+  }
+});
+
+// GET /api/dashboard/tool-performance — Tool Performance card
+router.get('/tool-performance', async (req, res) => {
+  try {
+    const supabase = await getSupabase();
+    const agentId = req.query.agentId || AGENT_ID;
+
+    // Parse tool usage from task_runs results
+    const { data: runs } = await supabase.from('task_runs').select('result, status, created_at')
+      .eq('agent_id', agentId).order('created_at', { ascending: false }).limit(50);
+
+    const toolStats = {};
+    let totalCalls = 0, successCalls = 0, totalTime = 0;
+
+    for (const run of (runs || [])) {
+      try {
+        const result = typeof run.result === 'string' ? JSON.parse(run.result) : run.result;
+        const history = result?.toolHistory || [];
+        for (const tool of history) {
+          const name = tool.tool || 'unknown';
+          if (!toolStats[name]) toolStats[name] = { name, calls: 0, success: 0, totalTime: 0 };
+          toolStats[name].calls++;
+          totalCalls++;
+          if (tool.result?.success) { toolStats[name].success++; successCalls++; }
+          const execTime = tool.result?.executionTime || 0;
+          toolStats[name].totalTime += execTime;
+          totalTime += execTime;
+        }
+      } catch {}
+    }
+
+    const topTools = Object.values(toolStats)
+      .map(t => ({ ...t, successRate: t.calls > 0 ? t.success / t.calls : 0, avgTime: t.calls > 0 ? Math.round(t.totalTime / t.calls) : 0 }))
+      .sort((a, b) => b.calls - a.calls);
+
+    res.json({
+      totalCalls,
+      successRate: totalCalls > 0 ? successCalls / totalCalls : 0,
+      avgExecutionTime: totalCalls > 0 ? Math.round(totalTime / totalCalls) : 0,
+      topTools
+    });
+  } catch (e) {
+    logger.error('tool-performance error', { error: e.message });
+    res.json({ totalCalls: 0, successRate: 0, avgExecutionTime: 0, topTools: [] });
+  }
+});
+
+// GET /api/dashboard/context-analytics — Context Analytics card
+router.get('/context-analytics', async (req, res) => {
+  try {
+    const supabase = await getSupabase();
+    const agentId = req.query.agentId || AGENT_ID;
+
+    // Pull context stats from recent task runs
+    const { data: runs } = await supabase.from('task_runs').select('result')
+      .eq('agent_id', agentId).order('created_at', { ascending: false }).limit(20);
+
+    let totalTokens = 0, maxTokens = 200000, compressions = 0, runCount = 0;
+    for (const run of (runs || [])) {
+      try {
+        const result = typeof run.result === 'string' ? JSON.parse(run.result) : run.result;
+        const ctx = result?.contextStats;
+        if (ctx) {
+          totalTokens += ctx.totalTokens || 0;
+          compressions += ctx.compressionCount || 0;
+          runCount++;
+        }
+      } catch {}
+    }
+
+    const avgTokens = runCount > 0 ? Math.round(totalTokens / runCount) : 0;
+    const pct = (avgTokens / maxTokens) * 100;
+
+    res.json({
+      utilizationPercent: Math.min(100, pct),
+      usedTokens: avgTokens,
+      maxTokens,
+      compressionCount: compressions
+    });
+  } catch (e) {
+    logger.error('context-analytics error', { error: e.message });
+    res.json({ utilizationPercent: 0, usedTokens: 0, maxTokens: 200000, compressionCount: 0 });
+  }
+});
+
+// GET /api/dashboard/internal-tasks — Internal Tasks card (scheduled tasks)
+router.get('/internal-tasks', async (req, res) => {
+  try {
+    const supabase = await getSupabase();
+    const agentId = req.query.agentId || AGENT_ID;
+
+    const { data: tasks } = await supabase.from('scheduled_tasks')
+      .select('id, name, instruction, frequency, run_time, enabled, next_run_at, last_run_at')
+      .eq('agent_id', agentId).eq('enabled', true)
+      .order('next_run_at', { ascending: true });
+
+    res.json({
+      tasks: (tasks || []).map(t => ({
+        title: t.name,
+        description: `${t.frequency} at ${t.run_time} · Next: ${t.next_run_at ? new Date(t.next_run_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'pending'}`,
+        status: t.last_run_at ? 'completed' : 'pending',
+        frequency: t.frequency,
+        nextRun: t.next_run_at
+      }))
+    });
+  } catch (e) {
+    logger.error('internal-tasks error', { error: e.message });
+    res.json({ tasks: [] });
+  }
+});
+
+// GET /api/dashboard/action-log — Action Log card (recent tool calls from task runs)
+router.get('/action-log', async (req, res) => {
+  try {
+    const supabase = await getSupabase();
+    const agentId = req.query.agentId || AGENT_ID;
+    const limit = parseInt(req.query.limit) || 20;
+
+    // Pull from both action_log table AND recent task_runs toolHistory
+    const { data: actions } = await supabase.from('action_log')
+      .select('action_type, description, created_at, success')
+      .eq('agent_id', agentId).order('created_at', { ascending: false }).limit(limit);
+
+    // Also extract tool calls from recent task_runs for a richer log
+    const { data: runs } = await supabase.from('task_runs')
+      .select('task_name, result, created_at, status')
+      .eq('agent_id', agentId).order('created_at', { ascending: false }).limit(10);
+
+    const allActions = [];
+
+    // Add formal action_log entries
+    for (const a of (actions || [])) {
+      allActions.push({
+        action_type: a.action_type,
+        description: a.description,
+        category: 'logging',
+        timestamp: a.created_at,
+        time: new Date(a.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+      });
+    }
+
+    // Extract tool calls from task_runs
+    for (const run of (runs || [])) {
+      try {
+        const result = typeof run.result === 'string' ? JSON.parse(run.result) : run.result;
+        for (const tool of (result?.toolHistory || [])) {
+          const cat = tool.tool?.startsWith('ghl_') ? 'communication' :
+            tool.tool?.startsWith('gmail_') ? 'communication' :
+            tool.tool?.startsWith('web_') ? 'read' :
+            tool.tool?.startsWith('scrape_') ? 'read' : 'data_modification';
+          allActions.push({
+            action_type: tool.tool,
+            description: `${run.task_name || 'Task'}: ${tool.tool}(${JSON.stringify(tool.input || {}).slice(0, 80)}...)`,
+            category: cat,
+            timestamp: tool.timestamp || run.created_at,
+            time: new Date(tool.timestamp || run.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+          });
+        }
+      } catch {}
+    }
+
+    // Sort by timestamp desc, limit
+    allActions.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    res.json({ actions: allActions.slice(0, limit) });
+  } catch (e) {
+    logger.error('action-log error', { error: e.message });
+    res.json({ actions: [] });
+  }
+});
+
+// GET /api/dashboard/sub-agents — Sub-Agent Network card
+router.get('/sub-agents', async (req, res) => {
+  try {
+    const supabase = await getSupabase();
+
+    // Pull all agents in the org
+    const { data: agents } = await supabase.from('agents')
+      .select('id, name, role, status, model, specialization')
+      .eq('organization_id', ORG_ID);
+
+    // Count task runs per agent
+    const agentList = [];
+    for (const a of (agents || [])) {
+      const { count } = await supabase.from('task_runs')
+        .select('id', { count: 'exact', head: true }).eq('agent_id', a.id);
+      agentList.push({
+        name: a.name || 'Unknown',
+        expertise: [a.role, a.specialization].filter(Boolean),
+        status: a.status || 'active',
+        taskCount: count || 0,
+        model: a.model
+      });
+    }
+
+    res.json({ agents: agentList });
+  } catch (e) {
+    logger.error('sub-agents error', { error: e.message });
+    res.json({ agents: [] });
+  }
+});
+
+// GET /api/dashboard/handoff-log — alias for /handoffs (frontend expects this name)
+router.get('/handoff-log', async (req, res) => {
+  try {
+    const supabase = await getSupabase();
+    const limit = parseInt(req.query.limit) || 10;
+    const { data } = await supabase.from('handoff_log')
+      .select('issue, recommendation, urgency, confidence, created_at')
+      .eq('agent_id', AGENT_ID).order('created_at', { ascending: false }).limit(limit);
+
+    res.json({ handoffs: (data || []).map(h => ({ issue: h.issue, recommendation: h.recommendation, urgency: h.urgency, confidence: h.confidence, timestamp: h.created_at })) });
+  } catch (e) {
+    res.json({ handoffs: [] });
+  }
+});
+
+// GET /api/dashboard/rejection-log — alias for /rejections (frontend expects this name)
+router.get('/rejection-log', async (req, res) => {
+  try {
+    const supabase = await getSupabase();
+    const limit = parseInt(req.query.limit) || 10;
+    const { data } = await supabase.from('rejection_log')
+      .select('candidate_action, reason, reason_code, confidence, created_at')
+      .eq('agent_id', AGENT_ID).order('created_at', { ascending: false }).limit(limit);
+
+    res.json({ rejections: (data || []).map(r => ({ action: r.candidate_action, reason: r.reason, code: r.reason_code, risk: `${(r.confidence * 100).toFixed(0)}% confidence`, timestamp: r.created_at })) });
+  } catch (e) {
+    res.json({ rejections: [] });
+  }
+});
+
 // ── ACTIVE TASK TRACKER — serves taskProgress data to dashboard panel ──
 // The ActiveTaskTracker component in App.jsx polls this every 15s.
 // Data shape: { executions: [{ task, status, steps: [{ name, status }] }] }

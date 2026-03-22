@@ -924,6 +924,79 @@ function InternalTasks({c,sse,aFN="Sarah"}) {
   );
 }
 
+// ── TASK RUN TIMELINE — visual bar chart of recent task executions
+function TaskRunTimeline({c}) {
+  const [runs,setRuns] = useState([]);
+  useEffect(()=>{
+    const go=async()=>{
+      try{
+        const r=await fetch("/api/agent/tasks/runs");
+        if(r.ok){ const d=await r.json(); setRuns((d.runs||d||[]).slice(0,24)); }
+      }catch{}
+    };
+    go();
+    const t=setInterval(go,30000);
+    return()=>clearInterval(t);
+  },[]);
+
+  const completed=runs.filter(r=>r.status==="completed").length;
+  const failed=runs.filter(r=>r.status==="failed").length;
+  const total=runs.length;
+  const rate=total>0?((completed/total)*100).toFixed(0):"—";
+
+  return(
+    <Card c={c} title="Task Run Timeline" subtitle={`Last ${total} runs · ${rate}% success`} icon={<BoltIcon c={c} size={16}/>}>
+      {runs.length===0
+        ? <div style={{padding:20,textAlign:"center",fontSize:12,color:c.so}}>No task runs yet</div>
+        : <>
+            {/* Summary stats row */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:8,marginBottom:14}}>
+              <Stat c={c} label="Total Runs" value={total}/>
+              <Stat c={c} label="Completed" value={completed} accent={c.gr}/>
+              <Stat c={c} label="Failed" value={failed} accent={failed>0?"#EF4444":c.gr}/>
+              <Stat c={c} label="Success %" value={rate+"%"} accent={parseInt(rate)>80?c.gr:parseInt(rate)>50?"#F59E0B":"#EF4444"}/>
+            </div>
+            {/* Visual bar chart */}
+            <div style={{display:"flex",gap:3,alignItems:"flex-end",height:60,marginBottom:10}}>
+              {runs.slice().reverse().map((r,i)=>{
+                const dur=r.executionTime||r.duration||5000;
+                const maxDur=Math.max(...runs.map(x=>x.executionTime||x.duration||5000),1);
+                const h=Math.max(8,Math.round((dur/maxDur)*56));
+                const bg=r.status==="completed"?c.gr:r.status==="failed"?"#EF4444":"#F59E0B";
+                return <div key={i} title={`${r.taskName||"Task"}\n${r.status} · ${Math.round(dur/1000)}s`} style={{flex:1,height:h,borderRadius:3,background:bg+"90",cursor:"default",transition:"height .3s",minWidth:0}}/>;
+              })}
+            </div>
+            {/* Legend */}
+            <div style={{display:"flex",gap:14,justifyContent:"center"}}>
+              {[{label:"Completed",color:c.gr},{label:"Failed",color:"#EF4444"},{label:"Pending",color:"#F59E0B"}].map(l=>(
+                <div key={l.label} style={{display:"flex",alignItems:"center",gap:4}}>
+                  <span style={{width:8,height:8,borderRadius:2,background:l.color+"90"}}/>
+                  <span style={{fontSize:10,color:c.so}}>{l.label}</span>
+                </div>
+              ))}
+            </div>
+            {/* Recent runs list */}
+            <div style={{marginTop:12,maxHeight:160,overflowY:"auto"}}>
+              {runs.slice(0,8).map((r,i)=>{
+                const sc=r.status==="completed"?c.gr:r.status==="failed"?"#EF4444":"#F59E0B";
+                return(
+                  <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderBottom:i<7?"1px solid "+c.ln+"40":"none"}}>
+                    <span style={{width:6,height:6,borderRadius:"50%",background:sc,flexShrink:0}}/>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:11,fontWeight:600,color:c.tx,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.taskName||"Unknown Task"}</div>
+                    </div>
+                    <span style={{fontSize:9,color:c.so,flexShrink:0}}>{r.executionTime?Math.round(r.executionTime/1000)+"s":""}</span>
+                    <span style={{fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:8,background:sc+"18",color:sc,flexShrink:0}}>{r.status}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+      }
+    </Card>
+  );
+}
+
 // ── ESCALATIONS + REJECTIONS (tabbed)
 function EscalationPanel({c,sse}) {
   const [handoffs,setHandoffs] = useState([]);
@@ -4340,6 +4413,10 @@ function App({ authUser }) {
                     Open BLOOM CRM
                   </a>
                 </div>
+              </div>
+              {/* Task Run Timeline — full width overview */}
+              <div style={{marginBottom:16}}>
+                <TaskRunTimeline c={c}/>
               </div>
               <div style={{display:"grid",gridTemplateColumns:mob?"1fr":"1fr 1fr",gap:16,marginBottom:16}}>
                 <SystemHealth c={c} sse={sse}/>

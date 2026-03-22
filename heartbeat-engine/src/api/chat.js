@@ -3607,7 +3607,7 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
             skillContext = getSkillContext(toolInput.taskType || 'writing', toolInput.specialistPrompt);
           } catch (e) {}
 
-          const fallbackResult = await callAnthropicWithRetry({
+          const fallbackResult = await callLLMWithRetry({
             model: process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001',
             max_tokens: 4096,
             system: 'You are an expert at this task. Deliver the highest quality output possible. No preamble — go straight into the deliverable.' + skillContext,
@@ -3798,7 +3798,7 @@ function toAnthropicFormat(unifiedResponse) {
 }
 
 // Primary call path — uses unified client with failover + retry
-async function callAnthropicWithRetry(params, maxRetries = 3, client = null) {
+async function callLLMWithRetry(params, maxRetries = 3, client = null) {
   const llm = getLLMClient();
   const currentProvider = llm.provider;
   const currentModel = llm.model;
@@ -4299,7 +4299,7 @@ When a user asks you to edit, modify, or update something you previously created
     // Trim context before each API call (tool results accumulate during the loop)
     currentMessages = trimMessagesToFit(currentMessages);
 
-    const response = await callAnthropicWithRetry({
+    const response = await callLLMWithRetry({
       model: chatModel,
       max_tokens: 8192,
       system: systemPrompt,
@@ -4410,7 +4410,7 @@ When a user asks you to edit, modify, or update something you previously created
 
           // Cheap verification sub-call — ask a fresh model instance to check completeness
           try {
-            const verifyResult = await callAnthropicWithRetry({
+            const verifyResult = await callLLMWithRetry({
               model: chatModel,
               max_tokens: 300,
               messages: [{
@@ -4783,7 +4783,7 @@ Assistant: ${assistantMsg.slice(0, 300)}
 
 Title:`;
       // Model-agnostic: uses whatever model the agent is currently running (Claude, Gemini, DeepSeek, etc.)
-      const result = await callAnthropicWithRetry({
+      const result = await callLLMWithRetry({
         max_tokens: 60,
         messages: [{ role: 'user', content: prompt }]
       });
