@@ -4782,9 +4782,9 @@ User: ${msgText.slice(0, 300)}
 Assistant: ${assistantMsg.slice(0, 300)}
 
 Title:`;
+      // Model-agnostic: uses whatever model the agent is currently running (Claude, Gemini, DeepSeek, etc.)
       const result = await callAnthropicWithRetry({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 20,
+        max_tokens: 60,
         messages: [{ role: 'user', content: prompt }]
       });
       const title = result.content[0]?.text?.trim().replace(/^["'']|["'']$/g, '').slice(0, 60);
