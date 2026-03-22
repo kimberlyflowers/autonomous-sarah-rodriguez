@@ -753,9 +753,9 @@ const BASE_URL = process.env.RAILWAY_PUBLIC_DOMAIN
  * buildAuthUrl — encodes orgId into state, builds redirect URI, returns full auth URL
  * Called by GET /oauth/connect/:slug
  */
-function buildAuthUrl(slug, orgId) {
+function buildAuthUrl(slug, orgId, userId) {
   const redirectUri = `${BASE_URL}/oauth/callback/${slug}`;
-  const state = Buffer.from(JSON.stringify({ orgId, slug, ts: Date.now() })).toString('base64url');
+  const state = Buffer.from(JSON.stringify({ orgId, userId, slug, ts: Date.now() })).toString('base64url');
   return getAuthUrl(slug, redirectUri, state);
 }
 
@@ -766,16 +766,19 @@ function buildAuthUrl(slug, orgId) {
 async function handleCallback(slug, code, state) {
   const connector = getConnector(slug);
 
-  // Decode state to get orgId
-  let orgId;
+  // Decode state to get orgId and userId
+  let orgId, userId;
   try {
     const decoded = JSON.parse(Buffer.from(state, 'base64url').toString('utf8'));
     orgId = decoded.orgId;
+    userId = decoded.userId;
   } catch {
     throw new Error(`Invalid OAuth state parameter for ${slug}`);
   }
 
   if (!orgId) throw new Error(`Missing orgId in OAuth state for ${slug}`);
+  // Default userId to Kimberly's UUID if not provided
+  if (!userId) userId = '823e2fb5-2f8f-4279-9c84-c8f4bf78bcce';
 
   const redirectUri = `${BASE_URL}/oauth/callback/${slug}`;
   const tokenData = await exchangeCodeForToken(slug, code, redirectUri);
@@ -809,6 +812,7 @@ async function handleCallback(slug, code, state) {
     .upsert({
       connector_id: connectorRow.id,
       organization_id: orgId,
+      connected_by: userId,
       access_token: tokenData.access_token,
       refresh_token: tokenData.refresh_token || null,
       token_expires_at: expiresAt,

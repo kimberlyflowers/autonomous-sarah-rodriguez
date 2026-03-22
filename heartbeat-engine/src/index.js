@@ -428,7 +428,8 @@ app.get('/oauth/connect/:slug', (req, res) => {
   try {
     const { slug } = req.params;
     const orgId = req.query.orgId || process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001';
-    const authUrl = buildAuthUrl(slug, orgId);
+    const userId = req.query.userId || '823e2fb5-2f8f-4279-9c84-c8f4bf78bcce';
+    const authUrl = buildAuthUrl(slug, orgId, userId);
     logger.info(`OAuth connect: redirecting to ${slug} for org ${orgId}`);
     res.redirect(authUrl);
   } catch (err) {
