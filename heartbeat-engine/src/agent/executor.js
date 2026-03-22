@@ -11,6 +11,7 @@ import { executeBrowserTool, browserToolDefinitions } from '../tools/browser-too
 import { executeWebSearchTool, webSearchToolDefinitions } from '../tools/web-search-tools.js';
 import { executeImageTool, imageToolDefinitions } from '../tools/image-tools.js';
 import { executeScrapeTools, scrapeToolDefinitions } from '../tools/scrape-tools.js';
+import { executeGmailTool, gmailToolDefinitions } from '../tools/gmail-tools.js';
 import { subAgentSystem, SUB_AGENTS } from '../agents/sub-agent-system.js';
 import { trustGate } from '../trust/trust-gate.js';
 import { contextManager } from '../context/context-manager.js';
@@ -701,6 +702,15 @@ Use the available tools to complete this task. Work step by step and explain you
 
     // Add lead scraping tools
     for (const [toolName, toolDef] of Object.entries(scrapeToolDefinitions)) {
+      claudeTools.push({
+        name: toolName,
+        description: toolDef.description,
+        input_schema: toolDef.parameters
+      });
+    }
+
+    // Add Gmail tools
+    for (const [toolName, toolDef] of Object.entries(gmailToolDefinitions)) {
       claudeTools.push({
         name: toolName,
         description: toolDef.description,

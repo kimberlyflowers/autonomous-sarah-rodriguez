@@ -8,6 +8,7 @@ import { executeBrowserTool } from './browser-tools.js';
 import { executeWebSearchTool } from './web-search-tools.js';
 import { executeImageTool } from './image-tools.js';
 import { executeScrapeTools } from './scrape-tools.js';
+import { executeGmailTool } from './gmail-tools.js';
 import { trustGate } from '../trust/trust-gate.js';
 
 const logger = createLogger('enhanced-executor');
@@ -297,6 +298,8 @@ export class EnhancedToolExecutor {
       result = await executeImageTool(execution.toolName, execution.parameters);
     } else if (execution.toolName.startsWith('scrape_')) {
       result = await executeScrapeTools(execution.toolName, execution.parameters);
+    } else if (execution.toolName.startsWith('gmail_')) {
+      result = await executeGmailTool(execution.toolName, execution.parameters);
     } else {
       throw new Error(`Unknown tool category: ${execution.toolName}`);
     }

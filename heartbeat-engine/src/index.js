@@ -28,6 +28,8 @@ import desktopRoutes from './api/desktop.js';import mobileRoutes from './api/mob
 import adminRoutes from './api/admin.js';
 import cookieParser from 'cookie-parser';
 
+import { createClient } from '@supabase/supabase-js';
+
 // Get the current directory for ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -35,6 +37,13 @@ const __dirname = path.dirname(__filename);
 const logger = createLogger('heartbeat-engine');
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Top-level Supabase client for API routes
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_KEY,
+  { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } }
+);
 
 // Security middleware — allow external images (GHL logos, Supabase CDN, etc)
 app.use(helmet({
