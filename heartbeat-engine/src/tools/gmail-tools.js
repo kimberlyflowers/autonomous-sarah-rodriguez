@@ -14,37 +14,48 @@ async function getGmailToken(orgId) {
     auth: { persistSession: false }
   });
 
-  const { data, error } = await sb
-    .from('user_connectors')
-    .select('access_token, refresh_token, token_expires_at, connector_id')
-    .eq('organization_id', orgId || 'a1000000-0000-0000-0000-000000000001')
-    .eq('status', 'active')
-    .in('connector_id', sb.from('connectors').select('id').eq('slug', 'gmail'))
+  const org = orgId || 'a1000000-0000-0000-0000-000000000001';
+
+  // Step 1: Find the gmail connector ID
+  const { data: connector } = await sb
+    .from('connectors')
+    .select('id')
+    .eq('slug', 'gmail')
     .single();
 
-  if (error || !data?.access_token) {
-    // Fallback: query by joining
-    const { data: joined, error: joinErr } = await sb
+  // Step 2: Get the user_connector with that connector_id
+  if (connector?.id) {
+    const { data, error } = await sb
       .from('user_connectors')
-      .select('access_token, refresh_token, token_expires_at, connectors(slug)')
-      .eq('organization_id', orgId || 'a1000000-0000-0000-0000-000000000001')
-      .eq('status', 'active');
+      .select('access_token, refresh_token, token_expires_at, connector_id')
+      .eq('organization_id', org)
+      .eq('status', 'active')
+      .eq('connector_id', connector.id)
+      .single();
 
-    if (joinErr || !joined) throw new Error('Gmail not connected. Please connect Gmail in the dashboard.');
-    const gmailRow = joined.find(r => r.connectors?.slug === 'gmail');
-    if (!gmailRow?.access_token) throw new Error('Gmail not connected. Please connect Gmail in the dashboard.');
-
-    // Check if token is expired and needs refresh
-    if (gmailRow.token_expires_at && new Date(gmailRow.token_expires_at) < new Date()) {
-      return await refreshGmailToken(sb, gmailRow, orgId);
+    if (!error && data?.access_token) {
+      if (data.token_expires_at && new Date(data.token_expires_at) < new Date()) {
+        return await refreshGmailToken(sb, data, org);
+      }
+      return data.access_token;
     }
-    return gmailRow.access_token;
   }
 
-  if (data.token_expires_at && new Date(data.token_expires_at) < new Date()) {
-    return await refreshGmailToken(sb, data, orgId);
+  // Fallback: query with join
+  const { data: joined, error: joinErr } = await sb
+    .from('user_connectors')
+    .select('access_token, refresh_token, token_expires_at, connector_id, connectors(slug)')
+    .eq('organization_id', org)
+    .eq('status', 'active');
+
+  if (joinErr || !joined) throw new Error('Gmail not connected. Please connect Gmail in the dashboard.');
+  const gmailRow = joined.find(r => r.connectors?.slug === 'gmail');
+  if (!gmailRow?.access_token) throw new Error('Gmail not connected. Please connect Gmail in the dashboard.');
+
+  if (gmailRow.token_expires_at && new Date(gmailRow.token_expires_at) < new Date()) {
+    return await refreshGmailToken(sb, gmailRow, org);
   }
-  return data.access_token;
+  return gmailRow.access_token;
 }
 
 async function refreshGmailToken(sb, row, orgId) {
