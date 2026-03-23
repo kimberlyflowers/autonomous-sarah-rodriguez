@@ -147,6 +147,9 @@ export const browserToolExecutors = {
           logger.warn('Could not push screenshot to dashboard:', ssErr.message);
         }
 
+        const tierLabel = data.tier_used === 'desktop' ? '(via BLOOM Desktop - real browser)' :
+                          data.tier_used === 'cloud' ? '(via cloud browser - anti-detect)' : '';
+
         return {
           success: true,
           requested_url: params.url || 'none',
@@ -155,7 +158,9 @@ export const browserToolExecutors = {
           duration_ms: data.duration_ms,
           url_final: data.url_final,
           used_cloud: data.used_cloud || false,
-          message: `Browser navigated to ${params.url || 'requested page'}. Final URL: ${data.url_final}. ${data.used_cloud ? '(Used cloud browser for anti-bot bypass) ' : ''}Result: ${data.result}`
+          used_desktop: data.used_desktop || false,
+          tier_used: data.tier_used || 'self-hosted',
+          message: `Browser navigated to ${params.url || 'requested page'}. Final URL: ${data.url_final}. ${tierLabel} Result: ${data.result}`
         };
       } else {
         return {
