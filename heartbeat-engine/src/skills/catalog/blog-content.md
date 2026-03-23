@@ -14,9 +14,20 @@ Follow this exact sequence for every blog post:
 ### Step 1: Generate Hero Image
 Before writing, call `image_generate` to create a professional hero image.
 - **STYLE: PHOTOREALISTIC ONLY. NEVER cartoon, illustration, clip art, or animated style.**
-- Prompt pattern: "Photorealistic professional photograph for a blog article about [topic]. Real people in a modern office or business environment. Natural lighting, shallow depth of field, editorial quality. Color palette includes warm orange (#F4A261) and soft pink (#E76F8B) accents in the environment — wall art, clothing accents, screen displays, or decor. Corporate yet approachable. Wide landscape format 1536x1024. NOT an illustration, NOT a cartoon, NOT digital art — must look like a real photograph taken by a professional photographer."
+- Use the 6-Element Framework below. Adapt the SUBJECT and ACTION to match the blog topic.
+
+**6-Element Image Prompt Template:**
+```
+SUBJECT: [1-2 real professional people, diverse, age 30-50, wearing business attire with orange (#F4A261) or pink (#E76F8B) accent — a blouse, tie, pocket square, lanyard, or blazer lining. Specific to blog topic: e.g., "a confident Black woman in a charcoal blazer with orange blouse" or "two colleagues reviewing data together".]
+COMPOSITION: Wide-angle landscape shot (1536x1024). Shallow depth of field with subject sharp and background softly blurred. Rule of thirds framing.
+ACTION: [Working on laptop/tablet showing dashboard with charts and data, gesturing toward screen, collaborating at desk, reviewing analytics — always engaged with technology relevant to the blog topic.]
+LOCATION: Spacious modern office with floor-to-ceiling windows and city skyline view. Clean desk with laptop, coffee mug, notebook. Brand color accents throughout the environment — orange (#F4A261) notebook, pink (#E76F8B) desk accessories, orange wall art or signage, warm-toned cushions or decor. Plants, natural wood, open plan.
+STYLE: Professional editorial photography. Corporate yet approachable. Warm, optimistic, aspirational mood. Shot on Sony A7IV with 35mm lens.
+TECHNICAL: Natural window light from the side creating gentle shadows and warm golden glow. Soft bokeh background. Sharp focus on subject. High quality, 8K detail. NOT an illustration, NOT a cartoon, NOT digital art, NOT 3D render — must look like a real photograph by a professional photographer.
+```
 - Size: `1536x1024` (landscape)
 - Engine: `auto`
+- Quality: `high`
 - Save the returned image URL.
 
 ### Step 2: Write Content & Save to CRM
