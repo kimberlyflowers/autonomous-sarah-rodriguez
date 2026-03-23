@@ -993,8 +993,16 @@ async function runScheduledTasks(agentConfig) {
       const executor = new AgentExecutor(agentConfig?.agentId || 'bloomie-sarah-rodriguez', agentConfig);
       const result = await executor.executeTask(task.instruction, { trigger: 'scheduled', taskId: task.id, taskName: task.name, taskType: task.task_type });
       output = typeof result === 'string' ? result : result?.response || JSON.stringify(result);
-      success = true;
-      logger.info(`✅ Task complete: ${task.name}`);
+
+      // Check inner result status — executor may return without throwing but still report failure
+      const innerStatus = (typeof result === 'object') ? (result?.status || result?.error) : null;
+      if (innerStatus === 'failed' || (result?.error && !result?.response)) {
+        success = false;
+        logger.error(`❌ Task inner failure: ${task.name}`, { innerStatus, error: result?.error });
+      } else {
+        success = true;
+        logger.info(`✅ Task complete: ${task.name}`);
+      }
     } catch (e) {
       output = `Task failed: ${e.message}`;
       logger.error(`❌ Task failed: ${task.name}`, e.message);

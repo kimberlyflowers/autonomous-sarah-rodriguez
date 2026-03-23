@@ -173,26 +173,32 @@ export class SystemMonitor {
       }
     });
 
-    // API Connectivity
+    // API Connectivity — uses unified client with failover (respects admin Gemini config)
     this.healthChecks.set('api_connectivity', {
       name: 'External API Health',
       check: async () => {
         try {
-          // Test Claude API connectivity
-          const { getAnthropicClient } = await import('../api/chat.js');
-          const client = getAnthropicClient();
+          const { callModel } = await import('../llm/unified-client.js');
+          const { getResolvedConfig } = await import('../config/admin-config.js');
 
-          const testResponse = await client.messages.create({
-            model: 'claude-haiku-4-5-20251001',
-            max_tokens: 10,
-            messages: [{ role: 'user', content: 'Health check' }]
+          let healthModel = 'gemini-2.5-flash';
+          try {
+            const config = await getResolvedConfig('a1000000-0000-0000-0000-000000000001');
+            healthModel = config.model || 'gemini-2.5-flash';
+          } catch {}
+
+          const testResponse = await callModel(healthModel, {
+            system: 'Respond with OK.',
+            messages: [{ role: 'user', content: 'Health check' }],
+            maxTokens: 10,
+            temperature: 0
           });
 
           return {
             healthy: true,
             metrics: {
               responseTime: Date.now(),
-              model: testResponse.model
+              model: testResponse.model || healthModel
             },
             message: 'API connectivity healthy'
           };

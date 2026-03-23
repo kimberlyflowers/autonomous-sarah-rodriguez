@@ -1,16 +1,16 @@
-// BLOOM Heartbeat Engine - Agent Thinking (Claude API Integration)
+// BLOOM Heartbeat Engine - Agent Thinking (Unified LLM Client)
 // Analyzes environment and memory to make autonomous decisions
+// ⚡ Migrated: Uses unified client with failover + admin config (respects Gemini setting)
 
-import Anthropic from '@anthropic-ai/sdk';
+import { callModel } from '../llm/unified-client.js';
+import { getResolvedConfig } from '../config/admin-config.js';
 import { createLogger } from '../logging/logger.js';
 import { getAutonomyLevel } from '../config/autonomy-levels.js';
 import { getProgressText } from './progress-log.js';
 
 const logger = createLogger('think');
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY
-});
+const BLOOM_ORG_ID = 'a1000000-0000-0000-0000-000000000001';
 
 export async function think(context) {
   logger.info('🤔 Agent thinking phase started...', {
@@ -25,32 +25,27 @@ export async function think(context) {
 
     logger.info('Calling Claude API for decision making...');
 
-    // Retry with backoff on 529 overload — heartbeat shouldn't crash Sarah's chat
-    let response;
-    for (let attempt = 0; attempt <= 2; attempt++) {
-      try {
-        const systemPrompt = await buildSystemPrompt(context);
-        response = await anthropic.messages.create({
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 4000,
-          temperature: 0.1,
-          system: systemPrompt,
-          messages: [{ role: 'user', content: prompt }]
-        });
-        break;
-      } catch (retryErr) {
-        const isOverloaded = retryErr?.status === 529 || retryErr?.message?.includes('overloaded');
-        if (isOverloaded && attempt < 2) {
-          const delay = Math.pow(2, attempt) * 3000;
-          logger.warn(`API overloaded during heartbeat think, waiting ${delay/1000}s before retry`);
-          await new Promise(r => setTimeout(r, delay));
-          continue;
-        }
-        throw retryErr;
-      }
+    // Resolve model from admin config (respects Gemini setting in Supabase)
+    let thinkModel = 'gemini-2.5-flash'; // safe default
+    try {
+      const config = await getResolvedConfig(BLOOM_ORG_ID);
+      thinkModel = config.model || 'gemini-2.5-flash';
+      logger.info('Think phase using admin-configured model', { model: thinkModel });
+    } catch (cfgErr) {
+      logger.warn('Could not load admin config for think, using default', { error: cfgErr.message });
     }
 
-    const decisions = parseClaudeResponse(response.content[0].text);
+    const systemPrompt = await buildSystemPrompt(context);
+
+    // callModel has built-in failover across all providers
+    const response = await callModel(thinkModel, {
+      system: systemPrompt,
+      messages: [{ role: 'user', content: prompt }],
+      maxTokens: 4000,
+      temperature: 0.1
+    });
+
+    const decisions = parseClaudeResponse(response.text);
 
     logger.info(`Claude generated ${decisions.length} decisions`, {
       actions: decisions.filter(d => d.type === 'act').length,

@@ -5,6 +5,8 @@
 import { createLogger } from '../logging/logger.js';
 import { loadAgentConfig } from '../config/agent-profile.js';
 import { getAnthropicClient } from '../api/chat.js';
+import { callModel } from '../llm/unified-client.js';
+import { getResolvedConfig } from '../config/admin-config.js';
 import { executeGHLTool, ghlToolDefinitions } from '../tools/ghl-tools.js';
 import { executeInternalTool, internalToolDefinitions } from '../tools/internal-tools.js';
 import { executeBrowserTool, browserToolDefinitions } from '../tools/browser-tools.js';
@@ -50,7 +52,9 @@ export class AgentExecutor {
 
     // Advanced context management
     this.contextManager = contextManager;
-    this.modelFormatter = new ModelFormatter(options.model || 'claude-haiku-4-5-20251001');
+    // Model will be resolved from admin config in executeTask(); use placeholder for now
+    this._modelOverride = options.model || null;
+    this.modelFormatter = new ModelFormatter(options.model || 'gemini-2.5-flash');
 
     // Adaptive model selection
     this.useAdaptiveModels = options.useAdaptiveModels !== false;
@@ -81,10 +85,23 @@ export class AgentExecutor {
     this.executionId = uuidv4();
     this.currentTurn = 0;
 
+    // Resolve model from admin config (respects Gemini setting in Supabase)
+    if (!this._modelOverride) {
+      try {
+        const config = await getResolvedConfig('a1000000-0000-0000-0000-000000000001');
+        const resolvedModel = config.model || 'gemini-2.5-flash';
+        this.modelFormatter = new ModelFormatter(resolvedModel);
+        logger.info('Executor using admin-configured model', { model: resolvedModel, reason: config.reason });
+      } catch (cfgErr) {
+        logger.warn('Could not load admin config for executor, using default', { error: cfgErr.message });
+      }
+    }
+
     logger.info('Starting agentic task execution', {
       task: task.substring(0, 100),
       agentId: this.agentId,
-      executionId: this.executionId
+      executionId: this.executionId,
+      model: this.modelFormatter.model
     });
 
     try {
@@ -332,42 +349,57 @@ Use the available tools to complete this task. Work step by step and explain you
 
   /**
    * Make actual LLM API call with formatted parameters
+   * ⚡ Migrated: Uses unified callModel with failover (respects admin Gemini config)
    */
   async callLLMWithParams(systemPrompt, messages, tools) {
-    const client = getAnthropicClient();
+    const model = this.modelFormatter.model;
 
-    // Create API request using model formatter
-    const apiParams = this.modelFormatter.createAPIRequest(
-      messages,
-      tools,
-      systemPrompt,
-      {
-        maxTokens: 4000,
-        temperature: 0.1
-      }
-    );
+    // Format tools for the unified client
+    const toolDefs = (tools || []).map(t => ({
+      name: t.name,
+      description: t.description,
+      input_schema: t.input_schema || t.parameters || {}
+    }));
 
-    // Make the API call
-    const response = await client.messages.create(apiParams);
-
-    // Parse response using model formatter
-    const parsed = this.modelFormatter.parseResponse(response);
-
-    logger.info('LLM response received', {
-      model: this.modelFormatter.model,
-      inputTokens: parsed.usage?.inputTokens,
-      outputTokens: parsed.usage?.outputTokens,
-      stopReason: parsed.stopReason
+    // Use unified callModel — handles all providers + automatic failover
+    const result = await callModel(model, {
+      system: systemPrompt,
+      messages: messages,
+      tools: toolDefs,
+      maxTokens: 4000,
+      temperature: 0.1
     });
 
+    logger.info('LLM response received', {
+      model: result.model || model,
+      provider: result.provider,
+      inputTokens: result.usage?.inputTokens,
+      outputTokens: result.usage?.outputTokens,
+      stopReason: result.stopReason
+    });
+
+    // Normalize to the format the executor loop expects (Anthropic-style content array)
     return {
-      ...response,
-      parsed
+      content: result.content || [],
+      stop_reason: result.stopReason === 'tool_use' ? 'tool_use' : 'end_turn',
+      model: result.model || model,
+      usage: {
+        input_tokens: result.usage?.inputTokens || 0,
+        output_tokens: result.usage?.outputTokens || 0
+      },
+      parsed: {
+        content: result.content || [],
+        stopReason: result.stopReason,
+        usage: result.usage || {},
+        model: result.model || model
+      }
     };
   }
 
   /**
    * Process Claude's response and handle tool calls
+   * ⚡ Fixed: Batches ALL tool_use blocks into ONE assistant turn and ALL tool_results
+   *    into ONE user turn, preventing "unexpected tool_use_id in tool_result" API errors.
    */
   async processTurnResponse(response) {
     const content = response.content;
@@ -375,36 +407,46 @@ Use the available tools to complete this task. Work step by step and explain you
     let completed = false;
     let blocked = false;
     let result = null;
+    let textResponse = null;
 
-    // Process each content block
-    for (const block of content) {
-      if (block.type === 'text') {
-        // Check for completion signal — HYBRID approach:
-        // 1. Ralph style: all plan steps verified as passing
-        // 2. Legacy: text includes TASK COMPLETED (fallback)
-        if (this.allStepsPassing) {
-          completed = true;
-          result = block.text;
-          logger.info('Task completed via Ralph verification: all steps passing');
-        } else if (block.text.includes('TASK COMPLETED')) {
-          // Legacy completion — still works but flagged
-          completed = true;
-          result = block.text;
-          logger.warn('Task completed via text signal (legacy) — plan verification not confirmed');
-        }
+    // Separate text blocks and tool_use blocks
+    const textBlocks = content.filter(b => b.type === 'text');
+    const toolUseBlocks = content.filter(b => b.type === 'tool_use');
 
-        // Add text to conversation using context manager
-        await this.contextManager.addConversationTurn('assistant', block.text, {
-          type: 'assistant_response',
-          priority: 7,
-          turnNumber: this.conversationHistory.length
-        });
+    // Process text blocks
+    for (const block of textBlocks) {
+      if (this.allStepsPassing) {
+        completed = true;
+        result = block.text;
+        logger.info('Task completed via Ralph verification: all steps passing');
+      } else if (block.text.includes('TASK COMPLETED')) {
+        completed = true;
+        result = block.text;
+        logger.warn('Task completed via text signal (legacy) — plan verification not confirmed');
+      }
+      textResponse = block.text;
+    }
 
-      } else if (block.type === 'tool_use') {
-        hasToolUse = true;
+    // If there are tool_use blocks, process them ALL as a batch
+    if (toolUseBlocks.length > 0) {
+      hasToolUse = true;
+
+      // 1. Add the ENTIRE assistant response as ONE turn (text + all tool_use blocks)
+      await this.contextManager.addConversationTurn('assistant', content, {
+        type: 'tool_execution',
+        tool: toolUseBlocks.map(b => b.name).join(','),
+        priority: 8,
+        turnNumber: this.conversationHistory.length
+      });
+
+      // 2. Execute all tools and collect results
+      const allToolResults = [];
+      const verificationQueue = [];
+
+      for (const block of toolUseBlocks) {
         this.currentStep++;
 
-        // Broadcast tool execution start (Claude Code interleaved thinking)
+        // Broadcast tool execution start
         broadcastExecutionProgress({
           executionId: this.executionId,
           turn: this.currentTurn,
@@ -428,7 +470,7 @@ Use the available tools to complete this task. Work step by step and explain you
           timestamp: new Date().toISOString()
         });
 
-        // Broadcast tool execution completion with updated todoState
+        // Broadcast tool execution completion
         broadcastExecutionProgress({
           executionId: this.executionId,
           turn: this.currentTurn,
@@ -438,72 +480,31 @@ Use the available tools to complete this task. Work step by step and explain you
           message: this.formatCompletionMessage(block.name, toolResult)
         });
 
-        // Add tool use and result to conversation using context manager
-        await this.contextManager.addConversationTurn('assistant', [block], {
-          type: 'tool_execution',
-          tool: block.name,
-          priority: 8,
-          turnNumber: this.conversationHistory.length
-        });
-
-        await this.contextManager.addConversationTurn('user', [{
+        // Collect the tool_result for batched user turn
+        allToolResults.push({
           type: 'tool_result',
           tool_use_id: block.id,
           content: JSON.stringify(toolResult, null, 2)
-        }], {
-          type: 'tool_result',
-          tool: block.name,
-          success: toolResult.success,
-          priority: 8,
-          turnNumber: this.conversationHistory.length
         });
 
-        logger.info('Tool executed', {
-          tool: block.name,
-          success: toolResult.success
-        });
+        logger.info('Tool executed', { tool: block.name, success: toolResult.success });
 
-        // === RALPH VERIFICATION HOOK ===
-        // After every tool execution, run automatic verification
-        // This is the structural enforcement that Cowork does behaviorally
+        // Queue verification (don't add to conversation yet)
         if (block.name !== 'bloom_todo_write' && block.name !== 'bloom_clarify' &&
             block.name !== 'bloom_log_decision' && block.name !== 'bloom_log_observation') {
-          try {
-            const verification = await verifyAction(block.name, toolResult, block.input, {
-              executeGHL: async (tool, params) => enhancedExecutor.executeTool(tool, params),
-              executeInternal: async (tool, params) => executeInternalTool(tool, params)
-            });
-
-            // Inject verification result into conversation so Claude knows
-            // NOTE: Must be a text message, NOT tool_result — fabricated tool_use_ids cause API 400 errors
-            if (verification && !verification.verified && verification.confidence !== 'low') {
-              await this.contextManager.addConversationTurn('user', [{
-                type: 'text',
-                text: `[VERIFICATION FAILED for ${block.name}]: ${verification.reason || 'Unverified result'}. Confidence: ${verification.confidence}. ${verification.evidence ? 'Evidence: ' + JSON.stringify(verification.evidence) : ''}`
-              }], {
-                type: 'verification_result',
-                tool: block.name,
-                verified: verification.verified,
-                priority: 9
-              });
-
-              logger.warn(`Verification failed for ${block.name}`, {
-                reason: verification.reason,
-                confidence: verification.confidence
-              });
-            }
-
-            // Store verification result for progress log
-            this.lastVerificationResult = verification;
-          } catch (verifyError) {
-            logger.warn('Verification hook error (non-fatal):', verifyError.message);
-          }
+          verificationQueue.push({ block, toolResult });
         }
 
-        // === CLARIFICATION PAUSE ===
-        // If bloom_clarify was called, pause execution and wait for user
+        // Check for clarification pause
         if (block.name === 'bloom_clarify' && toolResult.pauseExecution) {
           logger.info('Execution paused for clarification', { question: toolResult.question });
+          // Still add collected results as user turn before pausing
+          await this.contextManager.addConversationTurn('user', allToolResults, {
+            type: 'tool_result',
+            tool: 'batch',
+            priority: 8,
+            turnNumber: this.conversationHistory.length
+          });
           return {
             completed: false,
             blocked: true,
@@ -526,6 +527,53 @@ Use the available tools to complete this task. Work step by step and explain you
           await this.injectPlanStateReminder();
         }
       }
+
+      // 3. Add ALL tool_results as ONE user turn (prevents tool_use_id mismatch errors)
+      await this.contextManager.addConversationTurn('user', allToolResults, {
+        type: 'tool_result',
+        tool: 'batch',
+        priority: 8,
+        turnNumber: this.conversationHistory.length
+      });
+
+      // 4. Run verification hooks AFTER the batched user turn
+      for (const { block, toolResult } of verificationQueue) {
+        try {
+          const verification = await verifyAction(block.name, toolResult, block.input, {
+            executeGHL: async (tool, params) => enhancedExecutor.executeTool(tool, params),
+            executeInternal: async (tool, params) => executeInternalTool(tool, params)
+          });
+
+          if (verification && !verification.verified && verification.confidence !== 'low') {
+            // Add verification failure as a plain text user message (not tool_result)
+            await this.contextManager.addConversationTurn('user',
+              `[VERIFICATION FAILED for ${block.name}]: ${verification.reason || 'Unverified result'}. Confidence: ${verification.confidence}. ${verification.evidence ? 'Evidence: ' + JSON.stringify(verification.evidence) : ''}`,
+              {
+                type: 'verification_result',
+                tool: block.name,
+                verified: verification.verified,
+                priority: 9
+              }
+            );
+
+            logger.warn(`Verification failed for ${block.name}`, {
+              reason: verification.reason,
+              confidence: verification.confidence
+            });
+          }
+
+          this.lastVerificationResult = verification;
+        } catch (verifyError) {
+          logger.warn('Verification hook error (non-fatal):', verifyError.message);
+        }
+      }
+    } else if (textBlocks.length > 0) {
+      // No tool_use — just text response. Add as assistant turn.
+      await this.contextManager.addConversationTurn('assistant', textResponse || '', {
+        type: 'assistant_response',
+        priority: 7,
+        turnNumber: this.conversationHistory.length
+      });
     }
 
     return {
@@ -533,7 +581,7 @@ Use the available tools to complete this task. Work step by step and explain you
       blocked,
       result,
       hasToolUse,
-      textResponse: content.find(block => block.type === 'text')?.text
+      textResponse
     };
   }
 
