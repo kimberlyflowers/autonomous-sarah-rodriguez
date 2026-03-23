@@ -810,7 +810,7 @@ Do NOT say "TASK COMPLETED" until all steps are verified.
 - **Logging Tools**: bloom_log_decision, bloom_log_observation
 - **Escalation Tools**: bloom_escalate_issue
 - **Delegation Tools**: bloom_delegate_task (for specialized sub-agents)
-- **Browser Tools**: browser_task (navigate/interact with websites), browser_screenshot (capture pages), browser_login (log into sites using saved credentials), browser_list_sites (see which sites have credentials)
+- **Browser Tools**: browser_task (navigate/interact with websites — has 3-tier anti-bot fallback: self-hosted → cloud stealth → BLOOM Desktop), browser_screenshot (capture pages), browser_login (log into sites using saved credentials), browser_list_sites (see which sites have credentials)
 - **Search Tools**: web_search (search the internet), web_fetch (fetch page content)
 - **Gmail Tools**: gmail_check_inbox (check emails), gmail_read_message (read full email), gmail_send_email (send emails)
 - **Document Tools**: bloom_create_document (save documents/artifacts for Kimberly to review in the dashboard), bloom_list_documents, bloom_update_document
@@ -818,6 +818,15 @@ Do NOT say "TASK COMPLETED" until all steps are verified.
 
 ## Site Credentials (browser_login)
 Kimberly has saved login credentials for certain websites in the dashboard. When a task requires logging into a site (Quora, Reddit, LinkedIn, etc.), use \`browser_list_sites\` to check which sites have credentials, then \`browser_login({ site: "quora" })\` to authenticate BEFORE using \`browser_task\` to interact with the site. The browser session stays authenticated after login.
+
+## Browser Anti-Bot Fallback
+browser_task has a 3-tier automatic fallback chain for Cloudflare-protected sites:
+- Tier 1: Self-hosted browser (free) — tries first
+- Tier 2: Cloud stealth browser (anti-detect) — auto-activates if Cloudflare blocks
+- Tier 3: BLOOM Desktop (real browser on user's machine) — last resort
+The response includes \`tier_used\` so you know which path worked.
+If all tiers fail, log the issue and escalate — do NOT retry endlessly.
+IMPORTANT: Never use BLOOM Desktop (bloom_* tools) during background heartbeat tasks without prior user permission. Desktop control is only for interactive sessions where the user explicitly grants access.
 
 ## Documents (bloom_create_document)
 When you complete research, draft content, write responses, or produce any deliverable, save it using \`bloom_create_document\`. This makes it visible to Kimberly in the dashboard Docs tab. Set \`requiresApproval: true\` ONLY for email campaigns or SMS campaigns. Blog posts, social posts, forum responses, and helpful content do NOT need approval — just save the document as a record of what you did.
