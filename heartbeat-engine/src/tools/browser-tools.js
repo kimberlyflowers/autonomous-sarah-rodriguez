@@ -2,6 +2,7 @@
 // Connects to the browser-use sidecar service for AI-driven web interactions
 
 import { createLogger } from '../logging/logger.js';
+import { getCredentials, getLoginInstructions, listSites } from '../config/credential-registry.js';
 
 const logger = createLogger('browser-tools');
 
@@ -36,6 +37,39 @@ export const browserToolDefinitions = {
     },
     category: "browser",
     operation: "write"
+  },
+
+  browser_login: {
+    name: "browser_login",
+    description: "Log into a website using stored credentials from the credential registry. Sarah has saved login credentials for sites like Quora, Reddit, Facebook, LinkedIn, Twitter, Instagram, Canva, WordPress, and Gmail. Use this before performing actions on a site that requires authentication. Returns login status and the authenticated browser session continues for subsequent browser_task calls.",
+    parameters: {
+      type: "object",
+      properties: {
+        site: {
+          type: "string",
+          description: "Site name from the registry (e.g. 'quora', 'reddit', 'facebook', 'linkedin', 'twitter', 'instagram', 'canva', 'wordpress')"
+        },
+        max_steps: {
+          type: "integer",
+          description: "Maximum steps for login flow (default 15)",
+          default: 15
+        }
+      },
+      required: ["site"]
+    },
+    category: "browser",
+    operation: "write"
+  },
+
+  browser_list_sites: {
+    name: "browser_list_sites",
+    description: "List all sites in the credential registry and whether they have credentials configured. Use this to check which sites Sarah can log into.",
+    parameters: {
+      type: "object",
+      properties: {}
+    },
+    category: "browser",
+    operation: "read"
   },
 
   browser_screenshot: {
@@ -139,6 +173,92 @@ export const browserToolExecutors = {
         error: error.message,
         message: `Browser task failed: ${error.message}`
       };
+    }
+  },
+
+  browser_login: async (params) => {
+    try {
+      const siteName = params.site.toLowerCase();
+      const creds = getCredentials(siteName);
+
+      if (!creds) {
+        return { success: false, error: `Site "${params.site}" not found in credential registry. Available sites: ${listSites().map(s => s.key).join(', ')}` };
+      }
+
+      if (!creds.configured) {
+        return { success: false, error: `Credentials not configured for ${creds.name}. Kimberly needs to set ${creds.emailEnv} and ${creds.passwordEnv} in Railway environment variables.` };
+      }
+
+      const loginInstructions = getLoginInstructions(siteName);
+      const taskDescription = `Log into ${creds.name} at ${creds.loginUrl}. Enter email "${creds.email}" and password "${creds.password}". Click the login/submit button. Wait for the page to fully load after login. If there's a cookie consent popup, dismiss it. If there's a 2FA prompt, report it.`;
+
+      logger.info(`Logging into ${creds.name}`, { url: creds.loginUrl });
+
+      const response = await fetch(`${BROWSER_AGENT_URL}/browse`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          task: taskDescription,
+          url: creds.loginUrl,
+          max_steps: params.max_steps || 15,
+          secret: BROWSER_AGENT_SECRET,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Browser agent returned ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Push screenshot to dashboard
+        try {
+          if (data.screenshot_base64) {
+            const { getBrowserService } = await import('../browser/browser-service.js');
+            const browserSvc = getBrowserService();
+            browserSvc.isRunning = true;
+            browserSvc.currentUrl = data.url_final;
+            browserSvc.lastScreenshot = data.screenshot_base64;
+            browserSvc.lastScreenshotTime = Date.now();
+            browserSvc.emit('screenshot', { data: data.screenshot_base64, url: data.url_final, timestamp: Date.now() });
+          }
+        } catch (ssErr) { /* non-critical */ }
+
+        return {
+          success: true,
+          site: creds.name,
+          url_final: data.url_final,
+          steps_taken: data.steps_taken,
+          message: `Successfully logged into ${creds.name}. Session is now authenticated — subsequent browser_task calls will use this session.`
+        };
+      } else {
+        return {
+          success: false,
+          site: creds.name,
+          error: data.error,
+          message: `Login to ${creds.name} failed: ${data.error}. May need 2FA or CAPTCHA.`
+        };
+      }
+
+    } catch (error) {
+      logger.error('Browser login failed:', error);
+      return { success: false, error: error.message, message: `Login failed: ${error.message}` };
+    }
+  },
+
+  browser_list_sites: async () => {
+    try {
+      const sites = listSites();
+      return {
+        success: true,
+        sites,
+        configured: sites.filter(s => s.configured).map(s => s.name),
+        unconfigured: sites.filter(s => !s.configured).map(s => `${s.name} (needs ${s.emailEnv} + ${s.passwordEnv})`),
+        message: `${sites.filter(s => s.configured).length} of ${sites.length} sites have credentials configured.`
+      };
+    } catch (error) {
+      return { success: false, error: error.message };
     }
   },
 

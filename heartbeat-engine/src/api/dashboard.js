@@ -891,4 +891,15 @@ router.patch('/documents/:id', async (req, res) => {
   }
 });
 
+// ══ CREDENTIAL REGISTRY ══
+
+router.get('/credential-registry', async (req, res) => {
+  try {
+    const { getRegistrySummary } = await import('../config/credential-registry.js');
+    res.json({ sites: getRegistrySummary() });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 export default router;
