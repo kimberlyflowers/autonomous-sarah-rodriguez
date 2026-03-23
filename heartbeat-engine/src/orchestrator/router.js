@@ -9,6 +9,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { callModel, calculateCost } from '../llm/unified-client.js';
+import { getResolvedConfig } from '../config/admin-config.js';
 import { createLogger } from '../logging/logger.js';
 
 const logger = createLogger('orchestrator-router');
@@ -16,40 +17,63 @@ const logger = createLogger('orchestrator-router');
 // Re-export calculateCost for other modules
 export { calculateCost };
 
+// ── Default model — resolved from admin config at runtime ────────────────
+// This gets set on first call to getSettings() and cached for 60s
+let _cachedDefaultModel = null;
+let _cachedModelExpiry = 0;
+
+async function getDefaultModel() {
+  const now = Date.now();
+  if (_cachedDefaultModel && now < _cachedModelExpiry) return _cachedDefaultModel;
+  try {
+    const config = await getResolvedConfig('a1000000-0000-0000-0000-000000000001');
+    _cachedDefaultModel = config.model || 'gemini-2.5-flash';
+    _cachedModelExpiry = now + 60_000;
+    return _cachedDefaultModel;
+  } catch {
+    return _cachedDefaultModel || 'gemini-2.5-flash';
+  }
+}
+
 // ── Plan tiers determine which models Sarah uses ──────────────────────────
-// Standard: cheapest models everywhere (Haiku-level)
+// Standard: uses admin-configured default (Gemini) for everything
 // Pro: better writing model, cheap everything else
 // Enterprise: premium writing + dispatch to specialists
 
-const TIER_MODEL_MAP = {
-  standard: {
-    chat:      'claude-haiku-4-5-20251001',
-    writing:   'claude-haiku-4-5-20251001',    // Standard: Haiku for everything
-    email:     'claude-haiku-4-5-20251001',
-    coding:    'claude-haiku-4-5-20251001',
-    crm:       'claude-haiku-4-5-20251001',
-    research:  'claude-haiku-4-5-20251001',
-    data:      'claude-haiku-4-5-20251001',
-  },
-  pro: {
-    chat:      'claude-haiku-4-5-20251001',
-    writing:   'claude-sonnet-4-5-20250929',   // Pro: Sonnet for writing
-    email:     'gpt-4o-mini',                   // Pro: GPT-4o-mini for email (if key exists)
-    coding:    'deepseek-chat',                 // Pro: DeepSeek for code (if key exists)
-    crm:       'claude-haiku-4-5-20251001',
-    research:  'claude-haiku-4-5-20251001',
-    data:      'claude-haiku-4-5-20251001',
-  },
-  enterprise: {
-    chat:      'claude-haiku-4-5-20251001',
-    writing:   'claude-sonnet-4-5-20250929',   // Enterprise: Sonnet for writing
-    email:     'gpt-4o',                        // Enterprise: Full GPT-4o for email
-    coding:    'deepseek-chat',                 // Enterprise: DeepSeek for code
-    crm:       'claude-haiku-4-5-20251001',
-    research:  'claude-haiku-4-5-20251001',
-    data:      'claude-haiku-4-5-20251001',
-  },
-};
+function buildTierModelMap(defaultModel) {
+  return {
+    standard: {
+      chat:      defaultModel,
+      writing:   defaultModel,
+      email:     defaultModel,
+      coding:    defaultModel,
+      crm:       defaultModel,
+      research:  defaultModel,
+      data:      defaultModel,
+    },
+    pro: {
+      chat:      defaultModel,
+      writing:   'claude-sonnet-4-5-20250929',   // Pro: Sonnet for writing
+      email:     'gpt-4o-mini',                   // Pro: GPT-4o-mini for email (if key exists)
+      coding:    'deepseek-chat',                 // Pro: DeepSeek for code (if key exists)
+      crm:       defaultModel,
+      research:  defaultModel,
+      data:      defaultModel,
+    },
+    enterprise: {
+      chat:      defaultModel,
+      writing:   'claude-sonnet-4-5-20250929',   // Enterprise: Sonnet for writing
+      email:     'gpt-4o',                        // Enterprise: Full GPT-4o for email
+      coding:    'deepseek-chat',                 // Enterprise: DeepSeek for code
+      crm:       defaultModel,
+      research:  defaultModel,
+      data:      defaultModel,
+    },
+  };
+}
+
+// Fallback static map until async init completes
+const TIER_MODEL_MAP = buildTierModelMap('gemini-2.5-flash');
 
 // ── Settings (loaded from env, overridable per client later) ──────────────
 
@@ -88,26 +112,29 @@ function classifyTask(text) {
 
 // ── Get the right model for a task type and tier ──────────────────────────
 
-function getModelForTask(taskType, tier = 'standard') {
-  const tierMap = TIER_MODEL_MAP[tier] || TIER_MODEL_MAP.standard;
+function getModelForTask(taskType, tier = 'standard', defaultModel = null) {
+  // Use dynamic tier map if default model provided, otherwise static fallback
+  const tierMaps = defaultModel ? buildTierModelMap(defaultModel) : TIER_MODEL_MAP;
+  const tierMap = tierMaps[tier] || tierMaps.standard;
   const model = tierMap[taskType] || tierMap.chat;
-  
-  // Check if the chosen model's API key exists — fall back to Claude if not
+
+  // Check if the chosen model's API key exists — fall back to admin default, then Gemini
   const provider = model.startsWith('gpt') || model.startsWith('o') ? 'openai' :
                    model.startsWith('deepseek') ? 'deepseek' :
                    model.startsWith('gemini') ? 'gemini' : 'anthropic';
-  
+
   const envKey = {
     anthropic: 'ANTHROPIC_API_KEY',
     openai: 'OPENAI_API_KEY',
     deepseek: 'DEEPSEEK_API_KEY',
     gemini: 'GEMINI_API_KEY',
   }[provider];
-  
+
   if (!process.env[envKey]) {
-    // Fall back to Claude Haiku (always available)
-    logger.debug(`${model} unavailable (no ${envKey}), falling back to Haiku`);
-    return 'claude-haiku-4-5-20251001';
+    // Fall back to Gemini Flash (NOT Claude — respect the Gemini-first admin setting)
+    const fallback = defaultModel || 'gemini-2.5-flash';
+    logger.debug(`${model} unavailable (no ${envKey}), falling back to ${fallback}`);
+    return fallback;
   }
   
   return model;
@@ -121,13 +148,14 @@ function getModelForTask(taskType, tier = 'standard') {
  * Route a task — classify it and pick the best model for the client's tier.
  * This is FAST (no LLM call) — uses pattern matching.
  */
-export function routeTaskFast(instruction) {
+export async function routeTaskFast(instruction) {
   const settings = getSettings();
   const taskType = classifyTask(instruction);
-  const model = getModelForTask(taskType, settings.tier);
-  
-  logger.info('Fast route', { taskType, model, tier: settings.tier });
-  
+  const defaultModel = await getDefaultModel();
+  const model = getModelForTask(taskType, settings.tier, defaultModel);
+
+  logger.info('Fast route', { taskType, model, tier: settings.tier, defaultModel });
+
   return { taskType, model, tier: settings.tier };
 }
 
@@ -144,8 +172,9 @@ export async function routeTask(instruction, memoryContext = '') {
     return routeTaskFast(instruction);
   }
   
-  const routerModel = 'claude-haiku-4-5-20251001';
-  
+  const defaultModel = await getDefaultModel();
+  const routerModel = defaultModel; // Use admin-configured model for routing too
+
   logger.info('LLM routing', { instruction: instruction.slice(0, 100), routerModel });
 
   const routerSystemPrompt = `You are a task classifier. Given a task, classify it and prepare it for the specialist model.
@@ -175,7 +204,7 @@ Respond with ONLY valid JSON:
 
     const text = (result.text || '').replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
     const routing = JSON.parse(text);
-    const model = getModelForTask(routing.taskType, settings.tier);
+    const model = getModelForTask(routing.taskType, settings.tier, defaultModel);
 
     return {
       ...routing,
@@ -186,7 +215,7 @@ Respond with ONLY valid JSON:
     };
   } catch (e) {
     logger.warn('LLM routing failed, using fast route', { error: e.message });
-    return routeTaskFast(instruction);
+    return await routeTaskFast(instruction);
   }
 }
 

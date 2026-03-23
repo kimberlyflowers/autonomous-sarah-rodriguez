@@ -4146,6 +4146,24 @@ When a user asks you to edit, modify, or update something you previously created
     logger.warn('Skill auto-injection failed:', e.message);
   }
 
+  // Auto-inject blog-content skill when user asks for a blog post
+  try {
+    const msgText = typeof userMessage === 'string' ? userMessage :
+      (Array.isArray(userMessage) ? userMessage.filter(b => b.type === 'text').map(b => b.text).join(' ') : '');
+    const blogKeywords = /\b(blog|article|post|seo.?optim|geo.?optim|content marketing|write.*about|publish.*to.*ghl|publish.*to.*crm)\b/i;
+
+    if (blogKeywords.test(msgText)) {
+      const { findSkills } = await import('../skills/skill-loader.js');
+      const blogSkills = findSkills('writing', msgText);
+      if (blogSkills.length > 0) {
+        systemPrompt += `\n\n<skill name="${blogSkills[0].name}">\n${blogSkills[0].body}\n</skill>`;
+        logger.info('Auto-injected blog skill into chat', { skill: blogSkills[0].name });
+      }
+    }
+  } catch(e) {
+    logger.warn('Blog skill auto-injection failed:', e.message);
+  }
+
   const messages = [...history, { role: 'user', content: userMessage }];
   let currentMessages = [...messages];
 
