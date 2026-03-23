@@ -1655,6 +1655,101 @@ const _ALL_TOOLS = [
       required: ["url"]
     }
   },
+  {
+    name: "browser_list_sites",
+    description: "List all sites that have saved login credentials in the credential registry. Shows which sites are configured and ready for browser_login, plus available templates for unconfigured sites.",
+    input_schema: { type: "object", properties: {}, required: [] }
+  },
+  {
+    name: "browser_login",
+    description: "Log into a website using saved credentials from the credential registry. Use browser_list_sites first to see which sites have credentials configured.",
+    input_schema: {
+      type: "object",
+      properties: {
+        siteName: { type: "string", description: "Site key (e.g. 'quora', 'reddit', 'linkedin')" }
+      },
+      required: ["siteName"]
+    }
+  },
+  // ── GMAIL ────────────────────────────────────────────────────────────────
+  {
+    name: "gmail_check_inbox",
+    description: "Check the Gmail inbox for new, unread, or specific emails. Returns sender, subject, date, and snippet for each message.",
+    input_schema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Gmail search query (default: 'is:unread'). Examples: 'is:unread', 'from:client@example.com', 'subject:urgent'" },
+        maxResults: { type: "number", description: "Max messages to return (default: 10, max: 20)" }
+      },
+      required: []
+    }
+  },
+  {
+    name: "gmail_read_message",
+    description: "Read the full content of a specific email by its message ID. Use after gmail_check_inbox to read the full body.",
+    input_schema: {
+      type: "object",
+      properties: {
+        messageId: { type: "string", description: "The Gmail message ID to read" }
+      },
+      required: ["messageId"]
+    }
+  },
+  {
+    name: "gmail_send_email",
+    description: "Send an email via Gmail. Requires to, subject, and body (HTML supported).",
+    input_schema: {
+      type: "object",
+      properties: {
+        to: { type: "string", description: "Recipient email address" },
+        subject: { type: "string", description: "Email subject line" },
+        body: { type: "string", description: "Email body (HTML supported)" }
+      },
+      required: ["to", "subject", "body"]
+    }
+  },
+  // ── DOCUMENTS ────────────────────────────────────────────────────────────
+  {
+    name: "bloom_create_document",
+    description: "Save a document/artifact (blog post, email draft, social post, report, etc.) to the BLOOM document system. Use this to save any content you create so Kimberly can review it.",
+    input_schema: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Document title" },
+        content: { type: "string", description: "Full document content (HTML or markdown)" },
+        docType: { type: "string", description: "Type: blog_post, social_post, email_draft, report, landing_page, other" },
+        tags: { type: "array", items: { type: "string" }, description: "Tags for categorization" },
+        requiresApproval: { type: "boolean", description: "Whether this needs Kimberly's approval before use (default: false)" }
+      },
+      required: ["title", "content"]
+    }
+  },
+  {
+    name: "bloom_list_documents",
+    description: "List documents saved in the BLOOM document system. Filter by type or status.",
+    input_schema: {
+      type: "object",
+      properties: {
+        docType: { type: "string", description: "Filter by type (blog_post, social_post, email_draft, etc.)" },
+        status: { type: "string", description: "Filter by status (draft, approved, rejected)" }
+      },
+      required: []
+    }
+  },
+  {
+    name: "bloom_update_document",
+    description: "Update an existing document's content, title, or status.",
+    input_schema: {
+      type: "object",
+      properties: {
+        documentId: { type: "string", description: "Document ID to update" },
+        title: { type: "string" },
+        content: { type: "string" },
+        status: { type: "string", description: "New status: draft, approved, rejected" }
+      },
+      required: ["documentId"]
+    }
+  },
   // ── USER'S COMPUTER CONTROL ──────────────────────────────────────────────
   {
     name: "bloom_take_screenshot",
@@ -3703,31 +3798,47 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
 
     // Browser tools — Sarah's own computer
     if (toolName.startsWith('browser_')) {
+      const { executeBrowserTool } = await import('../tools/browser-tools.js');
       // AI-driven browser automation via sidecar
       if (toolName === 'browser_task') {
-        const { executeBrowserTool } = await import('../tools/browser-tools.js');
         return await executeBrowserTool('browser_task', toolInput);
       }
+      if (toolName === 'browser_list_sites') {
+        return await executeBrowserTool('browser_list_sites', toolInput);
+      }
+      if (toolName === 'browser_login') {
+        return await executeBrowserTool('browser_login', toolInput);
+      }
       if (toolName === 'browser_screenshot') {
-        // Try sidecar first for full-page screenshots, fall back to local
         const browserAgentUrl = process.env.BROWSER_AGENT_URL;
         if (browserAgentUrl) {
-          const { executeBrowserTool } = await import('../tools/browser-tools.js');
           return await executeBrowserTool('browser_screenshot', toolInput);
         }
-        // Fall back to local browser
         const localPort = process.env.PORT || 3000;
         const localBase = `http://localhost:${localPort}/api/browser`;
         const r = await fetch(`${localBase}/screenshot`);
         const d = await r.json();
         return { live: d.live, url: d.url, message: d.live ? `Browser active at ${d.url}` : 'Browser idle' };
       }
+    }
 
-      // Legacy local browser tools removed — all browsing goes through sidecar
+    // Gmail tools
+    if (toolName.startsWith('gmail_')) {
+      const { executeGmailTool } = await import('../tools/gmail-tools.js');
+      return await executeGmailTool(toolName, toolInput);
+    }
+
+    // Document tools
+    if (toolName === 'bloom_create_document' || toolName === 'bloom_list_documents' || toolName === 'bloom_update_document') {
+      const { internalToolExecutors } = await import('../tools/internal-tools.js');
+      const executor = internalToolExecutors[toolName];
+      if (executor) return await executor(toolInput);
+      return { error: `Document tool ${toolName} not found` };
     }
 
     // ── USER'S COMPUTER CONTROL (bloom_* tools) ───────────────────────────
-    if (toolName.startsWith('bloom_') && toolName !== 'bloom_log') {
+    const DOCUMENT_TOOLS = ['bloom_create_document', 'bloom_list_documents', 'bloom_update_document', 'bloom_log', 'bloom_list_scheduled_tasks', 'bloom_create_scheduled_task', 'bloom_update_scheduled_task', 'bloom_delete_scheduled_task'];
+    if (toolName.startsWith('bloom_') && !DOCUMENT_TOOLS.includes(toolName)) {
       const SARAH_URL = process.env.SARAH_URL || `http://localhost:${process.env.PORT || 3000}`;
       const { v4: uuidv4 } = await import('uuid');
 
