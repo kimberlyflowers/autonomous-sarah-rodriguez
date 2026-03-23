@@ -165,12 +165,18 @@ function assembleBlogHTML(data) {
   const {
     title, subtitle, heroImageUrl, altText,
     metaDescription, keywords, canonicalUrl, companyName,
-    intro, sections, ctaHeadline, ctaBody
+    intro, sections, ctaHeadline, ctaBody,
+    primaryColor, accentColor, tagline
   } = data;
 
   const year = new Date().getFullYear();
   const isoDate = new Date().toISOString().split('T')[0];
   const company = companyName || 'Bloomie Staffing';
+  // Brand colors — use org brand kit colors if provided, fall back to BLOOM defaults
+  const primary = primaryColor || '#F4A261';
+  const accent = accentColor || '#E76F8B';
+  // Light tint of primary for highlight boxes (10% opacity effect)
+  const highlightBg = primary === '#F4A261' ? '#FFF3E0' : `${primary}1A`;
   const canonical = canonicalUrl || '';
   const kw = keywords || 'AI employee, business automation';
   const metaDesc = metaDescription || '';
@@ -228,29 +234,29 @@ function assembleBlogHTML(data) {
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: 'Inter', sans-serif; line-height: 1.6; color: #2D3436; background-color: #FFFFFF; }
-    header { background: linear-gradient(135deg, #F4A261 0%, #E76F8B 100%); color: #FFFFFF; padding: 48px 24px; text-align: center; width: 100%; }
+    header { background: linear-gradient(135deg, ${primary} 0%, ${accent} 100%); color: #FFFFFF; padding: 48px 24px; text-align: center; width: 100%; }
     h1 { font-size: 36px; font-weight: 700; margin-bottom: 12px; color: #FFFFFF; line-height: 1.3; max-width: 800px; margin-left: auto; margin-right: auto; }
     .subtitle { font-size: 16px; opacity: 0.95; margin-top: 8px; max-width: 800px; margin-left: auto; margin-right: auto; }
     .hero-image { width: 100%; max-height: 420px; object-fit: cover; display: block; }
     .content { max-width: 800px; margin: 0 auto; padding: 40px 30px; }
-    h2 { font-size: 28px; font-weight: 700; color: #F4A261; margin: 35px 0 15px 0; padding-top: 20px; border-top: 3px solid #E76F8B; }
+    h2 { font-size: 28px; font-weight: 700; color: ${primary}; margin: 35px 0 15px 0; padding-top: 20px; border-top: 3px solid ${accent}; }
     h2:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
     p { font-size: 16px; margin-bottom: 18px; line-height: 1.8; color: #2D3436; }
-    .intro { font-size: 18px; line-height: 1.8; color: #2D3436; margin-bottom: 30px; font-style: italic; border-left: 4px solid #F4A261; padding: 20px; background: #F5F5F5; }
+    .intro { font-size: 18px; line-height: 1.8; color: #2D3436; margin-bottom: 30px; font-style: italic; border-left: 4px solid ${primary}; padding: 20px; background: #F5F5F5; }
     ul { list-style: none; padding: 0; margin: 20px 0; }
     li { padding: 12px 0 12px 30px; position: relative; font-size: 15px; line-height: 1.7; }
-    li:before { content: "\\25B8"; position: absolute; left: 0; color: #E76F8B; font-size: 20px; }
-    .highlight { background: #FFF3E0; padding: 25px; border-left: 4px solid #F4A261; margin: 25px 0; border-radius: 0 8px 8px 0; }
-    .highlight strong { color: #E76F8B; }
+    li:before { content: "\\25B8"; position: absolute; left: 0; color: ${accent}; font-size: 20px; }
+    .highlight { background: ${highlightBg}; padding: 25px; border-left: 4px solid ${primary}; margin: 25px 0; border-radius: 0 8px 8px 0; }
+    .highlight strong { color: ${accent}; }
     .cta-section { background: linear-gradient(135deg, #2D3436 0%, #404854 100%); color: #FFFFFF; padding: 40px 30px; margin-top: 40px; text-align: center; border-radius: 8px; }
-    .cta-section h3 { font-size: 24px; font-weight: 700; margin-bottom: 15px; color: #F4A261; }
+    .cta-section h3 { font-size: 24px; font-weight: 700; margin-bottom: 15px; color: ${primary}; }
     .cta-section p { color: #FFFFFF; margin-bottom: 20px; font-size: 16px; }
     .cta-buttons { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 20px; }
     .cta-btn { display: inline-flex; align-items: center; gap: 8px; padding: 14px 28px; border-radius: 8px; font-family: 'Inter', sans-serif; font-weight: 600; font-size: 15px; text-decoration: none; transition: transform 0.2s; }
     .cta-btn:hover { transform: translateY(-2px); }
-    .cta-primary { background: linear-gradient(135deg, #F4A261 0%, #E76F8B 100%); color: #FFFFFF; }
+    .cta-primary { background: linear-gradient(135deg, ${primary} 0%, ${accent} 100%); color: #FFFFFF; }
     .cta-secondary { background: rgba(255,255,255,0.12); color: #FFFFFF; border: 1.5px solid rgba(255,255,255,0.3); }
-    .tagline { font-size: 14px; color: #E76F8B; margin-top: 12px; font-weight: 600; }
+    .tagline { font-size: 14px; color: ${accent}; margin-top: 12px; font-weight: 600; }
     footer { padding: 30px; text-align: center; border-top: 1px solid #E0E0E0; font-size: 13px; color: #666; }
     @media (max-width: 600px) {
       .content { padding: 25px 20px; }
@@ -286,7 +292,7 @@ ${sectionsHTML}
         <a href="https://bloomie.ai/demo" class="cta-btn cta-secondary">Schedule a Demo</a>
         <a href="sms:+18005551234" class="cta-btn cta-secondary">Text Your Questions</a>
       </div>
-      <p class="tagline">Hire an AI Employee. Get Work Done.</p>
+      <p class="tagline">${esc(tagline || 'Hire an AI Employee. Get Work Done.')}</p>
     </div>
   </div>
 
@@ -384,7 +390,7 @@ ${extraParagraph ? `      <p>${extraParagraph}</p>\n` : ''}
           <a href="https://bloomie.ai/demo" class="cta-btn cta-secondary">Schedule a Demo</a>
           <a href="sms:+18005551234" class="cta-btn cta-secondary">Text Your Questions</a>
         </div>
-        <p class="tagline">Hire an AI Employee. Get Work Done.</p>
+        <p class="tagline">${esc(tagline || 'Hire an AI Employee. Get Work Done.')}</p>
       </div>
     </div>
 
@@ -1792,6 +1798,32 @@ export const ghlExecutors = {
     const blogId = params.blogId || process.env.GHL_BLOG_ID || 'DHQrtpkQ3Cp7c96FCyDu';
     const locationId = await resolveLocationId(params._orgId);
 
+    // Look up org brand kit for dynamic colors/tagline
+    let brandPrimary, brandAccent, brandTagline, brandCompany;
+    try {
+      const { createClient } = await import('@supabase/supabase-js');
+      const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+      const orgId = params._orgId || process.env.BLOOM_ORG_ID;
+      if (orgId) {
+        const { data: bkRow } = await sb.from('user_settings').select('value').eq('organization_id', orgId).eq('key', 'brand_kits').maybeSingle();
+        let kits = bkRow?.value ? (Array.isArray(bkRow.value) ? bkRow.value : [bkRow.value]) : [];
+        if (kits.length === 0) {
+          const { data: oldRow } = await sb.from('user_settings').select('value').eq('organization_id', orgId).eq('key', 'brand_kit').maybeSingle();
+          if (oldRow?.value) kits = [oldRow.value];
+        }
+        const bk = kits.find(k => k.active) || kits[0];
+        if (bk?.colors?.length) {
+          brandPrimary = bk.colors[0];
+          brandAccent = bk.colors[1] || bk.colors[0];
+          logger.info('Blog using brand kit colors', { primary: brandPrimary, accent: brandAccent, kit: bk.kitName });
+        }
+        if (bk?.tagline) brandTagline = bk.tagline;
+        if (bk?.kitName) brandCompany = bk.kitName;
+      }
+    } catch(e) {
+      logger.warn('Brand kit lookup for blog failed (using defaults):', e.message);
+    }
+
     // Auto-assemble HTML from structured data if sections are provided
     let rawHTML = params.content || '';
     if (params.sections && Array.isArray(params.sections)) {
@@ -1803,13 +1835,16 @@ export const ghlExecutors = {
         metaDescription: params.metaDescription,
         keywords: params.keywords,
         canonicalUrl: params.canonicalUrl,
-        companyName: params.companyName,
+        companyName: params.companyName || brandCompany,
         intro: params.intro,
         sections: params.sections,
         ctaHeadline: params.ctaHeadline,
-        ctaBody: params.ctaBody
+        ctaBody: params.ctaBody,
+        primaryColor: brandPrimary,
+        accentColor: brandAccent,
+        tagline: brandTagline
       });
-      logger.info('Blog HTML assembled from locked template', { sectionCount: params.sections.length });
+      logger.info('Blog HTML assembled from locked template', { sectionCount: params.sections.length, brandColors: !!(brandPrimary) });
     }
 
     // GHL expects these exact field names:

@@ -17,11 +17,12 @@ Before writing, call `image_generate` to create a professional hero image.
 - Use the 6-Element Framework below. Adapt the SUBJECT and ACTION to match the blog topic.
 
 **6-Element Image Prompt Template:**
+Use the brand kit colors from the system prompt (injected as `BRAND KIT` — primary color = first listed, accent color = second listed). If no brand kit is configured, fall back to orange (#F4A261) and pink (#E76F8B).
 ```
-SUBJECT: [1-2 real professional people, diverse, age 30-50, wearing business attire with orange (#F4A261) or pink (#E76F8B) accent — a blouse, tie, pocket square, lanyard, or blazer lining. Specific to blog topic: e.g., "a confident Black woman in a charcoal blazer with orange blouse" or "two colleagues reviewing data together".]
+SUBJECT: [1-2 real professional people, diverse, age 30-50, wearing business attire with the brand's PRIMARY COLOR as an accent — a blouse, tie, pocket square, lanyard, or blazer lining. Specific to blog topic: e.g., "a confident Black woman in a charcoal blazer with [primary color] blouse" or "two colleagues reviewing data together".]
 COMPOSITION: Wide-angle landscape shot (1536x1024). Shallow depth of field with subject sharp and background softly blurred. Rule of thirds framing.
 ACTION: [Working on laptop/tablet showing dashboard with charts and data, gesturing toward screen, collaborating at desk, reviewing analytics — always engaged with technology relevant to the blog topic.]
-LOCATION: Spacious modern office with floor-to-ceiling windows and city skyline view. Clean desk with laptop, coffee mug, notebook. Brand color accents throughout the environment — orange (#F4A261) notebook, pink (#E76F8B) desk accessories, orange wall art or signage, warm-toned cushions or decor. Plants, natural wood, open plan.
+LOCATION: Spacious modern office with floor-to-ceiling windows and city skyline view. Clean desk with laptop, coffee mug, notebook. Brand color accents throughout the environment — [primary color] notebook, [accent color] desk accessories, [primary color] wall art or signage, warm-toned cushions or decor. Plants, natural wood, open plan.
 STYLE: Professional editorial photography. Corporate yet approachable. Warm, optimistic, aspirational mood. Shot on Sony A7IV with 35mm lens.
 TECHNICAL: Natural window light from the side creating gentle shadows and warm golden glow. Soft bokeh background. Sharp focus on subject. High quality, 8K detail. NOT an illustration, NOT a cartoon, NOT digital art, NOT 3D render — must look like a real photograph by a professional photographer.
 ```
@@ -95,16 +96,16 @@ CRITICAL: NEVER abandon the task if CRM fails. You MUST still complete Steps 3 a
 
 ## WHAT THE TEMPLATE LOOKS LIKE (for reference — you don't build this)
 
-The handler auto-assembles this design:
-- **Full-width gradient header** (orange #F4A261 → pink #E76F8B) with white title + subtitle
+The handler auto-assembles this design using the org's brand kit colors (primary + accent). The template adapts to whatever brand colors are configured:
+- **Full-width gradient header** (primary → accent) with white title + subtitle
 - **Full-width hero image** below the header
 - **800px content area** on white background (#FFFFFF)
-- **Italic intro blockquote** with orange left border
-- **Orange H2 headings** (#F4A261) with pink top border (#E76F8B)
-- **Peach highlight callout boxes** (#FFF3E0 background, orange left border)
-- **Orange triangle bullet markers** (▸)
+- **Italic intro blockquote** with primary color left border
+- **Primary color H2 headings** with accent color top border
+- **Light-tinted highlight callout boxes** (tinted primary background, primary left border)
+- **Accent color triangle bullet markers** (▸)
 - **Dark slate CTA card** with 3 buttons: Call Us Now, Schedule a Demo, Text Your Questions
-- **"Hire an AI Employee. Get Work Done."** tagline
+- **Tagline from brand kit** (or "Hire an AI Employee. Get Work Done." if none configured)
 - Full SEO meta tags, OG tags, Schema.org JSON-LD (auto-generated from your fields)
 
 You NEVER touch the CSS, layout, or HTML structure. You only provide content through the structured fields.
