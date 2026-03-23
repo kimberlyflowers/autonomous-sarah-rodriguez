@@ -4844,7 +4844,14 @@ When a user asks you to edit, modify, or update something you previously created
           toolResultBlocks.push(buildToolResultBlock(block, result));
         }
       }
-      currentMessages.push({ role: 'user', content: toolResultBlocks });
+      // Only push tool results if we actually executed tools — empty arrays confuse the LLM
+      if (toolResultBlocks.length > 0) {
+        currentMessages.push({ role: 'user', content: toolResultBlocks });
+      } else {
+        logger.warn('stop_reason was tool_use but no tool_use blocks were found/executed — forcing continuation');
+        // Push a synthetic user message to keep the conversation going
+        currentMessages.push({ role: 'user', content: [{ type: 'text', text: 'Continue with the task. Execute the tools you planned.' }] });
+      }
     }
   }
 

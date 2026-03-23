@@ -3572,9 +3572,15 @@ function App({ authUser }) {
   const [calSelDay,setCalSelDay]=useState(null);
   const [calTask,setCalTask]=useState({name:'',instruction:'',frequency:'daily',runTime:'09:00'});
 
-  // Fetch trust gate status on mount
+  // ── MODEL CONFIG STATE ──
+  const [modelConfig,setModelConfig]=useState(null);
+  const [modelSaving,setModelSaving]=useState(false);
+  const isOwner=meRole==='owner';
+
+  // Fetch trust gate status + model config on mount
   useEffect(()=>{
     fetch("/api/dashboard/trust-gate-status").then(r=>r.ok?r.json():null).then(d=>{if(d)setTgEnabled(d.enabled)}).catch(()=>{});
+    fetch("/api/dashboard/model-config").then(r=>r.ok?r.json():null).then(d=>{if(d)setModelConfig(d)}).catch(()=>{});
   },[]);
 
   const toggleTrustGate=async()=>{
@@ -3584,6 +3590,16 @@ function App({ authUser }) {
       if(r.ok){const d=await r.json();setTgEnabled(d.enabled);}
     }catch{}
     setTgLoading(false);
+  };
+
+  const updateModel=async(newModel)=>{
+    if(!isOwner)return;
+    setModelSaving(true);
+    try{
+      const r=await fetch("/api/dashboard/model-config",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:newModel})});
+      if(r.ok){const d=await r.json();setModelConfig(prev=>({...prev,model:d.model,reason:'dashboard override'}));}
+    }catch{}
+    setModelSaving(false);
   };
 
   const handleCSVFile=(file)=>{
@@ -6046,6 +6062,42 @@ function App({ authUser }) {
                             <span style={{width:6,height:6,borderRadius:"50%",background:tgEnabled?c.gr:"#f59e0b"}}/>
                             {tgEnabled?"Enabled — tools restricted by permission level":"Disabled — all tools unrestricted"}
                           </div>
+                        </div>
+                      </div>
+                      <div style={{marginBottom:28}}>
+                        <div style={{fontSize:14,fontWeight:700,color:c.tx,marginBottom:10}}>Bloomie OS — AI Model</div>
+                        <div style={{padding:"14px 16px",borderRadius:10,background:c.sf,border:"1px solid "+c.ln}}>
+                          {modelConfig?(
+                            <>
+                              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+                                <div>
+                                  <div style={{fontSize:13,fontWeight:600,color:c.tx}}>{modelConfig.model}</div>
+                                  <div style={{fontSize:11,color:c.so,marginTop:2}}>Tier: {modelConfig.tier} · {modelConfig.reason}</div>
+                                </div>
+                                <div style={{width:8,height:8,borderRadius:"50%",background:c.gr,flexShrink:0}}/>
+                              </div>
+                              {isOwner?(
+                                <select value={modelConfig.model} onChange={e=>updateModel(e.target.value)} disabled={modelSaving} style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1.5px solid "+c.ln,background:c.cd,fontSize:12,color:c.tx,cursor:modelSaving?"wait":"pointer",marginTop:8}}>
+                                  <option value="gemini-2.5-flash">Gemini 2.5 Flash (fast, low cost)</option>
+                                  <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+                                  <option value="gemini-2.5-pro">Gemini 2.5 Pro (advanced)</option>
+                                  <option value="gpt-4o">GPT-4o (OpenAI)</option>
+                                  <option value="gpt-4o-mini">GPT-4o Mini (budget)</option>
+                                  <option value="claude-sonnet-4-6">Claude Sonnet 4.6 (Anthropic)</option>
+                                  <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5</option>
+                                  <option value="claude-opus-4-6">Claude Opus 4.6 (premium)</option>
+                                  <option value="deepseek-chat">DeepSeek Chat</option>
+                                </select>
+                              ):(
+                                <div style={{fontSize:11,color:c.so,marginTop:4,fontStyle:"italic"}}>Model selection is managed by your account administrator</div>
+                              )}
+                              {modelConfig.failoverChain?.length>0&&(
+                                <div style={{fontSize:11,color:c.so,marginTop:8}}>Failover: {modelConfig.failoverChain.join(" → ")}</div>
+                              )}
+                            </>
+                          ):(
+                            <div style={{fontSize:12,color:c.so}}>Loading model config...</div>
+                          )}
                         </div>
                       </div>
                     </div>

@@ -177,20 +177,43 @@ function parseOpenAIResponse(response) {
 
   const content = [];
   if (choice.message.content) content.push({ type: 'text', text: choice.message.content });
+
+  let validToolCalls = 0;
   if (choice.message.tool_calls?.length > 0) {
     for (const tc of choice.message.tool_calls) {
-      content.push({
-        type: 'tool_use',
-        id: tc.id,
-        name: tc.function.name,
-        input: JSON.parse(tc.function.arguments || '{}'),
-      });
+      try {
+        // Validate required fields exist
+        if (!tc.function?.name) {
+          console.warn('[unified-client] Skipping tool call with missing function name:', JSON.stringify(tc).substring(0, 200));
+          continue;
+        }
+        // Parse arguments — handle both string and object formats
+        let args = {};
+        if (tc.function.arguments) {
+          args = typeof tc.function.arguments === 'string'
+            ? JSON.parse(tc.function.arguments)
+            : tc.function.arguments;
+        }
+        // Generate a fallback ID if Gemini doesn't provide one
+        const toolId = tc.id || `tool_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        content.push({
+          type: 'tool_use',
+          id: toolId,
+          name: tc.function.name,
+          input: args,
+        });
+        validToolCalls++;
+      } catch (parseErr) {
+        console.error(`[unified-client] Failed to parse tool call "${tc.function?.name}":`, parseErr.message,
+          'Raw arguments:', String(tc.function?.arguments || '').substring(0, 300));
+        // Don't push broken tool calls — they cause empty result blocks downstream
+      }
     }
   }
 
   return {
     content,
-    stopReason: choice.message.tool_calls?.length > 0 ? 'tool_use' : 'end_turn',
+    stopReason: validToolCalls > 0 ? 'tool_use' : 'end_turn',
     usage: { inputTokens: response.usage?.prompt_tokens || 0, outputTokens: response.usage?.completion_tokens || 0 },
     model: response.model,
     raw: response,

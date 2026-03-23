@@ -87,7 +87,7 @@ router.post('/artifacts', async (req, res) => {
         organization_id: ORG_ID(), created_by_user_id: USER_ID(), agent_id: agentId || AGENT_ID(),
         session_id: sessionId || null, name, description, file_type: fileType, mime_type: mimeType,
         content: contentText || null, storage_path: storagePath || filePath || null,
-        file_size: fileSize, floral_id: floralId, bloomshield_registered: false, published: false
+        file_size: fileSize, floral_id: floralId, bloomshield_registered: false, published: true
       }).select('id').single();
       artifact = inserted; insertErr = err;
     }

@@ -929,4 +929,57 @@ router.delete('/credential-registry/:siteKey', async (req, res) => {
   }
 });
 
+// ══ MODEL CONFIG (read: any user, write: master/owner only) ══
+
+router.get('/model-config', async (req, res) => {
+  try {
+    const { getResolvedConfig } = await import('../config/admin-config.js');
+    const config = await getResolvedConfig(ORG_ID);
+    res.json({
+      model: config.model,
+      tier: config.tier,
+      reason: config.reason,
+      failoverChain: config.failoverChain,
+    });
+  } catch (e) {
+    logger.error('Model config fetch failed:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.put('/model-config', async (req, res) => {
+  try {
+    const { model } = req.body;
+    if (!model) return res.status(400).json({ error: 'model required' });
+
+    const allowedModels = [
+      'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.5-pro',
+      'gpt-4o', 'gpt-4o-mini',
+      'claude-sonnet-4-6', 'claude-haiku-4-5-20251001', 'claude-opus-4-6',
+      'deepseek-chat'
+    ];
+    if (!allowedModels.includes(model)) {
+      return res.status(400).json({ error: `Invalid model. Allowed: ${allowedModels.join(', ')}` });
+    }
+
+    const sb = await getSupabase();
+    const { data, error } = await sb.from('bloom_admin_settings')
+      .update({ default_model: model, updated_at: new Date().toISOString(), updated_by: 'dashboard' })
+      .not('id', 'is', null)
+      .select('default_model')
+      .single();
+    if (error) throw error;
+
+    // Invalidate cache so the change takes effect immediately
+    const { invalidateCache } = await import('../config/admin-config.js');
+    invalidateCache();
+
+    logger.info('Model updated via dashboard', { model });
+    res.json({ success: true, model: data.default_model });
+  } catch (e) {
+    logger.error('Model config update failed:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 export default router;

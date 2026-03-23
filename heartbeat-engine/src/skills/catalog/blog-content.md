@@ -58,18 +58,25 @@ Call `ghl_create_blog_post` with STRUCTURED DATA. The tool auto-assembles the HT
 }
 ```
 
-### Step 3: Also Save as Artifact
-Call `create_artifact` to save a backup copy of the blog as an HTML file.
-- The tool returns the assembled HTML in its response — use that for the artifact.
+### Step 3: ALWAYS Save as Artifact (MANDATORY — even if Step 2 failed)
+Call `create_artifact` to save the blog as an HTML file. This step is NON-OPTIONAL.
+- If ghl_create_blog_post succeeded: the response contains `_assembledHTML` — use that as the artifact content.
+- If ghl_create_blog_post FAILED: the response STILL contains `_assembledHTML` — use that for the artifact.
+- Name the artifact: `{slug}.html` (e.g., `5-signs-business-needs-ai-employee.html`)
+- File type: `html`
+- NEVER skip this step. The artifact is the user's backup and preview.
+- After saving, include `<!-- file:{slug}.html -->` in your response so the file card appears in chat.
 
 ### Step 4: Notify the User
 Send the user a message with:
 - Blog title
 - A brief summary (1-2 sentences)
-- The CRM blog link for review (or artifact link if CRM failed)
-- "Ready for your review — once you approve, I'll publish it live."
+- If CRM succeeded: "Saved as draft in your CRM — ready for your review."
+- If CRM failed: "I saved the blog as an HTML file for you. Here's the CRM error: [error]. The blog content is ready — we just need to fix the CRM connection to publish it."
+- Always include the `<!-- file:{slug}.html -->` tag so the file shows in chat.
 
 If ghl_create_blog_post FAILS, report the exact error to the user. Do NOT pretend it worked.
+CRITICAL: NEVER abandon the task if CRM fails. You MUST still complete Steps 3 and 4.
 
 ## WHAT THE TEMPLATE LOOKS LIKE (for reference — you don't build this)
 
