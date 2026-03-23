@@ -1,234 +1,208 @@
-// Credential Registry for Sarah's Browser Automation
-// Stores site credentials as references to environment variables (never plain text in code)
-// Sarah looks up credentials by site name when browser_task needs to log in
+// Credential Registry for Browser Automation
+// Multi-tenant: credentials stored per-org in Supabase, not shared env vars
+// Each Bloomie agent only accesses their own org's credentials
 
 import { createLogger } from '../logging/logger.js';
 const logger = createLogger('credential-registry');
 
-/**
- * Site registry — maps site names to their env var keys and login metadata.
- * Actual credentials live ONLY in Railway environment variables.
- *
- * To add a new site:
- * 1. Add an entry here with the env var names
- * 2. Set the actual values in Railway dashboard → Variables
- *
- * Env var naming convention: SITE_{SITENAME}_{FIELD}
- * Example: SITE_QUORA_EMAIL, SITE_QUORA_PASSWORD
- */
-const SITE_REGISTRY = {
-  // ── Social / Forum Sites ──
-  quora: {
-    name: 'Quora',
-    domain: 'quora.com',
-    loginUrl: 'https://www.quora.com/login',
-    emailEnv: 'SITE_QUORA_EMAIL',
-    passwordEnv: 'SITE_QUORA_PASSWORD',
-    loginSelectors: {
-      email: 'input[name="email"]',
-      password: 'input[name="password"]',
-      submit: 'button[type="submit"]'
-    },
-    notes: 'Use email/password login. May require CAPTCHA bypass.'
-  },
-
-  reddit: {
-    name: 'Reddit',
-    domain: 'reddit.com',
-    loginUrl: 'https://www.reddit.com/login',
-    emailEnv: 'SITE_REDDIT_EMAIL',
-    passwordEnv: 'SITE_REDDIT_PASSWORD',
-    loginSelectors: {
-      email: '#login-username',
-      password: '#login-password',
-      submit: 'button[type="submit"]'
-    },
-    notes: 'Use username/password. May have 2FA.'
-  },
-
-  facebook: {
-    name: 'Facebook',
-    domain: 'facebook.com',
-    loginUrl: 'https://www.facebook.com/login',
-    emailEnv: 'SITE_FACEBOOK_EMAIL',
-    passwordEnv: 'SITE_FACEBOOK_PASSWORD',
-    loginSelectors: {
-      email: '#email',
-      password: '#pass',
-      submit: 'button[name="login"]'
-    },
-    notes: 'Business account preferred. May trigger security check.'
-  },
-
-  linkedin: {
-    name: 'LinkedIn',
-    domain: 'linkedin.com',
-    loginUrl: 'https://www.linkedin.com/login',
-    emailEnv: 'SITE_LINKEDIN_EMAIL',
-    passwordEnv: 'SITE_LINKEDIN_PASSWORD',
-    loginSelectors: {
-      email: '#username',
-      password: '#password',
-      submit: 'button[type="submit"]'
-    },
-    notes: 'Professional account. Rate limited on actions.'
-  },
-
-  twitter: {
-    name: 'Twitter / X',
-    domain: 'x.com',
-    loginUrl: 'https://x.com/i/flow/login',
-    emailEnv: 'SITE_TWITTER_EMAIL',
-    passwordEnv: 'SITE_TWITTER_PASSWORD',
-    loginSelectors: {
-      email: 'input[autocomplete="username"]',
-      password: 'input[type="password"]',
-      submit: 'button[data-testid="LoginForm_Login_Button"]'
-    },
-    notes: 'May require phone verification.'
-  },
-
-  instagram: {
-    name: 'Instagram',
-    domain: 'instagram.com',
-    loginUrl: 'https://www.instagram.com/accounts/login/',
-    emailEnv: 'SITE_INSTAGRAM_EMAIL',
-    passwordEnv: 'SITE_INSTAGRAM_PASSWORD',
-    loginSelectors: {
-      email: 'input[name="username"]',
-      password: 'input[name="password"]',
-      submit: 'button[type="submit"]'
-    },
-    notes: 'Business account. May require 2FA.'
-  },
-
-  // ── Business Tools ──
-  canva: {
-    name: 'Canva',
-    domain: 'canva.com',
-    loginUrl: 'https://www.canva.com/login',
-    emailEnv: 'SITE_CANVA_EMAIL',
-    passwordEnv: 'SITE_CANVA_PASSWORD',
-    loginSelectors: {},
-    notes: 'Use Google SSO if available.'
-  },
-
-  wordpress: {
-    name: 'WordPress',
-    domain: '',
-    loginUrl: '',
-    emailEnv: 'SITE_WORDPRESS_EMAIL',
-    passwordEnv: 'SITE_WORDPRESS_PASSWORD',
-    loginSelectors: {
-      email: '#user_login',
-      password: '#user_pass',
-      submit: '#wp-submit'
-    },
-    notes: 'Domain-specific. Set loginUrl in metadata.'
-  },
-
-  // ── Email (already wired via Gmail API, this is for browser fallback) ──
-  gmail: {
-    name: 'Gmail',
-    domain: 'gmail.com',
-    loginUrl: 'https://accounts.google.com/signin',
-    emailEnv: 'SITE_GMAIL_EMAIL',
-    passwordEnv: 'SITE_GMAIL_PASSWORD',
-    loginSelectors: {
-      email: 'input[type="email"]',
-      password: 'input[type="password"]'
-    },
-    notes: 'Prefer Gmail API tools over browser login. Browser login as fallback only.'
-  }
+// Known site templates — used for defaults when adding new sites
+const SITE_TEMPLATES = {
+  quora: { name: 'Quora', domain: 'quora.com', loginUrl: 'https://www.quora.com/login' },
+  reddit: { name: 'Reddit', domain: 'reddit.com', loginUrl: 'https://www.reddit.com/login' },
+  facebook: { name: 'Facebook', domain: 'facebook.com', loginUrl: 'https://www.facebook.com/login' },
+  linkedin: { name: 'LinkedIn', domain: 'linkedin.com', loginUrl: 'https://www.linkedin.com/login' },
+  twitter: { name: 'Twitter / X', domain: 'x.com', loginUrl: 'https://x.com/i/flow/login' },
+  instagram: { name: 'Instagram', domain: 'instagram.com', loginUrl: 'https://www.instagram.com/accounts/login/' },
+  canva: { name: 'Canva', domain: 'canva.com', loginUrl: 'https://www.canva.com/login' },
+  wordpress: { name: 'WordPress', domain: '', loginUrl: '' },
+  pinterest: { name: 'Pinterest', domain: 'pinterest.com', loginUrl: 'https://www.pinterest.com/login/' },
+  tiktok: { name: 'TikTok', domain: 'tiktok.com', loginUrl: 'https://www.tiktok.com/login' },
+  youtube: { name: 'YouTube', domain: 'youtube.com', loginUrl: 'https://accounts.google.com/signin' },
+  medium: { name: 'Medium', domain: 'medium.com', loginUrl: 'https://medium.com/m/signin' },
 };
 
-/**
- * Get credentials for a site
- * Returns { email, password, ...siteConfig } or null if not configured
- */
-export function getCredentials(siteName) {
-  const site = SITE_REGISTRY[siteName.toLowerCase()];
-  if (!site) {
-    logger.warn(`Site "${siteName}" not found in credential registry`);
-    return null;
+let _supabase = null;
+async function getSupabase() {
+  if (!_supabase) {
+    const { createClient } = await import('@supabase/supabase-js');
+    _supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+    });
   }
+  return _supabase;
+}
 
-  const email = process.env[site.emailEnv];
-  const password = process.env[site.passwordEnv];
-
-  if (!email || !password) {
-    logger.warn(`Credentials not configured for ${site.name}. Set ${site.emailEnv} and ${site.passwordEnv} in Railway env vars.`);
-    return { ...site, configured: false, email: null, password: null };
-  }
-
-  return {
-    ...site,
-    configured: true,
-    email,
-    password
-  };
+// Simple reversible encoding — not military-grade but keeps passwords out of plain sight in DB
+// For production, use pgcrypto or Vault
+const CRED_KEY = process.env.CREDENTIAL_ENCRYPTION_KEY || 'bl00m-cr3d-k3y-2026';
+function encodePassword(plain) {
+  return Buffer.from(plain).toString('base64');
+}
+function decodePassword(encoded) {
+  return Buffer.from(encoded, 'base64').toString('utf-8');
 }
 
 /**
- * List all registered sites and their configuration status
+ * Get credentials for a site (per-org)
  */
-export function listSites() {
-  return Object.entries(SITE_REGISTRY).map(([key, site]) => ({
-    key,
-    name: site.name,
-    domain: site.domain,
-    configured: !!(process.env[site.emailEnv] && process.env[site.passwordEnv]),
-    emailEnv: site.emailEnv,
-    passwordEnv: site.passwordEnv
-  }));
+export async function getCredentials(siteName, orgId) {
+  try {
+    const sb = await getSupabase();
+    const org = orgId || process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001';
+
+    const { data, error } = await sb.from('site_credentials')
+      .select('*')
+      .eq('org_id', org)
+      .eq('site_key', siteName.toLowerCase())
+      .eq('is_active', true)
+      .single();
+
+    if (error || !data) {
+      logger.warn(`No credentials found for site "${siteName}" in org ${org}`);
+      return null;
+    }
+
+    // Update last_used_at
+    sb.from('site_credentials').update({ last_used_at: new Date().toISOString() }).eq('id', data.id).then(() => {});
+
+    return {
+      configured: true,
+      name: data.site_name,
+      domain: data.domain,
+      loginUrl: data.login_url,
+      email: data.username,
+      password: decodePassword(data.encrypted_password),
+      notes: data.notes,
+      extraFields: data.extra_fields || {}
+    };
+  } catch (e) {
+    logger.error('getCredentials failed:', e.message);
+    return null;
+  }
+}
+
+/**
+ * List all sites for an org (never exposes passwords)
+ */
+export async function listSites(orgId) {
+  try {
+    const sb = await getSupabase();
+    const org = orgId || process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001';
+
+    const { data, error } = await sb.from('site_credentials')
+      .select('id, site_key, site_name, domain, login_url, username, is_active, last_used_at, notes, created_at')
+      .eq('org_id', org)
+      .order('site_name');
+
+    if (error) throw error;
+    return (data || []).map(s => ({
+      ...s,
+      configured: true
+    }));
+  } catch (e) {
+    logger.error('listSites failed:', e.message);
+    return [];
+  }
 }
 
 /**
  * Check if a site has credentials configured
  */
-export function isSiteConfigured(siteName) {
-  const site = SITE_REGISTRY[siteName.toLowerCase()];
-  if (!site) return false;
-  return !!(process.env[site.emailEnv] && process.env[site.passwordEnv]);
+export async function isSiteConfigured(siteName, orgId) {
+  const creds = await getCredentials(siteName, orgId);
+  return creds !== null;
 }
 
 /**
  * Get login instructions for browser_task
- * Returns a formatted instruction string Sarah can pass to browser_task
  */
-export function getLoginInstructions(siteName) {
-  const creds = getCredentials(siteName);
-  if (!creds) return null;
-  if (!creds.configured) return { error: `Credentials not set. Ask Kimberly to add ${creds.emailEnv} and ${creds.passwordEnv} to Railway.` };
+export async function getLoginInstructions(siteName, orgId) {
+  const creds = await getCredentials(siteName, orgId);
+  if (!creds) return { error: `No credentials configured for "${siteName}". Ask Kimberly to add them in Dashboard → Settings → Site Logins.` };
 
   return {
     url: creds.loginUrl,
     steps: [
       `Navigate to ${creds.loginUrl}`,
-      `Enter email: ${creds.email}`,
+      `Enter email/username: ${creds.email}`,
       `Enter password: ${creds.password}`,
       `Click submit/login button`,
       `Wait for dashboard or home page to load`
     ],
-    selectors: creds.loginSelectors,
     notes: creds.notes
   };
 }
 
 /**
- * Get the full registry (for dashboard display — never exposes passwords)
+ * Add or update a site credential (used by dashboard API)
  */
-export function getRegistrySummary() {
-  return Object.entries(SITE_REGISTRY).map(([key, site]) => ({
-    key,
-    name: site.name,
-    domain: site.domain,
-    loginUrl: site.loginUrl,
-    configured: !!(process.env[site.emailEnv] && process.env[site.passwordEnv]),
-    emailEnv: site.emailEnv,
-    passwordEnv: site.passwordEnv,
-    notes: site.notes
-  }));
+export async function upsertCredential(orgId, siteKey, { siteName, domain, loginUrl, username, password, notes }) {
+  try {
+    const sb = await getSupabase();
+    const template = SITE_TEMPLATES[siteKey.toLowerCase()] || {};
+
+    const row = {
+      org_id: orgId,
+      site_key: siteKey.toLowerCase(),
+      site_name: siteName || template.name || siteKey,
+      domain: domain || template.domain || '',
+      login_url: loginUrl || template.loginUrl || '',
+      username: username,
+      encrypted_password: encodePassword(password),
+      notes: notes || '',
+      is_active: true,
+      updated_at: new Date().toISOString()
+    };
+
+    const { data, error } = await sb.from('site_credentials')
+      .upsert(row, { onConflict: 'org_id,site_key' })
+      .select('id, site_key, site_name, domain, is_active')
+      .single();
+
+    if (error) throw error;
+    logger.info(`Credential upserted for ${siteKey} in org ${orgId}`);
+    return { success: true, credential: data };
+  } catch (e) {
+    logger.error('upsertCredential failed:', e.message);
+    return { success: false, error: e.message };
+  }
 }
 
-export { SITE_REGISTRY };
+/**
+ * Delete a site credential
+ */
+export async function deleteCredential(orgId, siteKey) {
+  try {
+    const sb = await getSupabase();
+    const { error } = await sb.from('site_credentials')
+      .delete()
+      .eq('org_id', orgId)
+      .eq('site_key', siteKey.toLowerCase());
+    if (error) throw error;
+    return { success: true };
+  } catch (e) {
+    logger.error('deleteCredential failed:', e.message);
+    return { success: false, error: e.message };
+  }
+}
+
+/**
+ * Get registry summary for dashboard (never exposes passwords)
+ */
+export async function getRegistrySummary(orgId) {
+  const sites = await listSites(orgId);
+  // Also include unconfigured templates so the user knows what's available
+  const configuredKeys = new Set(sites.map(s => s.site_key));
+  const unconfigured = Object.entries(SITE_TEMPLATES)
+    .filter(([key]) => !configuredKeys.has(key))
+    .map(([key, tmpl]) => ({
+      site_key: key,
+      site_name: tmpl.name,
+      domain: tmpl.domain,
+      configured: false
+    }));
+
+  return { configured: sites, available: unconfigured };
+}
+
+export { SITE_TEMPLATES };

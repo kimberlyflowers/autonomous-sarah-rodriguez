@@ -2513,6 +2513,121 @@ function BusinessProfilePage({c,mob,userImg,setUserImg,meInitial="U"}){
   );
 }
 
+function SiteLoginsManager({c,mob,aFN="Sarah"}){
+  const [sites,setSites]=useState({configured:[],available:[]});
+  const [loading,setLoading]=useState(true);
+  const [showAdd,setShowAdd]=useState(false);
+  const [addForm,setAddForm]=useState({siteKey:'',username:'',password:'',notes:''});
+  const [saving,setSaving]=useState(false);
+
+  const loadSites=async()=>{
+    try{
+      const r=await fetch("/api/dashboard/credential-registry");
+      if(r.ok){const d=await r.json();setSites(d);}
+    }catch{}
+    setLoading(false);
+  };
+
+  useEffect(()=>{loadSites();},[]);
+
+  const saveSite=async()=>{
+    if(!addForm.siteKey||!addForm.username||!addForm.password)return;
+    setSaving(true);
+    try{
+      const r=await fetch("/api/dashboard/credential-registry",{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify(addForm)
+      });
+      if(r.ok){setShowAdd(false);setAddForm({siteKey:'',username:'',password:'',notes:''});await loadSites();}
+    }catch{}
+    setSaving(false);
+  };
+
+  const removeSite=async(siteKey)=>{
+    try{
+      const r=await fetch(`/api/dashboard/credential-registry/${siteKey}`,{method:"DELETE"});
+      if(r.ok)await loadSites();
+    }catch{}
+  };
+
+  const siteIcons={quora:"Q",reddit:"R",facebook:"f",linkedin:"in",twitter:"X",instagram:"IG",canva:"C",wordpress:"W",pinterest:"P",tiktok:"T",youtube:"YT",medium:"M"};
+
+  return(
+    <div style={{marginBottom:28}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+        <div>
+          <div style={{fontSize:14,fontWeight:700,color:c.tx}}>Site Logins</div>
+          <div style={{fontSize:11,color:c.so}}>Credentials {aFN} uses to log into sites via browser automation</div>
+        </div>
+        <button onClick={()=>setShowAdd(!showAdd)} style={{padding:"6px 14px",borderRadius:8,border:"1px solid "+c.ac,background:"transparent",color:c.ac,fontSize:12,fontWeight:600,cursor:"pointer"}}>
+          {showAdd?"Cancel":"+ Add Site"}
+        </button>
+      </div>
+
+      {showAdd&&(
+        <div style={{padding:16,borderRadius:12,background:c.sf,border:"1px solid "+c.ln,marginBottom:12}}>
+          <div style={{marginBottom:10}}>
+            <div style={{fontSize:11,fontWeight:600,color:c.so,marginBottom:4}}>Site</div>
+            <select value={addForm.siteKey} onChange={e=>setAddForm({...addForm,siteKey:e.target.value})} style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.cd,fontSize:13,color:c.tx}}>
+              <option value="">Select a site...</option>
+              {sites.available.map(s=>(
+                <option key={s.site_key} value={s.site_key}>{s.site_name}</option>
+              ))}
+              <option value="custom">Other (custom)</option>
+            </select>
+          </div>
+          {addForm.siteKey==="custom"&&(
+            <div style={{marginBottom:10}}>
+              <div style={{fontSize:11,fontWeight:600,color:c.so,marginBottom:4}}>Site Key (lowercase, no spaces)</div>
+              <input value={addForm.siteKey==="custom"?"":addForm.siteKey} onChange={e=>setAddForm({...addForm,siteKey:e.target.value.toLowerCase().replace(/[^a-z0-9]/g,'')})} placeholder="e.g. mysite" style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.cd,fontSize:13,color:c.tx}}/>
+            </div>
+          )}
+          <div style={{marginBottom:10}}>
+            <div style={{fontSize:11,fontWeight:600,color:c.so,marginBottom:4}}>Email / Username</div>
+            <input value={addForm.username} onChange={e=>setAddForm({...addForm,username:e.target.value})} placeholder="your@email.com" style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.cd,fontSize:13,color:c.tx}}/>
+          </div>
+          <div style={{marginBottom:10}}>
+            <div style={{fontSize:11,fontWeight:600,color:c.so,marginBottom:4}}>Password</div>
+            <input type="password" value={addForm.password} onChange={e=>setAddForm({...addForm,password:e.target.value})} placeholder="••••••••" style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.cd,fontSize:13,color:c.tx}}/>
+          </div>
+          <div style={{marginBottom:12}}>
+            <div style={{fontSize:11,fontWeight:600,color:c.so,marginBottom:4}}>Notes (optional)</div>
+            <input value={addForm.notes} onChange={e=>setAddForm({...addForm,notes:e.target.value})} placeholder="e.g. business account, use for posting only" style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.cd,fontSize:13,color:c.tx}}/>
+          </div>
+          <button onClick={saveSite} disabled={saving||!addForm.siteKey||!addForm.username||!addForm.password} style={{padding:"8px 20px",borderRadius:8,border:"none",background:c.ac,color:"#fff",fontSize:13,fontWeight:600,cursor:saving?"wait":"pointer",opacity:(!addForm.siteKey||!addForm.username||!addForm.password)?0.5:1}}>
+            {saving?"Saving...":"Save Credentials"}
+          </button>
+        </div>
+      )}
+
+      {loading?(
+        <div style={{padding:20,textAlign:"center",fontSize:12,color:c.so}}>Loading...</div>
+      ):sites.configured.length===0?(
+        <div style={{padding:"16px",borderRadius:10,background:c.sf,border:"1px dashed "+c.ln,textAlign:"center"}}>
+          <div style={{fontSize:12,color:c.so}}>No site logins configured yet. Click "+ Add Site" to get started.</div>
+        </div>
+      ):(
+        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          {sites.configured.map(site=>(
+            <div key={site.site_key} style={{padding:"10px 14px",borderRadius:10,background:c.sf,border:"1px solid "+c.ln,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <div style={{width:32,height:32,borderRadius:8,background:"linear-gradient(135deg,#F4A261,#E76F8B)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:"#fff"}}>
+                  {siteIcons[site.site_key]||site.site_key.slice(0,2).toUpperCase()}
+                </div>
+                <div>
+                  <div style={{fontSize:13,fontWeight:600,color:c.tx}}>{site.site_name}</div>
+                  <div style={{fontSize:11,color:c.so}}>{site.username}{site.last_used_at?" · Last used "+new Date(site.last_used_at).toLocaleDateString():""}</div>
+                </div>
+              </div>
+              <button onClick={()=>removeSite(site.site_key)} style={{padding:"4px 10px",borderRadius:6,border:"1px solid #ef444450",background:"transparent",color:"#ef4444",fontSize:11,fontWeight:600,cursor:"pointer"}}>Remove</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DocsPage({c,mob,aFN="Sarah"}){
   const [docs,setDocs]=useState([]);
   const [loading,setLoading]=useState(true);
@@ -5942,6 +6057,7 @@ function App({ authUser }) {
                         <div style={{fontSize:14,fontWeight:700,color:c.tx,marginBottom:10}}>GHL Integration</div>
                         <div style={{padding:"12px 14px",borderRadius:10,background:c.sf,border:"1px solid "+c.ln,fontSize:13,color:c.so}}>60 GHL v2 API tools active · Location ID configured</div>
                       </div>
+                      <SiteLoginsManager c={c} mob={mob} aFN={aFN}/>
                     </div>
                   )}
                   {stab==="Interface"&&(

@@ -891,12 +891,39 @@ router.patch('/documents/:id', async (req, res) => {
   }
 });
 
-// ══ CREDENTIAL REGISTRY ══
+// ══ CREDENTIAL REGISTRY (per-org site logins) ══
 
 router.get('/credential-registry', async (req, res) => {
   try {
     const { getRegistrySummary } = await import('../config/credential-registry.js');
-    res.json({ sites: getRegistrySummary() });
+    const summary = await getRegistrySummary(ORG_ID);
+    res.json(summary);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/dashboard/credential-registry — add or update a site credential
+router.post('/credential-registry', async (req, res) => {
+  try {
+    const { siteKey, siteName, domain, loginUrl, username, password, notes } = req.body;
+    if (!siteKey || !username || !password) {
+      return res.status(400).json({ error: 'siteKey, username, and password are required' });
+    }
+    const { upsertCredential } = await import('../config/credential-registry.js');
+    const result = await upsertCredential(ORG_ID, siteKey, { siteName, domain, loginUrl, username, password, notes });
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/dashboard/credential-registry/:siteKey — remove a site credential
+router.delete('/credential-registry/:siteKey', async (req, res) => {
+  try {
+    const { deleteCredential } = await import('../config/credential-registry.js');
+    const result = await deleteCredential(ORG_ID, req.params.siteKey);
+    res.json(result);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

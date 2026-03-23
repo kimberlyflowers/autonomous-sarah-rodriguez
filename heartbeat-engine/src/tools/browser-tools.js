@@ -179,17 +179,14 @@ export const browserToolExecutors = {
   browser_login: async (params) => {
     try {
       const siteName = params.site.toLowerCase();
-      const creds = getCredentials(siteName);
+      const creds = await getCredentials(siteName);
 
       if (!creds) {
-        return { success: false, error: `Site "${params.site}" not found in credential registry. Available sites: ${listSites().map(s => s.key).join(', ')}` };
+        const sites = await listSites();
+        const available = sites.map(s => s.site_key).join(', ') || 'none configured';
+        return { success: false, error: `No credentials found for "${params.site}". Configured sites: ${available}. Ask Kimberly to add credentials in Dashboard → Settings → Site Logins.` };
       }
 
-      if (!creds.configured) {
-        return { success: false, error: `Credentials not configured for ${creds.name}. Kimberly needs to set ${creds.emailEnv} and ${creds.passwordEnv} in Railway environment variables.` };
-      }
-
-      const loginInstructions = getLoginInstructions(siteName);
       const taskDescription = `Log into ${creds.name} at ${creds.loginUrl}. Enter email "${creds.email}" and password "${creds.password}". Click the login/submit button. Wait for the page to fully load after login. If there's a cookie consent popup, dismiss it. If there's a 2FA prompt, report it.`;
 
       logger.info(`Logging into ${creds.name}`, { url: creds.loginUrl });
@@ -249,13 +246,13 @@ export const browserToolExecutors = {
 
   browser_list_sites: async () => {
     try {
-      const sites = listSites();
+      const { getRegistrySummary } = await import('../config/credential-registry.js');
+      const summary = await getRegistrySummary();
       return {
         success: true,
-        sites,
-        configured: sites.filter(s => s.configured).map(s => s.name),
-        unconfigured: sites.filter(s => !s.configured).map(s => `${s.name} (needs ${s.emailEnv} + ${s.passwordEnv})`),
-        message: `${sites.filter(s => s.configured).length} of ${sites.length} sites have credentials configured.`
+        configured: summary.configured.map(s => ({ key: s.site_key, name: s.site_name, domain: s.domain, lastUsed: s.last_used_at })),
+        available: summary.available.map(s => ({ key: s.site_key, name: s.site_name })),
+        message: `${summary.configured.length} sites configured. ${summary.available.length} more available to add in Dashboard → Settings → Site Logins.`
       };
     } catch (error) {
       return { success: false, error: error.message };
