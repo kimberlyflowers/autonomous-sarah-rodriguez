@@ -5284,7 +5284,7 @@ router.post('/message', async (req, res) => {
 
     return res.json({ response: cleanResponse, sessionId, agentId: agentConfig.agentId, skillsUsed: skillsUsedThisTurn });
   } catch (error) {
-    logger.error('Chat error', { error: error.message });
+    logger.error('Chat error', { error: error.message, stack: error.stack?.split('\n').slice(0, 5).join('\n') });
 
     // ── CLEANUP: Remove stale "Planning steps..." entry on error ──────────
     // Without this, failed API calls leave permanent 0% entries in Active Tasks
@@ -5297,7 +5297,9 @@ router.post('/message', async (req, res) => {
 
     return res.status(500).json({
       error: 'Failed to process message',
-      response: "Sorry, I'm having a technical issue. Please try again."
+      response: "Sorry, I'm having a technical issue. Please try again.",
+      debug_error: error.message,
+      debug_stack: error.stack?.split('\n').slice(0, 3).join(' | ')
     });
   }
 });
