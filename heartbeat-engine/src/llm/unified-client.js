@@ -69,7 +69,7 @@ const FAILOVER_CHAIN = [
 ];
 
 // Errors that trigger failover (not user errors, provider errors)
-const FAILOVER_STATUS_CODES = [400, 401, 402, 403, 429, 500, 502, 503, 504, 529];
+const FAILOVER_STATUS_CODES = [400, 401, 402, 403, 404, 429, 500, 502, 503, 504, 529];
 
 // Error messages that should ALWAYS trigger failover (billing, auth, quota)
 const FAILOVER_ERROR_PATTERNS = [
@@ -83,6 +83,8 @@ const FAILOVER_ERROR_PATTERNS = [
   'authentication',         // Auth failures
   'unauthorized',           // 401-style errors
   'not_found_error',        // Wrong model string
+  'model_not_found',        // OpenAI: model doesn't exist or no access
+  'does not exist',         // OpenAI: model not available
   'timeout',                // Connection timeouts
   'econnrefused',           // Provider down
   'fetch failed',           // Network error

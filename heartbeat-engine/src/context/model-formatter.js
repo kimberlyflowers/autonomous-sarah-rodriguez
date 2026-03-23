@@ -9,6 +9,39 @@ const logger = createLogger('model-formatter');
  * Model capabilities and limitations
  */
 export const MODEL_CAPABILITIES = {
+  'gemini-2.5-flash': {
+    provider: 'gemini',
+    maxTokens: 1000000,
+    supportsTools: true,
+    supportsImages: true,
+    supportsSystemMessages: true,
+    messageFormat: 'openai',  // Gemini uses OpenAI-compatible format
+    toolFormat: 'openai',
+    contextWindow: 1000000,
+    outputTokenLimit: 8192
+  },
+  'gemini-2.0-flash': {
+    provider: 'gemini',
+    maxTokens: 1000000,
+    supportsTools: true,
+    supportsImages: true,
+    supportsSystemMessages: true,
+    messageFormat: 'openai',
+    toolFormat: 'openai',
+    contextWindow: 1000000,
+    outputTokenLimit: 8192
+  },
+  'gemini-3-flash-preview': {
+    provider: 'gemini',
+    maxTokens: 1000000,
+    supportsTools: true,
+    supportsImages: true,
+    supportsSystemMessages: true,
+    messageFormat: 'openai',
+    toolFormat: 'openai',
+    contextWindow: 1000000,
+    outputTokenLimit: 8192
+  },
   'claude-haiku-4-5-20251001': {
     provider: 'anthropic',
     maxTokens: 200000,
@@ -19,6 +52,17 @@ export const MODEL_CAPABILITIES = {
     toolFormat: 'anthropic',
     contextWindow: 200000,
     outputTokenLimit: 4096
+  },
+  'claude-sonnet-4-6': {
+    provider: 'anthropic',
+    maxTokens: 200000,
+    supportsTools: true,
+    supportsImages: true,
+    supportsSystemMessages: true,
+    messageFormat: 'anthropic',
+    toolFormat: 'anthropic',
+    contextWindow: 200000,
+    outputTokenLimit: 8192
   },
   'gpt-4o': {
     provider: 'openai',
@@ -31,7 +75,7 @@ export const MODEL_CAPABILITIES = {
     contextWindow: 128000,
     outputTokenLimit: 4096
   },
-  'gpt-4-turbo': {
+  'gpt-4o-mini': {
     provider: 'openai',
     maxTokens: 128000,
     supportsTools: true,
@@ -41,17 +85,6 @@ export const MODEL_CAPABILITIES = {
     toolFormat: 'openai',
     contextWindow: 128000,
     outputTokenLimit: 4096
-  },
-  'gpt-3.5-turbo': {
-    provider: 'openai',
-    maxTokens: 16385,
-    supportsTools: true,
-    supportsImages: false,
-    supportsSystemMessages: true,
-    messageFormat: 'openai',
-    toolFormat: 'openai',
-    contextWindow: 16385,
-    outputTokenLimit: 4096
   }
 };
 
@@ -60,13 +93,13 @@ export const MODEL_CAPABILITIES = {
  * Handles conversion between different LLM formats
  */
 export class ModelFormatter {
-  constructor(model = 'claude-haiku-4-5-20251001') {
+  constructor(model = 'gemini-2.5-flash') {
     this.model = model;
     this.capabilities = MODEL_CAPABILITIES[model];
 
     if (!this.capabilities) {
-      logger.warn(`Unknown model: ${model}, using Claude Sonnet defaults`);
-      this.capabilities = MODEL_CAPABILITIES['claude-haiku-4-5-20251001'];
+      logger.warn(`Unknown model: ${model}, using gemini-2.5-flash defaults`);
+      this.capabilities = MODEL_CAPABILITIES['gemini-2.5-flash'];
     }
 
     logger.info('Initialized model formatter', { model, provider: this.capabilities.provider });
@@ -494,7 +527,7 @@ export class ModelSelector {
 
     if (candidates.length === 0) {
       logger.warn('No models match requirements, using default');
-      return 'claude-haiku-4-5-20251001';
+      return 'gemini-2.5-flash';
     }
 
     // Select based on budget preference
@@ -536,11 +569,11 @@ export class ModelSelector {
       case 'long_context':
         return this.selectModel({ maxTokens: 200000, budget: 'premium' });
       default:
-        return 'claude-haiku-4-5-20251001';
+        return 'gemini-2.5-flash';
     }
   }
 }
 
 // Export instances
-export const modelFormatter = new ModelFormatter();
+export const modelFormatter = new ModelFormatter('gemini-2.5-flash');
 export const modelSelector = new ModelSelector();

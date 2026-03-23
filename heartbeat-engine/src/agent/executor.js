@@ -115,7 +115,7 @@ export class AgentExecutor {
         logger.info('Using conversational chat prompt for execution');
       } else {
         // Use agentic execution prompt for heartbeat/tasks
-        systemPrompt = await this.buildSystemPrompt(agentConfig, context);
+        systemPrompt = await this.buildSystemPrompt(agentConfig, { ...context, instruction: task });
         logger.info('Using agentic execution prompt for task');
       }
 
@@ -143,10 +143,13 @@ Use the available tools to complete this task. Work step by step and explain you
         );
       }
 
-      // Select optimal model for this task if adaptive models are enabled
-      if (this.useAdaptiveModels) {
-        this.adaptModelForTask(task, context);
-      }
+      // DISABLED: adaptModelForTask was overriding the admin-configured model
+      // (gemini-2.5-flash) with models from MODEL_CAPABILITIES that may not be
+      // available on the account (e.g., gpt-4-turbo). The admin config at
+      // getResolvedConfig() already selects the correct model per org tier.
+      // if (this.useAdaptiveModels) {
+      //   this.adaptModelForTask(task, context);
+      // }
 
       let currentTurn = 0;
       let status = EXECUTION_STATUS.RUNNING;
@@ -782,6 +785,42 @@ Use the available tools to complete this task. Work step by step and explain you
       timeStyle: 'short'
     });
 
+    // Auto-load relevant skill based on task instruction keywords
+    let skillContent = '';
+    try {
+      const taskInstruction = (context.instruction || context.taskName || '').toLowerCase();
+      const instruction = taskInstruction;
+      const fs = await import('fs');
+      const path = await import('path');
+      const { fileURLToPath } = await import('url');
+      const __dirname = path.dirname(fileURLToPath(import.meta.url));
+      const skillsDir = path.join(__dirname, '..', 'skills', 'catalog');
+
+      // Map task keywords to skill files
+      const skillMap = [
+        { keywords: ['blog', 'article', 'post', 'geo-optimized'], skill: 'blog-content' },
+        { keywords: ['email', 'newsletter', 'campaign'], skill: 'email-creator' },
+        { keywords: ['social', 'instagram', 'facebook', 'linkedin'], skill: 'social-media' },
+        { keywords: ['flyer', 'poster', 'brochure'], skill: 'flyer-generation' },
+        { keywords: ['website', 'landing page'], skill: 'website-creation' },
+      ];
+
+      for (const mapping of skillMap) {
+        if (mapping.keywords.some(kw => instruction.includes(kw))) {
+          try {
+            const content = fs.readFileSync(path.join(skillsDir, `${mapping.skill}.md`), 'utf-8');
+            skillContent = `\n\n## LOADED SKILL: ${mapping.skill}\n${content}\n`;
+            logger.info('Auto-loaded skill for scheduled task', { skill: mapping.skill });
+          } catch (e) {
+            logger.warn(`Could not load skill ${mapping.skill}:`, e.message);
+          }
+          break;
+        }
+      }
+    } catch (e) {
+      logger.warn('Skill auto-load failed:', e.message);
+    }
+
     // Load recent progress for cross-cycle memory (Ralph's progress.txt)
     let progressContext = '';
     try {
@@ -906,7 +945,7 @@ ${JSON.stringify(context, null, 2)}
 
 ## Standing Instructions:
 ${agentConfig.standingInstructions}
-
+${skillContent}
 Remember: Plan first. Execute one step. Verify it worked. Then move on.`;
   }
 
