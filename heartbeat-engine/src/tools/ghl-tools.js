@@ -140,26 +140,12 @@ async function resolveLocationId(orgId) {
   return process.env.GHL_LOCATION_ID;
 }
 
-// ── AUTO-DISCOVER BLOG ID ─────────────────────────────────────────────
-// If configured blog ID returns 404, try listing all blogs to find a valid one
-let _discoveredBlogId = null;
-async function discoverBlogId(locationId) {
-  if (_discoveredBlogId) return _discoveredBlogId;
-  try {
-    logger.info('Auto-discovering blog ID via GET /blogs/');
-    const result = await callGHL('/blogs/', 'GET', null, { locationId });
-    const blogs = result?.blogs || result?.data || [];
-    if (Array.isArray(blogs) && blogs.length > 0) {
-      _discoveredBlogId = blogs[0].id || blogs[0]._id;
-      logger.info(`Discovered blog ID: ${_discoveredBlogId} (name: ${blogs[0].name || 'unnamed'})`);
-      return _discoveredBlogId;
-    }
-    logger.warn('Blog discovery returned no blogs', { resultKeys: Object.keys(result || {}) });
-    return null;
-  } catch (e) {
-    logger.error('Blog discovery failed:', e.message);
-    return null;
-  }
+// ── VALIDATE BLOG ID ──────────────────────────────────────────────────
+// Log the configured blog ID for debugging — actual validation happens via API response
+function getConfiguredBlogId() {
+  const blogId = process.env.GHL_BLOG_ID || 'DHQrtpkQ3Cp7c96FCyDu';
+  logger.info(`Using blog ID: ${blogId} (source: ${process.env.GHL_BLOG_ID ? 'env' : 'hardcoded fallback'})`);
+  return blogId;
 }
 
 // ── HTML ESCAPE — prevent XSS in user/LLM-supplied blog content ──────
@@ -1783,26 +1769,15 @@ export const ghlExecutors = {
   },
 
   // BLOG POSTS
-  // GET /blogs/{blogId}/posts — list posts for a specific blog site
+  // GET /blogs/posts — list posts (GHL API v2: blogId is a query param, not a path segment)
   ghl_list_blog_posts: async (params) => {
-    let blogId = params.blogId || process.env.GHL_BLOG_ID || 'DHQrtpkQ3Cp7c96FCyDu';
+    const blogId = params.blogId || process.env.GHL_BLOG_ID || 'DHQrtpkQ3Cp7c96FCyDu';
     const locationId = await resolveLocationId(params._orgId);
-    try {
-      return await callGHL(`/blogs/${blogId}/posts`, 'GET', null, { locationId });
-    } catch (e) {
-      if (e.message?.includes('404')) {
-        const discovered = await discoverBlogId(locationId);
-        if (discovered && discovered !== blogId) {
-          logger.info(`Retrying list_blog_posts with discovered blog ID: ${discovered}`);
-          return await callGHL(`/blogs/${discovered}/posts`, 'GET', null, { locationId });
-        }
-      }
-      throw e;
-    }
+    return await callGHL('/blogs/posts', 'GET', null, { locationId, blogId });
   },
 
-  // POST /blogs/{blogId}/posts — create a post in a specific blog site
-  // GHL required fields: title, description, rawHTML, slug, author, categories, status (UPPERCASE)
+  // POST /blogs/posts — create a blog post (GHL API v2: blogId goes in the body, not URL path)
+  // GHL required fields: title, description, rawHTML, slug, author, categories, status (UPPERCASE), blogId
   // If params.sections is provided, assembles HTML from locked template automatically.
   ghl_create_blog_post: async (params) => {
     // Validate required fields before making any API calls
@@ -1848,6 +1823,7 @@ export const ghlExecutors = {
     // - imageAltText (string — SEO alt text for cover image)
     const ghlPayload = {
       locationId,
+      blogId,
       title: params.title,
       description: params.metaDescription || params.description || params.title,
       rawHTML,
@@ -1864,51 +1840,33 @@ export const ghlExecutors = {
 
     logger.info('GHL blog payload', { title: ghlPayload.title, status: ghlPayload.status, slug: ghlPayload.slug, hasHTML: !!ghlPayload.rawHTML });
 
-    // Try posting — if 404, auto-discover the correct blog ID and retry once
-    let lastError = null;
-    const blogIdsToTry = [blogId];
+    // GHL API v2: POST /blogs/posts (blogId is in the body, not the URL path)
+    try {
+      const result = await callGHL('/blogs/posts', 'POST', ghlPayload);
 
-    for (const tryBlogId of blogIdsToTry) {
-      try {
-        const result = await callGHL(`/blogs/${tryBlogId}/posts`, 'POST', ghlPayload);
-
-        // ── MANDATORY RESULT VALIDATION ──
-        const postId = result?.id || result?.data?.id || result?.postId;
-        if (postId) {
-          result._status = 'SUCCESS';
-          result._postId = postId;
-          result._message = `BLOG POST SAVED SUCCESSFULLY as draft. Post ID: ${postId}. You may now tell the user it was saved.`;
-          logger.info(`Blog post created successfully: ${postId} (blogId: ${tryBlogId})`);
-        } else {
-          result._status = 'FAILED';
-          result._message = `BLOG POST SAVE FAILED — the API returned a response but NO post ID was found. Response keys: ${Object.keys(result || {}).join(', ')}`;
-          logger.error('Blog post creation returned no ID', { resultKeys: Object.keys(result || {}) });
-        }
-
-        if (rawHTML) { result._assembledHTML = rawHTML; }
-        return result;
-      } catch (error) {
-        lastError = error;
-        // If 404 and this was the first attempt, try auto-discovering the blog ID
-        if (error.message?.includes('404') && tryBlogId === blogId && blogIdsToTry.length === 1) {
-          logger.warn(`Blog ID "${tryBlogId}" returned 404 — attempting auto-discovery`);
-          const discovered = await discoverBlogId(locationId);
-          if (discovered && discovered !== tryBlogId) {
-            blogIdsToTry.push(discovered);
-            logger.info(`Retrying blog post with discovered ID: ${discovered}`);
-            continue;
-          }
-        }
+      // ── MANDATORY RESULT VALIDATION ──
+      const postId = result?.id || result?.data?.id || result?.postId;
+      if (postId) {
+        result._status = 'SUCCESS';
+        result._postId = postId;
+        result._message = `BLOG POST SAVED SUCCESSFULLY as draft. Post ID: ${postId}. You may now tell the user it was saved.`;
+        logger.info(`Blog post created successfully: ${postId} (blogId: ${blogId})`);
+      } else {
+        result._status = 'FAILED';
+        result._message = `BLOG POST SAVE FAILED — the API returned a response but NO post ID was found. Response keys: ${Object.keys(result || {}).join(', ')}`;
+        logger.error('Blog post creation returned no ID', { resultKeys: Object.keys(result || {}) });
       }
-    }
 
-    // All attempts failed
-    return {
-      _status: 'FAILED',
-      _message: `BLOG POST SAVE FAILED. Error: ${lastError?.message || 'unknown'}. You MUST tell the user this failed and show them the error. Do NOT say it was saved. IMPORTANT: You should still save the blog as an HTML artifact using create_artifact so the user has the content.`,
-      _error: lastError?.message || 'unknown',
-      _assembledHTML: rawHTML || null
-    };
+      if (rawHTML) { result._assembledHTML = rawHTML; }
+      return result;
+    } catch (error) {
+      return {
+        _status: 'FAILED',
+        _message: `BLOG POST SAVE FAILED. Error: ${error.message}. You MUST tell the user this failed and show them the error. Do NOT say it was saved. IMPORTANT: You should still save the blog as an HTML artifact using create_artifact so the user has the content.`,
+        _error: error.message,
+        _assembledHTML: rawHTML || null
+      };
+    }
   },
 
   // DOCUMENTS/CONTRACTS

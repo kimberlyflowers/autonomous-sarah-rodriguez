@@ -3575,7 +3575,6 @@ function App({ authUser }) {
   // ── MODEL CONFIG STATE ──
   const [modelConfig,setModelConfig]=useState(null);
   const [modelSaving,setModelSaving]=useState(false);
-  const isOwner=meRole==='owner';
 
   // Fetch trust gate status + model config on mount
   useEffect(()=>{
@@ -3659,6 +3658,7 @@ function App({ authUser }) {
   const meDisplayName = meProfile?.fullName || authUser?.user_metadata?.full_name || authUser?.email?.split('@')[0] || 'User';
   const meInitial = meDisplayName.charAt(0).toUpperCase();
   const meRole = meProfile?.role || 'member';
+  const isOwner = meRole === 'owner';
   const meOrgName = meProfile?.orgName || null;
   const meOrgLogo = meProfile?.orgLogoUrl || null;
 
