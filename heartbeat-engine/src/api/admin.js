@@ -616,9 +616,9 @@ function getAdminHTML(preAuthed = false) {
           <div class="form-group">
             <label class="form-label">Target Model</label>
             <select id="bulkModel">
-              <option value="claude-sonnet-4-6-20250929">Claude Sonnet 4.6</option>
+              <option value="claude-sonnet-4-6">Claude Sonnet 4.6</option>
               <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5</option>
-              <option value="claude-opus-4-6-20250929">Claude Opus 4.6</option>
+              <option value="claude-opus-4-6">Claude Opus 4.6</option>
               <option value="gpt-4o">GPT-4o</option>
               <option value="gpt-4o-mini">GPT-4o Mini</option>
               <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
@@ -811,9 +811,9 @@ function renderModelCards() {
             <label class="form-label">Active Model</label>
             <select id="model-\${org.id}" value="\${model}">
               <option value="" \${!org.config?.model_override ? 'selected' : ''}>Default (tier: \${tier})</option>
-              <option value="claude-sonnet-4-6-20250929" \${model==='claude-sonnet-4-6-20250929'?'selected':''}>Claude Sonnet 4.6</option>
+              <option value="claude-sonnet-4-6" \${model==='claude-sonnet-4-6'?'selected':''}>Claude Sonnet 4.6</option>
               <option value="claude-haiku-4-5-20251001" \${model==='claude-haiku-4-5-20251001'?'selected':''}>Claude Haiku 4.5</option>
-              <option value="claude-opus-4-6-20250929" \${model==='claude-opus-4-6-20250929'?'selected':''}>Claude Opus 4.6</option>
+              <option value="claude-opus-4-6" \${model==='claude-opus-4-6'?'selected':''}>Claude Opus 4.6</option>
               <option value="gpt-4o" \${model==='gpt-4o'?'selected':''}>GPT-4o</option>
               <option value="gpt-4o-mini" \${model==='gpt-4o-mini'?'selected':''}>GPT-4o Mini</option>
               <option value="gemini-2.5-flash" \${model==='gemini-2.5-flash'?'selected':''}>Gemini 2.5 Flash</option>
@@ -1019,9 +1019,9 @@ async function loadAudit() {
 // ── Helpers ──
 function shortModel(m) {
   const map = {
-    'claude-sonnet-4-6-20250929': 'Sonnet 4.6',
+    'claude-sonnet-4-6': 'Sonnet 4.6',
     'claude-haiku-4-5-20251001': 'Haiku 4.5',
-    'claude-opus-4-6-20250929': 'Opus 4.6',
+    'claude-opus-4-6': 'Opus 4.6',
     'gpt-4o': 'GPT-4o',
     'gpt-4o-mini': 'GPT-4o Mini',
     'gemini-2.5-flash': 'Gemini Flash',
@@ -1032,7 +1032,7 @@ function shortModel(m) {
 
 function getDefaultModelForTier(tier) {
   const map = {
-    bloom: globalSettings.default_model || 'claude-sonnet-4-6-20250929',
+    bloom: globalSettings.default_model || 'claude-sonnet-4-6',
     premium: globalSettings.default_client_model || 'gpt-4o',
     standard: globalSettings.default_client_model_after_trial || 'gemini-2.5-flash',
     budget: 'gpt-4o-mini'

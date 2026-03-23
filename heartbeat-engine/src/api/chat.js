@@ -2102,7 +2102,7 @@ Available models:
 - "gemini" → Gemini 2.5 Flash (cheapest, fast)
 - "deepseek" → DeepSeek Chat (cheap, good at code)
 
-You can also pass a full model string like "claude-sonnet-4-6-20250929".
+You can also pass a full model string like "claude-sonnet-4-6".
 
 After switching, confirm which model you're now running on. Your tools and capabilities stay exactly the same — only your reasoning engine changes.`,
     input_schema: {
@@ -3650,8 +3650,8 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
 
       // Shorthand → full model string mapping
       const MODEL_SHORTHANDS = {
-        'sonnet':     'claude-sonnet-4-6-20250929',
-        'sonnet4.6':  'claude-sonnet-4-6-20250929',
+        'sonnet':     'claude-sonnet-4-6',
+        'sonnet4.6':  'claude-sonnet-4-6',
         'sonnet4.5':  'claude-sonnet-4-5-20250929',
         'haiku':      'claude-haiku-4-5-20251001',
         'gpt':        'gpt-4o',
@@ -3661,7 +3661,7 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
         'gpt-4o-mini':'gpt-4o-mini',
         'gemini':     'gemini-2.5-flash',
         'deepseek':   'deepseek-chat',
-        'opus':       'claude-opus-4-6-20250929',
+        'opus':       'claude-opus-4-6',
       };
 
       const requestedModel = toolInput.model?.toLowerCase()?.trim();

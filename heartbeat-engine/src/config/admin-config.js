@@ -166,11 +166,11 @@ export function invalidateCache(organizationId = null) {
 // ── Hardcoded fallback (no DB) ───────────────────────────────────────────
 function getHardcodedDefaults() {
   return {
-    default_model: 'claude-sonnet-4-6-20250929',
+    default_model: 'claude-sonnet-4-6',
     default_client_model: 'gpt-4o',
     default_client_model_after_trial: 'gemini-2.5-flash',
     client_trial_days: 30,
-    failover_chain: ['claude-sonnet-4-6-20250929', 'claude-haiku-4-5-20251001', 'gpt-4o', 'gpt-4o-mini', 'gemini-2.5-flash'],
+    failover_chain: ['claude-sonnet-4-6', 'claude-haiku-4-5-20251001', 'gpt-4o', 'gpt-4o-mini', 'gemini-2.5-flash'],
     global_feature_flags: {
       image_generation: true, web_search: true, blog_posting: true,
       email_templates: true, sms_sending: true, calendar_booking: true,
