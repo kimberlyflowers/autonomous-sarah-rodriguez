@@ -822,4 +822,73 @@ router.get('/agentic-executions', (req, res) => {
   res.json({ executions });
 });
 
+// ══ DOCUMENTS ══
+
+// GET /api/dashboard/documents - List all documents
+router.get('/documents', async (req, res) => {
+  try {
+    const sb = await getSupabase();
+    const { docType, status, limit = 50 } = req.query;
+
+    let q = sb.from('documents')
+      .select('id, title, doc_type, status, tags, requires_approval, approved_by, approved_at, metadata, created_at, updated_at')
+      .eq('org_id', ORG_ID)
+      .order('created_at', { ascending: false })
+      .limit(parseInt(limit));
+
+    if (docType) q = q.eq('doc_type', docType);
+    if (status) q = q.eq('status', status);
+
+    const { data, error } = await q;
+    if (error) throw error;
+
+    res.json({ documents: data || [], count: (data || []).length });
+  } catch (e) {
+    logger.error('Documents list failed:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/dashboard/documents/:id - Get full document with content
+router.get('/documents/:id', async (req, res) => {
+  try {
+    const sb = await getSupabase();
+    const { data, error } = await sb.from('documents')
+      .select('*')
+      .eq('id', req.params.id)
+      .single();
+    if (error) throw error;
+    res.json(data);
+  } catch (e) {
+    logger.error('Document fetch failed:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PATCH /api/dashboard/documents/:id - Update document status (approve/reject/archive)
+router.patch('/documents/:id', async (req, res) => {
+  try {
+    const sb = await getSupabase();
+    const { status } = req.body;
+    const updates = { status, updated_at: new Date().toISOString() };
+
+    if (status === 'approved') {
+      updates.approved_by = '823e2fb5-2f8f-4279-9c84-c8f4bf78bcce'; // Kimberly's UUID
+      updates.approved_at = new Date().toISOString();
+    }
+
+    const { data, error } = await sb.from('documents')
+      .update(updates)
+      .eq('id', req.params.id)
+      .select('id, title, status, approved_at')
+      .single();
+    if (error) throw error;
+
+    res.json({ success: true, document: data });
+  } catch (e) {
+    logger.error('Document update failed:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 export default router;

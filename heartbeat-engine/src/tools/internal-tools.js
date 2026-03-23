@@ -546,6 +546,57 @@ ONLY skip when:
     },
     category: "scheduling",
     operation: "write"
+  },
+
+  // DOCUMENT TOOLS
+  bloom_create_document: {
+    name: "bloom_create_document",
+    description: "Create and save a document/artifact for Kimberly to review. Use for drafts, reports, research findings, response collections, content pieces, or any structured output that needs to be saved and reviewed. Documents appear in the dashboard under Documents. Supports markdown formatting in content.",
+    parameters: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Document title — clear and descriptive (e.g. 'Question Responses Sarah — March 23 2026')" },
+        content: { type: "string", description: "Full document content. Supports markdown formatting (headers, bold, lists, links, etc.)" },
+        docType: { type: "string", enum: ["draft", "report", "research", "responses", "content", "plan", "general"], description: "Type of document" },
+        tags: { type: "array", items: { type: "string" }, description: "Tags for organization (e.g. ['quora', 'forum-responses', 'bloom-marketing'])" },
+        requiresApproval: { type: "boolean", description: "If true, flags this document as needing Kimberly's approval before any action is taken", default: false }
+      },
+      required: ["title", "content", "docType"]
+    },
+    category: "documents",
+    operation: "write"
+  },
+
+  bloom_list_documents: {
+    name: "bloom_list_documents",
+    description: "List saved documents with optional filters by type, status, or tags.",
+    parameters: {
+      type: "object",
+      properties: {
+        docType: { type: "string", enum: ["draft", "report", "research", "responses", "content", "plan", "general"], description: "Filter by document type" },
+        status: { type: "string", enum: ["draft", "approved", "rejected", "archived"], description: "Filter by status" },
+        limit: { type: "number", description: "Max documents to return", default: 20 }
+      }
+    },
+    category: "documents",
+    operation: "read"
+  },
+
+  bloom_update_document: {
+    name: "bloom_update_document",
+    description: "Update an existing document's content, status, or metadata.",
+    parameters: {
+      type: "object",
+      properties: {
+        documentId: { type: "string", description: "Document ID to update" },
+        content: { type: "string", description: "Updated content (replaces existing)" },
+        status: { type: "string", enum: ["draft", "approved", "rejected", "archived"], description: "New status" },
+        title: { type: "string", description: "Updated title" }
+      },
+      required: ["documentId"]
+    },
+    category: "documents",
+    operation: "write"
   }
 };
 
@@ -1379,6 +1430,101 @@ export const internalToolExecutors = {
       return { success: true, message: `Deleted task ${params.taskId}` };
     } catch (e) {
       logger.error('bloom_delete_scheduled_task failed:', e.message);
+      return { success: false, error: e.message };
+    }
+  },
+
+  // DOCUMENT TOOLS
+  bloom_create_document: async (params) => {
+    try {
+      const { createClient } = await import('@supabase/supabase-js');
+      const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
+        auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+      });
+
+      const row = {
+        org_id: 'a1000000-0000-0000-0000-000000000001',
+        agent_id: 'c3000000-0000-0000-0000-000000000003',
+        title: params.title,
+        content: params.content,
+        doc_type: params.docType || 'general',
+        status: 'draft',
+        tags: params.tags || [],
+        requires_approval: params.requiresApproval || false,
+        metadata: params.metadata || {}
+      };
+
+      const { data, error } = await supabase.from('documents').insert(row).select('id, title, doc_type, status, requires_approval, created_at').single();
+      if (error) throw new Error(error.message);
+
+      logger.info('Document created', { docId: data.id, title: data.title, requiresApproval: data.requires_approval });
+
+      return {
+        success: true,
+        documentId: data.id,
+        title: data.title,
+        docType: data.doc_type,
+        status: data.status,
+        requiresApproval: data.requires_approval,
+        createdAt: data.created_at,
+        message: data.requires_approval
+          ? `Document "${data.title}" saved and flagged for Kimberly's approval.`
+          : `Document "${data.title}" saved successfully.`
+      };
+    } catch (e) {
+      logger.error('bloom_create_document failed:', e.message);
+      return { success: false, error: e.message };
+    }
+  },
+
+  bloom_list_documents: async (params) => {
+    try {
+      const { createClient } = await import('@supabase/supabase-js');
+      const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
+        auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+      });
+
+      let q = supabase.from('documents')
+        .select('id, title, doc_type, status, tags, requires_approval, created_at, updated_at')
+        .eq('org_id', 'a1000000-0000-0000-0000-000000000001')
+        .order('created_at', { ascending: false })
+        .limit(params.limit || 20);
+
+      if (params.docType) q = q.eq('doc_type', params.docType);
+      if (params.status) q = q.eq('status', params.status);
+
+      const { data, error } = await q;
+      if (error) throw new Error(error.message);
+
+      return { success: true, documents: data || [], count: (data || []).length };
+    } catch (e) {
+      logger.error('bloom_list_documents failed:', e.message);
+      return { success: false, error: e.message };
+    }
+  },
+
+  bloom_update_document: async (params) => {
+    try {
+      const { createClient } = await import('@supabase/supabase-js');
+      const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
+        auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+      });
+
+      const updates = { updated_at: new Date().toISOString() };
+      if (params.content) updates.content = params.content;
+      if (params.status) updates.status = params.status;
+      if (params.title) updates.title = params.title;
+
+      const { data, error } = await supabase.from('documents')
+        .update(updates)
+        .eq('id', params.documentId)
+        .select('id, title, status, updated_at')
+        .single();
+      if (error) throw new Error(error.message);
+
+      return { success: true, document: data, message: `Document "${data.title}" updated.` };
+    } catch (e) {
+      logger.error('bloom_update_document failed:', e.message);
       return { success: false, error: e.message };
     }
   }

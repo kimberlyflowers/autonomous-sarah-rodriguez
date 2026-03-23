@@ -2513,6 +2513,152 @@ function BusinessProfilePage({c,mob,userImg,setUserImg,meInitial="U"}){
   );
 }
 
+function DocsPage({c,mob,aFN="Sarah"}){
+  const [docs,setDocs]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [selectedDoc,setSelectedDoc]=useState(null);
+  const [docContent,setDocContent]=useState(null);
+  const [filter,setFilter]=useState("all");
+
+  useEffect(()=>{
+    const go=async()=>{
+      try{
+        const r=await fetch("/api/dashboard/documents");
+        if(r.ok){const d=await r.json();setDocs(d.documents||[]);}
+      }catch{}
+      setLoading(false);
+    };
+    go();
+  },[]);
+
+  const openDoc=async(id)=>{
+    try{
+      const r=await fetch(`/api/dashboard/documents/${id}`);
+      if(r.ok){const d=await r.json();setDocContent(d);setSelectedDoc(id);}
+    }catch{}
+  };
+
+  const updateStatus=async(id,status)=>{
+    try{
+      const r=await fetch(`/api/dashboard/documents/${id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status})});
+      if(r.ok){
+        setDocs(prev=>prev.map(d=>d.id===id?{...d,status,approved_at:status==="approved"?new Date().toISOString():d.approved_at}:d));
+        if(docContent&&docContent.id===id)setDocContent({...docContent,status});
+      }
+    }catch{}
+  };
+
+  const filtered=filter==="all"?docs:docs.filter(d=>d.status===filter);
+  const counts={all:docs.length,draft:docs.filter(d=>d.status==="draft").length,approved:docs.filter(d=>d.status==="approved").length,rejected:docs.filter(d=>d.status==="rejected").length};
+  const needsApproval=docs.filter(d=>d.requires_approval&&d.status==="draft").length;
+
+  const statusColors={draft:"#f59e0b",approved:"#22c55e",rejected:"#ef4444",archived:"#94a3b8"};
+  const typeIcons={draft:"📝",report:"📊",research:"🔍",responses:"💬",content:"✍️",plan:"📋",general:"📄"};
+
+  if(selectedDoc&&docContent)return(
+    <div style={{padding:mob?"16px 12px 40px":"20px 20px 40px",maxWidth:900,margin:"0 auto"}}>
+      <button onClick={()=>{setSelectedDoc(null);setDocContent(null);}} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 14px",borderRadius:10,border:"1px solid "+c.ln,background:c.sf,cursor:"pointer",fontSize:13,fontWeight:600,color:c.so,marginBottom:16}}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+        Back to Documents
+      </button>
+
+      <div style={{background:c.cd,borderRadius:16,border:"1px solid "+c.ln,overflow:"hidden"}}>
+        <div style={{padding:"20px 24px",borderBottom:"1px solid "+c.ln,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
+          <div>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+              <span style={{fontSize:18}}>{typeIcons[docContent.doc_type]||"📄"}</span>
+              <h2 style={{fontSize:mob?18:22,fontWeight:700,color:c.tx,margin:0}}>{docContent.title}</h2>
+            </div>
+            <div style={{display:"flex",alignItems:"center",gap:12,fontSize:11,color:c.so}}>
+              <span style={{padding:"2px 8px",borderRadius:6,background:statusColors[docContent.status]+"20",color:statusColors[docContent.status],fontWeight:600,fontSize:11}}>{docContent.status.toUpperCase()}</span>
+              <span>{new Date(docContent.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'})}</span>
+              {docContent.requires_approval&&<span style={{color:"#f59e0b",fontWeight:600}}>REQUIRES APPROVAL</span>}
+            </div>
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            {docContent.status==="draft"&&(
+              <>
+                <button onClick={()=>updateStatus(docContent.id,"approved")} style={{padding:"8px 16px",borderRadius:10,border:"none",background:"#22c55e",color:"#fff",fontSize:13,fontWeight:600,cursor:"pointer"}}>Approve</button>
+                <button onClick={()=>updateStatus(docContent.id,"rejected")} style={{padding:"8px 16px",borderRadius:10,border:"1px solid #ef4444",background:"transparent",color:"#ef4444",fontSize:13,fontWeight:600,cursor:"pointer"}}>Reject</button>
+              </>
+            )}
+            {docContent.status!=="draft"&&(
+              <button onClick={()=>updateStatus(docContent.id,"draft")} style={{padding:"8px 16px",borderRadius:10,border:"1px solid "+c.ln,background:c.sf,color:c.so,fontSize:13,fontWeight:600,cursor:"pointer"}}>Reset to Draft</button>
+            )}
+          </div>
+        </div>
+
+        <div style={{padding:"24px",fontSize:14,lineHeight:1.7,color:c.tx,whiteSpace:"pre-wrap",fontFamily:"'Inter',system-ui,sans-serif"}}>
+          {docContent.content}
+        </div>
+
+        {docContent.tags&&docContent.tags.length>0&&(
+          <div style={{padding:"12px 24px 20px",borderTop:"1px solid "+c.ln,display:"flex",gap:6,flexWrap:"wrap"}}>
+            {docContent.tags.map((tag,i)=>(
+              <span key={i} style={{padding:"3px 10px",borderRadius:20,background:c.ac+"12",color:c.ac,fontSize:11,fontWeight:600}}>{tag}</span>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  return(
+    <div style={{padding:mob?"16px 12px 40px":"20px 20px 40px",maxWidth:900,margin:"0 auto"}}>
+      <div style={{marginBottom:20}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6,flexWrap:"wrap",gap:8}}>
+          <h1 style={{fontSize:mob?20:24,fontWeight:700,color:c.tx}}>Documents</h1>
+          {needsApproval>0&&(
+            <div style={{padding:"6px 14px",borderRadius:20,background:"#f59e0b20",color:"#f59e0b",fontSize:12,fontWeight:700,display:"flex",alignItems:"center",gap:6}}>
+              <span style={{width:8,height:8,borderRadius:"50%",background:"#f59e0b",animation:"pulse 1.5s ease infinite"}}/>
+              {needsApproval} awaiting approval
+            </div>
+          )}
+        </div>
+        <p style={{fontSize:13,color:c.so}}>{aFN}'s saved documents, drafts, and artifacts for your review</p>
+      </div>
+
+      <div style={{display:"flex",gap:4,marginBottom:16,background:c.sf,padding:3,borderRadius:10,flexWrap:"wrap"}}>
+        {[{k:"all",l:"All"},{k:"draft",l:"Drafts"},{k:"approved",l:"Approved"},{k:"rejected",l:"Rejected"}].map(f=>(
+          <button key={f.k} onClick={()=>setFilter(f.k)} style={{padding:"7px 14px",borderRadius:8,border:"none",cursor:"pointer",fontSize:12,fontWeight:600,background:filter===f.k?c.cd:"transparent",color:filter===f.k?c.tx:c.so,boxShadow:filter===f.k?"0 1px 4px rgba(0,0,0,.06)":"none"}}>
+            {f.l} ({counts[f.k]||0})
+          </button>
+        ))}
+      </div>
+
+      {loading?(
+        <div style={{textAlign:"center",padding:40,color:c.so,fontSize:13}}>Loading documents...</div>
+      ):filtered.length===0?(
+        <div style={{textAlign:"center",padding:60,color:c.so}}>
+          <div style={{fontSize:40,marginBottom:12}}>📄</div>
+          <div style={{fontSize:14,fontWeight:600,marginBottom:4}}>No documents yet</div>
+          <div style={{fontSize:12}}>When {aFN} creates documents or drafts, they'll appear here for your review.</div>
+        </div>
+      ):(
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {filtered.map(doc=>(
+            <div key={doc.id} onClick={()=>openDoc(doc.id)} style={{padding:"14px 18px",borderRadius:12,background:c.cd,border:"1px solid "+(doc.requires_approval&&doc.status==="draft"?("#f59e0b"+"50"):c.ln),cursor:"pointer",transition:"all .15s"}} onMouseEnter={e=>e.currentTarget.style.background=c.hv} onMouseLeave={e=>e.currentTarget.style.background=c.cd}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{fontSize:16}}>{typeIcons[doc.doc_type]||"📄"}</span>
+                  <span style={{fontSize:14,fontWeight:600,color:c.tx}}>{doc.title}</span>
+                </div>
+                <span style={{padding:"2px 8px",borderRadius:6,background:statusColors[doc.status]+"20",color:statusColors[doc.status],fontWeight:600,fontSize:11}}>{doc.status.toUpperCase()}</span>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:12,fontSize:11,color:c.so}}>
+                <span>{new Date(doc.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}</span>
+                <span>{doc.doc_type}</span>
+                {doc.requires_approval&&doc.status==="draft"&&<span style={{color:"#f59e0b",fontWeight:600}}>NEEDS APPROVAL</span>}
+                {doc.tags&&doc.tags.length>0&&<span>{doc.tags.join(", ")}</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function BillingPage({c,mob,aFN="Sarah"}){
   const [showEstimate,setShowEstimate]=useState(false);
   const currentPlan="enterprise";
@@ -3596,6 +3742,7 @@ function App({ authUser }) {
   const navTabs=[
     {k:"chat",l:"Chat",icon:ChatIcon},
     {k:"monitor",l:"Status",icon:StatusIcon},
+    {k:"docs",l:"Docs",icon:FilesIcon},
     {k:"activity",l:"Activity",icon:ActivityIcon},
     {k:"mobile",l:"Mobile",icon:CallsIcon},
   ];
@@ -5820,6 +5967,11 @@ function App({ authUser }) {
                 </div>
               </div>
             </div>
+          )}
+
+          {/* ══ DOCUMENTS ══ */}
+          {pg==="docs"&&(
+            <DocsPage c={c} mob={mob} aFN={aFN}/>
           )}
 
           {/* ══ BILLING ══ */}
