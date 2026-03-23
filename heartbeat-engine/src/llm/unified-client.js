@@ -2,13 +2,14 @@
 // BLOOM Unified LLM Client v2 — with Silent Failover Chain
 //
 // Supports: Anthropic (Claude), OpenAI (GPT), DeepSeek, Google (Gemini)
-// Failover: Claude → OpenAI → Gemini (silent, user never sees downtime)
-// 
+// Failover: Primary → next provider → next (silent, user NEVER sees downtime)
+//
 // Architecture:
 // - All providers normalize to Anthropic-style content blocks
 // - Gemini uses OpenAI-compatible endpoint (no new code path)
 // - callModel() for one-shot specialist calls
-// - Failover chain auto-activates on 429, 500, 502, 503, 504, 529 errors
+// - Failover chain auto-activates on ANY provider error:
+//   billing/credits, auth, rate limits, 4xx/5xx, timeouts, network failures
 // ═══════════════════════════════════════════════════════════════════════════
 
 import Anthropic from '@anthropic-ai/sdk';
@@ -68,15 +69,31 @@ const FAILOVER_CHAIN = [
 ];
 
 // Errors that trigger failover (not user errors, provider errors)
-const FAILOVER_STATUS_CODES = [429, 500, 502, 503, 504, 529];
+const FAILOVER_STATUS_CODES = [400, 401, 402, 403, 429, 500, 502, 503, 504, 529];
+
+// Error messages that should ALWAYS trigger failover (billing, auth, quota)
+const FAILOVER_ERROR_PATTERNS = [
+  'credit balance',         // Anthropic: credits depleted
+  'billing',                // Generic billing issues
+  'quota exceeded',         // Google/OpenAI quota
+  'insufficient_quota',     // OpenAI: out of credits
+  'rate limit',             // Rate limiting
+  'overloaded',             // Anthropic: overloaded
+  'api key',                // Invalid/revoked API key
+  'authentication',         // Auth failures
+  'unauthorized',           // 401-style errors
+  'not_found_error',        // Wrong model string
+  'timeout',                // Connection timeouts
+  'econnrefused',           // Provider down
+  'fetch failed',           // Network error
+  '503', '529',             // Status codes in text form
+];
 
 function shouldFailover(error) {
   const status = error?.status || error?.error?.status;
   if (FAILOVER_STATUS_CODES.includes(status)) return true;
-  const msg = error?.message?.toLowerCase() || '';
-  return msg.includes('overloaded') || msg.includes('rate limit') || 
-         msg.includes('503') || msg.includes('529') || msg.includes('timeout') ||
-         msg.includes('econnrefused') || msg.includes('fetch failed');
+  const msg = (error?.message || '').toLowerCase();
+  return FAILOVER_ERROR_PATTERNS.some(pattern => msg.includes(pattern));
 }
 
 // ── Token Pricing (per 1M tokens, USD) ────────────────────────────────────

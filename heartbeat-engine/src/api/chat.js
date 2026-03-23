@@ -3969,10 +3969,20 @@ async function callLLMWithRetry(params, maxRetries = 3, client = null) {
       const status = err?.status || err?.error?.status;
       const errMsg = err?.message || '';
 
-      // Don't retry on invalid_request_error (prompt too long, bad params) — retrying won't help
-      if (status === 400 || errMsg.includes('prompt is too long') || errMsg.includes('invalid_request_error')) {
+      // Don't retry on genuine request errors (prompt too long, bad params) — retrying won't help.
+      // BUT DO retry on billing/credit/auth errors — the failover chain can switch providers.
+      const isBillingOrAuth = errMsg.includes('credit balance') || errMsg.includes('billing') ||
+        errMsg.includes('quota') || errMsg.includes('insufficient') || errMsg.includes('unauthorized') ||
+        errMsg.includes('api key') || errMsg.includes('authentication');
+      if ((status === 400 || errMsg.includes('prompt is too long') || errMsg.includes('invalid_request_error')) && !isBillingOrAuth) {
         logger.error(`LLM API invalid request (not retryable): ${errMsg.slice(0, 200)}`);
         throw err;
+      }
+
+      // Billing/auth errors should trigger failover, not retry loops
+      if (isBillingOrAuth) {
+        logger.warn(`Provider billing/auth error detected, triggering failover: ${errMsg.slice(0, 200)}`);
+        throw err; // Let the unified client's failover chain handle this
       }
 
       // The unified client already handles failover for 429/529/5xx errors internally.
@@ -4007,7 +4017,9 @@ async function callAnthropicDirect(params, maxRetries = 2, client = null) {
     } catch (err) {
       const status = err?.status || err?.error?.status;
       const errMsg = err?.message || '';
-      if (status === 400 || errMsg.includes('prompt is too long') || errMsg.includes('invalid_request_error')) throw err;
+      const isBillingDirect = errMsg.includes('credit balance') || errMsg.includes('billing') || errMsg.includes('quota');
+      if ((status === 400 || errMsg.includes('prompt is too long') || errMsg.includes('invalid_request_error')) && !isBillingDirect) throw err;
+      if (isBillingDirect) throw err; // Propagate to caller — they should use the unified client with failover instead
       const isOverloaded = status === 529 || errMsg.includes('overloaded') || errMsg.includes('529');
       const isRateLimit = status === 429;
       if ((isOverloaded || isRateLimit) && attempt < maxRetries) {
