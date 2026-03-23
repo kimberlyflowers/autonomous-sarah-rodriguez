@@ -3591,16 +3591,6 @@ function App({ authUser }) {
     setTgLoading(false);
   };
 
-  const updateModel=async(newModel)=>{
-    if(!isOwner)return;
-    setModelSaving(true);
-    try{
-      const r=await fetch("/api/dashboard/model-config",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:newModel})});
-      if(r.ok){const d=await r.json();setModelConfig(prev=>({...prev,model:d.model,reason:'dashboard override'}));}
-    }catch{}
-    setModelSaving(false);
-  };
-
   const handleCSVFile=(file)=>{
     const reader=new FileReader();
     reader.onload=(e)=>{
@@ -3659,6 +3649,15 @@ function App({ authUser }) {
   const meInitial = meDisplayName.charAt(0).toUpperCase();
   const meRole = meProfile?.role || 'member';
   const isOwner = meRole === 'owner';
+  const updateModel=async(newModel)=>{
+    if(!isOwner)return;
+    setModelSaving(true);
+    try{
+      const r=await fetch("/api/dashboard/model-config",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:newModel})});
+      if(r.ok){const d=await r.json();setModelConfig(prev=>({...prev,model:d.model,reason:'dashboard override'}));}
+    }catch{}
+    setModelSaving(false);
+  };
   const meOrgName = meProfile?.orgName || null;
   const meOrgLogo = meProfile?.orgLogoUrl || null;
 
