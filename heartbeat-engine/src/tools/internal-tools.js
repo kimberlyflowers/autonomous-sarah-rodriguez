@@ -212,7 +212,7 @@ export const internalToolDefinitions = {
 3. Only ONE step may be 'in_progress' at a time.
 4. NEVER batch-complete steps — complete them one at a time.
 5. Mark 'completed' ONLY after verification confirms success.
-6. ALWAYS include a final 'Verify all steps completed successfully' step.
+6. Do NOT include a separate 'Verify' step — verify WITHIN each step. When the last real step completes, the task is done.
 
 ## VERIFICATION RULES (Ralph Pattern):
 - Every step MUST have success_criteria describing what "done" looks like.

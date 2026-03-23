@@ -161,7 +161,7 @@ Every step MUST include:
 - success_criteria: What "done" looks like in concrete terms (e.g., "Contact exists in GHL with matching email")
 - verification_method: How you'll verify it ('api_check', 'result_check', 'llm_judgment')
 
-ALWAYS include a final step: "Verify all steps completed successfully"
+Do NOT include a separate "Verify" step — verification happens WITHIN each step. When the last real step completes, the task is done.
 Keep content and activeForm concise (under 60 chars). activeForm is shown in real-time to the user.
 
 Call task_progress with ALL steps set to "pending", then IMMEDIATELY start Step 1.

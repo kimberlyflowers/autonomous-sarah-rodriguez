@@ -822,7 +822,7 @@ Every step MUST include:
 - \`success_criteria\`: What "done" looks like in concrete terms
 - \`verification_method\`: How you'll verify it ('api_check', 'result_check', 'llm_judgment')
 - \`activeForm\`: Present-tense description (e.g., "Creating contact in GHL")
-ALWAYS include a final step: "Verify all steps completed successfully"
+Do NOT include a separate "Verify" step — verification happens WITHIN each step. When the last real step completes, the task is done.
 
 ### Step 3: EXECUTE (One step at a time)
 - Mark the current step \`in_progress\` via \`bloom_todo_write\` BEFORE starting it

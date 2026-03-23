@@ -1181,7 +1181,7 @@ export const ghlToolDefinitions = {
 
   ghl_create_blog_post: {
     name: "ghl_create_blog_post",
-    description: "Create a blog post using the LOCKED BLOOM template. Pass structured data (title, subtitle, intro, sections array) — the handler auto-assembles the HTML. Do NOT pass raw HTML in content — use the structured fields instead. Always draft first.",
+    description: "Create a blog post using the LOCKED BLOOM template. Pass structured data (title, subtitle, intro, sections array) — the handler auto-assembles the HTML. Do NOT pass raw HTML in content — use the structured fields instead. Do NOT pass slug, author, or categories — these fields are NOT accepted by the API. Always draft first.",
     parameters: {
       type: "object",
       properties: {
@@ -1212,11 +1212,11 @@ export const ghlToolDefinitions = {
         ctaHeadline: { type: "string", description: "CTA card headline (connect to blog topic). Default: 'Ready to Transform Your Operations?'" },
         ctaBody: { type: "string", description: "CTA card body text (1-2 sentences)" },
         imageUrl: { type: "string", description: "Hero image URL from image_generate" },
-        slug: { type: "string", description: "URL slug (lowercase, hyphenated, keyword-rich)" },
-        metaDescription: { type: "string", description: "SEO meta description (150-160 chars)" },
-        keywords: { type: "string", description: "Comma-separated SEO keywords" },
-        status: { type: "string", enum: ["draft", "published"], description: "Always 'draft' unless told to publish" },
-        tags: { type: "array", items: { type: "string" }, description: "Blog tags/categories" }
+        metaDescription: { type: "string", description: "SEO meta description (150-160 chars) — used as the blog description field" },
+        keywords: { type: "string", description: "Comma-separated SEO keywords — used in meta tags in the HTML template" },
+        altText: { type: "string", description: "Alt text for the hero image (SEO)" },
+        status: { type: "string", enum: ["DRAFT", "PUBLISHED"], description: "Always 'DRAFT' unless told to publish. Must be UPPERCASE." },
+        scheduledDate: { type: "string", description: "ISO date for scheduled publishing (e.g. 2026-03-24T10:00:00-06:00)" }
       },
       required: ["title", "sections"]
     },
@@ -1777,7 +1777,8 @@ export const ghlExecutors = {
   },
 
   // POST /blogs/posts — create a blog post (GHL API v2: blogId goes in the body, not URL path)
-  // GHL required fields: title, description, rawHTML, slug, author, categories, status (UPPERCASE), blogId
+  // GHL Blog API v2 POST /blogs/posts accepted fields: blogId, locationId, title, description, rawHTML, status, imageUrl, imageAltText, scheduledDate
+  // slug, author, categories are NOT accepted — they cause 400 errors. Strip them from params if LLM sends them.
   // If params.sections is provided, assembles HTML from locked template automatically.
   ghl_create_blog_post: async (params) => {
     // Validate required fields before making any API calls
@@ -1821,22 +1822,24 @@ export const ghlExecutors = {
     // - categories (array of category ID strings, required — can be empty [])
     // - imageUrl (string — featured/cover image)
     // - imageAltText (string — SEO alt text for cover image)
+    // GHL Blog API v2 accepted fields ONLY: blogId, locationId, title, description,
+    // rawHTML, status, imageUrl, imageAltText, scheduledDate.
+    // slug, author, categories are NOT accepted and cause 400 errors.
     const ghlPayload = {
       locationId,
       blogId,
       title: params.title,
       description: params.metaDescription || params.description || params.title,
       rawHTML,
-      slug: params.slug || params.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''),
-      status: (params.status || 'draft').toUpperCase(),
-      author: params.author || {
-        name: 'Bloomie Staffing',
-        profileImage: ''
-      },
-      categories: params.categories || params.tags || [],
+      status: (params.status || 'DRAFT').toUpperCase(),
       imageUrl: params.imageUrl || '',
       imageAltText: params.altText || params.title
     };
+
+    // Only include scheduledDate if provided (for scheduled posts)
+    if (params.scheduledDate) {
+      ghlPayload.scheduledDate = params.scheduledDate;
+    }
 
     logger.info('GHL blog payload', { title: ghlPayload.title, status: ghlPayload.status, slug: ghlPayload.slug, hasHTML: !!ghlPayload.rawHTML });
 
