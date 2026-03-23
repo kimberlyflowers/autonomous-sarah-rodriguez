@@ -982,4 +982,49 @@ router.put('/model-config', async (req, res) => {
   }
 });
 
+// ── Image Engine Config ──
+// Controls which image generation engine (gpt, gemini, auto) is used per content type
+router.get('/image-engine-config', async (req, res) => {
+  try {
+    const sb = await getSupabase();
+    const { data } = await sb.from('bloom_admin_settings').select('image_engine_config').not('id', 'is', null).single();
+    res.json(data?.image_engine_config || { blog: 'gemini', flyer: 'gpt', website: 'gemini', social: 'auto', email: 'auto', default: 'auto' });
+  } catch (e) {
+    logger.error('Image engine config fetch failed:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.put('/image-engine-config', async (req, res) => {
+  try {
+    const config = req.body;
+    const validEngines = ['auto', 'gpt', 'gemini'];
+    const validKeys = ['blog', 'flyer', 'website', 'social', 'email', 'default'];
+
+    // Validate
+    for (const [key, val] of Object.entries(config)) {
+      if (!validKeys.includes(key)) return res.status(400).json({ error: `Invalid key: ${key}. Allowed: ${validKeys.join(', ')}` });
+      if (!validEngines.includes(val)) return res.status(400).json({ error: `Invalid engine for ${key}: ${val}. Allowed: ${validEngines.join(', ')}` });
+    }
+
+    const sb = await getSupabase();
+    // Merge with existing config so partial updates work
+    const { data: existing } = await sb.from('bloom_admin_settings').select('image_engine_config').not('id', 'is', null).single();
+    const merged = { ...(existing?.image_engine_config || {}), ...config };
+
+    const { data, error } = await sb.from('bloom_admin_settings')
+      .update({ image_engine_config: merged, updated_at: new Date().toISOString(), updated_by: 'dashboard' })
+      .not('id', 'is', null)
+      .select('image_engine_config')
+      .single();
+    if (error) throw error;
+
+    logger.info('Image engine config updated via dashboard', { config: merged });
+    res.json({ success: true, config: data.image_engine_config });
+  } catch (e) {
+    logger.error('Image engine config update failed:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 export default router;

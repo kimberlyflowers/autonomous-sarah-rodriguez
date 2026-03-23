@@ -27,7 +27,7 @@ STYLE: Professional editorial photography. Corporate yet approachable. Warm, opt
 TECHNICAL: Natural window light from the side creating gentle shadows and warm golden glow. Soft bokeh background. Sharp focus on subject. High quality, 8K detail. NOT an illustration, NOT a cartoon, NOT digital art, NOT 3D render — must look like a real photograph by a professional photographer.
 ```
 - Size: `1536x1024` (landscape)
-- Engine: `gemini` — ALWAYS use Gemini (Nano Banana) for blog hero images. It produces the photorealistic style with real people that matches our brand. Do NOT use `auto` or `gpt`.
+- Engine: `auto` — The system automatically selects the best engine based on the admin's dashboard configuration (Settings > Image Engine). Default for blogs is Gemini (Nano Banana) for photorealistic people shots. The admin can change this at any time.
 - Quality: `high`
 - Save the returned image URL.
 

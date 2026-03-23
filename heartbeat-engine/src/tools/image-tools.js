@@ -154,6 +154,28 @@ export const imageToolDefinitions = {
 
 // ── TOOL EXECUTORS ───────────────────────────────────────────────────────
 
+// Cache for admin image engine config (refreshes every 60s)
+let _engineConfigCache = null;
+let _engineConfigCacheTime = 0;
+const ENGINE_CONFIG_TTL = 60000; // 60 seconds
+
+async function getImageEngineConfig() {
+  if (_engineConfigCache && (Date.now() - _engineConfigCacheTime < ENGINE_CONFIG_TTL)) {
+    return _engineConfigCache;
+  }
+  try {
+    const { createClient } = await import('@supabase/supabase-js');
+    const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const { data } = await sb.from('bloom_admin_settings').select('image_engine_config').not('id', 'is', null).single();
+    _engineConfigCache = data?.image_engine_config || {};
+    _engineConfigCacheTime = Date.now();
+    return _engineConfigCache;
+  } catch(e) {
+    logger.warn('Failed to load image engine config:', e.message);
+    return {};
+  }
+}
+
 export const imageToolExecutors = {
   image_generate: async (params) => {
     const engine = params.engine || 'auto';
@@ -166,17 +188,34 @@ export const imageToolExecutors = {
     const hasReferenceImage = !!(params.reference_image_url || params.reference_image_base64);
     let useEngine = engine;
     if (engine === 'auto') {
-      if (hasReferenceImage && getGeminiKey()) {
-        // Reference image provided → prefer Gemini (Nano Banana) for character consistency
-        // GPT generation endpoint doesn't support reference images natively
-        useEngine = 'gemini';
-        logger.info('Auto-routing to Gemini for character consistency (reference image provided)');
-      } else if (getOpenAIKey()) {
-        useEngine = 'gpt';
-      } else if (getGeminiKey()) {
-        useEngine = 'gemini';
-      } else {
-        return { success: false, error: 'No image generation API key configured. Set OPENAI_API_KEY or GEMINI_API_KEY.' };
+      // Check admin image engine config for content-type-specific preferences
+      const engineConfig = await getImageEngineConfig();
+      const contentType = params._contentType || params._context || null;  // e.g., 'blog', 'flyer', 'website', 'social', 'email'
+      const configuredEngine = (contentType && engineConfig[contentType]) || engineConfig.default || null;
+
+      if (configuredEngine && configuredEngine !== 'auto') {
+        // Admin has configured a specific engine for this content type
+        const keyAvailable = configuredEngine === 'gpt' ? getOpenAIKey() : getGeminiKey();
+        if (keyAvailable) {
+          useEngine = configuredEngine;
+          logger.info(`Auto-routing to ${configuredEngine} per admin config`, { contentType, configuredEngine });
+        } else {
+          logger.warn(`Admin config says ${configuredEngine} for ${contentType} but no API key — falling back`);
+        }
+      }
+
+      // If still auto, apply default logic
+      if (useEngine === 'auto') {
+        if (hasReferenceImage && getGeminiKey()) {
+          useEngine = 'gemini';
+          logger.info('Auto-routing to Gemini for character consistency (reference image provided)');
+        } else if (getOpenAIKey()) {
+          useEngine = 'gpt';
+        } else if (getGeminiKey()) {
+          useEngine = 'gemini';
+        } else {
+          return { success: false, error: 'No image generation API key configured. Set OPENAI_API_KEY or GEMINI_API_KEY.' };
+        }
       }
     }
 

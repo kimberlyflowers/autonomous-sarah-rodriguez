@@ -4054,6 +4054,19 @@ async function chatWithAgent(userMessage, history, agentConfig, sessionId = null
   const agentClient = getAnthropicClient(agentConfig);
   let systemPrompt = buildSystemPrompt(agentConfig);
 
+  // Check feature flags — strip disabled features from prompt
+  try {
+    const { createClient } = await import('@supabase/supabase-js');
+    const sbFlags = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const { data: flagRow } = await sbFlags.from('bloom_admin_settings').select('global_feature_flags').not('id', 'is', null).single();
+    const flags = flagRow?.global_feature_flags || {};
+    if (flags.desktop_control === false) {
+      // Strip Desktop/bloom_* sections from system prompt
+      systemPrompt = systemPrompt.replace(/MODE 2 — USER'S COMPUTER[\s\S]*?BLOOM DESKTOP PERMISSION RULES:[\s\S]*?ask each time\.\n.*?BLOOM Desktop app instead\?"\n/g, '');
+      logger.info('Desktop control disabled — stripped from system prompt');
+    }
+  } catch(e) { logger.warn('Feature flag check failed:', e.message); }
+
   // Inject brand kit if available
   try {
     const { createClient } = await import('@supabase/supabase-js');
@@ -4714,6 +4727,17 @@ NEVER skip steps 3 and 4 even if step 2 fails.
             if (block.input.image_url || block.input.image_base64) {
               logger.info('Auto-injected image into image_resize');
             }
+          }
+
+          // Auto-tag content type for image engine routing (dashboard config)
+          if (block.name === 'image_generate' && !block.input._contentType) {
+            const prompt = (block.input.prompt || '').toLowerCase();
+            if (/blog|article|post|hero image for/.test(prompt)) block.input._contentType = 'blog';
+            else if (/flyer|brochure|poster|print/.test(prompt)) block.input._contentType = 'flyer';
+            else if (/website|landing page|web page|banner/.test(prompt)) block.input._contentType = 'website';
+            else if (/social|instagram|facebook|linkedin|twitter|tiktok/.test(prompt)) block.input._contentType = 'social';
+            else if (/email|newsletter/.test(prompt)) block.input._contentType = 'email';
+            if (block.input._contentType) logger.info('Auto-tagged image content type', { contentType: block.input._contentType });
           }
 
           if (block.name === 'image_generate' && !block.input.reference_image_url && !block.input.reference_image_base64 && !block.input.no_reference) {

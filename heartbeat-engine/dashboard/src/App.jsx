@@ -3576,10 +3576,15 @@ function App({ authUser }) {
   const [modelConfig,setModelConfig]=useState(null);
   const [modelSaving,setModelSaving]=useState(false);
 
-  // Fetch trust gate status + model config on mount
+  // ── IMAGE ENGINE CONFIG STATE ──
+  const [imgEngineConfig,setImgEngineConfig]=useState(null);
+  const [imgEngineSaving,setImgEngineSaving]=useState(false);
+
+  // Fetch trust gate status + model config + image engine config on mount
   useEffect(()=>{
     fetch("/api/dashboard/trust-gate-status").then(r=>r.ok?r.json():null).then(d=>{if(d)setTgEnabled(d.enabled)}).catch(()=>{});
     fetch("/api/dashboard/model-config").then(r=>r.ok?r.json():null).then(d=>{if(d)setModelConfig(d)}).catch(()=>{});
+    fetch("/api/dashboard/image-engine-config").then(r=>r.ok?r.json():null).then(d=>{if(d)setImgEngineConfig(d)}).catch(()=>{});
   },[]);
 
   const toggleTrustGate=async()=>{
@@ -3657,6 +3662,15 @@ function App({ authUser }) {
       if(r.ok){const d=await r.json();setModelConfig(prev=>({...prev,model:d.model,reason:'dashboard override'}));}
     }catch{}
     setModelSaving(false);
+  };
+  const updateImgEngine=async(contentType,engine)=>{
+    if(!isOwner)return;
+    setImgEngineSaving(true);
+    try{
+      const r=await fetch("/api/dashboard/image-engine-config",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({[contentType]:engine})});
+      if(r.ok){const d=await r.json();setImgEngineConfig(d.config);}
+    }catch{}
+    setImgEngineSaving(false);
   };
   const meOrgName = meProfile?.orgName || null;
   const meOrgLogo = meProfile?.orgLogoUrl || null;
@@ -6096,6 +6110,37 @@ function App({ authUser }) {
                             </>
                           ):(
                             <div style={{fontSize:12,color:c.so}}>Loading model config...</div>
+                          )}
+                        </div>
+                      </div>
+                      <div style={{marginBottom:28}}>
+                        <div style={{padding:"14px 16px",borderRadius:12,background:c.cd,border:"1px solid "+c.ln}}>
+                          <div style={{fontSize:14,fontWeight:700,color:c.tx,marginBottom:10}}>Image Generation Engines</div>
+                          <div style={{fontSize:11,color:c.so,marginBottom:12}}>Choose which AI engine generates images for each content type. GPT = best for flyers/graphics with text. Gemini = best for photorealistic people shots.</div>
+                          {imgEngineConfig?(<>
+                            {[
+                              {key:'blog',label:'Blog Hero Images'},
+                              {key:'flyer',label:'Flyers & Print'},
+                              {key:'website',label:'Website & Landing Pages'},
+                              {key:'social',label:'Social Media'},
+                              {key:'email',label:'Email'},
+                              {key:'default',label:'Everything Else'}
+                            ].map(({key:k,label:l})=>(
+                              <div key={k} style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+                                <div style={{fontSize:12,color:c.tx}}>{l}</div>
+                                {isOwner?(
+                                  <select value={imgEngineConfig[k]||'auto'} onChange={e=>updateImgEngine(k,e.target.value)} disabled={imgEngineSaving} style={{padding:"4px 8px",borderRadius:6,border:"1px solid "+c.ln,background:c.cd,fontSize:11,color:c.tx,cursor:imgEngineSaving?"wait":"pointer",minWidth:100}}>
+                                    <option value="auto">Auto</option>
+                                    <option value="gpt">GPT Image</option>
+                                    <option value="gemini">Gemini / Nano Banana</option>
+                                  </select>
+                                ):(
+                                  <div style={{fontSize:11,color:c.so,fontStyle:"italic"}}>{imgEngineConfig[k]||'auto'}</div>
+                                )}
+                              </div>
+                            ))}
+                          </>):(
+                            <div style={{fontSize:12,color:c.so}}>Loading...</div>
                           )}
                         </div>
                       </div>
