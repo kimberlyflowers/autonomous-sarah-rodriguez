@@ -100,6 +100,26 @@ async function callGHL(endpoint, method = 'GET', data = null, params = {}, orgId
     const errorData = error.response?.data;
     const errorMsg = errorData?.message || errorData?.msg || error.message;
     const errorDetail = JSON.stringify(errorData || {});
+
+    // ── AUTO-REFRESH on 401/403 (expired OAuth token) ──
+    if ((status === 401 || status === 403) && orgId) {
+      logger.warn(`GHL token expired for org ${orgId} — clearing cache and retrying once`);
+      _orgCredCache.delete(orgId);  // Force fresh credential lookup
+      const freshCreds = await getOrgGHLCredentials(orgId);
+      if (freshCreds?.apiKey && freshCreds.apiKey !== apiKey) {
+        // Got a different (refreshed) token — retry the request
+        config.headers['Authorization'] = `Bearer ${freshCreds.apiKey}`;
+        if (freshCreds.locationId) config.params.locationId = freshCreds.locationId;
+        try {
+          const retryResp = await axios(config);
+          logger.info(`GHL API retry success: ${method} ${endpoint}`, { status: retryResp.status });
+          return retryResp.data;
+        } catch (retryErr) {
+          logger.error(`GHL API retry also failed: ${method} ${endpoint}`, { status: retryErr.response?.status });
+        }
+      }
+    }
+
     logger.error(`GHL API error: ${method} ${endpoint} [${status}]`, {
       errorData,
       errorMsg,
@@ -142,6 +162,16 @@ async function discoverBlogId(locationId) {
   }
 }
 
+// ── HTML ESCAPE — prevent XSS in user/LLM-supplied blog content ──────
+function esc(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 // ── LOCKED BLOG TEMPLATE ASSEMBLER ─────────────────────────────────────
 // Sarah provides structured data, this function assembles the final HTML.
 // She NEVER touches CSS or HTML structure directly.
@@ -159,22 +189,22 @@ function assembleBlogHTML(data) {
   const kw = keywords || 'AI employee, business automation';
   const metaDesc = metaDescription || '';
 
-  // Build section HTML
+  // Build section HTML (all text fields escaped to prevent XSS)
   const sectionsHTML = (sections || []).map((s, i) => {
-    let html = `    <h2>${s.heading}</h2>\n`;
+    let html = `    <h2>${esc(s.heading)}</h2>\n`;
     // Paragraphs
     if (s.paragraphs) {
       const paras = Array.isArray(s.paragraphs) ? s.paragraphs : [s.paragraphs];
-      paras.forEach(p => { html += `    <p>${p}</p>\n`; });
+      paras.forEach(p => { html += `    <p>${esc(p)}</p>\n`; });
     }
     // Highlight callout
     if (s.highlight) {
-      html += `    <div class="highlight">\n      <strong>${s.highlightLabel || 'The impact:'}</strong> ${s.highlight}\n    </div>\n`;
+      html += `    <div class="highlight">\n      <strong>${esc(s.highlightLabel || 'The impact:')}</strong> ${esc(s.highlight)}\n    </div>\n`;
     }
     // Bullet list
     if (s.bullets && s.bullets.length > 0) {
       html += `    <ul>\n`;
-      s.bullets.forEach(b => { html += `      <li>${b}</li>\n`; });
+      s.bullets.forEach(b => { html += `      <li>${esc(b)}</li>\n`; });
       html += `    </ul>\n`;
     }
     return html;
@@ -185,27 +215,27 @@ function assembleBlogHTML(data) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title} | ${company}</title>
-  <meta name="description" content="${metaDesc}">
-  <meta name="keywords" content="${kw}">
-  <meta property="og:title" content="${title}">
-  <meta property="og:description" content="${metaDesc}">
-  <meta property="og:image" content="${heroImageUrl || ''}">
+  <title>${esc(title)} | ${esc(company)}</title>
+  <meta name="description" content="${esc(metaDesc)}">
+  <meta name="keywords" content="${esc(kw)}">
+  <meta property="og:title" content="${esc(title)}">
+  <meta property="og:description" content="${esc(metaDesc)}">
+  <meta property="og:image" content="${esc(heroImageUrl || '')}">
   <meta property="og:type" content="article">
   <meta name="twitter:card" content="summary_large_image">
-  <link rel="canonical" href="${canonical}">
+  <link rel="canonical" href="${esc(canonical)}">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
     "@type": "BlogPosting",
-    "headline": "${title}",
-    "description": "${metaDesc}",
-    "image": "${heroImageUrl || ''}",
-    "author": { "@type": "Organization", "name": "${company}" },
-    "publisher": { "@type": "Organization", "name": "${company}" },
+    "headline": "${esc(title)}",
+    "description": "${esc(metaDesc)}",
+    "image": "${esc(heroImageUrl || '')}",
+    "author": { "@type": "Organization", "name": "${esc(company)}" },
+    "publisher": { "@type": "Organization", "name": "${esc(company)}" },
     "datePublished": "${isoDate}",
-    "mainEntityOfPage": { "@type": "WebPage", "@id": "${canonical}" }
+    "mainEntityOfPage": { "@type": "WebPage", "@id": "${esc(canonical)}" }
   }
   </script>
   <style>
@@ -249,22 +279,22 @@ function assembleBlogHTML(data) {
 </head>
 <body>
   <header>
-    <h1>${title}</h1>
-    <p class="subtitle">${subtitle || ''}</p>
+    <h1>${esc(title)}</h1>
+    <p class="subtitle">${esc(subtitle || '')}</p>
   </header>
 
-  <img src="${heroImageUrl || ''}" alt="${altText || title}" class="hero-image">
+  <img src="${esc(heroImageUrl || '')}" alt="${esc(altText || title)}" class="hero-image">
 
   <div class="content">
     <div class="intro">
-      ${intro || ''}
+      ${esc(intro || '')}
     </div>
 
 ${sectionsHTML}
 
     <div class="cta-section">
-      <h3>${ctaHeadline || 'Ready to Transform Your Operations?'}</h3>
-      <p>${ctaBody || 'See how AI automation can streamline your workflows and cut costs without cutting corners.'}</p>
+      <h3>${esc(ctaHeadline || 'Ready to Transform Your Operations?')}</h3>
+      <p>${esc(ctaBody || 'See how AI automation can streamline your workflows and cut costs without cutting corners.')}</p>
       <div class="cta-buttons">
         <a href="tel:+18005551234" class="cta-btn cta-primary">Call Us Now</a>
         <a href="https://bloomie.ai/demo" class="cta-btn cta-secondary">Schedule a Demo</a>
@@ -1775,6 +1805,14 @@ export const ghlExecutors = {
   // GHL required fields: title, description, rawHTML, slug, author, categories, status (UPPERCASE)
   // If params.sections is provided, assembles HTML from locked template automatically.
   ghl_create_blog_post: async (params) => {
+    // Validate required fields before making any API calls
+    if (!params.title || !String(params.title).trim()) {
+      return { _status: 'FAILED', _message: 'BLOG POST FAILED: title is required and cannot be empty. Please provide a blog title.' };
+    }
+    if (params.sections && Array.isArray(params.sections) && params.sections.length === 0) {
+      return { _status: 'FAILED', _message: 'BLOG POST FAILED: sections array is empty. Provide at least one section with heading and paragraphs.' };
+    }
+
     const blogId = params.blogId || process.env.GHL_BLOG_ID || 'DHQrtpkQ3Cp7c96FCyDu';
     const locationId = await resolveLocationId(params._orgId);
 

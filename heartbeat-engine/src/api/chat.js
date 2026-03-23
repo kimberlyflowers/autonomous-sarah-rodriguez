@@ -3081,20 +3081,36 @@ Use edit_artifact with find-and-replace operations to modify the existing page c
 
       const mimeMap = { text: 'text/plain', html: 'text/html', code: 'text/javascript', markdown: 'text/markdown' };
       const port = process.env.PORT || 3000;
-      const resp = await fetch(`http://localhost:${port}/api/files/artifacts`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: toolInput.name,
-          description: toolInput.description,
-          fileType: toolInput.fileType || 'markdown',
-          mimeType: mimeMap[toolInput.fileType] || 'text/markdown',
-          content: cleanContent,
-          sessionId: sessionId,
-          agentId: agentConfig?.agentId || null
-        })
+      // Retry artifact creation up to 2 times on transient failures
+      let data = null;
+      const artifactPayload = JSON.stringify({
+        name: toolInput.name,
+        description: toolInput.description,
+        fileType: toolInput.fileType || 'markdown',
+        mimeType: mimeMap[toolInput.fileType] || 'text/markdown',
+        content: cleanContent,
+        sessionId: sessionId,
+        agentId: agentConfig?.agentId || null
       });
-      const data = await resp.json();
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const resp = await fetch(`http://localhost:${port}/api/files/artifacts`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: artifactPayload
+          });
+          data = await resp.json();
+          if (data.success) break; // Success — stop retrying
+          if (attempt < 2) {
+            logger.warn(`create_artifact attempt ${attempt + 1} failed: ${data.error || 'unknown'} — retrying`);
+            await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+          }
+        } catch (fetchErr) {
+          logger.error(`create_artifact fetch error attempt ${attempt + 1}:`, fetchErr.message);
+          if (attempt < 2) await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+          else data = { success: false, error: `Fetch failed after 3 attempts: ${fetchErr.message}` };
+        }
+      }
       if (data.success) {
         // Build site URL for multi-page site linking
         const siteUrl = sessionId ? `/api/files/site/${sessionId}/${toolInput.name}` : null;
@@ -4158,10 +4174,23 @@ When a user asks you to edit, modify, or update something you previously created
       if (blogSkills.length > 0) {
         systemPrompt += `\n\n<skill name="${blogSkills[0].name}">\n${blogSkills[0].body}\n</skill>`;
         logger.info('Auto-injected blog skill into chat', { skill: blogSkills[0].name });
+      } else {
+        // Skill not found — inject minimal blog instructions as fallback
+        logger.warn('Blog skill not found in catalog — injecting minimal fallback');
+        systemPrompt += `\n\n<blog-fallback-instructions>
+When writing a blog post:
+1. FIRST call image_generate to create a hero image
+2. THEN call ghl_create_blog_post with structured data (title, sections[], intro, imageUrl)
+3. ALWAYS call create_artifact to save the blog as an HTML file (even if GHL fails)
+4. Include <!-- file:blog-slug.html --> in your response
+NEVER skip steps 3 and 4 even if step 2 fails.
+</blog-fallback-instructions>`;
       }
     }
   } catch(e) {
     logger.warn('Blog skill auto-injection failed:', e.message);
+    // Even if import fails, inject minimal instructions so Sarah doesn't abandon
+    systemPrompt += `\n\nIMPORTANT: When writing a blog, always: 1) generate hero image, 2) call ghl_create_blog_post, 3) call create_artifact to save HTML, 4) include <!-- file:name.html --> tag. Never skip step 3 even if step 2 fails.`;
   }
 
   const messages = [...history, { role: 'user', content: userMessage }];

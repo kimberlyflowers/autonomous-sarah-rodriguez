@@ -35,7 +35,7 @@ const PROVIDERS = {
   },
   openai: {
     name: 'OpenAI',
-    models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'o3-mini'],
+    models: ['gpt-4o', 'gpt-4o-mini', 'o3-mini'],
     envKey: 'OPENAI_API_KEY',
     baseUrl: 'https://api.openai.com/v1',
   },

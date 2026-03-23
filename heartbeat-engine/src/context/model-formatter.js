@@ -513,8 +513,9 @@ export class ModelSelector {
 
       default:
         // Standard selection - balance capability and cost
-        return candidates.find(m => m.includes('sonnet')) ||
-               candidates.find(m => m.includes('gpt-4-turbo')) ||
+        return candidates.find(m => m.includes('gemini-2.5-flash')) ||
+               candidates.find(m => m.includes('sonnet')) ||
+               candidates.find(m => m.includes('gpt-4o') && !m.includes('turbo')) ||
                candidates[0];
     }
   }
