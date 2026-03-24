@@ -5195,6 +5195,12 @@ router.get('/sessions/:id', async (req, res) => {
   try {
     const { createClient } = await import('@supabase/supabase-js');
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
+
+    // ── Session-boundary check: verify requesting user owns this session ──
+    const { validateSessionAccess } = await import('./org-boundary.js');
+    const access = await validateSessionAccess(req, req.params.id);
+    if (!access.authorized) return res.status(access.status).json({ error: access.error });
+
     const { data, error } = await supabase
       .from('messages')
       .select('id, role, content, files, created_at')
@@ -5211,6 +5217,11 @@ router.get('/sessions/:id', async (req, res) => {
 // DELETE /api/chat/sessions/:id
 router.delete('/sessions/:id', async (req, res) => {
   try {
+    // ── Session-boundary check ──
+    const { validateSessionAccess } = await import('./org-boundary.js');
+    const access = await validateSessionAccess(req, req.params.id);
+    if (!access.authorized) return res.status(access.status).json({ error: access.error });
+
     const { createClient } = await import('@supabase/supabase-js');
     const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
     await sb.from('messages').delete().eq('session_id', req.params.id);
@@ -5226,6 +5237,11 @@ router.delete('/sessions/:id', async (req, res) => {
 // PATCH /api/chat/sessions/:id/title
 router.patch('/sessions/:id/title', async (req, res) => {
   try {
+    // ── Session-boundary check ──
+    const { validateSessionAccess } = await import('./org-boundary.js');
+    const access = await validateSessionAccess(req, req.params.id);
+    if (!access.authorized) return res.status(access.status).json({ error: access.error });
+
     const { createClient } = await import('@supabase/supabase-js');
     const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
     await sb.from('sessions').update({ title: req.body.title, updated_at: new Date().toISOString() }).eq('id', req.params.id);

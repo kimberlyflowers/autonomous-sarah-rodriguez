@@ -8,6 +8,7 @@ import crypto from 'crypto';
 import path from 'path';
 import fs from 'fs';
 import { createClient } from '@supabase/supabase-js';
+import { validateAgentAccess, getUserOrgId, extractUserId } from './org-boundary.js';
 
 const logger = createLogger('files-api');
 const router = Router();
@@ -30,6 +31,12 @@ router.post('/artifacts', async (req, res) => {
   try {
     const { name, description = '', fileType = 'text', mimeType = 'text/plain', content, sessionId = null, agentId = null, metadata = {} } = req.body;
     if (!name || !content) return res.status(400).json({ error: 'name and content required' });
+
+    // ── Org-boundary: if agentId provided, verify ownership ──
+    if (agentId) {
+      const access = await validateAgentAccess(req, agentId);
+      if (!access.authorized) return res.status(access.status).json({ error: access.error });
+    }
 
     const fileId = `art_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
     let filePath = null, fileSize = 0, contentText = null, storagePath = null;
@@ -69,11 +76,15 @@ router.post('/artifacts', async (req, res) => {
     const floralId = `bloom-${fileId}`;
     const supabase = sb();
 
+    // ── Multi-tenant: resolve org + user from JWT ──
+    const resolvedOrgId = await getUserOrgId(req) || ORG_ID();
+    const resolvedUserId = extractUserId(req) || USER_ID();
+
     // Check if same name + session already exists — update in place, no duplicates
     let artifact, insertErr;
     if (sessionId) {
       const { data: existing } = await supabase.from('artifacts')
-        .select('id').eq('organization_id', ORG_ID()).eq('name', name).eq('session_id', sessionId).maybeSingle();
+        .select('id').eq('organization_id', resolvedOrgId).eq('name', name).eq('session_id', sessionId).maybeSingle();
       if (existing) {
         const { data: updated, error: updateErr } = await supabase.from('artifacts')
           .update({ description, content: contentText || null, storage_path: storagePath || filePath || null,
@@ -84,7 +95,7 @@ router.post('/artifacts', async (req, res) => {
     }
     if (!artifact && !insertErr) {
       const { data: inserted, error: err } = await supabase.from('artifacts').insert({
-        organization_id: ORG_ID(), created_by_user_id: USER_ID(), agent_id: agentId || AGENT_ID(),
+        organization_id: resolvedOrgId, created_by_user_id: resolvedUserId, agent_id: agentId || AGENT_ID(),
         session_id: sessionId || null, name, description, file_type: fileType, mime_type: mimeType,
         content: contentText || null, storage_path: storagePath || filePath || null,
         file_size: fileSize, floral_id: floralId, bloomshield_registered: false, published: true
@@ -100,7 +111,7 @@ router.post('/artifacts', async (req, res) => {
     logger.info('Artifact created in Supabase', { fileId, supabaseId: artifact.id, name, fileType });
 
     // Async: BLOOMSHIELD registration
-    queueBloomshield({ supabaseId: artifact.id, floralId, contentText, name, mimeType }).catch(() => {});
+    queueBloomshield({ supabaseId: artifact.id, floralId, contentText, name, mimeType, orgId: resolvedOrgId }).catch(() => {});
 
     return res.json({
       success: true,
@@ -121,13 +132,13 @@ router.post('/artifacts', async (req, res) => {
   }
 });
 
-async function queueBloomshield({ supabaseId, floralId, contentText, name, mimeType }) {
+async function queueBloomshield({ supabaseId, floralId, contentText, name, mimeType, orgId }) {
   try {
     const supabase = sb();
     const contentHash = crypto.createHash('sha256').update(contentText || name).digest('hex');
     const { data: shieldReg, error } = await supabase.from('bloomshield_registrations').insert({
       artifact_id: supabaseId,
-      owner_org_id: ORG_ID(),
+      owner_org_id: orgId || ORG_ID(),
       owner_wallet_address: process.env.BLOOM_WALLET_ADDRESS || 'pending',
       floral_id: floralId,
       content_hash: contentHash,
@@ -143,10 +154,20 @@ async function queueBloomshield({ supabaseId, floralId, contentText, name, mimeT
 router.get('/artifacts', async (req, res) => {
   try {
     const { status, limit = 50, sessionId, agentId } = req.query;
+
+    // ── Org-boundary: if agentId specified, verify ownership ──
+    if (agentId) {
+      const access = await validateAgentAccess(req, agentId);
+      if (!access.authorized) return res.status(access.status).json({ error: access.error });
+    }
+
     const supabase = sb();
+    // ── Multi-tenant: scope to user's org ──
+    const resolvedOrgId = await getUserOrgId(req) || ORG_ID();
 
     let query = supabase.from('artifacts')
       .select('id, name, description, file_type, mime_type, file_size, storage_path, content, floral_id, published, slug, created_at, bloomshield_registered, session_id, agent_id')
+      .eq('organization_id', resolvedOrgId)  // Enforce org boundary on all artifact listings
       .order('created_at', { ascending: false })
       .limit(parseInt(limit));
 

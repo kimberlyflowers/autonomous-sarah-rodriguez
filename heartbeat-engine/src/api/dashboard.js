@@ -1,4 +1,4 @@
-// Dashboard API endpoints for Sarah Rodriguez
+// Dashboard API endpoints — Multi-Tenant with Org-Boundary Security
 // Provides data for the web dashboard displaying autonomous operations
 
 import express from 'express';
@@ -6,6 +6,7 @@ import { createLogger } from '../logging/logger.js';
 import { loadAgentConfig, getAgentStatus } from '../config/agent-profile.js';
 import { taskProgress } from './chat.js';
 import { isTrustGateEnabled, setTrustGateEnabled } from '../trust/trust-gate.js';
+import { validateAgentAccess, getUserOrgId } from './org-boundary.js';
 
 const router = express.Router();
 const logger = createLogger('dashboard-api');
@@ -42,6 +43,10 @@ router.get('/cycles', async (req, res) => {
     const limit = parseInt(req.query.limit) || 50;
     const offset = parseInt(req.query.offset) || 0;
     const agentId = req.query.agentId || AGENT_ID;
+
+    // ── Org-boundary check ──
+    const access = await validateAgentAccess(req, agentId);
+    if (!access.authorized) return res.status(access.status).json({ error: access.error });
 
     const supabase = await getSupabase();
 
@@ -93,6 +98,10 @@ router.get('/actions', async (req, res) => {
     const offset = parseInt(req.query.offset) || 0;
     const agentId = req.query.agentId || AGENT_ID;
 
+    // ── Org-boundary check ──
+    const access = await validateAgentAccess(req, agentId);
+    if (!access.authorized) return res.status(access.status).json({ error: access.error });
+
     const supabase = await getSupabase();
     const { data, error } = await supabase
       .from('action_log')
@@ -130,6 +139,10 @@ router.get('/rejections', async (req, res) => {
     const offset = parseInt(req.query.offset) || 0;
     const agentId = req.query.agentId || AGENT_ID;
 
+    // ── Org-boundary check ──
+    const access = await validateAgentAccess(req, agentId);
+    if (!access.authorized) return res.status(access.status).json({ error: access.error });
+
     const supabase = await getSupabase();
     const { data, error } = await supabase
       .from('rejection_log')
@@ -165,6 +178,10 @@ router.get('/handoffs', async (req, res) => {
     const limit = parseInt(req.query.limit) || 100;
     const offset = parseInt(req.query.offset) || 0;
     const agentId = req.query.agentId || AGENT_ID;
+
+    // ── Org-boundary check ──
+    const access = await validateAgentAccess(req, agentId);
+    if (!access.authorized) return res.status(access.status).json({ error: access.error });
 
     const supabase = await getSupabase();
     const { data, error } = await supabase
@@ -203,6 +220,10 @@ router.get('/metrics', async (req, res) => {
   try {
     const agentId = req.query.agentId || AGENT_ID;
     const hours = parseInt(req.query.hours) || 24;
+
+    // ── Org-boundary check ──
+    const access = await validateAgentAccess(req, agentId);
+    if (!access.authorized) return res.status(access.status).json({ error: access.error });
 
     const supabase = await getSupabase();
     const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
@@ -270,6 +291,8 @@ router.post('/user-avatar', async (req, res) => {
   try {
     const { avatar } = req.body;
     let valueToStore = avatar;
+    // ── Multi-tenant: resolve org from JWT ──
+    const resolvedOrgId = await getUserOrgId(req) || ORG_ID;
 
     if (avatar && avatar.startsWith('data:image')) {
       try {
@@ -286,7 +309,7 @@ router.post('/user-avatar', async (req, res) => {
 
     const supabase = await getSupabase();
     const { error } = await supabase.from('user_settings').upsert(
-      { organization_id: ORG_ID, key: 'user_avatar', value: valueToStore, updated_at: new Date().toISOString() },
+      { organization_id: resolvedOrgId, key: 'user_avatar', value: valueToStore, updated_at: new Date().toISOString() },
       { onConflict: 'organization_id,key' }
     );
     if (error) throw new Error(error.message);
@@ -298,10 +321,12 @@ router.post('/user-avatar', async (req, res) => {
 
 router.get('/user-avatar', async (req, res) => {
   try {
+    // ── Multi-tenant: resolve org from JWT ──
+    const resolvedOrgId = await getUserOrgId(req) || ORG_ID;
     const supabase = await getSupabase();
     const { data } = await supabase.from('user_settings')
       .select('value')
-      .eq('organization_id', ORG_ID)
+      .eq('organization_id', resolvedOrgId)
       .eq('key', 'user_avatar')
       .maybeSingle();
     res.json({ avatar: data?.value || null });
@@ -361,7 +386,8 @@ router.get('/brand-kit', async (req, res) => {
   try {
     const { createClient } = await import('@supabase/supabase-js');
     const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-    const orgId = process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001';
+    // ── Multi-tenant: resolve org from JWT ──
+    const orgId = await getUserOrgId(req) || process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001';
 
     const { data: bkRow } = await sb.from('user_settings').select('value').eq('organization_id', orgId).eq('key', 'brand_kits').maybeSingle();
     // value is jsonb — already parsed by Supabase client
@@ -392,7 +418,8 @@ router.post('/brand-kit', async (req, res) => {
     if (kits.length > 3) return res.status(400).json({ error: 'Maximum 3 brand kits' });
     const { createClient } = await import('@supabase/supabase-js');
     const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-    const orgId = process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001';
+    // ── Multi-tenant: resolve org from JWT ──
+    const orgId = await getUserOrgId(req) || process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001';
     const { error } = await sb.from('user_settings').upsert(
       { organization_id: orgId, key: 'brand_kits', value: kits, updated_at: new Date().toISOString() },
       { onConflict: 'organization_id,key' }

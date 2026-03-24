@@ -2,6 +2,7 @@
 // ⚡ MIGRATED: scheduled_tasks + agent_profile now read/write Supabase (not Railway Postgres)
 import { Router } from 'express';
 import { createLogger } from '../logging/logger.js';
+import { validateAgentAccess, getUserOrgId as getOrgFromJWT, extractUserId as extractUserFromJWT } from './org-boundary.js';
 
 const logger = createLogger('agent-api');
 const router = Router();
@@ -106,8 +107,13 @@ function nextRunTime(frequency, runTime = '09:00') {
 // GET /api/agent/profile — supports ?agentId= for multi-agent
 router.get('/profile', async (req, res) => {
   try {
-    const supabase = await getSupabase();
     const targetAgentId = req.query.agentId || SARAH_AGENT_ID;
+
+    // ── Org-boundary check: verify requesting user's org owns this agent ──
+    const access = await validateAgentAccess(req, targetAgentId);
+    if (!access.authorized) return res.status(access.status).json({ error: access.error });
+
+    const supabase = await getSupabase();
 
     const { data: agent, error: agentErr } = await supabase
       .from('agents')
@@ -167,9 +173,14 @@ router.get('/profile', async (req, res) => {
 // PATCH /api/agent/profile — supports agentId in body for multi-agent
 router.patch('/profile', async (req, res) => {
   try {
-    const supabase = await getSupabase();
     let { jobTitle, jobDescription, avatarUrl, agentId } = req.body;
     const targetAgentId = agentId || SARAH_AGENT_ID;
+
+    // ── Org-boundary check ──
+    const access = await validateAgentAccess(req, targetAgentId);
+    if (!access.authorized) return res.status(access.status).json({ error: access.error });
+
+    const supabase = await getSupabase();
 
     // If avatar is a data URL, upload to Supabase Storage first
     if (avatarUrl && avatarUrl.startsWith('data:image')) {
@@ -368,6 +379,11 @@ router.post('/me/avatar', async (req, res) => {
 router.get('/tasks/runs', async (req, res) => {
   try {
     const targetAgentId = req.query.agentId || SARAH_AGENT_ID;
+
+    // ── Org-boundary check ──
+    const access = await validateAgentAccess(req, targetAgentId);
+    if (!access.authorized) return res.status(access.status).json({ error: access.error });
+
     const supabase = await getSupabase();
     const { data, error } = await supabase
       .from('task_runs')
@@ -414,8 +430,13 @@ router.get('/tasks/runs', async (req, res) => {
 // GET /api/agent/tasks
 router.get('/tasks', async (req, res) => {
   try {
-    const supabase = await getSupabase();
     const targetAgentId = req.query.agentId || SARAH_AGENT_ID;
+
+    // ── Org-boundary check ──
+    const access = await validateAgentAccess(req, targetAgentId);
+    if (!access.authorized) return res.status(access.status).json({ error: access.error });
+
+    const supabase = await getSupabase();
     const { data, error } = await supabase
       .from('scheduled_tasks')
       .select('*')
@@ -453,7 +474,6 @@ router.get('/tasks', async (req, res) => {
 // POST /api/agent/tasks
 router.post('/tasks', async (req, res) => {
   try {
-    const supabase = await getSupabase();
     const { name, description, taskType, instruction, frequency, runTime, agentId } = req.body;
 
     if (!name || !instruction) {
@@ -461,6 +481,12 @@ router.post('/tasks', async (req, res) => {
     }
 
     const targetAgentId = agentId || SARAH_AGENT_ID;
+
+    // ── Org-boundary check ──
+    const access = await validateAgentAccess(req, targetAgentId);
+    if (!access.authorized) return res.status(access.status).json({ error: access.error });
+
+    const supabase = await getSupabase();
     const taskId  = 'task_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
     const cron    = frequencyToCron(frequency || 'daily', runTime);
     const nextRun = nextRunTime(frequency || 'daily', runTime);
@@ -470,7 +496,7 @@ router.post('/tasks', async (req, res) => {
       .insert({
         task_id:         taskId,
         agent_id:        targetAgentId,
-        organization_id: BLOOM_ORG_ID,
+        organization_id: access.orgId,  // Use resolved org from JWT, not hardcoded
         name,
         description:     description || '',
         task_type:       taskType || 'custom',
@@ -497,10 +523,15 @@ router.post('/tasks', async (req, res) => {
 // PATCH /api/agent/tasks/:taskId
 router.patch('/tasks/:taskId', async (req, res) => {
   try {
-    const supabase = await getSupabase();
     const { taskId } = req.params;
     const { enabled, name, instruction, frequency, runTime, agentId } = req.body;
     const targetAgentId = agentId || req.query.agentId || SARAH_AGENT_ID;
+
+    // ── Org-boundary check ──
+    const access = await validateAgentAccess(req, targetAgentId);
+    if (!access.authorized) return res.status(access.status).json({ error: access.error });
+
+    const supabase = await getSupabase();
 
     const updates = { updated_at: new Date().toISOString() };
     if (enabled !== undefined) updates.enabled     = enabled;
@@ -534,10 +565,14 @@ router.patch('/tasks/:taskId', async (req, res) => {
 // DELETE /api/agent/tasks/:taskId
 router.delete('/tasks/:taskId', async (req, res) => {
   try {
-    const supabase = await getSupabase();
     const { taskId } = req.params;
-
     const targetAgentId = req.query.agentId || SARAH_AGENT_ID;
+
+    // ── Org-boundary check ──
+    const access = await validateAgentAccess(req, targetAgentId);
+    if (!access.authorized) return res.status(access.status).json({ error: access.error });
+
+    const supabase = await getSupabase();
     const { data, error } = await supabase
       .from('scheduled_tasks')
       .delete()
