@@ -747,9 +747,10 @@ router.get('/handoff-log', async (req, res) => {
   try {
     const supabase = await getSupabase();
     const limit = parseInt(req.query.limit) || 10;
+    const targetAgentId = req.query.agentId || AGENT_ID;
     const { data } = await supabase.from('handoff_log')
       .select('issue, recommendation, urgency, confidence, created_at')
-      .eq('agent_id', AGENT_ID).order('created_at', { ascending: false }).limit(limit);
+      .eq('agent_id', targetAgentId).order('created_at', { ascending: false }).limit(limit);
 
     res.json({ handoffs: (data || []).map(h => ({ issue: h.issue, recommendation: h.recommendation, urgency: h.urgency, confidence: h.confidence, timestamp: h.created_at })) });
   } catch (e) {
@@ -762,9 +763,10 @@ router.get('/rejection-log', async (req, res) => {
   try {
     const supabase = await getSupabase();
     const limit = parseInt(req.query.limit) || 10;
+    const targetAgentId = req.query.agentId || AGENT_ID;
     const { data } = await supabase.from('rejection_log')
       .select('candidate_action, reason, reason_code, confidence, created_at')
-      .eq('agent_id', AGENT_ID).order('created_at', { ascending: false }).limit(limit);
+      .eq('agent_id', targetAgentId).order('created_at', { ascending: false }).limit(limit);
 
     res.json({ rejections: (data || []).map(r => ({ action: r.candidate_action, reason: r.reason, code: r.reason_code, risk: `${(r.confidence * 100).toFixed(0)}% confidence`, timestamp: r.created_at })) });
   } catch (e) {
@@ -828,14 +830,15 @@ router.get('/agentic-executions', (req, res) => {
 router.get('/documents', async (req, res) => {
   try {
     const sb = await getSupabase();
-    const { docType, status, limit = 50 } = req.query;
+    const { docType, status, limit = 50, agentId } = req.query;
 
     let q = sb.from('documents')
-      .select('id, title, doc_type, status, tags, requires_approval, approved_by, approved_at, metadata, created_at, updated_at')
+      .select('id, title, doc_type, status, tags, requires_approval, approved_by, approved_at, metadata, created_at, updated_at, agent_id')
       .eq('org_id', ORG_ID)
       .order('created_at', { ascending: false })
       .limit(parseInt(limit));
 
+    if (agentId) q = q.eq('agent_id', agentId);
     if (docType) q = q.eq('doc_type', docType);
     if (status) q = q.eq('status', status);
 

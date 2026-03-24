@@ -367,11 +367,12 @@ router.post('/me/avatar', async (req, res) => {
 // GET /api/agent/tasks/runs
 router.get('/tasks/runs', async (req, res) => {
   try {
+    const targetAgentId = req.query.agentId || SARAH_AGENT_ID;
     const supabase = await getSupabase();
     const { data, error } = await supabase
       .from('task_runs')
       .select('*, scheduled_tasks(name, task_type, instruction, frequency, run_time)')
-      .eq('agent_id', SARAH_AGENT_ID)
+      .eq('agent_id', targetAgentId)
       .order('created_at', { ascending: false })
       .limit(50);
 
@@ -453,12 +454,13 @@ router.get('/tasks', async (req, res) => {
 router.post('/tasks', async (req, res) => {
   try {
     const supabase = await getSupabase();
-    const { name, description, taskType, instruction, frequency, runTime } = req.body;
+    const { name, description, taskType, instruction, frequency, runTime, agentId } = req.body;
 
     if (!name || !instruction) {
       return res.status(400).json({ error: 'name and instruction are required' });
     }
 
+    const targetAgentId = agentId || SARAH_AGENT_ID;
     const taskId  = 'task_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
     const cron    = frequencyToCron(frequency || 'daily', runTime);
     const nextRun = nextRunTime(frequency || 'daily', runTime);
@@ -467,7 +469,7 @@ router.post('/tasks', async (req, res) => {
       .from('scheduled_tasks')
       .insert({
         task_id:         taskId,
-        agent_id:        SARAH_AGENT_ID,
+        agent_id:        targetAgentId,
         organization_id: BLOOM_ORG_ID,
         name,
         description:     description || '',
@@ -497,7 +499,8 @@ router.patch('/tasks/:taskId', async (req, res) => {
   try {
     const supabase = await getSupabase();
     const { taskId } = req.params;
-    const { enabled, name, instruction, frequency, runTime } = req.body;
+    const { enabled, name, instruction, frequency, runTime, agentId } = req.body;
+    const targetAgentId = agentId || req.query.agentId || SARAH_AGENT_ID;
 
     const updates = { updated_at: new Date().toISOString() };
     if (enabled !== undefined) updates.enabled     = enabled;
@@ -514,7 +517,7 @@ router.patch('/tasks/:taskId', async (req, res) => {
       .from('scheduled_tasks')
       .update(updates)
       .eq('task_id', taskId)
-      .eq('agent_id', SARAH_AGENT_ID)
+      .eq('agent_id', targetAgentId)
       .select()
       .single();
 
@@ -534,11 +537,12 @@ router.delete('/tasks/:taskId', async (req, res) => {
     const supabase = await getSupabase();
     const { taskId } = req.params;
 
+    const targetAgentId = req.query.agentId || SARAH_AGENT_ID;
     const { data, error } = await supabase
       .from('scheduled_tasks')
       .delete()
       .eq('task_id', taskId)
-      .eq('agent_id', SARAH_AGENT_ID)
+      .eq('agent_id', targetAgentId)
       .select('task_id')
       .single();
 

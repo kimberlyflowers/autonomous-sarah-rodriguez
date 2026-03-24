@@ -925,19 +925,20 @@ function InternalTasks({c,sse,aFN="Sarah"}) {
 }
 
 // ── TASK RUN TIMELINE — visual bar chart of recent task executions
-function TaskRunTimeline({c}) {
+function TaskRunTimeline({c, agentId}) {
   const [runs,setRuns] = useState([]);
   useEffect(()=>{
     const go=async()=>{
       try{
-        const r=await fetch("/api/agent/tasks/runs");
+        const qs = agentId ? `?agentId=${agentId}` : '';
+        const r=await fetch(`/api/agent/tasks/runs${qs}`);
         if(r.ok){ const d=await r.json(); setRuns((d.runs||d||[]).slice(0,24)); }
       }catch{}
     };
     go();
     const t=setInterval(go,30000);
     return()=>clearInterval(t);
-  },[]);
+  },[agentId]);
 
   const completed=runs.filter(r=>r.status==="completed").length;
   const failed=runs.filter(r=>r.status==="failed").length;
@@ -998,14 +999,15 @@ function TaskRunTimeline({c}) {
 }
 
 // ── ESCALATIONS + REJECTIONS (tabbed)
-function EscalationPanel({c,sse}) {
+function EscalationPanel({c,sse,agentId}) {
   const [handoffs,setHandoffs] = useState([]);
   const [rejections,setRejections] = useState([]);
   const [tab,setTab] = useState("handoffs");
 
   useEffect(()=>{
-    const fetchH=async()=>{ try{ const r=await fetch("/api/dashboard/handoff-log?limit=10"); if(r.ok){ const d=await r.json(); setHandoffs(d.handoffs||d||[]); } }catch{} };
-    const fetchR=async()=>{ try{ const r=await fetch("/api/dashboard/rejection-log?limit=10"); if(r.ok){ const d=await r.json(); setRejections(d.rejections||d||[]); } }catch{} };
+    const qs = agentId ? `&agentId=${agentId}` : '';
+    const fetchH=async()=>{ try{ const r=await fetch(`/api/dashboard/handoff-log?limit=10${qs}`); if(r.ok){ const d=await r.json(); setHandoffs(d.handoffs||d||[]); } }catch{} };
+    const fetchR=async()=>{ try{ const r=await fetch(`/api/dashboard/rejection-log?limit=10${qs}`); if(r.ok){ const d=await r.json(); setRejections(d.rejections||d||[]); } }catch{} };
     fetchH(); fetchR();
     if(sse){
       const c1=sse.register("handoffs",fetchH);
@@ -1014,7 +1016,7 @@ function EscalationPanel({c,sse}) {
     }
     const t=setInterval(()=>{ fetchH(); fetchR(); },20000);
     return()=>clearInterval(t);
-  },[sse]);
+  },[sse,agentId]);
 
   const items=tab==="handoffs"?handoffs:rejections;
   const tabs=[
@@ -2638,7 +2640,7 @@ function SiteLoginsManager({c,mob,aFN="Sarah"}){
   );
 }
 
-function DocsPage({c,mob,aFN="Sarah"}){
+function DocsPage({c,mob,aFN="Sarah",agentId}){
   const [docs,setDocs]=useState([]);
   const [loading,setLoading]=useState(true);
   const [selectedDoc,setSelectedDoc]=useState(null);
@@ -2648,13 +2650,14 @@ function DocsPage({c,mob,aFN="Sarah"}){
   useEffect(()=>{
     const go=async()=>{
       try{
-        const r=await fetch("/api/dashboard/documents");
+        const qs = agentId ? `?agentId=${agentId}` : '';
+        const r=await fetch(`/api/dashboard/documents${qs}`);
         if(r.ok){const d=await r.json();setDocs(d.documents||[]);}
       }catch{}
       setLoading(false);
     };
     go();
-  },[]);
+  },[agentId]);
 
   const openDoc=async(id)=>{
     try{
@@ -3626,19 +3629,25 @@ function App({ authUser }) {
     } catch(e){ console.error('Failed to load profile',e); }
   };
 
-  // Reload profile when agent changes while on profile page
+  // Reload profile/activity when agent changes while on those pages
   useEffect(()=>{
-    if(pg==="profile" && currentAgentId){
-      setProfileData(null); // clear stale data immediately
+    if(!currentAgentId) return;
+    if(pg==="profile"){
+      setProfileData(null);
       loadProfile(currentAgentId);
+    }
+    if(pg==="activity"){
+      loadActivity(currentAgentId);
     }
   },[currentAgentId]);
 
-  const loadActivity = async () => {
+  const loadActivity = async (agentId) => {
     try {
+      const aid = agentId || currentAgentId || '';
+      const qs = aid ? `?agentId=${aid}` : '';
       const [tRes, rRes] = await Promise.all([
-        fetch('/api/agent/tasks').then(r=>r.json()),
-        fetch('/api/agent/tasks/runs').then(r=>r.json()).catch(()=>({runs:[]}))
+        fetch(`/api/agent/tasks${qs}`).then(r=>r.json()),
+        fetch(`/api/agent/tasks/runs${qs}`).then(r=>r.json()).catch(()=>({runs:[]}))
       ]);
       setScheduledTasks(tRes.tasks||[]);
       setTaskRuns(rRes.runs||[]);
@@ -4733,7 +4742,7 @@ function App({ authUser }) {
               </div>
               {/* Task Run Timeline — full width overview */}
               <div style={{marginBottom:16}}>
-                <TaskRunTimeline c={c}/>
+                <TaskRunTimeline c={c} agentId={currentAgentId}/>
               </div>
               <div style={{display:"grid",gridTemplateColumns:mob?"1fr":"1fr 1fr",gap:16,marginBottom:16}}>
                 <SystemHealth c={c} sse={sse}/>
@@ -4751,7 +4760,7 @@ function App({ authUser }) {
                 <InternalTasks c={c} sse={sse} aFN={aFN}/>
                 <ActionLog c={c} sse={sse}/>
               </div>
-              <EscalationPanel c={c} sse={sse}/>
+              <EscalationPanel c={c} sse={sse} agentId={currentAgentId}/>
             </div>
           )}
 
@@ -6193,7 +6202,7 @@ function App({ authUser }) {
 
           {/* ══ DOCUMENTS ══ */}
           {pg==="docs"&&(
-            <DocsPage c={c} mob={mob} aFN={aFN}/>
+            <DocsPage c={c} mob={mob} aFN={aFN} agentId={currentAgentId}/>
           )}
 
           {/* ══ BILLING ══ */}
