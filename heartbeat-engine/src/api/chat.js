@@ -456,11 +456,27 @@ function detectTaskType(userMessage) {
         ? userMessage.filter(b => b.type === 'text').map(b => b.text).join(' ').toLowerCase()
         : '');
 
-  if (/\b(schedule|recurring|every day|every week|every month|run daily|run weekly|automate|set up a task)\b/.test(msg)) return 'scheduling';
-  if (/\b(contact|crm|send message|send email|send sms|send text|update contact|create contact|lead|prospect|outreach)\b/.test(msg)) return 'crm_operations';
-  if (/\b(file|document|doc|pdf|slide|spreadsheet|xlsx|word|download|upload|attachment)\b/.test(msg)) return 'file_operations';
-  if (/\b(search|research|find|look up|what is|who is|latest|current|news|price|how much)\b/.test(msg)) return 'web_research';
-  if (/\b(write|create|generate|design|build|make|draft|produce|publish|post|blog|email|website|landing page|image|flyer|social)\b/.test(msg)) return 'content_creation';
+  // SCHEDULING — checked first: very specific trigger words, unlikely to conflict
+  // Added: "automatically", "on a schedule", "on schedule" to catch "runs automatically"
+  if (/\b(schedule|recurring|every day|every week|every month|run daily|run weekly|automate|set up a task|automatically|on a schedule|on schedule|repeat|repeated|interval)\b/.test(msg)) return 'scheduling';
+
+  // WEB RESEARCH — checked BEFORE crm_operations to prevent "what is CRM" → crm
+  // "what is", "who is", "how much" are research intents even if CRM-adjacent words appear
+  if (/\b(search|research|find|look up|what is|who is|latest|current|news|price|how much|compare|competitor|benchmark|statistics|stats|trends)\b/.test(msg)) return 'web_research';
+
+  // CRM OPERATIONS — checked BEFORE file_operations to prevent "email my client the doc" → file
+  // Split multi-word phrases so "send a message", "send an sms" match correctly.
+  // Added: "invoice", "sms", "text message", "follow up", "reply to", "notify"
+  if (/\b(contact|crm|lead|prospect|outreach|update contact|create contact|send message|send email|send sms|send text|follow.?up|message|sms|invoice|notify|reply to|new inquiry|pipeline|tag|unsubscribe|opt.?out)\b/.test(msg)) return 'crm_operations';
+
+  // FILE OPERATIONS — after crm so "email my client the document" → crm, not file
+  if (/\b(file|document|doc|pdf|slide|spreadsheet|xlsx|word|download|upload|attachment|export|import|csv|template)\b/.test(msg)) return 'file_operations';
+
+  // CONTENT CREATION — broad catch-all for creative/generative tasks
+  if (/\b(write|create|generate|design|build|make|draft|produce|publish|post|blog|email|website|landing page|image|flyer|social|caption|script|copy|content|article|ad|advertisement|banner|thumbnail)\b/.test(msg)) return 'content_creation';
+
+  // No task type detected — no injection, model uses base system prompt only.
+  // This is safe: the model still has full instructions in the system prompt.
   return null;
 }
 
