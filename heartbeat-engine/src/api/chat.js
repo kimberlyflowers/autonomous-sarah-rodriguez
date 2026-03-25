@@ -26,6 +26,8 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // Get Anthropic client for a specific agent config — uses agent's own key if set, otherwise platform key
 function getAnthropicClient(agentConfig) {
+  // Only return a dedicated Anthropic client if the agent has its OWN key AND
+  // the active provider is Anthropic. Otherwise return null so callers use the unified client.
   const agentKey = agentConfig?.anthropicApiKey;
   if (agentKey && agentKey !== process.env.ANTHROPIC_API_KEY) {
     return new Anthropic({ apiKey: agentKey });
@@ -3083,11 +3085,11 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
           } catch (e) {}
 
           const fallbackResult = await callLLMWithRetry({
-            model: process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001',
+            model: llmClient.model, // use whatever model is currently active — no hardcoded Anthropic
             max_tokens: 4096,
             system: 'You are an expert at this task. Deliver the highest quality output possible. No preamble — go straight into the deliverable.' + skillContext,
             messages: [{ role: 'user', content: toolInput.specialistPrompt }],
-          }, 3, agentClient);
+          }, 3); // no agentClient — use unified client so failover works
 
           const fallbackText = fallbackResult.content?.map(b => b.text || '').join('') || '';
           
@@ -3883,7 +3885,7 @@ NEVER skip steps 3 and 4 even if step 2 fails.
       system: systemPrompt,
       messages: currentMessages,
       tools: availableTools
-    }, 3, agentClient);
+    }, 3); // no agentClient — unified client handles all providers + failover
 
     // Accumulate token usage every round
     if (response.usage) {
@@ -4024,7 +4026,7 @@ NEVER skip steps 3 and 4 even if step 2 fails.
                   `COMPLETE — if all parts were addressed\n` +
                   `MISSING: [brief description of what was missed] — if anything was skipped`
               }]
-            }, 2, agentClient);
+            }); // no agentClient — unified client handles all providers
 
             if (verifyResult.usage) {
               totalInputTokens += verifyResult.usage.input_tokens || 0;
