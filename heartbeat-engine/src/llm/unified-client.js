@@ -57,8 +57,8 @@ const PROVIDERS = {
 // ── Failover Chain ─────────────────────────────────────────────────────────
 // When a provider fails, silently try the next one.
 // User never sees "Claude is down" — Sarah just keeps working.
-// Order: Claude (cheapest) → GPT-4o → GPT-4o-mini → Gemini Flash
-// The chain skips the current primary model and tries everything else.
+// Order defined in bloom_admin_settings.failover_chain — this is the code-level safety net only.
+// The chain skips whatever the current primary model is.
 
 const FAILOVER_CHAIN = [
   { provider: 'anthropic', model: 'claude-sonnet-4-6' },
@@ -259,7 +259,7 @@ function formatAssistantMessageOpenAI(content) {
 export class UnifiedLLMClient {
   constructor() {
     this._anthropicClient = null;
-    this._currentModel = process.env.LLM_MODEL || process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6';
+    this._currentModel = process.env.LLM_MODEL || 'gemini-2.5-flash'; // cold-start fallback — overridden by bloom_admin_settings within 60s
     this._currentProvider = detectProvider(this._currentModel);
     this._failoverActive = false;
     this._originalProvider = null;
