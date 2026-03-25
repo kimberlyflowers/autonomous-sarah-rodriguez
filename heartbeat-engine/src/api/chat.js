@@ -2897,13 +2897,16 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
           return { success: false, error: `Skill "${skillName}" file is empty` };
         }
         
-        // Inject into system prompt for this conversation turn
-        systemPrompt += `\n\n<skill name="${skillName}">\n${skillBody}\n</skill>`;
-        
-        if (!skillsUsedThisTurn) skillsUsedThisTurn = [];
-        skillsUsedThisTurn.push(skillName);
+        // Return skill body in result — caller injects into context via tool result
+        // (systemPrompt is out of scope here — this is the correct pattern)
         logger.info('Skill loaded via tool', { skill: skillName, length: skillBody.length });
-        return { success: true, message: `Loaded "${skillName}" skill — ${skillBody.length} characters of expert guidelines now active. Proceed with the task using these instructions.` };
+        return { 
+          success: true, 
+          skillName,
+          skillBody,
+          message: `Loaded "${skillName}" skill. Follow these expert guidelines for this task:\n\n${skillBody.slice(0, 2000)}`,
+          _injectSkill: true
+        };
       } catch(e) {
         return { success: false, error: `Skill loading failed (internal): ${e.message}. IMPORTANT: Do NOT mention this error to the user. Skill failures are internal — proceed with the task using your system prompt instructions. Never say "the skill failed" or "I couldn't load the skill" to the user.` };
       }
@@ -3928,6 +3931,14 @@ NEVER skip steps 3 and 4 even if step 2 fails.
         .map(b => b.text)
         .join('');
 
+      // Early empty-output check — Gemini sometimes returns end_turn with empty content
+      // before any tools run on first message. Retry immediately with nudge.
+      if (!text.trim() && toolsUsed.length === 0 && round === 0 && round < MAX_EXEC_ROUNDS - 1) {
+        logger.warn('Gemini returned empty response on first round — retrying with explicit nudge', { model: chatModel });
+        currentMessages.push({ role: 'user', content: [{ type: 'text', text: 'Please process my request and either call a tool or respond with text.' }] });
+        continue;
+      }
+
       // ── CODE-DUMP DETECTION — catch agents pasting HTML/code in chat ───
       // If the response contains a large HTML/code block, force the agent to save it as a file instead.
       // This is a hard guardrail — agents should NEVER dump code in chat.
@@ -4094,12 +4105,12 @@ NEVER skip steps 3 and 4 even if step 2 fails.
       await logCostAndUsage(round);
 
       // ── EMPTY RESPONSE GUARD ─────────────────────────────────────────────
-      // If the model returned empty text with no tool calls, it silently gave up.
-      // Force a retry with an explicit nudge rather than returning "" to the user.
-      if (!text.trim() && toolsUsed.length === 0 && round < MAX_EXEC_ROUNDS - 1) {
-        logger.warn('Model returned empty response with no tools — nudging to retry', { model: chatModel, round });
-        currentMessages.push({ role: 'assistant', content: [{ type: 'text', text: '' }] });
-        currentMessages.push({ role: 'user', content: 'Please respond to my request.' });
+      // If the model returned empty text, it silently gave up (Gemini 0-output bug).
+      // Force a retry with a direct nudge rather than returning "" to the user.
+      if (!text.trim() && round < MAX_EXEC_ROUNDS - 1) {
+        logger.warn('Model returned empty response — nudging to continue', { model: chatModel, round, toolsRun: toolsUsed.length });
+        currentMessages.push({ role: 'assistant', content: response.content.length > 0 ? response.content : [{ type: 'text', text: '' }] });
+        currentMessages.push({ role: 'user', content: [{ type: 'text', text: 'Your last response was empty. Please respond to the user request now.' }] });
         continue;
       }
 
