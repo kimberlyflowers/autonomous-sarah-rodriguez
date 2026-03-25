@@ -60,8 +60,26 @@ export async function act(decision, agentConfig) {
         result = await executeUpdateTaskStatus(decision, agentConfig);
         break;
 
+      // ── READ ACTIONS ──────────────────────────────────────────────────────────
+      // These are NOT valid act.js action types. Sensing already ran in Phase 1.
+      // If the model still generates these, return a graceful no-op instead of crashing.
+      // The model-native prompts should prevent this, but this is the safety net.
+      case 'read_ghl':
+      case 'read_email':
+      case 'read_tasks':
+      case 'read_calendar':
+        logger.warn(`Read action type "${decision.action_type}" reached act.js — sensing already ran in Phase 1. Skipping.`);
+        result = {
+          success: true,
+          skipped: true,
+          message: `"${decision.action_type}" is a sense-phase action — already handled in Phase 1. No act.js handler needed.`,
+          action_type: decision.action_type,
+        };
+        break;
+
       default:
-        throw new Error(`Unknown action type: ${decision.action_type}`);
+        logger.error(`Unknown action type: ${decision.action_type}. Valid types: ${['send_followup_email','send_appointment_reminder','send_notification','create_task','update_contact','update_pipeline','update_task_status','log_interaction','schedule_reminder','create_appointment'].join(', ')}`);
+        throw new Error(`Unknown action type: ${decision.action_type}. Check model-native prompt configuration.`);
     }
 
     const duration = Date.now() - startTime;
