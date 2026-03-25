@@ -3564,22 +3564,6 @@ NEVER skip steps 3 and 4 even if step 2 fails.
     logger.info('Task injection applied', { taskType: detectedTaskType });
   }
 
-  // ── MODEL ADAPTATION — inject provider-specific behavioral nudge ─────────
-  // Different models interpret instructions differently. This small injection
-  // translates key behaviors (tool calling, JSON discipline, error handling)
-  // into the active model's preferred patterns — keeping Sarah consistent
-  // regardless of which model is running.
-  const activeProvider = llmClient.provider;
-  const modelAdaptation = getModelAdaptation(activeProvider);
-  if (typeof enrichedUserMessage === 'string') {
-    enrichedUserMessage = enrichedUserMessage + '\n\n' + modelAdaptation;
-  } else if (Array.isArray(enrichedUserMessage)) {
-    enrichedUserMessage = [...enrichedUserMessage, { type: 'text', text: modelAdaptation }];
-  } else {
-    enrichedUserMessage = modelAdaptation;
-  }
-  logger.info('Model adaptation applied', { provider: activeProvider, model: llmClient.model });
-
   const messages = [...history, { role: 'user', content: enrichedUserMessage }];
   let currentMessages = [...messages];
 
@@ -3689,6 +3673,21 @@ NEVER skip steps 3 and 4 even if step 2 fails.
   // Model selection — per-org tier system with unified client failover
   const messageText = Array.isArray(userMessage) ? userMessage.filter(b => b.type === 'text').map(b => b.text).join(' ') : userMessage;
   const llmClient = getLLMClient();
+
+  // ── MODEL ADAPTATION — now safe, llmClient is initialized ────────────────
+  const activeProvider = llmClient.provider;
+  const modelAdaptation = getModelAdaptation(activeProvider);
+  if (currentMessages.length > 0) {
+    const lastMsg = currentMessages[currentMessages.length - 1];
+    if (lastMsg.role === 'user') {
+      if (typeof lastMsg.content === 'string') {
+        lastMsg.content = lastMsg.content + '\n\n' + modelAdaptation;
+      } else if (Array.isArray(lastMsg.content)) {
+        lastMsg.content = [...lastMsg.content, { type: 'text', text: modelAdaptation }];
+      }
+    }
+  }
+  logger.info('Model adaptation applied', { provider: activeProvider, model: llmClient.model });
 
   // Apply per-org model tier from Supabase admin settings (bloom=Sonnet, premium=GPT, standard=Gemini)
   let resolvedAdminConfig = null;
