@@ -395,12 +395,7 @@ export class UnifiedLLMClient {
   async _callAnthropic({ messages, system, tools, maxTokens, temperature }) {
     const client = this._getAnthropicClient();
     const params = { model: this._currentModel, max_tokens: maxTokens, temperature, messages };
-    // Wrap system prompt in cache_control so the base prompt is cached on every call.
-    // This keeps costs low and ensures consistent behavior — the same model sees the
-    // same frozen base on every request, matching Anthropic's own Claude Code architecture.
-    if (system) {
-      params.system = [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }];
-    }
+    if (system) params.system = system;
     if (tools?.length > 0) params.tools = formatToolsAnthropic(tools);
     const response = await client.messages.create(params);
     return parseAnthropicResponse(response);
