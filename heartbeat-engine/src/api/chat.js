@@ -3675,19 +3675,25 @@ NEVER skip steps 3 and 4 even if step 2 fails.
   const llmClient = getLLMClient();
 
   // ── MODEL ADAPTATION — now safe, llmClient is initialized ────────────────
+  // Only apply if NO task injection was applied — prevents context ballooning on first turn.
+  // Task injection already has model-specific guidance built in.
   const activeProvider = llmClient.provider;
-  const modelAdaptation = getModelAdaptation(activeProvider);
-  if (currentMessages.length > 0) {
-    const lastMsg = currentMessages[currentMessages.length - 1];
-    if (lastMsg.role === 'user') {
-      if (typeof lastMsg.content === 'string') {
-        lastMsg.content = lastMsg.content + '\n\n' + modelAdaptation;
-      } else if (Array.isArray(lastMsg.content)) {
-        lastMsg.content = [...lastMsg.content, { type: 'text', text: modelAdaptation }];
+  if (!detectedTaskType) {
+    const modelAdaptation = getModelAdaptation(activeProvider);
+    if (currentMessages.length > 0) {
+      const lastMsg = currentMessages[currentMessages.length - 1];
+      if (lastMsg.role === 'user') {
+        if (typeof lastMsg.content === 'string') {
+          lastMsg.content = lastMsg.content + '\n\n' + modelAdaptation;
+        } else if (Array.isArray(lastMsg.content)) {
+          lastMsg.content = [...lastMsg.content, { type: 'text', text: modelAdaptation }];
+        }
       }
     }
+    logger.info('Model adaptation applied', { provider: activeProvider, model: llmClient.model });
+  } else {
+    logger.info('Model adaptation skipped — task injection active', { provider: activeProvider, taskType: detectedTaskType });
   }
-  logger.info('Model adaptation applied', { provider: activeProvider, model: llmClient.model });
 
   // Apply per-org model tier from Supabase admin settings (bloom=Sonnet, premium=GPT, standard=Gemini)
   let resolvedAdminConfig = null;
@@ -4086,6 +4092,17 @@ NEVER skip steps 3 and 4 even if step 2 fails.
       }
 
       await logCostAndUsage(round);
+
+      // ── EMPTY RESPONSE GUARD ─────────────────────────────────────────────
+      // If the model returned empty text with no tool calls, it silently gave up.
+      // Force a retry with an explicit nudge rather than returning "" to the user.
+      if (!text.trim() && toolsUsed.length === 0 && round < MAX_EXEC_ROUNDS - 1) {
+        logger.warn('Model returned empty response with no tools — nudging to retry', { model: chatModel, round });
+        currentMessages.push({ role: 'assistant', content: [{ type: 'text', text: '' }] });
+        currentMessages.push({ role: 'user', content: 'Please respond to my request.' });
+        continue;
+      }
+
       return text;
     }
 
