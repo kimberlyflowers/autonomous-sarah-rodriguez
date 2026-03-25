@@ -288,6 +288,62 @@ function detectTaskType(userMessage) {
 }
 
 
+// ═══════════════════════════════════════════════════════════════════════════
+// MODEL ADAPTATION BLOCKS — Provider-specific behavioral nudges
+// Injected at runtime based on the active provider.
+// Keeps the base prompt model-agnostic while fixing known quirks per model.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const MODEL_ADAPTATIONS = {
+
+  // Gemini: strong at following instructions but needs explicit JSON discipline
+  // and sometimes narrates tool calls instead of making them
+  gemini: `<system-reminder>
+MODEL NOTES: You are running on Google Gemini.
+- When you need to call a tool, call it directly. Do NOT describe what you are about to do first.
+- Do NOT write "I'll now call X tool" or "Let me use X to..." — just call the tool.
+- When tools return JSON results, read the actual fields in the JSON. Do not summarize or paraphrase — use the exact values.
+- If a tool returns an error field, treat it as a failure. Do not proceed as if it succeeded.
+- Keep your text responses concise. Do not pad responses with explanations of your process.
+- For task_progress: always include the COMPLETE todos array on every call, not just the changed item.
+</system-reminder>`,
+
+  // OpenAI GPT: reliable tool calling but tends to over-explain and sometimes
+  // skips tool calls in favor of describing what it would do
+  openai: `<system-reminder>
+MODEL NOTES: You are running on OpenAI GPT.
+- Execute tasks directly. Do not describe your plan before acting — act first.
+- When you decide to call a tool, call it immediately. Do not preface with "I will now..." text.
+- If a tool call fails, report the exact error from the result. Do not soften or rephrase errors.
+- For task_progress: send the COMPLETE todos array every call. Never send a partial update.
+- Do not add unsolicited commentary after completing steps. Wait until all steps are done.
+</system-reminder>`,
+
+  // DeepSeek: very capable but can drift on long agentic loops and sometimes
+  // generates malformed JSON in tool arguments
+  deepseek: `<system-reminder>
+MODEL NOTES: You are running on DeepSeek.
+- Tool call arguments must be valid JSON. Double-check that strings are properly quoted and escaped.
+- Do not truncate tool arguments — include all required fields completely.
+- On long multi-step tasks, re-read the original request before each new step to stay on track.
+- When tools return results, extract the specific field values you need. Do not assume success — check for error fields first.
+- If you find yourself repeating the same tool call, stop and try a different approach.
+</system-reminder>`,
+
+  // Anthropic Claude: native format, best tool calling compliance
+  // Minimal adaptation needed — just reinforce investigation discipline
+  anthropic: `<system-reminder>
+MODEL NOTES: You are running on Anthropic Claude.
+- You have full native tool calling support. Use it precisely.
+- After each tool call, read the actual result before proceeding. Never assume success.
+</system-reminder>`,
+};
+
+function getModelAdaptation(provider) {
+  return MODEL_ADAPTATIONS[provider] || MODEL_ADAPTATIONS.anthropic;
+}
+
+
 // TOOL DEFINITIONS — Full suite available to Sarah
 const _ALL_TOOLS = [
   // ── CONTACTS ──────────────────────────────────────────────────────────────
@@ -3501,11 +3557,26 @@ NEVER skip steps 3 and 4 even if step 2 fails.
     if (typeof userMessage === 'string') {
       enrichedUserMessage = userMessage + '\n\n' + injection;
     } else if (Array.isArray(userMessage)) {
-      // Content block array — append as a text block
       enrichedUserMessage = [...userMessage, { type: 'text', text: injection }];
     }
     logger.info('Task injection applied', { taskType: detectedTaskType });
   }
+
+  // ── MODEL ADAPTATION — inject provider-specific behavioral nudge ─────────
+  // Different models interpret instructions differently. This small injection
+  // translates key behaviors (tool calling, JSON discipline, error handling)
+  // into the active model's preferred patterns — keeping Sarah consistent
+  // regardless of which model is running.
+  const activeProvider = llmClient.provider;
+  const modelAdaptation = getModelAdaptation(activeProvider);
+  if (typeof enrichedUserMessage === 'string') {
+    enrichedUserMessage = enrichedUserMessage + '\n\n' + modelAdaptation;
+  } else if (Array.isArray(enrichedUserMessage)) {
+    enrichedUserMessage = [...enrichedUserMessage, { type: 'text', text: modelAdaptation }];
+  } else {
+    enrichedUserMessage = modelAdaptation;
+  }
+  logger.info('Model adaptation applied', { provider: activeProvider, model: llmClient.model });
 
   const messages = [...history, { role: 'user', content: enrichedUserMessage }];
   let currentMessages = [...messages];
@@ -3818,6 +3889,30 @@ NEVER skip steps 3 and 4 even if step 2 fails.
     if (response.usage) {
       totalInputTokens += response.usage.input_tokens || 0;
       totalOutputTokens += response.usage.output_tokens || 0;
+    }
+
+    // ── RESPONSE NORMALIZATION — fix known model-specific quirks ─────────
+    // Some models return text blocks that contain JSON tool calls instead of
+    // native tool_use blocks. Detect and convert before the loop processes them.
+    const activeModel = llmClient.model;
+    const activeModelProvider = llmClient.provider;
+    if (response.stop_reason === 'end_turn' && (activeModelProvider === 'gemini' || activeModelProvider === 'deepseek')) {
+      // Check if any text block looks like a JSON tool call that should have been a tool_use block
+      const textBlocks = response.content.filter(b => b.type === 'text');
+      for (const block of textBlocks) {
+        if (block.text && block.text.includes('"tool_use"') && block.text.includes('"name"') && block.text.includes('"input"')) {
+          try {
+            const parsed = JSON.parse(block.text.trim());
+            if (parsed.type === 'tool_use' && parsed.name && parsed.input) {
+              // Convert to proper tool_use block
+              response.content = response.content.filter(b => b !== block);
+              response.content.push({ type: 'tool_use', id: parsed.id || 'tool_' + Date.now(), name: parsed.name, input: parsed.input });
+              response.stop_reason = 'tool_use';
+              logger.warn('Normalized text-encoded tool call to tool_use block', { model: activeModel, tool: parsed.name });
+            }
+          } catch (e) { /* not a JSON tool call, ignore */ }
+        }
+      }
     }
 
     if (response.stop_reason === 'end_turn') {
