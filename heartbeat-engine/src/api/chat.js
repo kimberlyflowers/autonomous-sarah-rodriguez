@@ -465,7 +465,7 @@ function detectTaskType(userMessage) {
   // CRM / COMMUNICATION — checked before file so "email my client the doc" → crm
   // "text", "call", "phone" added as standalone words so "text jarrell", "call John" match
   // "text me", "send a text", "send jarrell a text" all now match via standalone "text"
-  if (/\b(contact|crm|lead|prospect|outreach|send message|send email|follow.?up|message|sms|text|call|phone|invoice|notify|reply to|new inquiry|pipeline|tag|unsubscribe|opt.?out|conversation|inbox|respond|response|replied|client said|they said|they replied|heard back)\b/.test(msg)) return 'crm_operations';
+  if (/\b(contact|crm|lead|prospect|outreach|send message|send email|follow.?up|message|sms|text|call|phone|invoice|notify|reply to|new inquiry|pipeline|tag|unsubscribe|opt.?out|conversation|inbox|respond|responded|response|replied|reply|client said|they said|they replied|heard back|waiting on|waiting for)\b/.test(msg)) return 'crm_operations';
 
   // FILE OPERATIONS — after crm
   if (/\b(file|document|doc|pdf|slide|spreadsheet|xlsx|word|download|upload|attachment|export|import|csv|template)\b/.test(msg)) return 'file_operations';
