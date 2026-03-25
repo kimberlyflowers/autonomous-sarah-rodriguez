@@ -37,7 +37,7 @@ export async function escalate(decision, agentConfig) {
     };
 
   } catch (error) {
-    logger.error('❌ Escalation failed:', error, {
+    logger.error('❌ Escalation failed:', { message: error.message, stack: error.stack }, {
       issue: decision.issue
     });
 
@@ -51,7 +51,7 @@ export async function escalate(decision, agentConfig) {
         completed: false
       });
     } catch (fallbackError) {
-      logger.error('Fallback escalation task creation failed:', fallbackError);
+      logger.error('Fallback escalation task creation failed:', { message: fallbackError.message });
     }
 
     return {
@@ -282,7 +282,7 @@ To resolve this escalation:
 
     return task;
   } catch (error) {
-    logger.error('Failed to create escalation task:', error);
+    logger.error('Failed to create escalation task:', { message: error.message, stack: error.stack });
     throw error;
   }
 }
