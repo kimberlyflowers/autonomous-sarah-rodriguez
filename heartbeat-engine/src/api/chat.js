@@ -152,8 +152,19 @@ ${getSkillCatalogSummary()}`;
 // These keep the base prompt frozen (cache-friendly) while adding targeted context.
 // ═══════════════════════════════════════════════════════════════════════════
 
-const TASK_INJECTIONS = {
-  scheduling: `<system-reminder>
+// ═══════════════════════════════════════════════════════════════════════════
+// TASK INJECTIONS — Provider-native task-specific behavioral contracts.
+// Each model gets instructions written in ITS language:
+//   Claude  → XML <system-reminder> tags (native format)
+//   Gemini  → Flat numbered rules (no XML)
+//   GPT     → Direct imperative rules (no XML)
+//   DeepSeek → Typed constraint comments (no XML)
+// ═══════════════════════════════════════════════════════════════════════════
+
+const TASK_INJECTION_SETS = {
+
+  scheduling: {
+    anthropic: `<system-reminder>
 TASK MODE: SCHEDULING
 These instructions OVERRIDE default behavior for this task.
 
@@ -168,8 +179,31 @@ After bloom_schedule_task returns:
 - NEVER confirm task created unless tool returned a task_id and you can verify it exists
 - Report: task name, frequency, next_run_at in your delivery message
 </system-reminder>`,
+    gemini: `TASK MODE: SCHEDULING
+Rules that override your default behavior for this task:
+1. Before creating: confirm the exact instruction text, frequency (daily/weekly/monthly), and run time (default 09:00).
+2. After bloom_schedule_task returns: check result for task_id and next_run_at.
+3. If task_id is missing from the result, the task was NOT created. Do not report success.
+4. Query scheduled_tasks to verify the task exists with the correct parameters.
+5. Report back: task name, frequency, and next_run_at.`,
+    openai: `TASK MODE: SCHEDULING
+Override rules for this task:
+1. Before creating: confirm exact instruction text, frequency, and run time (default 09:00).
+2. After bloom_schedule_task: check result for task_id and next_run_at.
+3. No task_id in result = task was NOT created. Do not claim success.
+4. Verify the task exists by querying scheduled_tasks.
+5. Deliver: task name, frequency, next_run_at.`,
+    deepseek: `// TASK MODE: SCHEDULING
+// Override constraints for this task:
+// 1. Confirm before creating: exact instruction text, frequency, run time (default 09:00).
+// 2. After bloom_schedule_task: result must contain task_id and next_run_at.
+// 3. Missing task_id = task NOT created. Do not report success.
+// 4. Verify with scheduled_tasks query.
+// 5. Report: task name, frequency, next_run_at.`,
+  },
 
-  content_creation: `<system-reminder>
+  content_creation: {
+    anthropic: `<system-reminder>
 TASK MODE: CONTENT CREATION
 These instructions OVERRIDE default behavior for this task.
 
@@ -185,8 +219,34 @@ After generating:
 - NEVER deliver truncated content — if result is cut off, regenerate before delivering
 - NEVER include <!-- file:filename.ext --> unless the file save tool confirmed success
 </system-reminder>`,
+    gemini: `TASK MODE: CONTENT CREATION
+Rules that override your default behavior:
+1. Load the appropriate skill first using load_skill. If it fails, proceed silently.
+2. After image generation: confirm the URL in the result starts with https://. If not, do not deliver it.
+3. After document save: confirm artifact ID or success flag is in the result.
+4. After HTML generation: confirm the result contains </html>. Truncated HTML is a failure.
+5. Never include file references unless the save tool returned success: true and an artifact ID.
+6. Never deliver truncated content. Regenerate if the result was cut off.`,
+    openai: `TASK MODE: CONTENT CREATION
+Override rules for this task:
+1. Load the matching skill first (load_skill). Silent failure — never tell the user.
+2. Image URL must start with https:// in the tool result. Do not invent URLs.
+3. Document: artifact ID must be in the result. No ID = not saved.
+4. HTML: result must contain </html>. Missing = truncated = failure.
+5. No file references unless save tool returned success:true + artifact ID.
+6. Do not deliver partial content. Regenerate if cut off.`,
+    deepseek: `// TASK MODE: CONTENT CREATION
+// Override constraints:
+// 1. Call load_skill first. If it fails, proceed silently without telling user.
+// 2. Image URL: must start with https:// in tool result. Never fabricate.
+// 3. Document: result must contain artifact_id. No artifact_id = not saved.
+// 4. HTML: result must contain </html>. Missing closing tag = truncation = failure.
+// 5. File references only when save result has success:true AND artifact_id.
+// 6. Regenerate if content is cut off. Never deliver partial output.`,
+  },
 
-  crm_operations: `<system-reminder>
+  crm_operations: {
+    anthropic: `<system-reminder>
 TASK MODE: CRM OPERATIONS
 These instructions OVERRIDE default behavior for this task.
 
@@ -201,8 +261,32 @@ If a contact is not found:
 - Use bloom_clarify to confirm intent before creating a new record
 - Do NOT silently create duplicate contacts
 </system-reminder>`,
+    gemini: `TASK MODE: CRM OPERATIONS
+Rules that override your default behavior for every CRM write:
+1. Before writing: search for the contact first. Confirm they exist before any update.
+2. After writing: query the contact again to confirm the change actually persisted.
+3. For messages: confirm message_id is in the result. HTTP 200 is not confirmation of delivery.
+4. Do not report "message sent" unless ghl_send_message returned a message_id.
+5. Do not report "contact updated" unless ghl_get_contact confirms the new values.
+6. If contact not found: use bloom_clarify before creating. Never silently create duplicates.`,
+    openai: `TASK MODE: CRM OPERATIONS
+Override rules for every CRM write operation:
+1. Search first. Confirm contact exists before any create/update/send.
+2. After write: re-query to confirm the change persisted in the system.
+3. Messages require message_id in result. HTTP 200 alone is not enough.
+4. No "message sent" claim without message_id. No "contact updated" without re-query.
+5. Contact not found: use bloom_clarify before creating. No silent duplicates.`,
+    deepseek: `// TASK MODE: CRM OPERATIONS
+// Override constraints for every CRM write:
+// 1. Search before writing. Contact must exist before create/update/send.
+// 2. After write: re-query to confirm change persisted.
+// 3. Messages: result must contain message_id. HTTP 200 is not delivery confirmation.
+// 4. No "sent" claim without message_id. No "updated" claim without re-query confirmation.
+// 5. Contact not found: call bloom_clarify. Never silently create duplicates.`,
+  },
 
-  file_operations: `<system-reminder>
+  file_operations: {
+    anthropic: `<system-reminder>
 TASK MODE: FILE / DOCUMENT OPERATIONS
 These instructions OVERRIDE default behavior for this task.
 
@@ -217,8 +301,31 @@ NEVER include <!-- file:filename.ext --> in your message unless:
 - The file content is COMPLETE (not a partial draft)
 If either condition is not met, fix it silently before delivering.
 </system-reminder>`,
+    gemini: `TASK MODE: FILE / DOCUMENT OPERATIONS
+Rules that override your default behavior for every file operation:
+1. After saving: check the result for artifact ID or success flag. Missing = not saved.
+2. HTML files: confirm </html> is present in the result. Missing closing tag = truncation = failure.
+3. docx/pptx/xlsx: artifact ID must be in the result. No ID = not saved.
+4. Edits: spot-check that the edited content matches what was requested before delivering.
+5. File references (<!-- file: -->) only when: result has success:true AND artifact ID AND content is complete.`,
+    openai: `TASK MODE: FILE / DOCUMENT OPERATIONS
+Override rules for every file operation:
+1. After save: result must have artifact ID or success:true. Missing = failed save.
+2. HTML: </html> must be in result. Missing = truncated = failure. Regenerate.
+3. docx/pptx/xlsx: artifact ID required. No ID = not saved.
+4. Edits: verify change matches request before marking done.
+5. File references only with: success:true + artifact ID + complete content.`,
+    deepseek: `// TASK MODE: FILE / DOCUMENT OPERATIONS
+// Override constraints for every file operation:
+// 1. After save: result must contain artifact_id or success:true. Missing = failed.
+// 2. HTML: result must contain </html>. Missing = truncated. Regenerate before delivering.
+// 3. docx/pptx/xlsx: artifact_id required in result.
+// 4. Edits: verify the changed content matches the request.
+// 5. File references only when: success:true AND artifact_id AND content complete.`,
+  },
 
-  web_research: `<system-reminder>
+  web_research: {
+    anthropic: `<system-reminder>
 TASK MODE: WEB RESEARCH / INFORMATION LOOKUP
 These instructions OVERRIDE default behavior for this task.
 
@@ -233,17 +340,54 @@ After research:
 - Flag any claims you could not independently verify with "(unverified)"
 - NEVER present inference or assumption as confirmed fact
 </system-reminder>`,
+    gemini: `TASK MODE: WEB RESEARCH
+Rules that override your default behavior:
+1. For every factual claim: use brave_search or fetch_url to find the source before stating it.
+2. Do not state a URL as real unless you fetched it and it returned valid content.
+3. Do not fabricate statistics, prices, contact info, or dates.
+4. If a claim cannot be verified via search: say "I could not confirm this." Do not guess.
+5. In your response: list sources explicitly. Mark unverified claims with (unverified).`,
+    openai: `TASK MODE: WEB RESEARCH
+Override rules for this task:
+1. Every factual claim needs a source. Use brave_search or fetch_url first.
+2. URLs must be fetched and return valid content before you state them as real.
+3. No fabricated stats, prices, contact info, or dates.
+4. Unverifiable claim = say "I could not confirm this." Never guess.
+5. Response must include: explicit sources + (unverified) tags on anything not confirmed.`,
+    deepseek: `// TASK MODE: WEB RESEARCH
+// Override constraints:
+// 1. Every factual claim requires a source. Call brave_search or fetch_url first.
+// 2. Only state a URL as real after fetching it and confirming valid content in the result.
+// 3. Never fabricate statistics, prices, contact info, or dates.
+// 4. Unverifiable claim: output "I could not confirm this." Never guess.
+// 5. Response must list sources explicitly. Tag unconfirmed claims with (unverified).`,
+  },
 };
+
+// Returns the provider-native injection for a given task type
+function getTaskInjection(taskType, provider) {
+  const set = TASK_INJECTION_SETS[taskType];
+  if (!set) return null;
+  return set[provider] || set.anthropic; // fallback to Claude version
+}
+
+// Keep detectTaskType return value compatible — same keys as before
+const TASK_INJECTIONS = TASK_INJECTION_SETS; // backward compat alias (not used externally)
 
 // ═══════════════════════════════════════════════════════════════════════════
 // INVESTIGATION WRAPPER — Injected after every tool-result turn
 // Forces Sarah to read actual tool results before claiming success.
 // This is the #1 fix for false completions and hallucinated confirmations.
 // ═══════════════════════════════════════════════════════════════════════════
-const INVESTIGATION_WRAPPER = `<system-reminder>
-BEFORE YOU RESPOND — READ YOUR TOOL RESULTS FIRST.
+// ═══════════════════════════════════════════════════════════════════════════
+// INVESTIGATION WRAPPER — Provider-native. Injected after every tool result batch.
+// Forces model to read actual results before claiming success.
+// ═══════════════════════════════════════════════════════════════════════════
+const INVESTIGATION_WRAPPERS = {
 
-You just received one or more tool results. Before writing your response:
+  // Claude: XML system-reminder is the native format
+  anthropic: `<system-reminder>
+BEFORE YOU RESPOND — READ YOUR TOOL RESULTS FIRST.
 
 1. READ each result carefully.
    - Did it return success: true — or an error field?
@@ -251,25 +395,56 @@ You just received one or more tool results. Before writing your response:
    - Are there null values, empty arrays, or HTTP error codes?
 
 2. NEVER claim success if the tool returned an error.
-   - error: "..." → the operation FAILED. Do not report it as done.
-   - empty result / null ID → the record may not exist. Verify before reporting.
-   - HTTP 4xx or 5xx → the API rejected your request. Do not report it as done.
+   - error: "..." → FAILED. Do not report it as done.
    - success: false → do NOT mark the step completed. Retry or escalate.
+   - HTTP 4xx or 5xx → the API rejected your request.
 
 3. NEVER invent data.
-   - No URL in the result → you have no URL. Do not fabricate one.
-   - No ID in the result → the record may not have been created. Do not report it as saved.
-   - No message_id → the message may not have sent. Do not confirm it was sent.
-   - Search returned no results → report that. Do not guess at the answer.
+   - No URL in result → you have no URL.
+   - No ID in result → record may not exist.
+   - No message_id → message may not have sent.
 
-4. IF THE STEP FAILED:
-   - Retry once with corrected parameters
-   - If it fails again → report the exact error to the user
-   - NEVER silently mark a failed step as completed to appear productive
+4. If step failed: retry once. If it fails again → report the exact error.
+   NEVER silently mark a failed step as completed.
+</system-reminder>`,
 
-Give grounded, hallucination-free answers.
-Never make claims about what you did without verifying the tool results first.
-</system-reminder>`;
+  // Gemini: flat numbered rules, no XML
+  gemini: `TOOL RESULT REVIEW — required before responding:
+1. Read every tool result field. Check success, error, IDs, and data values.
+2. success: false or any error field = the operation FAILED. Do not report it as done.
+3. HTTP 4xx or 5xx in the result = the API rejected the request. Do not proceed as successful.
+4. No URL in result = you have no URL. Do not fabricate one.
+5. No ID in result = the record may not exist. Do not report it as saved.
+6. If a step failed: retry once with corrected parameters. If still failing, report the exact error.
+Do not mark any step complete without verifying the tool result confirms it.`,
+
+  // GPT: direct rules
+  openai: `TOOL RESULT CHECK — do this before responding:
+1. Read each tool result. Check: success field, error field, returned IDs, data values.
+2. error field or success:false = operation failed. Do not report it as done.
+3. HTTP 4xx/5xx = API rejected the request.
+4. Missing URL = no URL. Missing ID = record may not exist. Missing message_id = not sent.
+5. Failed step: retry once. Still failing: report the exact error text.
+Never mark a step complete without confirming the tool result.`,
+
+  // DeepSeek: typed constraint style
+  deepseek: `// TOOL RESULT VERIFICATION (required before responding):
+// 1. Read every field in each tool result.
+// 2. If result.success === false or result.error exists: operation FAILED. Do not report done.
+// 3. HTTP 4xx or 5xx status: API rejected. Do not proceed as successful.
+// 4. No URL in result: do not fabricate. No ID: record may not exist. No message_id: not sent.
+// 5. Failed step: retry once with corrected params. If still failing: report exact error.
+// Never mark a step complete without result confirmation.`,
+};
+
+// Returns the provider-native investigation wrapper
+function getInvestigationWrapper(provider) {
+  return INVESTIGATION_WRAPPERS[provider] || INVESTIGATION_WRAPPERS.anthropic;
+}
+
+// Keep a default export for the single injection point that doesn't know provider yet
+// This gets replaced at injection time with the provider-native version
+const INVESTIGATION_WRAPPER = INVESTIGATION_WRAPPERS.anthropic; // fallback — overridden at call site
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TASK INJECTION HELPER — Detects task type from user message
@@ -296,49 +471,52 @@ function detectTaskType(userMessage) {
 // Keeps the base prompt model-agnostic while fixing known quirks per model.
 // ═══════════════════════════════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════════════════════════
+// MODEL ADAPTATIONS — Provider-native behavioral nudges.
+// Each model gets its own language — no XML for non-Claude models.
+// Injected into the last user message when no task injection is active.
+// ═══════════════════════════════════════════════════════════════════════════
+
 const MODEL_ADAPTATIONS = {
 
-  // Gemini: strong at following instructions but needs explicit JSON discipline
-  // and sometimes narrates tool calls instead of making them
-  gemini: `<system-reminder>
-MODEL NOTES: You are running on Google Gemini.
-- When you need to call a tool, call it directly. Do NOT describe what you are about to do first.
-- Do NOT write "I'll now call X tool" or "Let me use X to..." — just call the tool.
-- When tools return JSON results, read the actual fields in the JSON. Do not summarize or paraphrase — use the exact values.
-- If a tool returns an error field, treat it as a failure. Do not proceed as if it succeeded.
-- Keep your text responses concise. Do not pad responses with explanations of your process.
-- For task_progress: always include the COMPLETE todos array on every call, not just the changed item.
-</system-reminder>`,
-
-  // OpenAI GPT: reliable tool calling but tends to over-explain and sometimes
-  // skips tool calls in favor of describing what it would do
-  openai: `<system-reminder>
-MODEL NOTES: You are running on OpenAI GPT.
-- Execute tasks directly. Do not describe your plan before acting — act first.
-- When you decide to call a tool, call it immediately. Do not preface with "I will now..." text.
-- If a tool call fails, report the exact error from the result. Do not soften or rephrase errors.
-- For task_progress: send the COMPLETE todos array every call. Never send a partial update.
-- Do not add unsolicited commentary after completing steps. Wait until all steps are done.
-</system-reminder>`,
-
-  // DeepSeek: very capable but can drift on long agentic loops and sometimes
-  // generates malformed JSON in tool arguments
-  deepseek: `<system-reminder>
-MODEL NOTES: You are running on DeepSeek.
-- Tool call arguments must be valid JSON. Double-check that strings are properly quoted and escaped.
-- Do not truncate tool arguments — include all required fields completely.
-- On long multi-step tasks, re-read the original request before each new step to stay on track.
-- When tools return results, extract the specific field values you need. Do not assume success — check for error fields first.
-- If you find yourself repeating the same tool call, stop and try a different approach.
-</system-reminder>`,
-
-  // Anthropic Claude: native format, best tool calling compliance
-  // Minimal adaptation needed — just reinforce investigation discipline
+  // Claude: native XML format — this is what Claude was trained on.
+  // Keep XML tags. Claude parses these as structured directives.
   anthropic: `<system-reminder>
-MODEL NOTES: You are running on Anthropic Claude.
-- You have full native tool calling support. Use it precisely.
-- After each tool call, read the actual result before proceeding. Never assume success.
+You are running on Anthropic Claude with full native tool support.
+- Call tools directly when needed. Read every tool result before responding.
+- Never assume a tool succeeded — check the result fields.
+- After each tool result batch, verify success before marking any step complete.
 </system-reminder>`,
+
+  // Gemini: flat prose, no XML. Gemini responds to imperative numbered lists.
+  // XML tags are treated as literal text and confuse the response format.
+  gemini: `OPERATIONAL NOTES (Gemini):
+1. Call tools directly when needed. Do not narrate what you are about to do.
+2. Never write "I will now call X" — just call it.
+3. After every tool result, read the actual JSON fields returned. Do not assume success.
+4. If a tool returns an error field or success: false, treat it as a failure. Do not proceed.
+5. Keep responses concise. Do not explain your process — deliver results.
+6. For task_progress: always include the COMPLETE todos array, not just the changed item.`,
+
+  // GPT-4o: direct, role-framed instructions. GPT responds to clear rules over XML.
+  // Numbered rules work better than prose paragraphs for GPT behavioral nudges.
+  openai: `OPERATIONAL NOTES (GPT):
+1. Execute tasks directly. Act before you explain.
+2. Call tools immediately when needed. No preamble like "I will now...".
+3. If a tool call fails, report the exact error text from the result. Do not soften it.
+4. For task_progress: send the COMPLETE todos array on every call. Never partial.
+5. Do not add commentary after completing steps. Wait until all steps are verified done.`,
+
+  // DeepSeek: TypeScript-style rules work best — DeepSeek was trained heavily on code.
+  // Prose rules get ignored; typed constraints are respected.
+  deepseek: `// OPERATIONAL CONSTRAINTS (DeepSeek)
+// These rules apply to every tool call and response in this session:
+// 1. Tool arguments must be valid JSON — check that all strings are quoted and escaped.
+// 2. Include ALL required fields in tool arguments. Never truncate.
+// 3. On multi-step tasks: re-read the original request before each new step.
+// 4. After every tool result: extract the specific field values you need.
+//    Check for error fields first. Do not assume success from HTTP 200 alone.
+// 5. If repeating the same tool call, stop and try a different approach or report failure.`,
 };
 
 function getModelAdaptation(provider) {
@@ -3552,20 +3730,11 @@ NEVER skip steps 3 and 4 even if step 2 fails.
     systemPrompt += `\n\nIMPORTANT: When writing a blog, always: 1) generate hero image, 2) call ghl_create_blog_post, 3) call create_artifact to save HTML, 4) include <!-- file:name.html --> tag. Never skip step 3 even if step 2 fails.`;
   }
 
-  // ── TASK INJECTION — Anthropic-style <system-reminder> per task type ──────
-  // Detects task type from user message and injects targeted instructions into
-  // the messages array (NOT the system prompt) to keep the cache frozen.
+  // ── TASK INJECTION — Provider-native task-specific behavioral contracts ────
+  // Detects task type from user message. Provider-native injection string is
+  // resolved after model detection below. Stored here for use after model resolution.
   const detectedTaskType = detectTaskType(userMessage);
-  let enrichedUserMessage = userMessage;
-  if (detectedTaskType && TASK_INJECTIONS[detectedTaskType]) {
-    const injection = TASK_INJECTIONS[detectedTaskType];
-    if (typeof userMessage === 'string') {
-      enrichedUserMessage = userMessage + '\n\n' + injection;
-    } else if (Array.isArray(userMessage)) {
-      enrichedUserMessage = [...userMessage, { type: 'text', text: injection }];
-    }
-    logger.info('Task injection applied', { taskType: detectedTaskType });
-  }
+  let enrichedUserMessage = userMessage; // will be updated after model is known
 
   const messages = [...history, { role: 'user', content: enrichedUserMessage }];
   let currentMessages = [...messages];
@@ -3677,10 +3846,9 @@ NEVER skip steps 3 and 4 even if step 2 fails.
   const messageText = Array.isArray(userMessage) ? userMessage.filter(b => b.type === 'text').map(b => b.text).join(' ') : userMessage;
   const llmClient = getLLMClient();
 
-  // ── MODEL ADAPTATION — now safe, llmClient is initialized ────────────────
-  // Only apply if NO task injection was applied — prevents context ballooning on first turn.
-  // Task injection already has model-specific guidance built in.
-  const activeProvider = llmClient.provider;
+  // ── MODEL ADAPTATION — applied after model is known, only when no task injection ──
+  // Task injection already carries model-native guidance, so we skip adaptation when it fires.
+  // Both use the same provider — resolved above as activeProvider.
   if (!detectedTaskType) {
     const modelAdaptation = getModelAdaptation(activeProvider);
     if (currentMessages.length > 0) {
@@ -3695,7 +3863,7 @@ NEVER skip steps 3 and 4 even if step 2 fails.
     }
     logger.info('Model adaptation applied', { provider: activeProvider, model: llmClient.model });
   } else {
-    logger.info('Model adaptation skipped — task injection active', { provider: activeProvider, taskType: detectedTaskType });
+    logger.info('Model adaptation skipped — provider-native task injection active', { provider: activeProvider, taskType: detectedTaskType });
   }
 
   // Apply per-org model tier from Supabase admin settings (bloom=Sonnet, premium=GPT, standard=Gemini)
@@ -3735,6 +3903,26 @@ NEVER skip steps 3 and 4 even if step 2 fails.
 
   const chatModel = llmClient.model;
   logger.info('Chat model selected', { model: chatModel, provider: llmClient.provider, failoverReady: !llmClient.isFailoverActive });
+
+  // ── NOW APPLY PROVIDER-NATIVE TASK INJECTION (model is known) ────────────
+  // Each model gets task instructions written in its own language.
+  // Applied to the user message so base system prompt cache stays frozen.
+  const activeProvider = llmClient.provider;
+  if (detectedTaskType) {
+    const injection = getTaskInjection(detectedTaskType, activeProvider);
+    if (injection) {
+      if (typeof enrichedUserMessage === 'string') {
+        enrichedUserMessage = enrichedUserMessage + '\n\n' + injection;
+      } else if (Array.isArray(enrichedUserMessage)) {
+        enrichedUserMessage = [...enrichedUserMessage, { type: 'text', text: injection }];
+      }
+      // Update currentMessages with the enriched message
+      if (currentMessages.length > 0 && currentMessages[currentMessages.length - 1].role === 'user') {
+        currentMessages[currentMessages.length - 1].content = enrichedUserMessage;
+      }
+      logger.info('Provider-native task injection applied', { taskType: detectedTaskType, provider: activeProvider });
+    }
+  }
 
   // ── PASSIVE TASK TRACKING — auto-populate Active Tasks panel ──────────
   const trackingKey = sessionId || 'default';
@@ -4329,7 +4517,7 @@ NEVER skip steps 3 and 4 even if step 2 fails.
         // Modeled after Anthropic's <investigate_before_answering> pattern.
         const wrappedToolResults = [
           ...toolResultBlocks,
-          { type: 'text', text: INVESTIGATION_WRAPPER }
+          { type: 'text', text: getInvestigationWrapper(llmClient.provider) }
         ];
         currentMessages.push({ role: 'user', content: wrappedToolResults });
       } else {
