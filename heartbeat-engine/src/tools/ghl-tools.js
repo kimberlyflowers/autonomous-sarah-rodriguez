@@ -511,6 +511,22 @@ export const ghlToolDefinitions = {
     operation: "read"
   },
 
+  // GET /conversations/{conversationId}/messages — read replies in a thread
+  ghl_get_messages: {
+    name: "ghl_get_messages",
+    description: "Get messages in a conversation thread. Use this to read inbound replies from a contact — check what they said before responding. Pass the conversationId from ghl_get_conversations.",
+    parameters: {
+      type: "object",
+      properties: {
+        conversationId: { type: "string", description: "Conversation ID (from ghl_get_conversations result)" },
+        limit: { type: "number", description: "Max messages to return (default: 20)" }
+      },
+      required: ["conversationId"]
+    },
+    category: "conversations",
+    operation: "read"
+  },
+
   ghl_send_message: {
     name: "ghl_send_message",
     description: "Send SMS, email, or other message to a contact",
@@ -1343,6 +1359,16 @@ export const ghlExecutors = {
   ghl_get_conversations: async (params) => {
     const locationId = await resolveLocationId(params._orgId);
     return await callGHL('/conversations/search', 'GET', null, { locationId, contactId: params.contactId, limit: params.limit || 20 });
+  },
+
+  // GET /conversations/{conversationId}/messages — read replies in thread
+  ghl_get_messages: async (params) => {
+    return await callGHL(
+      `/conversations/${params.conversationId}/messages`,
+      'GET', null,
+      { limit: params.limit || 20 },
+      params._orgId
+    );
   },
 
   // POST /conversations/messages
