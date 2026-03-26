@@ -402,6 +402,114 @@ class GHLClient {
     }
   }
 
+  // ─── INBOUND REPLY METHODS ───────────────────────────────────────────────
+  // These power the heartbeat's ability to detect and respond to inbound replies.
+
+  // Read all messages in a conversation thread
+  async getConversationMessages(conversationId, limit = 20) {
+    try {
+      const response = await this.client.get(`/conversations/${conversationId}/messages`, {
+        params: { limit }
+      });
+      const messages = response.data.messages?.messages || response.data.messages || [];
+      logger.info(`Retrieved ${messages.length} messages from conversation`, { conversationId });
+      return messages.map(m => ({
+        id: m.id,
+        conversationId,
+        direction: m.direction,   // 'inbound' | 'outbound'
+        type: m.messageType || m.type,
+        body: m.body || m.message || '',
+        status: m.status,
+        dateAdded: m.dateAdded,
+        contactId: m.contactId,
+        userId: m.userId,
+        read: m.read || false,
+      }));
+    } catch (error) {
+      logger.error(`Failed to get conversation messages for ${conversationId}:`, error.message);
+      return [];
+    }
+  }
+
+  // Get all conversations with unread inbound replies since a given time
+  // Called by sense.js every heartbeat cycle
+  async getUnreadInboundMessages(since = null) {
+    try {
+      const sinceTime = since
+        ? new Date(since)
+        : new Date(Date.now() - 11 * 60 * 1000); // default: last 11 min (covers 10-min heartbeat)
+
+      const response = await this.client.get('/conversations/search', {
+        params: {
+          locationId: this.locationId,
+          status: 'all',
+          limit: 50,
+          sort: 'desc',
+          sortBy: 'last_message_date',
+        }
+      });
+
+      const conversations = response.data.conversations || [];
+
+      const withInbound = conversations.filter(conv => {
+        if (!conv.lastMessageDate) return false;
+        const lastDate = new Date(conv.lastMessageDate);
+        return (
+          lastDate > sinceTime &&
+          conv.lastMessageDirection === 'inbound' &&
+          (conv.unreadCount || 0) > 0
+        );
+      });
+
+      logger.info(`Found ${withInbound.length} conversations with unread inbound replies`, {
+        since: sinceTime.toISOString()
+      });
+
+      return withInbound.map(conv => ({
+        conversationId: conv.id,
+        contactId: conv.contactId,
+        contactName: conv.contactName || conv.fullName || '',
+        lastMessageBody: conv.lastMessageBody || '',
+        lastMessageDate: conv.lastMessageDate,
+        unreadCount: conv.unreadCount || 0,
+        channelType: conv.type, // SMS, Email, etc.
+      }));
+
+    } catch (error) {
+      logger.error('Failed to get unread inbound messages:', error.message);
+      return [];
+    }
+  }
+
+  // Reply to a contact in an existing conversation thread
+  async replyToConversation(conversationId, contactId, message, type = 'SMS') {
+    try {
+      const payload = { type, message, conversationId, contactId };
+      const response = await this.client.post('/conversations/messages', payload);
+      logger.info('Reply sent to conversation', {
+        conversationId, contactId, type,
+        messageId: response.data.messageId
+      });
+      return { sent: true, messageId: response.data.messageId, conversationId };
+    } catch (error) {
+      logger.error(`Failed to reply to conversation ${conversationId}:`, error.message);
+      throw error;
+    }
+  }
+
+  // Mark conversation as read (call after Sarah reads and processes a reply)
+  async markConversationRead(conversationId) {
+    try {
+      await this.client.put(`/conversations/${conversationId}/read`);
+      return true;
+    } catch (error) {
+      logger.error(`Failed to mark conversation ${conversationId} as read:`, error.message);
+      return false;
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+
   // Get specific appointment
   async getAppointment(appointmentId) {
     try {
