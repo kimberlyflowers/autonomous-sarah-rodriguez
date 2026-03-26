@@ -3240,6 +3240,49 @@ export default function AppWithErrorBoundary({ user: authUser }) {
   return <ErrorBoundary><App authUser={authUser} /></ErrorBoundary>;
 }
 
+// ── Password Change Panel — used in Settings > General > Security ──────────
+function PwChangePanel({c}) {
+  const [nw, setNw] = useState('');
+  const [conf, setConf] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+  const [ok, setOk] = useState('');
+
+  const handle = async () => {
+    if (!nw.trim() || !conf.trim()) { setErr('Enter a new password'); return; }
+    if (nw !== conf) { setErr('Passwords do not match'); return; }
+    if (nw.length < 6) { setErr('Password must be at least 6 characters'); return; }
+    setSaving(true); setErr(''); setOk('');
+    const { error } = await supabase.auth.updateUser({ password: nw });
+    setSaving(false);
+    if (error) { setErr(error.message); }
+    else { setOk('Password updated successfully.'); setNw(''); setConf(''); }
+  };
+
+  return (
+    <div style={{padding:'14px 16px',borderRadius:10,background:c.sf,border:'1px solid '+c.ln,display:'flex',flexDirection:'column',gap:10}}>
+      <input
+        type="password" placeholder="New password" value={nw} onChange={e=>setNw(e.target.value)}
+        style={{padding:'9px 12px',borderRadius:8,border:'1.5px solid '+c.ln,background:c.cd,fontSize:13,color:c.tx,outline:'none'}}
+        onFocus={e=>e.target.style.borderColor='#7c5cbf'} onBlur={e=>e.target.style.borderColor=c.ln}
+      />
+      <input
+        type="password" placeholder="Confirm new password" value={conf} onChange={e=>setConf(e.target.value)}
+        style={{padding:'9px 12px',borderRadius:8,border:'1.5px solid '+c.ln,background:c.cd,fontSize:13,color:c.tx,outline:'none'}}
+        onFocus={e=>e.target.style.borderColor='#7c5cbf'} onBlur={e=>e.target.style.borderColor=c.ln}
+      />
+      {err && <div style={{fontSize:12,color:'#ef4444',padding:'6px 10px',background:'#fef2f2',borderRadius:6}}>{err}</div>}
+      {ok  && <div style={{fontSize:12,color:'#059669',padding:'6px 10px',background:'#f0fdf4',borderRadius:6}}>{ok}</div>}
+      <button
+        onClick={handle} disabled={saving || !nw || !conf}
+        style={{padding:'9px',borderRadius:8,border:'none',background:saving||!nw||!conf?'#d1d5db':'linear-gradient(135deg,#7c5cbf,#a78bdb)',color:'#fff',fontSize:13,fontWeight:700,cursor:saving||!nw||!conf?'not-allowed':'pointer'}}
+      >
+        {saving ? 'Updating...' : 'Update Password'}
+      </button>
+    </div>
+  );
+}
+
 function App({ authUser }) {
   const W=useW();
   const mob=W<768;
@@ -6085,6 +6128,10 @@ function App({ authUser }) {
                             {tgEnabled?"Enabled — tools restricted by permission level":"Disabled — all tools unrestricted"}
                           </div>
                         </div>
+                      </div>
+                      <div style={{marginBottom:28}}>
+                        <div style={{fontSize:14,fontWeight:700,color:c.tx,marginBottom:10}}>Change Password</div>
+                        <PwChangePanel c={c}/>
                       </div>
                       <div style={{marginBottom:28}}>
                         <div style={{fontSize:14,fontWeight:700,color:c.tx,marginBottom:10}}>Bloomie OS — AI Model</div>
