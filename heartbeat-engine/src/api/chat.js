@@ -3675,21 +3675,30 @@ async function chatWithAgent(userMessage, history, agentConfig, sessionId = null
     }
   } catch(e) { logger.warn('Feature flag check failed:', e.message); }
 
-  // Inject brand kit if available
+  // Inject brand kit if available — multi-tenant: always scoped to the org of the current chat session
   try {
     const { createClient } = await import('@supabase/supabase-js');
     const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
     let allKits = [];
-    // Scope brand kit query to the agent's organization so each client only sees their own kits
-    const bkOrgId = orgId || agentConfig?.organizationId || agentConfig?.organization_id || null;
+
+    // Resolve org ID: use the orgId param passed to chatWithAgent, fall back to agentConfig, then env var
+    const brandKitOrgId = orgId
+      || agentConfig?.organizationId
+      || agentConfig?.organization_id
+      || process.env.BLOOM_ORG_ID
+      || 'a1000000-0000-0000-0000-000000000001';
+
+    // Always filter by organization_id — each org gets its own brand kits
     let bkQuery = sb.from('user_settings').select('value').eq('key','brand_kits');
-    if (bkOrgId) bkQuery = bkQuery.eq('organization_id', bkOrgId);
+    if (brandKitOrgId) bkQuery = bkQuery.eq('organization_id', brandKitOrgId);
     const { data: bkRow } = await bkQuery.maybeSingle();
+
     // value is jsonb — Supabase returns it already parsed, no JSON.parse needed
     if (bkRow?.value) allKits = Array.isArray(bkRow.value) ? bkRow.value : [bkRow.value];
     if (allKits.length === 0) {
+      // Fall back to legacy single brand_kit key, also org-scoped
       let oldQuery = sb.from('user_settings').select('value').eq('key','brand_kit');
-      if (bkOrgId) oldQuery = oldQuery.eq('organization_id', bkOrgId);
+      if (brandKitOrgId) oldQuery = oldQuery.eq('organization_id', brandKitOrgId);
       const { data: oldRow } = await oldQuery.maybeSingle();
       if (oldRow?.value) allKits = [oldRow.value];
     }
