@@ -140,7 +140,7 @@ export default function Login() {
     }
   };
 
-  const accent = '#7c5cbf';
+  const accent = '#E76F8B';
   const text = '#1a1a2e';
   const sub = '#6b7280';
   const border = '#e5e7eb';
@@ -155,7 +155,7 @@ export default function Login() {
       <div style={{ background:'#ffffff', borderRadius:16, padding:'48px 40px', maxWidth:440, width:'100%', boxShadow:'0 4px 24px rgba(0,0,0,0.08)', border:`1px solid ${border}`, maxHeight:'90vh', overflowY:'auto' }}>
 
         <div style={{ textAlign:'center', marginBottom:32 }}>
-          <div style={{ width:48, height:48, borderRadius:12, background:`linear-gradient(135deg, ${accent}, #a78bdb)`, display:'inline-flex', alignItems:'center', justifyContent:'center', marginBottom:16 }}>
+          <div style={{ width:48, height:48, borderRadius:12, background:`linear-gradient(135deg, #E76F8B, #F4A261)`, display:'inline-flex', alignItems:'center', justifyContent:'center', marginBottom:16 }}>
             <span style={{ color:'#fff', fontSize:22, fontWeight:800 }}>B</span>
           </div>
           <h1 style={{ margin:'0 0 4px', color:text, fontSize:24, fontWeight:800, letterSpacing:'-0.5px' }}>BLOOM</h1>
@@ -281,7 +281,7 @@ export default function Login() {
             <div style={{ textAlign:'right', marginTop:-4 }}>
               <button
                 onClick={() => { setForgotMode(true); setError(''); setSuccess(''); handleForgotPassword(); }}
-                style={{ background:'none', border:'none', color:'#7c5cbf', cursor:'pointer', fontSize:12, padding:0, textDecoration:'underline' }}
+                style={{ background:'none', border:'none', color:'#E76F8B', cursor:'pointer', fontSize:12, padding:0, textDecoration:'underline' }}
               >
                 Forgot password?
               </button>
@@ -300,7 +300,7 @@ export default function Login() {
             disabled={loading || !email.trim() || !password.trim() || (mode === 'signup' && !signupValid)}
             style={{
               padding:'13px', borderRadius:10, border:'none',
-              background: (loading || !email.trim() || !password.trim() || (mode === 'signup' && !signupValid)) ? '#d1d5db' : `linear-gradient(135deg, ${accent}, #a78bdb)`,
+              background: (loading || !email.trim() || !password.trim() || (mode === 'signup' && !signupValid)) ? '#d1d5db' : `linear-gradient(135deg, #E76F8B, #F4A261)`,
               color:'#fff', fontSize:15, fontWeight:700,
               cursor: (loading || !email.trim() || !password.trim() || (mode === 'signup' && !signupValid)) ? 'not-allowed' : 'pointer', marginTop:4
             }}
