@@ -3860,25 +3860,7 @@ NEVER skip steps 3 and 4 even if step 2 fails.
   const messageText = Array.isArray(userMessage) ? userMessage.filter(b => b.type === 'text').map(b => b.text).join(' ') : userMessage;
   const llmClient = getLLMClient();
 
-  // ── MODEL ADAPTATION — applied after model is known, only when no task injection ──
-  // Task injection already carries model-native guidance, so we skip adaptation when it fires.
-  // Both use the same provider — resolved above as activeProvider.
-  if (!detectedTaskType) {
-    const modelAdaptation = getModelAdaptation(activeProvider);
-    if (currentMessages.length > 0) {
-      const lastMsg = currentMessages[currentMessages.length - 1];
-      if (lastMsg.role === 'user') {
-        if (typeof lastMsg.content === 'string') {
-          lastMsg.content = lastMsg.content + '\n\n' + modelAdaptation;
-        } else if (Array.isArray(lastMsg.content)) {
-          lastMsg.content = [...lastMsg.content, { type: 'text', text: modelAdaptation }];
-        }
-      }
-    }
-    logger.info('Model adaptation applied', { provider: activeProvider, model: llmClient.model });
-  } else {
-    logger.info('Model adaptation skipped — provider-native task injection active', { provider: activeProvider, taskType: detectedTaskType });
-  }
+  // MODEL ADAPTATION — moved below after admin config resolves the final model/provider
 
   // Apply per-org model tier from Supabase admin settings (bloom=Sonnet, premium=GPT, standard=Gemini)
   let resolvedAdminConfig = null;
@@ -3921,7 +3903,7 @@ NEVER skip steps 3 and 4 even if step 2 fails.
   // ── NOW APPLY PROVIDER-NATIVE TASK INJECTION (model is known) ────────────
   // Each model gets task instructions written in its own language.
   // Applied to the user message so base system prompt cache stays frozen.
-  const activeProvider = llmClient.provider;
+  const activeProvider = llmClient.provider; // declared here, used below for both task injection and model adaptation
   if (detectedTaskType) {
     const injection = getTaskInjection(detectedTaskType, activeProvider);
     if (injection) {
@@ -3936,6 +3918,25 @@ NEVER skip steps 3 and 4 even if step 2 fails.
       }
       logger.info('Provider-native task injection applied', { taskType: detectedTaskType, provider: activeProvider });
     }
+  }
+
+  // ── MODEL ADAPTATION — fires after final model/provider resolved via admin config ──
+  // Only applies when no task injection fired (task injection already has provider-native guidance).
+  if (!detectedTaskType) {
+    const modelAdaptation = getModelAdaptation(activeProvider);
+    if (currentMessages.length > 0) {
+      const lastMsg = currentMessages[currentMessages.length - 1];
+      if (lastMsg.role === 'user') {
+        if (typeof lastMsg.content === 'string') {
+          lastMsg.content = lastMsg.content + '\n\n' + modelAdaptation;
+        } else if (Array.isArray(lastMsg.content)) {
+          lastMsg.content = [...lastMsg.content, { type: 'text', text: modelAdaptation }];
+        }
+      }
+    }
+    logger.info('Model adaptation applied', { provider: activeProvider, model: chatModel });
+  } else {
+    logger.info('Model adaptation skipped — provider-native task injection active', { provider: activeProvider, taskType: detectedTaskType });
   }
 
   // ── PASSIVE TASK TRACKING — auto-populate Active Tasks panel ──────────
