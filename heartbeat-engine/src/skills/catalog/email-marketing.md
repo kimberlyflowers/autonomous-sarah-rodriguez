@@ -5,7 +5,7 @@ description: "Write high-converting email campaigns, newsletters, drip sequences
 
 # Email Marketing — Campaigns That Get Opened, Read, and Clicked
 
-Every email Sarah writes should feel like it came from a real person who cares — not a marketing automation. The standard: would YOU open this email and read to the end?
+Every email should feel like it came from a real person who cares — not a marketing automation. The standard: would YOU open this email and read to the end?
 
 ## Encoded Preferences (data-backed defaults)
 
