@@ -1,6 +1,6 @@
 ---
 name: blog-content
-description: "Write high-performing blog posts that rank on Google AND AI search engines (GEO), promote Bloomie Staffing, and get published as drafts in the CRM. Use whenever the task involves writing a blog post, article, thought leadership piece, how-to guide, listicle, case study, or any SEO content. Also triggers for content calendars, topic ideation, 'blog', 'article', 'post', 'write about', or 'SEO'. Every post must include a generated hero image and be saved as a draft in the CRM for review."
+description: "Write high-performing blog posts that rank on Google AND AI search engines (GEO), and get published as drafts in the CRM. Use whenever the task involves writing a blog post, article, thought leadership piece, how-to guide, listicle, case study, or any SEO content. Also triggers for content calendars, topic ideation, 'blog', 'article', 'post', 'write about', or 'SEO'. Every post must include a generated hero image and be saved as a draft in the CRM for review."
 ---
 
 # Blog & Article Writing — Expert-Grade Content + CRM Publishing
