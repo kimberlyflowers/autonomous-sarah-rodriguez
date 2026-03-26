@@ -60,6 +60,11 @@ export async function act(decision, agentConfig) {
         result = await executeUpdateTaskStatus(decision, agentConfig);
         break;
 
+      // REPLY TO CONTACT — responds to an inbound message in an existing conversation
+      case 'reply_to_contact':
+        result = await executeReplyToContact(decision, agentConfig);
+        break;
+
       // ── READ ACTIONS ──────────────────────────────────────────────────────────
       // These are NOT valid act.js action types. Sensing already ran in Phase 1.
       // If the model still generates these, return a graceful no-op instead of crashing.
@@ -518,4 +523,37 @@ This is a reminder that you have an appointment scheduled:
 If you need to reschedule, please let us know as soon as possible.
 
 - Sarah @ BLOOM Ecosystem`;
+}
+
+// Execute reply to a contact in an existing conversation thread
+async function executeReplyToContact(decision, agentConfig) {
+  const { conversationId, contactId, message, channelType } = decision.input_data || {};
+
+  if (!conversationId && !contactId) {
+    throw new Error('reply_to_contact requires conversationId or contactId in input_data');
+  }
+  if (!message) {
+    throw new Error('reply_to_contact requires message in input_data');
+  }
+
+  const { ghlClient } = await import('../integrations/ghl.js');
+  const type = channelType || 'SMS';
+
+  if (conversationId) {
+    const result = await ghlClient.replyToConversation(conversationId, contactId, message, type);
+    logger.info('Replied to conversation', { conversationId, contactId, type, messageId: result.messageId });
+    await ghlClient.markConversationRead(conversationId).catch(() => {});
+    return { success: true, messageId: result.messageId, conversationId, contactId, repliedAt: new Date().toISOString() };
+  }
+
+  // Find conversation by contactId if no conversationId given
+  const conversations = await ghlClient.getUnreadInboundMessages();
+  const convo = conversations.find(c => c.contactId === contactId);
+  if (!convo) {
+    throw new Error('reply_to_contact: no active conversation found for contactId ' + contactId);
+  }
+  const result = await ghlClient.replyToConversation(convo.conversationId, contactId, message, type);
+  logger.info('Replied to contact via conversation lookup', { conversationId: convo.conversationId, contactId, type });
+  await ghlClient.markConversationRead(convo.conversationId).catch(() => {});
+  return { success: true, messageId: result.messageId, conversationId: convo.conversationId, contactId, repliedAt: new Date().toISOString() };
 }
