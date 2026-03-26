@@ -1218,73 +1218,90 @@ function ProgressRing({pct,sz,stroke,color,bg}) {
    ACTIVE TASK TRACKER — right panel task progress
    ═══════════════════════════════════════════════════════════════ */
 function ActiveTaskTracker({c, sessionId}) {
-  const [tasks,setTasks]=useState([]);
-  const [pollRate,setPollRate]=useState(2000); // Start fast (2s), slow down when idle
+  const [todos,setTodos]=useState([]);
+  const [isActive,setIsActive]=useState(false);
+
   useEffect(()=>{
-    // Clear tasks immediately when session changes (e.g. "New chat")
-    setTasks([]);
-    const go=async()=>{
+    if(!sessionId){setTodos([]);setIsActive(false);return;}
+
+    // Clear immediately on session change
+    setTodos([]);setIsActive(false);
+
+    // Subscribe to real-time task_progress SSE stream
+    const es=new EventSource(`/api/chat/progress-stream?sessionId=${encodeURIComponent(sessionId)}`);
+
+    es.onmessage=(e)=>{
       try{
-        const url=sessionId
-          ? `/api/dashboard/agentic-executions?limit=3&sessionId=${encodeURIComponent(sessionId)}`
-          : "/api/dashboard/agentic-executions?limit=3";
-        const r=await fetch(url);
-        if(r.ok){
-          const d=await r.json();
-          const execs=d.executions||d||[];
-          setTasks(execs);
-          // Fast poll (2s) when tasks are active, slow down (10s) when idle/complete
-          const hasActive=execs.some(t=>t.status==="running"||t.status==="active");
-          setPollRate(hasActive?2000:10000);
+        const d=JSON.parse(e.data);
+        if(d.connected) return; // handshake ping
+        if(Array.isArray(d.todos)){
+          setTodos(d.todos);
+          setIsActive(d.todos.some(t=>t.status==='in_progress'));
         }
       }catch{}
     };
-    go();
-    // Use dynamic poll rate — starts at 2s for real-time feel during active tasks
-    const t=setInterval(go,pollRate);
-    return()=>clearInterval(t);
-  },[sessionId,pollRate]);
 
-  if(tasks.length===0) return(
+    es.onerror=()=>{
+      // SSE disconnected — fall back to one-time fetch
+      fetch(`/api/chat/progress-stream?sessionId=${encodeURIComponent(sessionId)}`)
+        .catch(()=>{});
+    };
+
+    return()=>es.close();
+  },[sessionId]);
+
+  if(todos.length===0) return(
     <div style={{padding:"16px",textAlign:"center",color:c.fa,fontSize:12}}>No active tasks</div>
   );
 
+  const done=todos.filter(t=>t.status==='completed').length;
+  const total=todos.length;
+  const pct=Math.round((done/total)*100);
+
   return(
     <div style={{padding:"8px 0"}}>
-      {tasks.map((task,i)=>{
-        const steps=task.steps||task.tool_calls||[];
-        const done=steps.filter(s=>s.status==="done"||s.status==="completed"||s.success).length;
-        const total=Math.max(steps.length,1);
-        const pct=Math.round((done/total)*100);
-        const isActive=task.status==="running"||task.status==="active";
-        return(
-          <div key={i} style={{padding:"12px 16px",borderBottom:i<tasks.length-1?"1px solid "+c.ln+"60":"none"}}>
-            <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}>
-              <div style={{position:"relative",flexShrink:0}}>
-                <ProgressRing pct={pct} sz={44} stroke={4} color={isActive?c.ac:c.gr} bg={c.ln}/>
-                <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:c.tx}}>{pct}%</div>
+      {/* Progress header */}
+      <div style={{padding:"12px 16px 8px",display:"flex",alignItems:"center",gap:12}}>
+        <div style={{position:"relative",flexShrink:0}}>
+          <ProgressRing pct={pct} sz={44} stroke={4} color={isActive?c.ac:c.gr} bg={c.ln}/>
+          <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:c.tx}}>{pct}%</div>
+        </div>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:12,fontWeight:700,color:c.tx}}>{isActive?"Working...":"Complete"}</div>
+          <div style={{fontSize:10,color:c.so,marginTop:2}}>{done} of {total} steps done</div>
+        </div>
+      </div>
+      {/* Step checklist */}
+      <div style={{padding:"0 16px 12px"}}>
+        {todos.map((t,i)=>{
+          const isDone=t.status==='completed';
+          const isNow=t.status==='in_progress';
+          const isPending=t.status==='pending';
+          return(
+            <div key={i} style={{display:"flex",alignItems:"flex-start",gap:8,padding:"4px 0",opacity:isPending?0.45:1,transition:"opacity 0.2s"}}>
+              <div style={{
+                width:18,height:18,borderRadius:"50%",flexShrink:0,marginTop:1,
+                display:"flex",alignItems:"center",justifyContent:"center",
+                background:isDone?c.gr:isNow?"transparent":c.ln,
+                border:isNow?"2px solid "+c.ac:"none",
+                transition:"all 0.3s"
+              }}>
+                {isDone&&<span style={{fontSize:10,color:"#fff",fontWeight:700}}>✓</span>}
+                {isNow&&<span style={{width:7,height:7,borderRadius:"50%",background:c.ac,animation:"pulse 1.1s ease infinite",display:"block"}}/>}
               </div>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{fontSize:12,fontWeight:700,color:c.tx,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{task.task||task.name||"Running task"}</div>
-                <div style={{fontSize:10,color:c.so,marginTop:2}}>{done} of {total} steps · {isActive?"Working now":"Complete"}</div>
+              <div style={{
+                fontSize:12,lineHeight:1.4,
+                color:isDone?c.so:isNow?c.tx:c.fa,
+                textDecoration:isDone?"line-through":"none",
+                fontStyle:isNow?"italic":"normal",
+                transition:"all 0.2s"
+              }}>
+                {isNow?(t.activeForm||t.content):t.content}
               </div>
             </div>
-            {steps.slice(0,4).map((s,si)=>{
-              const isDone=s.status==="done"||s.status==="completed"||s.success;
-              const isNow=isActive&&si===done;
-              return(
-                <div key={si} style={{display:"flex",alignItems:"flex-start",gap:8,padding:"3px 0",opacity:isDone||isNow?1:0.4}}>
-                  <div style={{width:16,height:16,borderRadius:"50%",background:isDone?c.gr:isNow?"transparent":c.ln,border:isNow?"2px solid "+c.ac:"none",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginTop:1}}>
-                    {isDone&&<span style={{fontSize:9,color:"#fff"}}>✓</span>}
-                    {isNow&&<span style={{width:6,height:6,borderRadius:"50%",background:c.ac,animation:"pulse 1.2s ease infinite",display:"block"}}/>}
-                  </div>
-                  <div style={{fontSize:11,color:isDone?c.so:isNow?c.tx:c.fa,textDecoration:isDone?"line-through":"none",lineHeight:1.4}}>{s.tool||s.name||s.description||"Step "+(si+1)}</div>
-                </div>
-              );
-            })}
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -2290,7 +2307,7 @@ function SkillsPage({c,mob,aFN="Sarah"}){
 }
 
 // ── BUSINESS PROFILE PAGE — Synced from BLOOM CRM ─────────────────────────────────
-function BusinessProfilePage({c,mob,userImg,setUserImg,meInitial="U"}){
+function BusinessProfilePage({c,mob,userImg,setUserImg,meInitial="U",aFN="Your Bloomie"}){
   const [biz,setBiz]=useState(null);
   const [loading,setLoading]=useState(true);
   const emptyKit={kitName:'',logo:null,colors:['#F4A261','#E76F8B','#2D3436','#FFFFFF','#F5F5F5'],fonts:{heading:'',body:''},tagline:'',brandVoice:'',active:false};
@@ -6311,7 +6328,7 @@ function App({ authUser }) {
 
           {/* ══ BILLING ══ */}
           {pg==="billing"&&(<BillingPage c={c} mob={mob} aFN={aFN}/>)}
-          {pg==="business"&&(<BusinessProfilePage c={c} mob={mob} userImg={userImg} setUserImg={setUserImg} meInitial={meInitial}/>)}
+          {pg==="business"&&(<BusinessProfilePage c={c} mob={mob} userImg={userImg} setUserImg={setUserImg} meInitial={meInitial} aFN={aFN}/>)}
           {pg==="skills"&&(<SkillsPage c={c} mob={mob} aFN={aFN}/>)}
           {pg==="dispatch"&&(<DispatchPage c={c} mob={mob} currentAgent={currentAgent} agentImgUrl={agentImgUrl}/>)}
           {pg==="mobile"&&(
