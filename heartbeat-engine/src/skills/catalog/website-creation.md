@@ -9,26 +9,36 @@ description: Build professional, conversion-optimized websites and landing pages
 
 ---
 
-## PREREQUISITES
+## MANDATORY PRE-BUILD GATE — NO EXCEPTIONS
 
-Before building, check these:
+**You MUST collect all required information via bloom_clarify BEFORE writing any code, generating images, or calling create_artifact. This is a hard rule with zero exceptions.**
 
-1. **Brand kit** — Check `user_settings` for `brand_kits`. If none exists, ask the user about their brand colors, fonts, and voice before starting.
-2. **Client requirements** — Use bloom_clarify (one question at a time) to gather what's needed if unclear.
+### The 4 things you MUST know before building:
+1. **Purpose** — What should visitors DO on this site? (register, donate, learn, buy, contact)
+2. **Pages** — How many pages and what are they?
+3. **CTA** — What is the single primary call to action?
+4. **Real content** — Actual text: event name, dates, speaker names, prices, contact info. NOT placeholders.
 
-### Discovery Flow (use bloom_clarify — ONE question at a time)
+### Discovery Flow — call bloom_clarify for each missing piece:
 
-**Question 1 — Business type:**
-Options: "Service business", "E-commerce / products", "Portfolio / creative", "Restaurant / food", "Real estate", "Other"
+**Question 1 — Purpose:**
+Options: "Event registration / sign-ups", "Capture leads / opt-in", "Share information only", "Sell a product or service", "Other (I'll describe)"
 
 **Question 2 — Pages needed:**
-Options: "Just a homepage for now", "Homepage + About", "Homepage + About + Services", "Full site (Home, About, Services, Contact, Blog)"
+Options: "Just one page", "Homepage + About", "Homepage + About + Details page", "Full site (Home, About, Services, Contact)"
 
-**Question 3 — Hero section:**
-Options: "I have images to use", "Generate images for me", "Text-only hero", "Video background (provide URL)"
+**Question 3 — Call to action:**
+Options: "Register / Sign Up", "Book a consultation", "Donate", "Contact us", "No CTA needed"
 
-**Question 4 — Call to action:**
-Options: "Book a consultation", "Shop now", "Contact us", "Learn more", "Custom CTA"
+**Question 4 — Content (FREE TEXT — do not use buttons):**
+Ask: "Give me the real details that should appear on this page — event name, date, location, speaker names, pricing, contact info, or any key copy. I won't use placeholders."
+
+### HARD STOP RULE:
+Do NOT call `image_generate`, `create_artifact`, or write any HTML until ALL 4 are answered.
+If the user says "just build it" or "use your judgment" on content — ask one more time:
+"I want the site to have accurate information. What are the real details? (event name, date, contact, etc.)"
+
+**Brand kit:** If multiple brand kits exist, you will already have asked which brand before this skill loaded.
 
 ---
 
