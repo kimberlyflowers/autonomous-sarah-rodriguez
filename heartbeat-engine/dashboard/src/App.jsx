@@ -2307,7 +2307,7 @@ function SkillsPage({c,mob,aFN="Sarah"}){
 }
 
 // ── BUSINESS PROFILE PAGE — Synced from BLOOM CRM ─────────────────────────────────
-function BusinessProfilePage({c,mob,userImg,setUserImg,meInitial="U",aFN="Your Bloomie"}){
+function BusinessProfilePage({c,mob,userImg,setUserImg,meInitial="U",aFN="Your Bloomie",chatLightbox=null,setChatLightbox=null}){
   const [biz,setBiz]=useState(null);
   const [loading,setLoading]=useState(true);
   const emptyKit={kitName:'',logo:null,colors:['#F4A261','#E76F8B','#2D3436','#FFFFFF','#F5F5F5'],fonts:{heading:'',body:''},tagline:'',brandVoice:'',active:false};
@@ -6310,7 +6310,7 @@ function App({ authUser }) {
 
           {/* ══ BILLING ══ */}
           {pg==="billing"&&(<BillingPage c={c} mob={mob} aFN={aFN}/>)}
-          {pg==="business"&&(<BusinessProfilePage c={c} mob={mob} userImg={userImg} setUserImg={setUserImg} meInitial={meInitial} aFN={aFN}/>)}
+          {pg==="business"&&(<BusinessProfilePage c={c} mob={mob} userImg={userImg} setUserImg={setUserImg} meInitial={meInitial} aFN={aFN} chatLightbox={chatLightbox} setChatLightbox={setChatLightbox}/>)}
           {pg==="skills"&&(<SkillsPage c={c} mob={mob} aFN={aFN}/>)}
           {pg==="dispatch"&&(<DispatchPage c={c} mob={mob} currentAgent={currentAgent} agentImgUrl={agentImgUrl}/>)}
           {pg==="mobile"&&(
