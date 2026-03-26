@@ -3680,11 +3680,17 @@ async function chatWithAgent(userMessage, history, agentConfig, sessionId = null
     const { createClient } = await import('@supabase/supabase-js');
     const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
     let allKits = [];
-    const { data: bkRow } = await sb.from('user_settings').select('value').eq('key','brand_kits').maybeSingle();
+    // Scope brand kit query to the agent's organization so each client only sees their own kits
+    const bkOrgId = orgId || agentConfig?.organizationId || agentConfig?.organization_id || null;
+    let bkQuery = sb.from('user_settings').select('value').eq('key','brand_kits');
+    if (bkOrgId) bkQuery = bkQuery.eq('organization_id', bkOrgId);
+    const { data: bkRow } = await bkQuery.maybeSingle();
     // value is jsonb — Supabase returns it already parsed, no JSON.parse needed
     if (bkRow?.value) allKits = Array.isArray(bkRow.value) ? bkRow.value : [bkRow.value];
     if (allKits.length === 0) {
-      const { data: oldRow } = await sb.from('user_settings').select('value').eq('key','brand_kit').maybeSingle();
+      let oldQuery = sb.from('user_settings').select('value').eq('key','brand_kit');
+      if (bkOrgId) oldQuery = oldQuery.eq('organization_id', bkOrgId);
+      const { data: oldRow } = await oldQuery.maybeSingle();
       if (oldRow?.value) allKits = [oldRow.value];
     }
     
