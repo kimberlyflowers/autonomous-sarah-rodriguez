@@ -60,6 +60,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [forgotMode, setForgotMode] = useState(false);
 
   const isCustomRole = selectedRoleIdx === BLOOMIE_ROLES.length - 1;
   const selectedRole = selectedRoleIdx >= 0 ? BLOOMIE_ROLES[selectedRoleIdx] : null;
@@ -77,6 +78,23 @@ export default function Login() {
     setLoading(false);
     if (error) {
       setError(error.message);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    if (!email.trim()) { setError('Enter your email address above first'); return; }
+    setLoading(true);
+    setError('');
+    setSuccess('');
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+      redirectTo: window.location.origin + '/?reset=1'
+    });
+    setLoading(false);
+    if (error) {
+      setError(error.message);
+    } else {
+      setSuccess('Password reset email sent — check your inbox.');
+      setForgotMode(false);
     }
   };
 
@@ -258,6 +276,17 @@ export default function Login() {
               </button>
             </div>
           </div>
+
+          {mode === 'login' && (
+            <div style={{ textAlign:'right', marginTop:-4 }}>
+              <button
+                onClick={() => { setForgotMode(true); setError(''); setSuccess(''); handleForgotPassword(); }}
+                style={{ background:'none', border:'none', color:'#7c5cbf', cursor:'pointer', fontSize:12, padding:0, textDecoration:'underline' }}
+              >
+                Forgot password?
+              </button>
+            </div>
+          )}
 
           {error && (
             <p style={{ margin:0, color:'#ef4444', fontSize:13, padding:'8px 12px', background:'#fef2f2', borderRadius:8 }}>{error}</p>
