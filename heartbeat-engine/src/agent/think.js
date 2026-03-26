@@ -35,6 +35,7 @@ const VALID_ACTION_TYPES = [
   'log_interaction',
   'schedule_reminder',
   'create_appointment',
+  'reply_to_contact',       // Respond to an inbound SMS/email reply from a contact
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
