@@ -449,12 +449,85 @@ const INVESTIGATION_WRAPPER = INVESTIGATION_WRAPPERS.anthropic; // fallback — 
 // ═══════════════════════════════════════════════════════════════════════════
 // TASK INJECTION HELPER — Detects task type from user message
 // ═══════════════════════════════════════════════════════════════════════════
+// ── FUZZY NORMALIZE — fix common misspellings before keyword detection ────────
+// Covers the most common intent-preserving misspellings for BLOOM business keywords.
+// Uses simple string replacement, not a full fuzzy library — fast and predictable.
+function normalizeForDetection(raw) {
+  return raw
+    // blog misspellings
+    .replace(/\bblgo\b/g, 'blog').replace(/\bblog\b/g, 'blog')
+    .replace(/\bboge\b/g, 'blog').replace(/\bbloog\b/g, 'blog')
+    // website / webpage
+    .replace(/\bwebsiet\b/g, 'website').replace(/\bwebsiet\b/g, 'website')
+    .replace(/\bwbesite\b/g, 'website').replace(/\bwebsit\b/g, 'website')
+    .replace(/\bwebsiet\b/g, 'website').replace(/\bwebiste\b/g, 'website')
+    // create / cerate / craete
+    .replace(/\bcerate\b/g, 'create').replace(/\bcreae\b/g, 'create')
+    .replace(/\bcraete\b/g, 'create').replace(/\bcreat\b/g, 'create')
+    .replace(/\bcreatea\b/g, 'create').replace(/\bcrreate\b/g, 'create')
+    // write / wirte / wrtie
+    .replace(/\bwirte\b/g, 'write').replace(/\bwrtie\b/g, 'write')
+    .replace(/\bwirte\b/g, 'write').replace(/\bwrie\b/g, 'write')
+    // schedule / shedule / schedul
+    .replace(/\bshedule\b/g, 'schedule').replace(/\bscheduel\b/g, 'schedule')
+    .replace(/\bschedul\b/g, 'schedule').replace(/\bschdule\b/g, 'schedule')
+    .replace(/\bscheudule\b/g, 'schedule').replace(/\bschedual\b/g, 'schedule')
+    // message / messge / mesage
+    .replace(/\bmessge\b/g, 'message').replace(/\bmesage\b/g, 'message')
+    .replace(/\bmeesage\b/g, 'message').replace(/\bmsesage\b/g, 'message')
+    // contact / contcat / cntact
+    .replace(/\bcontcat\b/g, 'contact').replace(/\bcntact\b/g, 'contact')
+    .replace(/\bcontact\b/g, 'contact').replace(/\bcotnact\b/g, 'contact')
+    // email / emial / emal
+    .replace(/\bemial\b/g, 'email').replace(/\bemal\b/g, 'email')
+    .replace(/\bemaiel\b/g, 'email').replace(/\bemali\b/g, 'email')
+    // image / iamge / imgae
+    .replace(/\biamge\b/g, 'image').replace(/\bimgae\b/g, 'image')
+    .replace(/\bimge\b/g, 'image').replace(/\biamge\b/g, 'image')
+    // design / desgin / deisng
+    .replace(/\bdesgin\b/g, 'design').replace(/\bdeisng\b/g, 'design')
+    .replace(/\bdesig\b/g, 'design').replace(/\bdesgin\b/g, 'design')
+    // document / docuemnt / documnet
+    .replace(/\bdocuemnt\b/g, 'document').replace(/\bdocumnet\b/g, 'document')
+    .replace(/\bdocumant\b/g, 'document').replace(/\bdocuement\b/g, 'document')
+    // update / updaet / updte
+    .replace(/\bupdaet\b/g, 'update').replace(/\bupdte\b/g, 'update')
+    .replace(/\bupdarte\b/g, 'update')
+    // search / serach / seach
+    .replace(/\bserach\b/g, 'search').replace(/\bseach\b/g, 'search')
+    .replace(/\bsearch\b/g, 'search').replace(/\bserahc\b/g, 'search')
+    // send / snde / sned
+    .replace(/\bsnde\b/g, 'send').replace(/\bsned\b/g, 'send')
+    .replace(/\bsned\b/g, 'send')
+    // text (as in text message) — tect / textt
+    .replace(/\btect\b/g, 'text').replace(/\btextt\b/g, 'text')
+    // call — cal / calll
+    .replace(/\bcalll\b/g, 'call').replace(/\bcal\b/g, 'call')
+    // content — conetnt / contet
+    .replace(/\bconetnt\b/g, 'content').replace(/\bcontet\b/g, 'content')
+    // social — socail / soical
+    .replace(/\bsocail\b/g, 'social').replace(/\bsoical\b/g, 'social')
+    // flyer — flier is actually correct alternate spelling, keep both
+    .replace(/\bflier\b/g, 'flyer')
+    // landing page — laning page / landng page
+    .replace(/\blaning page\b/g, 'landing page').replace(/\blandng page\b/g, 'landing page')
+    // replace — replce / repalce
+    .replace(/\breplce\b/g, 'replace').replace(/\brepalce\b/g, 'replace')
+    // upload — uplaod / uplod
+    .replace(/\buplaod\b/g, 'upload').replace(/\buplod\b/g, 'upload')
+    // download — downlod / downlaod
+    .replace(/\bdownlod\b/g, 'download').replace(/\bdownlaod\b/g, 'download');
+}
+
 function detectTaskType(userMessage) {
-  const msg = typeof userMessage === 'string'
+  const raw = typeof userMessage === 'string'
     ? userMessage.toLowerCase()
     : (Array.isArray(userMessage)
         ? userMessage.filter(b => b.type === 'text').map(b => b.text).join(' ').toLowerCase()
         : '');
+
+  // Apply fuzzy normalization to catch misspellings before keyword matching
+  const msg = normalizeForDetection(raw);
 
   // SCHEDULING — checked first: very specific trigger words, unlikely to conflict
   if (/\b(schedule|recurring|every day|every week|every month|run daily|run weekly|automate|set up a task|automatically|on a schedule|on schedule|repeat|repeated|interval)\b/.test(msg)) return 'scheduling';
@@ -463,15 +536,12 @@ function detectTaskType(userMessage) {
   if (/\b(search|research|find|look up|what is|who is|latest|current|news|price|how much|compare|competitor|benchmark|statistics|stats|trends)\b/.test(msg)) return 'web_research';
 
   // CRM / COMMUNICATION — checked before file so "email my client the doc" → crm
-  // "text", "call", "phone" added as standalone words so "text jarrell", "call John" match
-  // "text me", "send a text", "send jarrell a text" all now match via standalone "text"
   if (/\b(contact|crm|lead|prospect|outreach|send message|send email|follow.?up|message|sms|text|call|phone|invoice|notify|reply to|new inquiry|pipeline|tag|unsubscribe|opt.?out|conversation|inbox|respond|responded|response|replied|reply|client said|they said|they replied|heard back|waiting on|waiting for)\b/.test(msg)) return 'crm_operations';
 
   // FILE OPERATIONS — after crm
   if (/\b(file|document|doc|pdf|slide|spreadsheet|xlsx|word|download|upload|attachment|export|import|csv|template)\b/.test(msg)) return 'file_operations';
 
-  // CONTENT CREATION — includes design edits: font, color, style, css, change, replace, swap
-  // "change the font", "change the color", "replace the image", "update the logo" all match
+  // CONTENT CREATION — includes design edits
   if (/\b(write|create|generate|design|build|make|draft|produce|publish|post|blog|email|website|landing page|image|flyer|social|caption|script|copy|content|article|ad|advertisement|banner|thumbnail|font|color|colour|style|css|logo|header|footer|button|layout|replace|swap|resize|edit|update|change|refresh|rebrand|redesign)\b/.test(msg)) return 'content_creation';
 
   // No task type — no injection. Safe: model uses full base system prompt.
@@ -3860,7 +3930,25 @@ NEVER skip steps 3 and 4 even if step 2 fails.
   const messageText = Array.isArray(userMessage) ? userMessage.filter(b => b.type === 'text').map(b => b.text).join(' ') : userMessage;
   const llmClient = getLLMClient();
 
-  // MODEL ADAPTATION — moved below after admin config resolves the final model/provider
+  // ── MODEL ADAPTATION — applied after model is known, only when no task injection ──
+  // Task injection already carries model-native guidance, so we skip adaptation when it fires.
+  // Both use the same provider — resolved above as activeProvider.
+  if (!detectedTaskType) {
+    const modelAdaptation = getModelAdaptation(activeProvider);
+    if (currentMessages.length > 0) {
+      const lastMsg = currentMessages[currentMessages.length - 1];
+      if (lastMsg.role === 'user') {
+        if (typeof lastMsg.content === 'string') {
+          lastMsg.content = lastMsg.content + '\n\n' + modelAdaptation;
+        } else if (Array.isArray(lastMsg.content)) {
+          lastMsg.content = [...lastMsg.content, { type: 'text', text: modelAdaptation }];
+        }
+      }
+    }
+    logger.info('Model adaptation applied', { provider: activeProvider, model: llmClient.model });
+  } else {
+    logger.info('Model adaptation skipped — provider-native task injection active', { provider: activeProvider, taskType: detectedTaskType });
+  }
 
   // Apply per-org model tier from Supabase admin settings (bloom=Sonnet, premium=GPT, standard=Gemini)
   let resolvedAdminConfig = null;
@@ -3903,7 +3991,7 @@ NEVER skip steps 3 and 4 even if step 2 fails.
   // ── NOW APPLY PROVIDER-NATIVE TASK INJECTION (model is known) ────────────
   // Each model gets task instructions written in its own language.
   // Applied to the user message so base system prompt cache stays frozen.
-  const activeProvider = llmClient.provider; // declared here, used below for both task injection and model adaptation
+  const activeProvider = llmClient.provider;
   if (detectedTaskType) {
     const injection = getTaskInjection(detectedTaskType, activeProvider);
     if (injection) {
@@ -3918,25 +4006,6 @@ NEVER skip steps 3 and 4 even if step 2 fails.
       }
       logger.info('Provider-native task injection applied', { taskType: detectedTaskType, provider: activeProvider });
     }
-  }
-
-  // ── MODEL ADAPTATION — fires after final model/provider resolved via admin config ──
-  // Only applies when no task injection fired (task injection already has provider-native guidance).
-  if (!detectedTaskType) {
-    const modelAdaptation = getModelAdaptation(activeProvider);
-    if (currentMessages.length > 0) {
-      const lastMsg = currentMessages[currentMessages.length - 1];
-      if (lastMsg.role === 'user') {
-        if (typeof lastMsg.content === 'string') {
-          lastMsg.content = lastMsg.content + '\n\n' + modelAdaptation;
-        } else if (Array.isArray(lastMsg.content)) {
-          lastMsg.content = [...lastMsg.content, { type: 'text', text: modelAdaptation }];
-        }
-      }
-    }
-    logger.info('Model adaptation applied', { provider: activeProvider, model: chatModel });
-  } else {
-    logger.info('Model adaptation skipped — provider-native task injection active', { provider: activeProvider, taskType: detectedTaskType });
   }
 
   // ── PASSIVE TASK TRACKING — auto-populate Active Tasks panel ──────────
