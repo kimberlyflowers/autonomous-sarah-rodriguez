@@ -3838,8 +3838,112 @@ NEVER skip steps 3 and 4 even if step 2 fails.
     }
   } catch(e) {
     logger.warn('Blog skill auto-injection failed:', e.message);
-    // Even if import fails, inject minimal instructions so Sarah doesn't abandon
     systemPrompt += `\n\nIMPORTANT: When writing a blog, always: 1) generate hero image, 2) call ghl_create_blog_post, 3) call create_artifact to save HTML, 4) include <!-- file:name.html --> tag. Never skip step 3 even if step 2 fails.`;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // UNIVERSAL SKILL AUTO-INJECTION — Fires for ALL Bloomies (multi-tenant)
+  // Each skill is injected based on keyword detection in the user message.
+  // Skills contain expert frameworks the model MUST follow.
+  // Without the skill → generic output. With the skill → professional output.
+  // ══════════════════════════════════════════════════════════════════════════
+  try {
+    const _skillMsgText = typeof userMessage === 'string' ? userMessage
+      : (Array.isArray(userMessage) ? userMessage.filter(b => b.type === 'text').map(b => b.text).join(' ') : '');
+    const _injectedSkillNames = new Set();
+
+    // Helper: load a skill by exact name from catalog
+    const _injectSkillByName = async (skillName, fallback = null) => {
+      if (_injectedSkillNames.has(skillName)) return;
+      try {
+        const { getAllSkills } = await import('../skills/skill-loader.js');
+        // getAllSkills returns [{name, description}] — we need the body
+        // Use fs to read the catalog file directly since skill-loader doesn't expose body via getAllSkills
+        const fs = await import('fs');
+        const path = await import('path');
+        const { fileURLToPath } = await import('url');
+        const __dirname = path.default.dirname(fileURLToPath(import.meta.url));
+        const catalogDir = path.default.join(__dirname, '../skills/catalog');
+        const skillFile = path.default.join(catalogDir, `${skillName}.md`);
+        if (fs.default.existsSync(skillFile)) {
+          const raw = fs.default.readFileSync(skillFile, 'utf-8');
+          const fmMatch = raw.match(/^---\n[\s\S]*?\n---\n([\s\S]*)$/);
+          if (fmMatch) {
+            const body = fmMatch[1].trim();
+            systemPrompt += `\n\n<skill name="${skillName}">\n${body}\n</skill>`;
+            _injectedSkillNames.add(skillName);
+            logger.info('Auto-injected skill', { skill: skillName });
+            return;
+          }
+        }
+      } catch(e) {
+        logger.warn('Skill file read failed', { skill: skillName, error: e.message });
+      }
+      if (fallback) systemPrompt += `\n\n${fallback}`;
+    };
+
+    // FLYER — event announcements, posters, promotional print materials
+    if (/\b(flyer|flier|poster|event.*flyer|flyer.*event|promotional.*material|print.*material|event.*announcement|event.*poster|promo.*flyer)\b/i.test(_skillMsgText)) {
+      await _injectSkillByName('flyer-generation',
+        'IMPORTANT: For flyers use portrait 1024x1536, high quality, engine=gpt. Build SUBJECT/COMPOSITION/ACTION/LOCATION/STYLE/TECHNICAL prompt. Always include QR code. _contentType="flyer".');
+    }
+
+    // STANDALONE IMAGE — banners, hero images, graphics (not covered by flyer/social)
+    if (/\b(generate.*image|create.*image|make.*image|banner|hero.*image|product.*photo|infographic|brand.*graphic|visual.*asset|thumbnail|logo.*design)\b/i.test(_skillMsgText)) {
+      await _injectSkillByName('image-generation',
+        'IMPORTANT: Be extremely detailed in image prompts. Include subject, composition, lighting, style, colors, mood. Use engine=gpt for design assets, gemini for character consistency.');
+    }
+
+    // WEBSITE / LANDING PAGE
+    if (/\b(website|landing page|web page|homepage|build.*site|create.*site|online.*presence|web.*design|event.*site|conference.*site|sales.*page|opt.?in.*page)\b/i.test(_skillMsgText)) {
+      await _injectSkillByName('website-creation',
+        'IMPORTANT: Every website must be mobile-first HTML, include brand kit colors, have a CRM-connected form, and be saved as a published artifact.');
+    }
+
+    // EMAIL — marketing emails, newsletters, campaigns
+    if (/\b(email.*campaign|newsletter|email.*blast|drip.*email|welcome.*email|marketing.*email|email.*template|send.*to.*list|announce.*blog|promote.*blog)\b/i.test(_skillMsgText)) {
+      await _injectSkillByName('email-creator',
+        'IMPORTANT: Save every marketing email as a CRM draft before sending. Never send without user review.');
+    }
+
+    // SOCIAL MEDIA — posts, captions, content calendars
+    if (/\b(social.*post|instagram.*post|linkedin.*post|facebook.*post|tiktok.*video|caption|hashtag|content.*calendar|reel.*script|story.*post|post.*for.*social|social.*media.*content)\b/i.test(_skillMsgText)) {
+      await _injectSkillByName('social-media',
+        'IMPORTANT: Every social post needs a hook, body, and CTA. Include relevant hashtags. Generate a matching image for visual posts.');
+    }
+
+    // WORD DOCUMENT — .docx, reports, memos, formal letters
+    if (/\b(word.*doc(ument)?|\.docx|\bdocx\b|report.*document|formal.*document|letterhead|table.*of.*contents|memo|business.*letter)\b/i.test(_skillMsgText)) {
+      await _injectSkillByName('docx',
+        'IMPORTANT: Use the docx npm library to generate real .docx files with proper formatting. Never use markdown as a substitute.');
+    }
+
+    // POWERPOINT — slide decks, presentations, pitch decks
+    if (/\b(presentation|slide.*deck|\bdeck\b|powerpoint|\.pptx|\bpptx\b|pitch.*deck|slideshow|slide.*show)\b/i.test(_skillMsgText)) {
+      await _injectSkillByName('pptx',
+        'IMPORTANT: Use pptxgenjs to generate real .pptx files with proper slides and layouts. Never use HTML as a substitute.');
+    }
+
+    // PDF — create, convert, merge, fill
+    if (/\b(\.pdf|\bpdf\b|create.*pdf|save.*as.*pdf|export.*pdf|merge.*pdf|split.*pdf|pdf.*form|fill.*pdf|convert.*to.*pdf)\b/i.test(_skillMsgText)) {
+      await _injectSkillByName('pdf',
+        'IMPORTANT: Use pdf-lib or puppeteer to generate real .pdf files. Never use markdown as a PDF substitute.');
+    }
+
+    // SPREADSHEET — xlsx, csv, data tables, trackers
+    if (/\b(spreadsheet|excel|\bxlsx\b|\.xlsx|\bcsv\b|\.csv|data.*table|budget.*sheet|expense.*tracker|create.*spreadsheet|export.*csv)\b/i.test(_skillMsgText)) {
+      await _injectSkillByName('xlsx',
+        'IMPORTANT: Use exceljs to generate real .xlsx files with proper formatting. Never use markdown tables as a spreadsheet substitute.');
+    }
+
+    // PROFESSIONAL DOCUMENTS — SOPs, proposals, handbooks, contracts
+    if (/\b(sop|standard.*operating.*procedure|proposal|handbook|contract|policy.*document|onboarding.*doc|business.*plan|one.?pager|scope.*of.*work|statement.*of.*work)\b/i.test(_skillMsgText)) {
+      await _injectSkillByName('professional-documents',
+        'IMPORTANT: Professional documents must be real .docx files with tables, headers, footers, and page numbers. Use the docx npm library.');
+    }
+
+  } catch(e) {
+    logger.warn('Universal skill auto-injection failed:', e.message);
   }
 
   // ── TASK INJECTION — Provider-native task-specific behavioral contracts ────
