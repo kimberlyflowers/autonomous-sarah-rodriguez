@@ -150,7 +150,7 @@ Every blog must be optimized for BOTH traditional search engines AND AI search e
 - **Conversational but authoritative** — like a smart friend explaining something over coffee
 - **Data-backed claims** with specific numbers (even approximate ones: "up to 40%", "10+ hours/week")
 - **Stories and examples** — concrete beats abstract. Open with a real scenario, not a generalization.
-- **BLOOM voice** — every post should naturally weave in BLOOM Ecosystem and Bloomies language. Not forced, but present.
+- **Brand voice** — every post should naturally reflect {{org_name}}'s identity and tone. Not forced, but present.
 
 ### BANNED PHRASES — NEVER USE THESE (instant rejection)
 - "In today's landscape..."
