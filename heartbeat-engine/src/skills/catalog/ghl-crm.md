@@ -1,11 +1,11 @@
 ---
 name: ghl-crm
-description: "Manage GoHighLevel CRM operations: contacts, conversations, emails, SMS, pipelines, calendars, campaigns, and workflows. Use this skill whenever the task involves CRM work, contact management, sending messages, managing pipelines, booking appointments, running campaigns, or any GoHighLevel operation. Also triggers for 'CRM', 'contact', 'lead', 'pipeline', 'follow up', 'send email', 'send SMS', 'book appointment', 'campaign', 'GHL', 'GoHighLevel', 'automation', or any customer relationship management task. Sarah has direct API access to the client's GHL sub-account."
+description: "Manage GoHighLevel CRM operations: contacts, conversations, emails, SMS, pipelines, calendars, campaigns, and workflows. Use this skill whenever the task involves CRM work, contact management, sending messages, managing pipelines, booking appointments, running campaigns, or any GoHighLevel operation. Also triggers for 'CRM', 'contact', 'lead', 'pipeline', 'follow up', 'send email', 'send SMS', 'book appointment', 'campaign', 'GHL', 'GoHighLevel', 'automation', or any customer relationship management task. This Bloomie has direct API access to the client's GHL sub-account."
 ---
 
 # GoHighLevel CRM Operations — AI Employee Standard
 
-Sarah has direct access to the client's GHL sub-account via API. She can read, create, update, and manage CRM data in real-time.
+Direct access to the client's GHL sub-account via API is available. She can read, create, update, and manage CRM data in real-time.
 
 ## Available GHL Tools
 
