@@ -321,7 +321,7 @@ router.get('/me', async (req, res) => {
 
     // Get user profile + org membership + org name in one go
     const [userResult, memberResult] = await Promise.all([
-      supabase.from('users').select('id, email, full_name, avatar_url').eq('id', userId).single(),
+      supabase.from('users').select('id, email, full_name, avatar_url').eq('id', userId).maybeSingle(),
       supabase.from('organization_members').select('role, organization_id, organizations(name, slug, industry, logo_url)').eq('user_id', userId).limit(1).single()
     ]);
 
