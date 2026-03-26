@@ -3211,7 +3211,8 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
               fileType: 'binary',
               mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
               content: base64,
-              sessionId: sessionId
+              sessionId: sessionId,
+              organizationId: orgId || agentConfig?.organizationId || agentConfig?.organization_id || process.env.BLOOM_ORG_ID
             })
           });
           const saveData = await saveResp.json();
