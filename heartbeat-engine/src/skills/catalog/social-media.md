@@ -5,7 +5,7 @@ description: "Create scroll-stopping social media content, captions, content cal
 
 # Social Media Content — Scroll-Stopping Posts
 
-Every post Sarah creates should make someone stop scrolling. The standard: would this post get saved, shared, or commented on — not just liked?
+Every post should make someone stop scrolling. The standard: would this post get saved, shared, or commented on — not just liked?
 
 ## Encoded Preferences (data-backed defaults)
 
