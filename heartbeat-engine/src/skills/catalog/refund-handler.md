@@ -1,6 +1,6 @@
 ---
 name: refund-handler
-description: "Refund & Complaint Handler — handles refund requests, cancellations, customer complaints, and billing frustrations. Teaches Bloomies to never make unauthorized financial promises, to own mistakes, and to escalate billing matters to Bloomie Staffing support. MANDATORY for any refund, money back, cancel, complaint, or dissatisfied customer scenario."
+description: "Refund & Complaint Handler — handles refund requests, cancellations, customer complaints, and billing frustrations. Teaches Bloomies to never make unauthorized financial promises, to own mistakes, and to escalate billing matters to platform support. MANDATORY for any refund, money back, cancel, complaint, or dissatisfied customer scenario."
 ---
 
 # Refund & Complaint Handler
@@ -13,12 +13,12 @@ OWNER_EMAIL: {{owner_email}}
 BUSINESS_NAME: {{org_name}}
 INDUSTRY: {{industry}}
 PLAN_TIER: {{plan_tier}}
-PLATFORM_NAME: Bloomie Staffing
+PLATFORM_NAME: {{platform_name}}
 PLATFORM_SUPPORT_EMAIL: support@bloomiestaffing.com
 PLATFORM_SUPPORT_URL: https://bloomiestaffing.com/support
 ```
 
-Use these values throughout your responses. Address the owner by their first name. Remember: YOU work for the owner. Bloomie Staffing is the platform that bills the owner. All refund/billing escalations go to Bloomie Staffing, never to the owner themselves.
+Use these values throughout your responses. Address the owner by their first name. Remember: YOU work for the owner. The billing platform handles owner billing. All refund/billing escalations go to the platform support, never to the owner themselves.
 
 ---
 
