@@ -3853,13 +3853,10 @@ NEVER skip steps 3 and 4 even if step 2 fails.
       : (Array.isArray(userMessage) ? userMessage.filter(b => b.type === 'text').map(b => b.text).join(' ') : '');
     const _injectedSkillNames = new Set();
 
-    // Helper: load a skill by exact name from catalog
+    // Helper: load a skill by exact name from catalog, replace {{template}} vars with agentConfig
     const _injectSkillByName = async (skillName, fallback = null) => {
       if (_injectedSkillNames.has(skillName)) return;
       try {
-        const { getAllSkills } = await import('../skills/skill-loader.js');
-        // getAllSkills returns [{name, description}] — we need the body
-        // Use fs to read the catalog file directly since skill-loader doesn't expose body via getAllSkills
         const fs = await import('fs');
         const path = await import('path');
         const { fileURLToPath } = await import('url');
@@ -3870,10 +3867,30 @@ NEVER skip steps 3 and 4 even if step 2 fails.
           const raw = fs.default.readFileSync(skillFile, 'utf-8');
           const fmMatch = raw.match(/^---\n[\s\S]*?\n---\n([\s\S]*)$/);
           if (fmMatch) {
-            const body = fmMatch[1].trim();
+            let body = fmMatch[1].trim();
+
+            // ── Replace {{template}} variables with agentConfig values ──
+            // This makes every skill multi-tenant — no hardcoded org names
+            const ownerName  = agentConfig?.humanContact?.name  || 'your owner';
+            const ownerEmail = agentConfig?.humanContact?.email || '';
+            const orgName    = agentConfig?.config?.orgName     || agentConfig?.client || 'your organization';
+            const industry   = agentConfig?.config?.industry    || '';
+            const planTier   = agentConfig?.config?.planTier    || agentConfig?.modelConfig?.modelTier || 'standard';
+            const location   = agentConfig?.config?.location    || '';
+            const platform   = 'BLOOM';
+
+            body = body
+              .replace(/\{\{owner_name\}\}/g,  ownerName)
+              .replace(/\{\{owner_email\}\}/g, ownerEmail)
+              .replace(/\{\{org_name\}\}/g,    orgName)
+              .replace(/\{\{industry\}\}/g,    industry)
+              .replace(/\{\{plan_tier\}\}/g,   planTier)
+              .replace(/\{\{location\}\}/g,    location)
+              .replace(/\{\{platform_name\}\}/g, platform);
+
             systemPrompt += `\n\n<skill name="${skillName}">\n${body}\n</skill>`;
             _injectedSkillNames.add(skillName);
-            logger.info('Auto-injected skill', { skill: skillName });
+            logger.info('Auto-injected skill', { skill: skillName, org: orgName });
             return;
           }
         }
