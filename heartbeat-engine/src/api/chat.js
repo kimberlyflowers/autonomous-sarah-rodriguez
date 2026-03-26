@@ -3706,14 +3706,27 @@ async function chatWithAgent(userMessage, history, agentConfig, sessionId = null
     logger.info('Brand kit check', { kitsFound: allKits.length, hasColors: allKits[0]?.colors?.length || 0 });
     
     if (allKits.length > 1) {
-      // Multiple kits — tell Sarah about all of them, she should ask which brand
-      const kitSummaries = allKits.map((k,i) => `${i+1}. "${k.kitName||'Unnamed Kit'}"${k.active?' (currently active)':''} — colors: ${(k.colors||[]).slice(0,3).join(', ')}`).join('\n');
+      // Multiple kits — tell the Bloomie about all of them and REQUIRE bloom_clarify before any creative work
+      const kitNames = allKits.map(k => k.kitName || 'Unnamed Kit');
+      const kitSummaries = allKits.map((k,i) => `${i+1}. "${k.kitName||'Unnamed Kit'}"${k.active?' (currently active)':''} — primary: ${k.colors?.[0]||'?'}, accent: ${k.colors?.[1]||'?'}`).join('\n');
+      const kitOptionsJson = allKits.map(k => `{"label":"${k.kitName||'Unnamed Kit'}","description":"${(k.tagline||'').replace(/"/g,"'")}"}`).join(',');
       systemPrompt += `\n\nBRAND KITS — MULTIPLE BRANDS AVAILABLE:
-The client has ${allKits.length} brand kits configured:
+The operator has ${allKits.length} brand kits configured:
 ${kitSummaries}
-When creating ANY design, website, email, document, or content, you MUST ask which brand this is for BEFORE starting work (unless the conversation already makes it clear). Say something like "Which brand is this for — [kit names]?" Keep it brief.
+
+MANDATORY RULE — NO EXCEPTIONS:
+Before creating ANY design, website, email, image, document, flyer, social post, or any other content, you MUST call bloom_clarify to ask which brand. Do this FIRST, before any other tool call.
+
+Use this exact bloom_clarify call:
+{
+  "question": "Which brand is this for?",
+  "options": [${kitOptionsJson}],
+  "context": "I have ${allKits.length} brand kits configured and need to use the right colors, fonts, and voice."
+}
+
+Only skip this if the user already specified the brand in their message (e.g. "make a YES flyer" or "create a SABWB post").
 Once confirmed, use that brand's exact colors as CSS variables, load their fonts from Google Fonts, and match their voice in all copy.
-IMPORTANT: Since brand kits are configured, DO NOT ask about colors, fonts, or visual style. You already have everything you need from the brand kit. Only ask about content — what the page is about, who the audience is, and what action they should take.`;
+DO NOT ask about colors, fonts, or visual style — you already have all of that in the brand kit.`;
       
       // Also inject the active kit details as the default
       const bk = allKits.find(k => k.active) || allKits[0];
