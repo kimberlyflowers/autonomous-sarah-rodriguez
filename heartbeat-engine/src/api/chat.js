@@ -1339,7 +1339,7 @@ const _ALL_TOOLS = [
   // ── DOCUMENTS ────────────────────────────────────────────────────────────
   {
     name: "bloom_create_document",
-    description: "Save a document/artifact (blog post, email draft, social post, report, etc.) to the BLOOM document system. Use this to save any content you create so Kimberly can review it.",
+    description: "Save a document/artifact (blog post, email draft, social post, report, etc.) to the BLOOM document system. Use this to save any content you create so the operator can review it.",
     input_schema: {
       type: "object",
       properties: {
@@ -1347,7 +1347,7 @@ const _ALL_TOOLS = [
         content: { type: "string", description: "Full document content (HTML or markdown)" },
         docType: { type: "string", description: "Type: blog_post, social_post, email_draft, report, landing_page, other" },
         tags: { type: "array", items: { type: "string" }, description: "Tags for categorization" },
-        requiresApproval: { type: "boolean", description: "Whether this needs Kimberly's approval before use (default: false)" }
+        requiresApproval: { type: "boolean", description: "Whether this needs the operator's approval before use (default: false)" }
       },
       required: ["title", "content"]
     }
