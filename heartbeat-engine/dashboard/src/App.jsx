@@ -3590,7 +3590,8 @@ function App({ authUser }) {
 
   // Extracted so it can be called both on mount and after OAuth success
   const loadActiveConnectors = () => {
-    const orgId='a1000000-0000-0000-0000-000000000001';
+    // Multi-tenant: resolve org from logged-in user's profile, not hardcoded BLOOM org
+    const orgId = meProfile?.orgId || 'a1000000-0000-0000-0000-000000000001';
     fetch(`/api/connectors/active?orgId=${orgId}`)
       .then(r=>r.ok?r.json():null)
       .then(data=>{
@@ -3874,15 +3875,16 @@ function App({ authUser }) {
     if(pg!=="artifacts") return;
     setFilesLoading(true);
     const url = conferenceMode
-      ? "/api/files/artifacts?limit=50"
-      : currentAgentId ? `/api/files/artifacts?limit=50&agentId=${currentAgentId}` : "/api/files/artifacts?limit=50";
-    fetch(url)
-      .then(r=>r.ok?r.json():null)
-      .then(d=>{
-        setFiles(d?.artifacts||[]);
-      })
-      .catch(()=>{})
-      .finally(()=>setFilesLoading(false));
+      ? "/api/files/artifacts?limit=100"
+      : currentAgentId ? `/api/files/artifacts?limit=100&agentId=${currentAgentId}` : "/api/files/artifacts?limit=100";
+    // Send auth headers so server resolves correct org from JWT — critical for multi-tenant
+    getAuthHeaders().then(headers => {
+      fetch(url, { headers })
+        .then(r=>r.ok?r.json():null)
+        .then(d=>{ setFiles(d?.artifacts||[]); })
+        .catch(()=>{})
+        .finally(()=>setFilesLoading(false));
+    });
   },[pg,filesRefresh,currentAgentId,conferenceMode]);
   const btm=useRef(null);
   const fRef=useRef(null);
@@ -4374,29 +4376,9 @@ function App({ authUser }) {
                       <span style={{fontSize:11,color:c.so,marginLeft:"auto"}}>✓ All OK</span>
                     </div>
                     <button onClick={()=>setUmO(!umO)} style={{width:"100%",padding:"8px 10px",borderRadius:10,border:"none",cursor:"pointer",background:umO?c.sf:"transparent",display:"flex",alignItems:"center",gap:10}} onMouseEnter={e=>e.currentTarget.style.background=c.hv} onMouseLeave={e=>e.currentTarget.style.background=umO?c.sf:"transparent"}>
-                      <label style={{width:30,height:30,borderRadius:8,background:userImg?"transparent":"linear-gradient(135deg,#F4A261,#E76F8B)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"#fff",flexShrink:0,cursor:"pointer",overflow:"hidden",position:"relative"}}>
+                      <div style={{width:30,height:30,borderRadius:8,background:userImg?"transparent":"linear-gradient(135deg,#F4A261,#E76F8B)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"#fff",flexShrink:0,overflow:"hidden",pointerEvents:"none"}}>
                         {userImg?<img src={userImg} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>:meInitial}
-                        <input ref={userImgRef} type="file" accept="image/*" style={{display:"none"}} onChange={e=>{
-                          const f=e.target.files[0]; if(!f) return;
-                          const reader=new FileReader();
-                          reader.onload=async(ev)=>{
-                            try{
-                              const img=new Image();
-                              await new Promise((res,rej)=>{img.onload=res;img.onerror=rej;img.src=ev.target.result;});
-                              const max=200,scale=Math.min(max/img.width,max/img.height,1);
-                              const cv=document.createElement('canvas');cv.width=Math.round(img.width*scale);cv.height=Math.round(img.height*scale);
-                              cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
-                              const d=cv.toDataURL('image/jpeg',0.8);
-                              setUserImg(d);
-                              getAuthHeaders().then(h=>fetch('/api/agent/me/avatar',{method:'POST',headers:h,body:JSON.stringify({avatar:d})})).catch(()=>{});
-                            }catch{
-                              setUserImg(ev.target.result);
-                              getAuthHeaders().then(h=>fetch('/api/agent/me/avatar',{method:'POST',headers:h,body:JSON.stringify({avatar:ev.target.result})})).catch(()=>{});
-                            }
-                          };
-                          reader.readAsDataURL(f);
-                        }}/>
-                      </label>
+                      </div>
                       <div style={{flex:1,textAlign:"left"}}><div style={{fontSize:13,fontWeight:600,color:c.tx}}>{meDisplayName}</div><div style={{fontSize:11,color:c.so,textTransform:"capitalize"}}>{meRole}</div></div>
                       <span style={{fontSize:12,color:c.so,transform:umO?"rotate(180deg)":"rotate(0deg)",transition:"transform .2s"}}>▾</span>
                     </button>
@@ -4527,8 +4509,8 @@ function App({ authUser }) {
                     <div style={{display:"flex",justifyContent:"center",marginBottom:8}}>
                       <div style={{animation:"bloomieWiggle 3s ease-in-out infinite"}}><Face sz={mob?64:80} agent={agent}/></div>
                     </div>
-                    <h2 style={{fontSize:mob?22:28,fontWeight:700,color:c.tx,marginTop:18,marginBottom:6}}>Chat with {(currentAgent?.name||"Sarah").split(" ")[0]}</h2>
-                    <p style={{fontSize:mob?13:15,color:c.so,marginBottom:28}}>Give {aFN} tasks, check their work, or ask what's going on</p>
+                    <h2 style={{fontSize:mob?22:28,fontWeight:700,color:c.tx,marginTop:18,marginBottom:6}}>{currentAgent ? `Chat with ${currentAgent.name.split(" ")[0]}` : "Loading..."}</h2>
+                    <p style={{fontSize:mob?13:15,color:c.so,marginBottom:28}}>{currentAgent ? `Give ${aFN} tasks, check their work, or ask what's going on` : ""}</p>
                     <div style={{position:"relative",marginBottom:20}}>
                       <div style={{display:"flex",alignItems:"flex-end",gap:8,padding:mob?"12px":"14px 16px",borderRadius:20,border:"1.5px solid "+(vcRec?c.ac:c.ln),background:c.inp,transition:"border-color .2s"}}>
                         <div ref={plusMenuRef} style={{position:"relative",flexShrink:0,marginBottom:2}}>
@@ -6116,7 +6098,7 @@ function App({ authUser }) {
                               <button onClick={e=>e.stopPropagation()} style={{fontSize:10,color:c.fa,background:"none",border:"none",cursor:"pointer",padding:"2px 4px"}}>Disconnect</button>
                             </div>
                           ):(
-                            <button onClick={e=>{e.stopPropagation();const orgId="a1000000-0000-0000-0000-000000000001";window.location.href=`/oauth/connect/${item.slug}?orgId=${orgId}`;}}
+                            <button onClick={e=>{e.stopPropagation();const orgId=meProfile?.orgId||"a1000000-0000-0000-0000-000000000001";window.location.href=`/oauth/connect/${item.slug}?orgId=${orgId}`;}}
                               style={{padding:"7px 14px",borderRadius:8,border:"1.5px solid #F4A261",background:"transparent",cursor:"pointer",flexShrink:0,whiteSpace:"nowrap",transition:"all .15s",fontSize:12,fontWeight:700}}
                               onMouseEnter={e=>{e.currentTarget.style.background="linear-gradient(135deg,#F4A261,#E76F8B)";e.currentTarget.style.borderColor="transparent";e.currentTarget.querySelector("span").style.WebkitTextFillColor="#fff";e.currentTarget.querySelector("span").style.backgroundImage="none";}}
                               onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.borderColor="#F4A261";e.currentTarget.querySelector("span").style.WebkitTextFillColor="transparent";e.currentTarget.querySelector("span").style.backgroundImage="linear-gradient(135deg,#F4A261,#E76F8B)";}}>
