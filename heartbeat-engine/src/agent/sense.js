@@ -20,12 +20,16 @@ export async function sense(agentConfig, trigger = {}) {
     email: {},
     tasks: {},
     calendar: {},
+    inboundReplies: [],
     alerts: []
   };
 
   try {
     // Check GoHighLevel for client activity
     environment.ghl = await senseGHL(agentConfig);
+
+    // Check for inbound replies to messages Sarah sent
+    environment.inboundReplies = await senseInboundReplies(agentConfig);
 
     // Check email for new messages
     environment.email = await senseEmail(agentConfig);
@@ -44,6 +48,7 @@ export async function sense(agentConfig, trigger = {}) {
       emailItems: environment.email.unread?.length || 0,
       taskItems: environment.tasks.pending?.length || 0,
       calendarItems: environment.calendar.upcoming?.length || 0,
+      inboundReplies: environment.inboundReplies.length,
       alerts: environment.alerts.length
     });
 
@@ -318,6 +323,17 @@ function generateEnvironmentAlerts(environment) {
     });
   }
 
+  // Inbound replies — contacts who replied to Sarah's outbound messages
+  if (environment.inboundReplies?.length > 0) {
+    alerts.push({
+      type: 'INBOUND_REPLIES',
+      message: `${environment.inboundReplies.length} contact(s) replied to your messages`,
+      urgency: 'HIGH',
+      count: environment.inboundReplies.length,
+      replies: environment.inboundReplies
+    });
+  }
+
   // System errors
   const hasErrors = [
     environment.ghl.error,
@@ -336,6 +352,19 @@ function generateEnvironmentAlerts(environment) {
   }
 
   return alerts;
+}
+
+// Sense inbound replies — contacts who replied to messages Sarah sent
+async function senseInboundReplies(agentConfig) {
+  try {
+    logger.info('Checking for inbound replies...');
+    const replies = await ghlClient.getUnreadInboundMessages();
+    logger.info('Inbound reply check complete', { count: replies.length });
+    return replies;
+  } catch (error) {
+    logger.error('Inbound reply sensing failed:', error.message);
+    return [];
+  }
 }
 
 // Helper to find calendar conflicts
