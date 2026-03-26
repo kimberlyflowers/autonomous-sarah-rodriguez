@@ -1407,11 +1407,27 @@ function parseClarification(text) {
 // ClarificationCard — renders Sarah's question with clickable option buttons
 function ClarificationCardInline({ clarification, onSelect, c, disabled }) {
   const [selected, setSelected] = useState(null);
+  const [showCustom, setShowCustom] = useState(false);
+  const [customText, setCustomText] = useState('');
+  const CUSTOM_IDX = -1;
+
   const handleClick = (opt, i) => {
     if (disabled || selected !== null) return;
     setSelected(i);
     if (onSelect) onSelect(opt);
   };
+
+  const handleCustomToggle = () => {
+    if (disabled || selected !== null) return;
+    setShowCustom(s => !s);
+  };
+
+  const handleCustomSubmit = () => {
+    if (!customText.trim() || selected !== null) return;
+    setSelected(CUSTOM_IDX);
+    if (onSelect) onSelect({ label: customText.trim(), description: '' });
+  };
+
   return (
     <div style={{background:c.sf,border:"2px solid "+c.ac,borderRadius:16,padding:16,marginTop:10,maxWidth:380}}>
       <div style={{fontSize:14,fontWeight:600,color:c.tx,marginBottom:6,lineHeight:1.4}}>{clarification.question}</div>
@@ -1433,8 +1449,49 @@ function ClarificationCardInline({ clarification, onSelect, c, disabled }) {
             </button>
           );
         })}
+
+        {/* Other — free text option */}
+        {selected===null&&!disabled&&(
+          <div>
+            <button onClick={handleCustomToggle} style={{
+              display:"flex",alignItems:"center",gap:6,padding:"10px 14px",borderRadius:12,
+              border:showCustom?"2px solid "+c.ac:"1px dashed "+c.ln,
+              background:showCustom?c.ac+"10":"transparent",
+              cursor:"pointer",textAlign:"left",width:"100%",transition:"all 0.15s"
+            }}>
+              <span style={{fontSize:13,fontWeight:600,color:c.so}}>{showCustom?"▾":"▸"} Something else...</span>
+            </button>
+            {showCustom&&(
+              <div style={{display:"flex",gap:8,marginTop:6,padding:"0 2px"}}>
+                <input
+                  autoFocus
+                  type="text"
+                  value={customText}
+                  onChange={e=>setCustomText(e.target.value)}
+                  onKeyDown={e=>e.key==='Enter'&&handleCustomSubmit()}
+                  placeholder="Type your answer..."
+                  style={{
+                    flex:1,padding:"8px 12px",borderRadius:10,
+                    border:"1.5px solid "+c.ac,background:c.cd,
+                    fontSize:13,color:c.tx,outline:"none"
+                  }}
+                />
+                <button
+                  onClick={handleCustomSubmit}
+                  disabled={!customText.trim()}
+                  style={{
+                    padding:"8px 14px",borderRadius:10,border:"none",
+                    background:customText.trim()?c.ac:c.ln,
+                    color:"#fff",fontSize:13,fontWeight:600,
+                    cursor:customText.trim()?"pointer":"default"
+                  }}
+                >Send</button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
-      {selected!==null&&<div style={{fontSize:11,color:c.ac,marginTop:8,fontWeight:500}}>Sarah is working on it...</div>}
+      {selected!==null&&<div style={{fontSize:11,color:c.ac,marginTop:8,fontWeight:500}}>✓ On it...</div>}
     </div>
   );
 }
