@@ -72,7 +72,7 @@ Write a blog post about something interesting.
 
 Call `bloom_schedule_task` with:
 - `name`: Short, descriptive (e.g., "Daily Blog Post", "Hourly Inbox Monitor")
-- `description`: What and why (e.g., "Creates a daily blog post promoting the business and Bloomie Staffing")
+- `description`: What and why (e.g., "Creates a daily blog post promoting the business")
 - `instruction`: The detailed instruction from Step 3
 - `frequency`: The confirmed frequency
 - `runTime`: The confirmed time in HH:MM format
