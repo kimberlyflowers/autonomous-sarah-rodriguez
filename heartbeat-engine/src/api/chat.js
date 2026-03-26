@@ -3929,10 +3929,10 @@ NEVER skip steps 3 and 4 even if step 2 fails.
   // Model selection — per-org tier system with unified client failover
   const messageText = Array.isArray(userMessage) ? userMessage.filter(b => b.type === 'text').map(b => b.text).join(' ') : userMessage;
   const llmClient = getLLMClient();
+  // activeProvider declared here — used by both model adaptation and task injection below
+  let activeProvider = llmClient.provider;
 
-  // ── MODEL ADAPTATION — applied after model is known, only when no task injection ──
-  // Task injection already carries model-native guidance, so we skip adaptation when it fires.
-  // Both use the same provider — resolved above as activeProvider.
+  // ── MODEL ADAPTATION — skipped if task injection active (it has provider-native guidance) ──
   if (!detectedTaskType) {
     const modelAdaptation = getModelAdaptation(activeProvider);
     if (currentMessages.length > 0) {
@@ -3989,9 +3989,8 @@ NEVER skip steps 3 and 4 even if step 2 fails.
   logger.info('Chat model selected', { model: chatModel, provider: llmClient.provider, failoverReady: !llmClient.isFailoverActive });
 
   // ── NOW APPLY PROVIDER-NATIVE TASK INJECTION (model is known) ────────────
-  // Each model gets task instructions written in its own language.
-  // Applied to the user message so base system prompt cache stays frozen.
-  const activeProvider = llmClient.provider;
+  // Update activeProvider in case admin config switched the model/provider above
+  activeProvider = llmClient.provider;
   if (detectedTaskType) {
     const injection = getTaskInjection(detectedTaskType, activeProvider);
     if (injection) {
