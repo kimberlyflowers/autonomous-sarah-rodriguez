@@ -76,8 +76,11 @@ router.post('/artifacts', async (req, res) => {
     const floralId = `bloom-${fileId}`;
     const supabase = sb();
 
-    // ── Multi-tenant: resolve org + user from JWT ──
-    const resolvedOrgId = await getUserOrgId(req) || ORG_ID();
+    // ── Multi-tenant: resolve org + user from JWT, or from body (internal calls) ──
+    // Internal calls from create_artifact tool have no JWT — they pass organizationId in body
+    const resolvedOrgId = await getUserOrgId(req)
+      || req.body.organizationId   // ← passed by create_artifact tool for internal calls
+      || ORG_ID();
     const resolvedUserId = extractUserId(req) || USER_ID();
 
     // Check if same name + session already exists — update in place, no duplicates
