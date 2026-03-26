@@ -527,7 +527,7 @@ If you need to reschedule, please let us know as soon as possible.
 
 // Execute reply to a contact in an existing conversation thread
 async function executeReplyToContact(decision, agentConfig) {
-  const { conversationId, contactId, message, channelType } = decision.input_data || {};
+  const { conversationId, contactId, message, channelType, inboundMessageBody, inboundReceivedAt } = decision.input_data || {};
 
   if (!conversationId && !contactId) {
     throw new Error('reply_to_contact requires conversationId or contactId in input_data');
@@ -537,23 +537,82 @@ async function executeReplyToContact(decision, agentConfig) {
   }
 
   const { ghlClient } = await import('../integrations/ghl.js');
+  const { createClient } = await import('@supabase/supabase-js');
   const type = channelType || 'SMS';
 
-  if (conversationId) {
-    const result = await ghlClient.replyToConversation(conversationId, contactId, message, type);
-    logger.info('Replied to conversation', { conversationId, contactId, type, messageId: result.messageId });
-    await ghlClient.markConversationRead(conversationId).catch(() => {});
-    return { success: true, messageId: result.messageId, conversationId, contactId, repliedAt: new Date().toISOString() };
+  // ── DEDUPLICATION: check if we already replied to this conversation this cycle ──
+  // Prevents double-replies if the same inbound message appears in two consecutive heartbeat cycles
+  // (can happen if markConversationRead fails or GHL takes time to update unreadCount)
+  const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+  });
+  const convIdForCheck = conversationId || 'unknown';
+  const recentWindow = new Date(Date.now() - 12 * 60 * 1000).toISOString(); // 12 min window
+  const { data: existing } = await supabase
+    .from('inbound_reply_log')
+    .select('id, replied_at')
+    .eq('conversation_id', convIdForCheck)
+    .gte('created_at', recentWindow)
+    .not('reply_message_id', 'is', null) // only rows where we actually sent a reply
+    .limit(1)
+    .maybeSingle();
+
+  if (existing) {
+    logger.warn('reply_to_contact: already replied to this conversation recently — skipping duplicate', {
+      conversationId: convIdForCheck, repliedAt: existing.replied_at
+    });
+    return { success: true, skipped: true, reason: 'already_replied', conversationId: convIdForCheck };
   }
 
-  // Find conversation by contactId if no conversationId given
-  const conversations = await ghlClient.getUnreadInboundMessages();
-  const convo = conversations.find(c => c.contactId === contactId);
-  if (!convo) {
-    throw new Error('reply_to_contact: no active conversation found for contactId ' + contactId);
+  // ── LOG INTENT before sending — if send fails we still have the record ──
+  const logEntry = {
+    conversation_id: convIdForCheck,
+    contact_id: contactId || null,
+    inbound_message: inboundMessageBody || '(unknown)',
+    channel_type: type,
+    received_at: inboundReceivedAt || new Date().toISOString(),
+    agent_id: agentConfig?.agentId || null,
+  };
+  const { data: logRow } = await supabase
+    .from('inbound_reply_log')
+    .insert(logEntry)
+    .select('id')
+    .single();
+
+  const logId = logRow?.id;
+
+  // ── SEND THE REPLY ──
+  let result;
+  if (conversationId) {
+    result = await ghlClient.replyToConversation(conversationId, contactId, message, type);
+    logger.info('Replied to conversation', { conversationId, contactId, type, messageId: result.messageId });
+    await ghlClient.markConversationRead(conversationId).catch(() => {});
+  } else {
+    const conversations = await ghlClient.getUnreadInboundMessages();
+    const convo = conversations.find(c => c.contactId === contactId);
+    if (!convo) {
+      throw new Error('reply_to_contact: no active conversation found for contactId ' + contactId);
+    }
+    result = await ghlClient.replyToConversation(convo.conversationId, contactId, message, type);
+    logger.info('Replied to contact via conversation lookup', { conversationId: convo.conversationId, contactId, type });
+    await ghlClient.markConversationRead(convo.conversationId).catch(() => {});
+    logEntry.conversation_id = convo.conversationId;
   }
-  const result = await ghlClient.replyToConversation(convo.conversationId, contactId, message, type);
-  logger.info('Replied to contact via conversation lookup', { conversationId: convo.conversationId, contactId, type });
-  await ghlClient.markConversationRead(convo.conversationId).catch(() => {});
-  return { success: true, messageId: result.messageId, conversationId: convo.conversationId, contactId, repliedAt: new Date().toISOString() };
+
+  // ── UPDATE LOG with sent reply details ──
+  if (logId) {
+    await supabase.from('inbound_reply_log').update({
+      reply_message: message,
+      reply_message_id: result.messageId,
+      replied_at: new Date().toISOString(),
+    }).eq('id', logId).catch(() => {});
+  }
+
+  return {
+    success: true,
+    messageId: result.messageId,
+    conversationId: logEntry.conversation_id,
+    contactId,
+    repliedAt: new Date().toISOString()
+  };
 }
