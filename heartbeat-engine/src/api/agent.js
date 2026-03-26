@@ -329,6 +329,17 @@ router.get('/me', async (req, res) => {
     const membership = memberResult.data || {};
     const org = membership.organizations || {};
 
+    // Ensure public.users row exists — upsert with auth email so avatar saves work
+    if (!userResult.data) {
+      const { data: authUser } = await supabase.auth.admin.getUserById(userId).catch(() => ({ data: null }));
+      await supabase.from('users').upsert({
+        id: userId,
+        email: authUser?.user?.email || '',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'id' }).catch(() => {});
+    }
+
     return res.json({
       user: {
         id: profile.id || userId,
@@ -350,6 +361,7 @@ router.get('/me', async (req, res) => {
 });
 
 // POST /api/agent/me/avatar — update authenticated user's avatar
+// Uploads image to Supabase Storage, stores URL in public.users (upsert — row may not exist)
 router.post('/me/avatar', async (req, res) => {
   try {
     const userId = extractUserId(req);
@@ -358,13 +370,37 @@ router.post('/me/avatar', async (req, res) => {
     const { avatar } = req.body; // base64 data URL or null to remove
     const supabase = await getSupabase();
 
+    let avatarUrl = avatar;
+
+    // If it's a base64 data URL, upload to Supabase Storage instead of storing raw base64
+    if (avatar && avatar.startsWith('data:image')) {
+      try {
+        const { uploadImage } = await import('../storage/supabase-storage.js');
+        const base64 = avatar.split(',')[1];
+        const ext = avatar.includes('png') ? 'png' : 'jpg';
+        const fname = `avatars/user-${userId}-${Date.now()}.${ext}`;
+        const upload = await uploadImage(Buffer.from(base64, 'base64'), fname, `image/${ext}`);
+        if (upload.success && upload.url) {
+          avatarUrl = upload.url;
+          logger.info('User avatar uploaded to storage', { userId, url: avatarUrl.slice(0, 60) });
+        }
+      } catch(uploadErr) {
+        logger.warn('Storage upload failed, storing URL reference', { error: uploadErr.message });
+        // Fall through — store data URL as fallback
+      }
+    }
+
+    // Upsert — create row if it doesn't exist yet (handles rebuilt auth accounts)
     const { error } = await supabase
       .from('users')
-      .update({ avatar_url: avatar, updated_at: new Date().toISOString() })
-      .eq('id', userId);
+      .upsert({
+        id: userId,
+        avatar_url: avatarUrl,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'id' });
 
     if (error) throw new Error(error.message);
-    return res.json({ ok: true });
+    return res.json({ ok: true, avatarUrl });
   } catch (error) {
     logger.error('Avatar update error', { error: error.message });
     return res.status(500).json({ error: 'Failed to update avatar' });
