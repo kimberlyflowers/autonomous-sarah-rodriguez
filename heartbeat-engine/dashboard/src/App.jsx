@@ -486,7 +486,7 @@ function useCRMLink() {
   const [crmUrl,setCrmUrl] = useState('https://app.gohighlevel.com');
   const [contactsUrl,setContactsUrl] = useState('https://app.gohighlevel.com');
   useEffect(()=>{
-    fetch("/api/chat/crm-link").then(r=>r.json()).then(d=>{
+    fetch("/api/chat/crm-link", await withAuth()).then(r=>r.json()).then(d=>{
       if(d.url) setCrmUrl(d.url);
       if(d.contactsUrl) setContactsUrl(d.contactsUrl);
     }).catch(()=>{});
@@ -625,7 +625,7 @@ function Stat({c,label,value,accent}) {
 function SystemHealth({c,sse}) {
   const [data,setData] = useState(null);
   useEffect(()=>{
-    const go=async()=>{ try{ const r=await fetch("/api/dashboard/health"); if(r.ok) setData(await r.json()); }catch{} };
+    const go=async()=>{ try{ const r=await fetch("/api/dashboard/health", await withAuth()); if(r.ok) setData(await r.json()); }catch{} };
     go();
     const clean=sse?.register("health",go);
     if(!clean){ const t=setInterval(go,30000); return()=>clearInterval(t); }
@@ -660,7 +660,7 @@ function SystemHealth({c,sse}) {
 function TrustGate({c,sse}) {
   const [data,setData] = useState(null);
   useEffect(()=>{
-    const go=async()=>{ try{ const r=await fetch("/api/dashboard/trust-gate"); if(r.ok) setData(await r.json()); }catch{} };
+    const go=async()=>{ try{ const r=await fetch("/api/dashboard/trust-gate", await withAuth()); if(r.ok) setData(await r.json()); }catch{} };
     go();
     const clean=sse?.register("trust",go);
     if(!clean){ const t=setInterval(go,30000); return()=>clearInterval(t); }
@@ -710,7 +710,7 @@ function TrustGate({c,sse}) {
 function AgenticExecutions({c,sse}) {
   const [execs,setExecs] = useState([]);
   useEffect(()=>{
-    const go=async()=>{ try{ const r=await fetch("/api/dashboard/agentic-executions?limit=5"); if(r.ok){ const d=await r.json(); setExecs(d.executions||d||[]); } }catch{} };
+    const go=async()=>{ try{ const r=await fetch("/api/dashboard/agentic-executions?limit=5", await withAuth()); if(r.ok){ const d=await r.json(); setExecs(d.executions||d||[]); } }catch{} };
     go();
     const clean=sse?.register("executions",go);
     if(!clean){ const t=setInterval(go,15000); return()=>clearInterval(t); }
@@ -745,7 +745,7 @@ function AgenticExecutions({c,sse}) {
 function SubAgents({c,sse}) {
   const [agents,setAgents] = useState([]);
   useEffect(()=>{
-    const go=async()=>{ try{ const r=await fetch("/api/dashboard/sub-agents"); if(r.ok){ const d=await r.json(); setAgents(d.agents||d||[]); } }catch{} };
+    const go=async()=>{ try{ const r=await fetch("/api/dashboard/sub-agents", await withAuth()); if(r.ok){ const d=await r.json(); setAgents(d.agents||d||[]); } }catch{} };
     go();
     const clean=sse?.register("subagents",go);
     if(!clean){ const t=setInterval(go,30000); return()=>clearInterval(t); }
@@ -782,7 +782,7 @@ function SubAgents({c,sse}) {
 function ToolPerformance({c,sse}) {
   const [data,setData] = useState(null);
   useEffect(()=>{
-    const go=async()=>{ try{ const r=await fetch("/api/dashboard/tool-performance"); if(r.ok) setData(await r.json()); }catch{} };
+    const go=async()=>{ try{ const r=await fetch("/api/dashboard/tool-performance", await withAuth()); if(r.ok) setData(await r.json()); }catch{} };
     go();
     const clean=sse?.register("tools",go);
     if(!clean){ const t=setInterval(go,30000); return()=>clearInterval(t); }
@@ -827,7 +827,7 @@ function ToolPerformance({c,sse}) {
 function ContextAnalytics({c,sse}) {
   const [data,setData] = useState(null);
   useEffect(()=>{
-    const go=async()=>{ try{ const r=await fetch("/api/dashboard/context-analytics"); if(r.ok) setData(await r.json()); }catch{} };
+    const go=async()=>{ try{ const r=await fetch("/api/dashboard/context-analytics", await withAuth()); if(r.ok) setData(await r.json()); }catch{} };
     go();
     const clean=sse?.register("context",go);
     if(!clean){ const t=setInterval(go,30000); return()=>clearInterval(t); }
@@ -866,7 +866,7 @@ function ContextAnalytics({c,sse}) {
 function ActionLog({c,sse}) {
   const [actions,setActions] = useState([]);
   useEffect(()=>{
-    const go=async()=>{ try{ const r=await fetch("/api/dashboard/action-log?limit=20"); if(r.ok){ const d=await r.json(); setActions(d.actions||d||[]); } }catch{} };
+    const go=async()=>{ try{ const r=await fetch("/api/dashboard/action-log?limit=20", await withAuth()); if(r.ok){ const d=await r.json(); setActions(d.actions||d||[]); } }catch{} };
     go();
     const clean=sse?.register("actions",go);
     if(!clean){ const t=setInterval(go,15000); return()=>clearInterval(t); }
@@ -900,7 +900,7 @@ function ActionLog({c,sse}) {
 function InternalTasks({c,sse,aFN="Sarah"}) {
   const [tasks,setTasks] = useState([]);
   useEffect(()=>{
-    const go=async()=>{ try{ const r=await fetch("/api/dashboard/internal-tasks"); if(r.ok){ const d=await r.json(); setTasks(d.tasks||d||[]); } }catch{} };
+    const go=async()=>{ try{ const r=await fetch("/api/dashboard/internal-tasks", await withAuth()); if(r.ok){ const d=await r.json(); setTasks(d.tasks||d||[]); } }catch{} };
     go();
     const clean=sse?.register("tasks",go);
     if(!clean){ const t=setInterval(go,20000); return()=>clearInterval(t); }
@@ -2604,7 +2604,7 @@ function SiteLoginsManager({c,mob,aFN="Sarah"}){
 
   const loadSites=async()=>{
     try{
-      const r=await fetch("/api/dashboard/credential-registry");
+      const r=await fetch("/api/dashboard/credential-registry", await withAuth());
       if(r.ok){const d=await r.json();setSites(d);}
     }catch{}
     setLoading(false);
@@ -3708,15 +3708,15 @@ function App({ authUser }) {
 
   // Fetch trust gate status + model config + image engine config on mount
   useEffect(()=>{
-    fetch("/api/dashboard/trust-gate-status").then(r=>r.ok?r.json():null).then(d=>{if(d)setTgEnabled(d.enabled)}).catch(()=>{});
-    fetch("/api/dashboard/model-config").then(r=>r.ok?r.json():null).then(d=>{if(d)setModelConfig(d)}).catch(()=>{});
-    fetch("/api/dashboard/image-engine-config").then(r=>r.ok?r.json():null).then(d=>{if(d)setImgEngineConfig(d)}).catch(()=>{});
+    fetch("/api/dashboard/trust-gate-status", await withAuth()).then(r=>r.ok?r.json():null).then(d=>{if(d)setTgEnabled(d.enabled)}).catch(()=>{});
+    fetch("/api/dashboard/model-config", await withAuth()).then(r=>r.ok?r.json():null).then(d=>{if(d)setModelConfig(d)}).catch(()=>{});
+    fetch("/api/dashboard/image-engine-config", await withAuth()).then(r=>r.ok?r.json():null).then(d=>{if(d)setImgEngineConfig(d)}).catch(()=>{});
   },[]);
 
   const toggleTrustGate=async()=>{
     setTgLoading(true);
     try{
-      const r=await fetch("/api/dashboard/trust-gate-status",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:!tgEnabled})});
+      const r=await fetch("/api/dashboard/trust-gate-status", await withAuth({method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:!tgEnabled})});
       if(r.ok){const d=await r.json();setTgEnabled(d.enabled);}
     }catch{}
     setTgLoading(false);
@@ -3790,7 +3790,7 @@ function App({ authUser }) {
     if(!isOwner)return;
     setModelSaving(true);
     try{
-      const r=await fetch("/api/dashboard/model-config",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:newModel})});
+      const r=await fetch("/api/dashboard/model-config", await withAuth({method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:newModel})});
       if(r.ok){const d=await r.json();setModelConfig(prev=>({...prev,model:d.model,reason:'dashboard override'}));}
     }catch{}
     setModelSaving(false);
@@ -3799,7 +3799,7 @@ function App({ authUser }) {
     if(!isOwner)return;
     setImgEngineSaving(true);
     try{
-      const r=await fetch("/api/dashboard/image-engine-config",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({[contentType]:engine})});
+      const r=await fetch("/api/dashboard/image-engine-config", await withAuth({method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({[contentType]:engine})});
       if(r.ok){const d=await r.json();setImgEngineConfig(d.config);}
     }catch{}
     setImgEngineSaving(false);
