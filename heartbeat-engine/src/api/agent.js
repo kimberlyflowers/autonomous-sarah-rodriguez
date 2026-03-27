@@ -390,14 +390,16 @@ router.post('/me/avatar', async (req, res) => {
       }
     }
 
-    // Upsert — create row if it doesn't exist yet (handles rebuilt auth accounts)
+    // Update user row (GET /me ensures the row exists on first load).
+    // Cannot use upsert here — email is NOT NULL without a default,
+    // so INSERT ON CONFLICT fails the NOT NULL check before detecting the conflict.
     const { error } = await supabase
       .from('users')
-      .upsert({
-        id: userId,
+      .update({
         avatar_url: avatarUrl,
         updated_at: new Date().toISOString()
-      }, { onConflict: 'id' });
+      })
+      .eq('id', userId);
 
     if (error) throw new Error(error.message);
     return res.json({ ok: true, avatarUrl });
