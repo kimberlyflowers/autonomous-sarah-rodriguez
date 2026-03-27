@@ -2622,8 +2622,8 @@ function SiteLoginsManager({c,mob,aFN="Sarah"}){
     if(!addForm.siteKey||!addForm.username||!addForm.password)return;
     setSaving(true);
     try{
-      const _hh3=await getAuthHeaders();const r=await fetch("/api/dashboard/credential-registry",{headers:_hh3,
-        method:"POST",headers:{"Content-Type":"application/json"},
+      const _hh3=await getAuthHeaders();const r=await fetch("/api/dashboard/credential-registry",{
+        method:"POST",headers:{..._hh3,"Content-Type":"application/json"},
         body:JSON.stringify(addForm)
       });
       if(r.ok){setShowAdd(false);setAddForm({siteKey:'',username:'',password:'',notes:''});await loadSites();}
