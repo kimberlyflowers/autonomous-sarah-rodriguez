@@ -12,6 +12,17 @@ async function getAuthHeaders() {
   return { "Content-Type": "application/json", "Authorization": `Bearer ${session.access_token}` };
 }
 
+// Intercept all fetch calls — attach auth header automatically
+const _originalFetch = window.fetch;
+window.fetch = async (url, opts = {}) => {
+  // Only inject for same-origin /api/ routes
+  if (typeof url === 'string' && url.startsWith('/api/')) {
+    const authHeaders = await getAuthHeaders();
+    opts = { ...opts, headers: { ...authHeaders, ...(opts.headers || {}) } };
+  }
+  return _originalFetch(url, opts);
+};
+
 // Error boundary — prevents white screen crashes
 class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { hasError: false, error: null }; }
