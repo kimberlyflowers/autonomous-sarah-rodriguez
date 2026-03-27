@@ -1175,7 +1175,7 @@ const _ALL_TOOLS = [
 
   {
     name: "ghl_create_email_template",
-    description: "Create an email using the LOCKED BLOOM template. Pass structured data — the handler auto-assembles the HTML with hero image, orange callout box, gradient CTA button, and dark Bloomie CTA card. Do NOT write raw HTML. Always draft first.",
+    description: "Create an email template in the CRM (Marketing > Emails). Pass structured data — the handler auto-assembles branded HTML with hero image, callout box, gradient CTA button, and Bloomie CTA card, then saves it as a Code Editor template. The template appears in Marketing > Emails and can be used in a Campaign. Do NOT write raw HTML — use the structured fields. Always use this tool when the operator asks to create/draft an email, newsletter, or email campaign.",
     input_schema: {
       type: "object",
       properties: {
@@ -4285,9 +4285,9 @@ NEVER skip steps 3 and 4 even if step 2 fails.
     }
 
     // EMAIL — marketing emails, newsletters, campaigns
-    if (/\b(email.*campaign|newsletter|email.*blast|drip.*email|welcome.*email|marketing.*email|email.*template|send.*to.*list|announce.*blog|promote.*blog)\b/i.test(_skillMsgText)) {
+    if (/\b(email.*campaign|newsletter|email.*blast|drip.*email|welcome.*email|marketing.*email|email.*template|send.*to.*list|announce.*blog|promote.*blog|create.*email|draft.*email)\b/i.test(_skillMsgText)) {
       await _injectSkillByName('email-creator',
-        'IMPORTANT: Save every marketing email as a CRM draft before sending. Never send without user review.');
+        'IMPORTANT: Email creation is a TWO-STEP process. Step 1: Use ghl_create_email_template to create the template with structured data (name, subject, calloutItems, etc.) — the tool auto-assembles branded HTML and saves it to Email Templates. Step 2: IMMEDIATELY after the template is created, use browser_task to navigate to the GHL Email Marketing > Campaigns UI, create a new campaign, select the template you just created, and save it as a draft. The GHL API cannot create campaigns — only the UI can. Do NOT skip the browser step. Do NOT create HTML artifacts for emails. Do NOT ask more than 2 clarifying questions — use sensible defaults from the brand kit and context.');
     }
 
     // SOCIAL MEDIA — posts, captions, content calendars

@@ -1836,7 +1836,8 @@ export const ghlExecutors = {
 
       result._status = 'SUCCESS';
       result._templateId = templateId;
-      result._message = `EMAIL TEMPLATE SAVED SUCCESSFULLY. Template ID: ${templateId}. Find it in Marketing > Emails > Email Templates. To send it as a campaign, go to Email Marketing > Campaigns, create a new campaign, and select this template.`;
+      result._templateName = templateName;
+      result._message = `EMAIL TEMPLATE SAVED SUCCESSFULLY. Template ID: ${templateId}. Template name: "${templateName}". NEXT STEP: You MUST now use browser_task to create a campaign from this template in the GHL UI. Navigate to Email Marketing > Campaigns, create a new campaign, select this template "${templateName}", and save as draft. Do NOT skip this step — the user expects a campaign, not just a template.`;
       if (html) { result._assembledHTML = html; }
       logger.info(`Email template created successfully: ${templateId}`);
       return result;
