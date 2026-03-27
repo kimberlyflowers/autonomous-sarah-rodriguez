@@ -493,29 +493,55 @@ async _failoverChat(params, failedProvider) {
     if (system) params.system = system;
     if (tools?.length > 0) params.tools = formatToolsAnthropic(tools);
 
-    // Enable extended thinking for models that support it
-    const thinkingModels = ['claude-sonnet-4-6', 'claude-sonnet-4-5-20250929', 'claude-sonnet-4-20250514', 'claude-opus-4-6', 'claude-opus-4-5-20250414', 'claude-haiku-4-5-20251001'];
-    const supportsThinking = thinkingModels.some(m => this._currentModel.includes(m));
+    // ── Extended thinking ─────────────────────────────────────────────────
+    // Claude 4.6 models: use "adaptive" (recommended, "enabled" is deprecated)
+    // Claude 4.5/4.x models: use "enabled" with budget_tokens
+    // Docs: https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking
+    const adaptiveModels = ['claude-sonnet-4-6', 'claude-opus-4-6'];
+    const budgetModels = ['claude-sonnet-4-5-20250929', 'claude-sonnet-4-20250514', 'claude-opus-4-5-20250414', 'claude-haiku-4-5-20251001'];
 
-    if (supportsThinking) {
-      // Try with extended thinking first
+    const useAdaptive = adaptiveModels.some(m => this._currentModel.includes(m));
+    const useBudget = budgetModels.some(m => this._currentModel.includes(m));
+
+    if (useAdaptive || useBudget) {
+      // Build thinking params — never toggle mid-turn (causes 400 with tool use)
       const thinkingParams = { ...params };
-      thinkingParams.thinking = { type: 'enabled', budget_tokens: 3000 };
-      delete thinkingParams.temperature; // Must be omitted when thinking is enabled
+      if (useAdaptive) {
+        // 4.6 models: adaptive thinking (no budget_tokens needed)
+        thinkingParams.thinking = { type: 'adaptive' };
+      } else {
+        // 4.5/4.x models: enabled with explicit budget
+        thinkingParams.thinking = { type: 'enabled', budget_tokens: 10000 };
+      }
+      // Ensure max_tokens is large enough for thinking + response
       if (thinkingParams.max_tokens < 16000) thinkingParams.max_tokens = 16000;
 
       try {
         const response = await client.messages.create(thinkingParams);
         return parseAnthropicResponse(response);
       } catch (thinkErr) {
-        // Log the FULL error so we can debug
+        // Log the FULL error for debugging
         logger.warn('Extended thinking failed, retrying without thinking', {
           status: thinkErr?.status,
           message: (thinkErr?.message || '').slice(0, 500),
           errorBody: JSON.stringify(thinkErr?.error || {}).slice(0, 500),
-          model: this._currentModel
+          model: this._currentModel,
+          thinkingType: useAdaptive ? 'adaptive' : 'enabled'
         });
-        // Fall back to normal call (no thinking) — don't failover to Gemini
+
+        // Check if prior messages already contain thinking blocks (mid-turn tool loop).
+        // If so, we CANNOT disable thinking — it causes 400 "toggling mid-turn".
+        // In that case, let the error propagate so the outer failover handles it.
+        const hasPriorThinking = messages.some(m =>
+          m.role === 'assistant' && Array.isArray(m.content) &&
+          m.content.some(b => b.type === 'thinking')
+        );
+        if (hasPriorThinking) {
+          logger.warn('Cannot disable thinking mid-turn (prior thinking blocks exist), propagating error');
+          throw thinkErr;
+        }
+
+        // First call in conversation — safe to retry without thinking
         const response = await client.messages.create(params);
         return parseAnthropicResponse(response);
       }
