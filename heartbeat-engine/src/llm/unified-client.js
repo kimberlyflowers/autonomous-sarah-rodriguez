@@ -175,27 +175,50 @@ function parseAnthropicResponse(response) {
   };
 }
 
-function parseOpenAIResponse(response) {
+function parseOpenAIResponse(response, providerHint) {
   const choice = response.choices?.[0];
   if (!choice) return { content: [], stopReason: 'end_turn', usage: {}, model: response.model, raw: response };
 
   const content = [];
+  const msg = choice.message;
 
-  // ── Capture reasoning/thinking from all providers ──
-  // DeepSeek: reasoning_content field contains Chain-of-Thought reasoning
-  if (choice.message.reasoning_content) {
-    content.push({ type: 'thinking', thinking: choice.message.reasoning_content });
-  }
-  // Gemini (OpenAI-compatible): may include thought parts or reasoning field
-  if (choice.message.thought) {
-    content.push({ type: 'thinking', thinking: choice.message.thought });
-  }
-  // OpenAI o-series: reasoning tokens are hidden, but reasoning summary may appear
-  if (choice.message.reasoning) {
-    content.push({ type: 'thinking', thinking: typeof choice.message.reasoning === 'string' ? choice.message.reasoning : JSON.stringify(choice.message.reasoning) });
+  // ── Model-agnostic reasoning capture ──────────────────────────────────
+  // Log all non-standard fields so we can discover where each provider puts reasoning
+  const standardFields = new Set(['role', 'content', 'tool_calls', 'refusal', 'function_call']);
+  const extraFields = Object.keys(msg).filter(k => !standardFields.has(k));
+  if (extraFields.length > 0) {
+    logger.info('parseOpenAIResponse: non-standard message fields detected', {
+      provider: providerHint || response.model,
+      fields: extraFields,
+      preview: extraFields.reduce((acc, k) => {
+        const v = msg[k];
+        acc[k] = typeof v === 'string' ? v.slice(0, 200) : JSON.stringify(v).slice(0, 200);
+        return acc;
+      }, {})
+    });
   }
 
-  if (choice.message.content) content.push({ type: 'text', text: choice.message.content });
+  // 1. DeepSeek: reasoning_content (automatic with deepseek-reasoner)
+  if (msg.reasoning_content) {
+    content.push({ type: 'thinking', thinking: msg.reasoning_content });
+  }
+  // 2. Gemini (OpenAI-compat): may use "thought", "thoughts", or nested in parts
+  if (msg.thought && typeof msg.thought === 'string') {
+    content.push({ type: 'thinking', thinking: msg.thought });
+  }
+  if (msg.thoughts && typeof msg.thoughts === 'string') {
+    content.push({ type: 'thinking', thinking: msg.thoughts });
+  }
+  // 3. OpenAI o-series: reasoning or reasoning_content
+  if (msg.reasoning) {
+    content.push({ type: 'thinking', thinking: typeof msg.reasoning === 'string' ? msg.reasoning : JSON.stringify(msg.reasoning) });
+  }
+  // 4. Generic fallback: some providers use "thinking" directly
+  if (msg.thinking && typeof msg.thinking === 'string') {
+    content.push({ type: 'thinking', thinking: msg.thinking });
+  }
+
+  if (msg.content) content.push({ type: 'text', text: msg.content });
 
   let validToolCalls = 0;
   if (choice.message.tool_calls?.length > 0) {
@@ -583,6 +606,26 @@ async _failoverChat(params, failedProvider) {
     const body = { model: this._currentModel, messages: openaiMessages, max_tokens: maxTokens, temperature };
     if (tools?.length > 0) { body.tools = formatToolsOpenAI(tools); body.tool_choice = 'auto'; }
 
+    // ── Enable thinking/reasoning for all providers (model-agnostic) ──
+    // Gemini 2.5+: reasoning_effort maps to thinking budget (low=1K, medium=8K, high=24K)
+    //   Also needs google.thinking_config.include_thoughts to get thought text back
+    // DeepSeek R1: reasoning_content is automatic (no param needed)
+    // OpenAI o-series: reasoning_effort controls reasoning depth
+    const providerName = this._currentProvider;
+    if (providerName === 'gemini') {
+      body.reasoning_effort = 'low'; // Keep budget small to avoid slowness
+      // Gemini-specific: include_thoughts returns the actual thought text in response
+      body.google = {
+        thinking_config: {
+          include_thoughts: true
+        }
+      };
+    } else if (providerName === 'openai' && this._currentModel.startsWith('o')) {
+      // o-series models (o3-mini, o1, etc.) support reasoning_effort
+      body.reasoning_effort = 'low';
+    }
+    // DeepSeek R1 automatically returns reasoning_content — no extra params needed
+
     // Gemini uses /chat/completions under its OpenAI-compatible endpoint
     const baseUrl = provider.baseUrl.replace(/\/+$/, '');
     const url = `${baseUrl}/chat/completions`;
@@ -601,7 +644,7 @@ async _failoverChat(params, failedProvider) {
     }
 
     const data = await response.json();
-    return parseOpenAIResponse(data);
+    return parseOpenAIResponse(data, providerName);
   }
 }
 
@@ -723,7 +766,7 @@ async function _callModelDirect(model, provider, { system, messages, tools, maxT
       throw error;
     }
     const data = await response.json();
-    const parsed = parseOpenAIResponse(data);
+    const parsed = parseOpenAIResponse(data, provider);
     return {
       ...parsed,
       text: parsed.content.filter(b => b.type === 'text').map(b => b.text).join('\n'),
