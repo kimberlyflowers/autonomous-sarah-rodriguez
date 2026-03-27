@@ -3983,18 +3983,33 @@ async function chatWithAgent(userMessage, history, agentConfig, sessionId = null
   const agentClient = getAnthropicClient(agentConfig);
   let systemPrompt = buildSystemPrompt(agentConfig);
 
-  // Check feature flags — strip disabled features from prompt
+  // LIVE DESKTOP DETECTION — auto-detect if BLOOM Desktop app is running
+  // Pings /api/desktop/status to check for active desktop sessions.
+  // If no desktop connected → strip desktop tools so agent doesn't hallucinate.
+  // If desktop connected → keep all 42 desktop tools in the system prompt.
   try {
-    const { createClient } = await import('@supabase/supabase-js');
-    const sbFlags = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-    const { data: flagRow } = await sbFlags.from('bloom_admin_settings').select('global_feature_flags').not('id', 'is', null).single();
-    const flags = flagRow?.global_feature_flags || {};
-    if (flags.desktop_control === false) {
-      // Strip Desktop/bloom_* sections from system prompt
-      systemPrompt = systemPrompt.replace(/MODE 2 — USER'S COMPUTER[\s\S]*?BLOOM DESKTOP PERMISSION RULES:[\s\S]*?ask each time\.\n.*?BLOOM Desktop app instead\?"\n/g, '');
-      logger.info('Desktop control disabled — stripped from system prompt');
+    const _desktopCheckUrl = process.env.SARAH_URL || `http://localhost:${process.env.PORT || 3000}`;
+    const _desktopStatus = await Promise.race([
+      fetch(`${_desktopCheckUrl}/api/desktop/status`).then(r => r.json()),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('desktop check timeout')), 3000))
+    ]);
+    const _hasDesktop = _desktopStatus?.sessions?.length > 0;
+    if (!_hasDesktop) {
+      // No desktop app connected — strip desktop tool instructions
+      systemPrompt = systemPrompt.replace(/MODE 2 — USER'S COMPUTER[\s\S]*?BLOOM DESKTOP PERMISSION RULES:[\s\S]*?ask each time\.\n.*?BLOOM Desktop app instead\?"/g, '');
+      logger.info('No desktop app connected — desktop tools stripped from prompt');
+    } else {
+      logger.info('Desktop app detected — all desktop tools enabled', {
+        sessions: _desktopStatus.sessions.length,
+        sessionId: _desktopStatus.sessions[0]?.sessionId
+      });
     }
-  } catch(e) { logger.warn('Feature flag check failed:', e.message); }
+  } catch(e) {
+    // Fail OPEN — if detection fails, keep desktop tools in the prompt.
+    // Better to have tools that return "no desktop connected" errors
+    // than silently strip capabilities the user expects.
+    logger.warn('Desktop auto-detection failed (keeping tools enabled):', e.message);
+  }
 
   // Inject brand kit if available — multi-tenant: always scoped to the org of the current chat session
   try {
