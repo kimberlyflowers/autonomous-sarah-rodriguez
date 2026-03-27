@@ -351,38 +351,6 @@ app.get('/ghl-diagnostics', async (req, res) => {
   res.json(results);
 });
 
-// ===== TEMPORARY: Verify the fixed email template creation =====
-app.get('/verify-email-fix', async (req, res) => {
-  try {
-    const { ghlExecutors } = await import('./tools/ghl-tools.js');
-    const result = await ghlExecutors.ghl_create_email_template({
-      name: 'BLOOM Verified Fix Test - ' + new Date().toISOString().slice(0,16),
-      subject: '5 Signs Your Brand Needs a Digital Refresh',
-      previewText: 'Is your online presence holding you back? Find out now.',
-      headline: '5 Signs Your Brand Needs a Digital Refresh',
-      openingHook: 'Your brand is the first impression you make online. If it has been a while since you updated your digital presence, you might be sending the wrong message.',
-      calloutHeading: 'Inside this post:',
-      calloutItems: [
-        'Outdated visuals that drive visitors away',
-        'Inconsistent messaging across platforms',
-        'Poor mobile experience losing you leads',
-        'Missing calls-to-action on key pages',
-        'Analytics gaps hiding growth opportunities'
-      ],
-      extraParagraph: 'A strong digital brand is not just about looking good — it is about building trust, generating leads, and standing out in a crowded market.',
-      ctaButtonText: 'Read the Full Post',
-      ctaButtonUrl: 'https://bloomconsultinggroup.com/blog/5-signs-brand-refresh',
-      ctaHeadline: 'Want a brand that actually converts?',
-      ctaBody: 'Bloomie can audit your current brand presence and give you a custom action plan.',
-      type: 'blog-announcement'
-    });
-    res.json({ success: true, result });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message, stack: err.stack });
-  }
-});
-// ===== END TEMPORARY =====
-
 // Manual heartbeat trigger (for testing)
 app.post('/trigger-heartbeat', async (req, res) => {
   try {
