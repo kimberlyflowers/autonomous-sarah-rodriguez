@@ -310,7 +310,7 @@ function assembleEmailHTML(data) {
     subject, headline, heroImageUrl, altText,
     openingHook, calloutHeading, calloutItems,
     extraParagraph, ctaButtonText, ctaButtonUrl,
-    ctaHeadline, ctaBody
+    ctaHeadline, ctaBody, tagline
   } = data;
 
   return `<!DOCTYPE html>
@@ -1721,6 +1721,22 @@ export const ghlExecutors = {
   ghl_create_email_template: async (params) => {
     const locationId = await resolveLocationId(params._orgId);
 
+    // Look up org brand kit for tagline (same pattern as blog executor)
+    let brandTagline;
+    try {
+      const { createClient } = await import('@supabase/supabase-js');
+      const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+      const orgId = params._orgId || process.env.BLOOM_ORG_ID;
+      if (orgId) {
+        const { data: bkRow } = await sb.from('user_settings').select('value').eq('organization_id', orgId).eq('key', 'brand_kits').maybeSingle();
+        let kits = bkRow?.value ? (Array.isArray(bkRow.value) ? bkRow.value : [bkRow.value]) : [];
+        const bk = kits.find(k => k.active) || kits[0];
+        if (bk?.tagline) brandTagline = bk.tagline;
+      }
+    } catch(e) {
+      logger.warn('Brand kit lookup failed for email template (non-critical):', e.message);
+    }
+
     // Auto-assemble HTML from structured data if calloutItems are provided
     let html = params.html || '';
     if (params.calloutItems && Array.isArray(params.calloutItems)) {
@@ -1736,7 +1752,8 @@ export const ghlExecutors = {
         ctaButtonText: params.ctaButtonText,
         ctaButtonUrl: params.ctaButtonUrl,
         ctaHeadline: params.ctaHeadline,
-        ctaBody: params.ctaBody
+        ctaBody: params.ctaBody,
+        tagline: brandTagline
       });
       logger.info('Email HTML assembled from locked template', { calloutCount: params.calloutItems.length });
     }
