@@ -1228,6 +1228,144 @@ function ProgressRing({pct,sz,stroke,color,bg}) {
 /* ═══════════════════════════════════════════════════════════════
    ACTIVE TASK TRACKER — right panel task progress
    ═══════════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════════════
+   THINKING PANEL — Real-time reasoning, tool calls, and results
+   Toggle on/off via the + button in the chat input area
+   ═══════════════════════════════════════════════════════════════ */
+function ThinkingPanel({c, sessionId, isOpen, onClose}) {
+  const [events,setEvents]=useState([]);
+  const scrollRef=useRef(null);
+
+  useEffect(()=>{
+    if(!sessionId||!isOpen){setEvents([]);return;}
+    setEvents([]);
+    const es=new EventSource(`/api/chat/progress-stream?sessionId=${encodeURIComponent(sessionId)}`);
+    es.onmessage=(e)=>{
+      try{
+        const d=JSON.parse(e.data);
+        if(d.connected) return;
+        if(d.thinkingEvents && Array.isArray(d.thinkingEvents)){
+          setEvents(prev=>[...prev,...d.thinkingEvents]);
+        }
+      }catch{}
+    };
+    return()=>es.close();
+  },[sessionId,isOpen]);
+
+  // Auto-scroll to bottom
+  useEffect(()=>{
+    if(scrollRef.current) scrollRef.current.scrollTop=scrollRef.current.scrollHeight;
+  },[events]);
+
+  if(!isOpen) return null;
+
+  const iconFor=(type)=>{
+    if(type==='thinking') return '\u{1F4AD}';
+    if(type==='tool_call') return '\u{1F527}';
+    if(type==='tool_result') return '\u2705';
+    return '\u25CF';
+  };
+
+  const labelFor=(type)=>{
+    if(type==='thinking') return 'Thinking';
+    if(type==='tool_call') return 'Tool Call';
+    if(type==='tool_result') return 'Result';
+    return type;
+  };
+
+  const colorFor=(ev)=>{
+    if(ev.type==='thinking') return c.bl||'#5B8FF9';
+    if(ev.type==='tool_call') return c.ac||'#F4A261';
+    if(ev.type==='tool_result') return ev.success===false ? (c.err||'#ea4335') : (c.gr||'#34A853');
+    return c.so;
+  };
+
+  return(
+    <div style={{
+      position:'absolute',bottom:'100%',left:0,right:0,
+      maxHeight:320,
+      backgroundColor:c.cd||'#262626',
+      borderTop:`1px solid ${c.ln||'#353535'}`,
+      borderRadius:'12px 12px 0 0',
+      display:'flex',flexDirection:'column',
+      zIndex:10,
+      boxShadow:'0 -4px 20px rgba(0,0,0,0.3)'
+    }}>
+      {/* Header */}
+      <div style={{
+        display:'flex',alignItems:'center',justifyContent:'space-between',
+        padding:'10px 16px',
+        borderBottom:`1px solid ${c.ln||'#353535'}`,
+        flexShrink:0
+      }}>
+        <div style={{display:'flex',alignItems:'center',gap:8}}>
+          <div style={{width:8,height:8,borderRadius:'50%',
+            backgroundColor:events.length>0?(c.gr||'#34A853'):(c.fa||'#5c5c5c'),
+            animation:events.length>0?'pulse 1.5s infinite':'none'
+          }}/>
+          <span style={{fontSize:13,fontWeight:600,color:c.tx||'#d4d4d4'}}>
+            Thinking Stream
+          </span>
+          <span style={{fontSize:11,color:c.so||'#a0a0a0'}}>
+            {events.length} events
+          </span>
+        </div>
+        <button onClick={onClose} style={{
+          background:'none',border:'none',color:c.so||'#a0a0a0',
+          cursor:'pointer',fontSize:18,padding:'0 4px',lineHeight:1
+        }}>\u00D7</button>
+      </div>
+
+      {/* Events list */}
+      <div ref={scrollRef} style={{
+        flex:1,overflowY:'auto',padding:'8px 12px',
+        fontSize:12,fontFamily:'monospace',lineHeight:1.6
+      }}>
+        {events.length===0 ? (
+          <div style={{color:c.fa||'#5c5c5c',textAlign:'center',padding:20,fontSize:12}}>
+            Waiting for activity...
+          </div>
+        ) : events.map((ev,i)=>(
+          <div key={i} style={{
+            display:'flex',gap:8,marginBottom:6,
+            padding:'4px 8px',borderRadius:6,
+            backgroundColor:i===events.length-1?`${colorFor(ev)}10`:'transparent'
+          }}>
+            <span style={{flexShrink:0,fontSize:11}}>{iconFor(ev.type)}</span>
+            <div style={{flex:1,minWidth:0}}>
+              <span style={{color:colorFor(ev),fontWeight:600,fontSize:11}}>
+                {ev.type==='tool_call'?ev.name:ev.type==='tool_result'?ev.name:labelFor(ev.type)}
+              </span>
+              {ev.type==='thinking' && ev.text && (
+                <div style={{color:c.tx||'#d4d4d4',marginTop:2,whiteSpace:'pre-wrap',wordBreak:'break-word'}}>
+                  {ev.text.length>200?ev.text.slice(0,200)+'...':ev.text}
+                </div>
+              )}
+              {ev.type==='tool_call' && ev.args && (
+                <div style={{color:c.so||'#a0a0a0',marginTop:2,wordBreak:'break-all'}}>
+                  {ev.args.length>150?ev.args.slice(0,150)+'...':ev.args}
+                </div>
+              )}
+              {ev.type==='tool_result' && ev.result && (
+                <div style={{color:ev.success===false?(c.err||'#ea4335'):(c.so||'#a0a0a0'),marginTop:2,wordBreak:'break-word'}}>
+                  {ev.result.length>200?ev.result.slice(0,200)+'...':ev.result}
+                </div>
+              )}
+            </div>
+            <span style={{flexShrink:0,fontSize:10,color:c.fa||'#5c5c5c'}}>
+              R{ev.round||0}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {/* Pulse animation */}
+      <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}`}</style>
+    </div>
+  );
+}
+
 function ActiveTaskTracker({c, sessionId}) {
   const [todos,setTodos]=useState([]);
   const [isActive,setIsActive]=useState(false);
@@ -3595,6 +3733,7 @@ function App({ authUser }) {
   const [isNew,setNew]=useState(true);
   const [vcRec,setVcRec]=useState(false);
   const [showPlusMenu,setShowPlusMenu]=useState(false);
+  const [showThinking,setShowThinking]=useState(false);
   const plusMenuRef=useRef(null);
   const [oauthToast,setOauthToast]=useState(null);
   const [activeConnectors,setActiveConnectors]=useState({ghl:true});
@@ -4762,6 +4901,10 @@ function App({ authUser }) {
                           ))}
                         </div>
                       )}
+                      {/* ── Thinking Panel — shows Sarah's reasoning in real-time ── */}
+                      <div style={{position:"relative"}}>
+                        <ThinkingPanel c={c} sessionId={sid.current} isOpen={showThinking} onClose={()=>setShowThinking(false)}/>
+                      </div>
                       {/* ── Input pill — + and mic inside like Claude ── */}
                       <div style={{display:"flex",alignItems:"flex-end",gap:6,padding:"10px 12px 10px 8px",borderRadius:20,border:"1.5px solid "+(vcRec?c.ac:c.ln),background:c.inp,transition:"border-color .2s",boxShadow:"0 1px 4px rgba(0,0,0,0.1)"}}>
                         {/* ── Claude-style + menu ── */}

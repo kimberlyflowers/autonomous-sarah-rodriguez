@@ -4,6 +4,7 @@ import express from 'express';
 import mammoth from 'mammoth';
 import Anthropic from '@anthropic-ai/sdk';
 import { getLLMClient } from '../llm/unified-client.js';
+
 import { createLogger } from '../logging/logger.js';
 
 // Safe skill import — don't crash the whole chat if skills fail to load
@@ -38,6 +39,21 @@ function getAnthropicClient(agentConfig) {
 // In-memory task progress keyed by sessionId (SSE pushes to Desktop)
 // Exported so dashboard.js can serve it via /api/dashboard/agentic-executions
 export const taskProgress = new Map();
+// Detailed thinking log — stores LLM reasoning, tool calls, and results per session
+// Each entry: { events: [{type, timestamp, ...data}], updatedAt }
+export const thinkingLog = new Map();
+
+// Helper: append a thinking event for a session
+function appendThinking(sessionId, event) {
+  const key = sessionId || 'default';
+  const log = thinkingLog.get(key) || { events: [], updatedAt: 0 };
+  log.events.push({ ...event, timestamp: Date.now() });
+  // Keep last 100 events to prevent memory bloat
+  if (log.events.length > 100) log.events = log.events.slice(-100);
+  log.updatedAt = Date.now();
+  thinkingLog.set(key, log);
+}
+
 
 // ── AUTO-CLEANUP: Purge stale "Planning steps..." entries every 60 seconds ──
 // Prevents orphaned entries from piling up when API calls fail before cleanup
@@ -4651,6 +4667,24 @@ NEVER skip steps 3 and 4 even if step 2 fails.
       tools: availableTools
     }, 3); // no agentClient — unified client handles all providers + failover
 
+    // ── THINKING LOG: Record LLM reasoning for thinking panel ──
+    const _thinkingText = (response.content || [])
+      .filter(b => b.type === 'text')
+      .map(b => b.text)
+      .join('\n')
+      .slice(0, 500);
+    const _toolCalls = (response.content || [])
+      .filter(b => b.type === 'tool_use')
+      .map(b => ({ name: b.name, input: JSON.stringify(b.input || {}).slice(0, 200) }));
+    if (_thinkingText) {
+      appendThinking(sessionId, { type: 'thinking', text: _thinkingText, round });
+    }
+    if (_toolCalls.length > 0) {
+      for (const tc of _toolCalls) {
+        appendThinking(sessionId, { type: 'tool_call', name: tc.name, args: tc.input, round });
+      }
+    }
+
     // Accumulate token usage every round
     if (response.usage) {
       totalInputTokens += response.usage.input_tokens || 0;
@@ -4851,6 +4885,7 @@ NEVER skip steps 3 and 4 even if step 2 fails.
       }
       if (toolsUsed.length === 0) {
         taskProgress.delete(trackingKey);
+        thinkingLog.delete(trackingKey);
       }
 
       if (toolsUsed.length > 0) {
@@ -5023,9 +5058,21 @@ NEVER skip steps 3 and 4 even if step 2 fails.
 
           toolsUsed.push({ name: block.name, input: block.input });
 
+
           // Execute with automatic retry on failure
           const result = await executeWithRetry(block.name, block.input, sessionId, agentConfig, orgId);
           toolResults.push(result);
+
+          // ── THINKING LOG: Record tool result for thinking panel ──
+          const _resultPreview = typeof result === 'string' ? result.slice(0, 300) :
+            (result?.error ? `Error: ${result.error}` : JSON.stringify(result).slice(0, 300));
+          appendThinking(sessionId, {
+            type: 'tool_result',
+            name: block.name,
+            result: _resultPreview,
+            success: !result?.error,
+            round
+          });
 
           // ── CLARIFICATION PAUSE — bloom_clarify returns pauseExecution: true ──
           // When Sarah calls bloom_clarify, we break out of the agentic loop and
@@ -5045,6 +5092,7 @@ NEVER skip steps 3 and 4 even if step 2 fails.
             // Clean up passive tracking
             if (!agentCalledTaskProgress) {
               taskProgress.delete(trackingKey);
+        thinkingLog.delete(trackingKey);
             }
 
             await logCostAndUsage(round);
@@ -5810,11 +5858,26 @@ router.get('/progress-stream', (req, res) => {
   });
   res.write('data: ' + JSON.stringify({ connected: true }) + '\n\n');
 
-  // Push progress updates every 500ms
+  // Push progress + thinking updates every 500ms
+  let lastThinkingCount = 0;
   const interval = setInterval(() => {
     const progress = taskProgress.get(sessionId);
+    const thinking = thinkingLog.get(sessionId);
+
+    // Build combined payload
+    const payload = {};
     if (progress) {
-      res.write('data: ' + JSON.stringify(progress) + '\n\n');
+      payload.todos = progress.todos;
+      payload.updatedAt = progress.updatedAt;
+    }
+    if (thinking && thinking.events.length > lastThinkingCount) {
+      // Only send NEW events since last push
+      payload.thinkingEvents = thinking.events.slice(lastThinkingCount);
+      lastThinkingCount = thinking.events.length;
+    }
+
+    if (Object.keys(payload).length > 0) {
+      res.write('data: ' + JSON.stringify(payload) + '\n\n');
     }
   }, 500);
 
