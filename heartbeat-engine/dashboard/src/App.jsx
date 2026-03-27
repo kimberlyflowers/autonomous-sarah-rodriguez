@@ -620,7 +620,7 @@ function Stat({c,label,value,accent}) {
 function SystemHealth({c,sse}) {
   const [data,setData] = useState(null);
   useEffect(()=>{
-    const go=async()=>{ try{ const r=await fetch("/api/dashboard/health"); if(r.ok) setData(await r.json()); }catch{} };
+    const go=async()=>{ try{ const _hh=await getAuthHeaders();const r=await fetch("/api/dashboard/health",{headers:_hh}); if(r.ok) setData(await r.json()); }catch{} };
     go();
     const clean=sse?.register("health",go);
     if(!clean){ const t=setInterval(go,30000); return()=>clearInterval(t); }
@@ -655,7 +655,7 @@ function SystemHealth({c,sse}) {
 function TrustGate({c,sse}) {
   const [data,setData] = useState(null);
   useEffect(()=>{
-    const go=async()=>{ try{ const r=await fetch("/api/dashboard/trust-gate"); if(r.ok) setData(await r.json()); }catch{} };
+    const go=async()=>{ try{ const _hh=await getAuthHeaders();const r=await fetch("/api/dashboard/trust-gate",{headers:_hh}); if(r.ok) setData(await r.json()); }catch{} };
     go();
     const clean=sse?.register("trust",go);
     if(!clean){ const t=setInterval(go,30000); return()=>clearInterval(t); }
@@ -705,7 +705,7 @@ function TrustGate({c,sse}) {
 function AgenticExecutions({c,sse}) {
   const [execs,setExecs] = useState([]);
   useEffect(()=>{
-    const go=async()=>{ try{ const r=await fetch("/api/dashboard/agentic-executions?limit=5"); if(r.ok){ const d=await r.json(); setExecs(d.executions||d||[]); } }catch{} };
+    const go=async()=>{ try{ const _hh=await getAuthHeaders();const r=await fetch("/api/dashboard/agentic-executions?limit=5",{headers:_hh}); if(r.ok){ const d=await r.json(); setExecs(d.executions||d||[]); } }catch{} };
     go();
     const clean=sse?.register("executions",go);
     if(!clean){ const t=setInterval(go,15000); return()=>clearInterval(t); }
@@ -740,7 +740,7 @@ function AgenticExecutions({c,sse}) {
 function SubAgents({c,sse}) {
   const [agents,setAgents] = useState([]);
   useEffect(()=>{
-    const go=async()=>{ try{ const r=await fetch("/api/dashboard/sub-agents"); if(r.ok){ const d=await r.json(); setAgents(d.agents||d||[]); } }catch{} };
+    const go=async()=>{ try{ const _hh=await getAuthHeaders();const r=await fetch("/api/dashboard/sub-agents",{headers:_hh}); if(r.ok){ const d=await r.json(); setAgents(d.agents||d||[]); } }catch{} };
     go();
     const clean=sse?.register("subagents",go);
     if(!clean){ const t=setInterval(go,30000); return()=>clearInterval(t); }
@@ -777,7 +777,7 @@ function SubAgents({c,sse}) {
 function ToolPerformance({c,sse}) {
   const [data,setData] = useState(null);
   useEffect(()=>{
-    const go=async()=>{ try{ const r=await fetch("/api/dashboard/tool-performance"); if(r.ok) setData(await r.json()); }catch{} };
+    const go=async()=>{ try{ const _hh=await getAuthHeaders();const r=await fetch("/api/dashboard/tool-performance",{headers:_hh}); if(r.ok) setData(await r.json()); }catch{} };
     go();
     const clean=sse?.register("tools",go);
     if(!clean){ const t=setInterval(go,30000); return()=>clearInterval(t); }
@@ -822,7 +822,7 @@ function ToolPerformance({c,sse}) {
 function ContextAnalytics({c,sse}) {
   const [data,setData] = useState(null);
   useEffect(()=>{
-    const go=async()=>{ try{ const r=await fetch("/api/dashboard/context-analytics"); if(r.ok) setData(await r.json()); }catch{} };
+    const go=async()=>{ try{ const _hh=await getAuthHeaders();const r=await fetch("/api/dashboard/context-analytics",{headers:_hh}); if(r.ok) setData(await r.json()); }catch{} };
     go();
     const clean=sse?.register("context",go);
     if(!clean){ const t=setInterval(go,30000); return()=>clearInterval(t); }
@@ -861,7 +861,7 @@ function ContextAnalytics({c,sse}) {
 function ActionLog({c,sse}) {
   const [actions,setActions] = useState([]);
   useEffect(()=>{
-    const go=async()=>{ try{ const r=await fetch("/api/dashboard/action-log?limit=20"); if(r.ok){ const d=await r.json(); setActions(d.actions||d||[]); } }catch{} };
+    const go=async()=>{ try{ const _hh=await getAuthHeaders();const r=await fetch("/api/dashboard/action-log?limit=20",{headers:_hh}); if(r.ok){ const d=await r.json(); setActions(d.actions||d||[]); } }catch{} };
     go();
     const clean=sse?.register("actions",go);
     if(!clean){ const t=setInterval(go,15000); return()=>clearInterval(t); }
@@ -895,7 +895,7 @@ function ActionLog({c,sse}) {
 function InternalTasks({c,sse,aFN="Sarah"}) {
   const [tasks,setTasks] = useState([]);
   useEffect(()=>{
-    const go=async()=>{ try{ const r=await fetch("/api/dashboard/internal-tasks"); if(r.ok){ const d=await r.json(); setTasks(d.tasks||d||[]); } }catch{} };
+    const go=async()=>{ try{ const _hh=await getAuthHeaders();const r=await fetch("/api/dashboard/internal-tasks",{headers:_hh}); if(r.ok){ const d=await r.json(); setTasks(d.tasks||d||[]); } }catch{} };
     go();
     const clean=sse?.register("tasks",go);
     if(!clean){ const t=setInterval(go,20000); return()=>clearInterval(t); }
@@ -1006,8 +1006,8 @@ function EscalationPanel({c,sse,agentId}) {
 
   useEffect(()=>{
     const qs = agentId ? `&agentId=${agentId}` : '';
-    const fetchH=async()=>{ try{ const r=await fetch(`/api/dashboard/handoff-log?limit=10${qs}`); if(r.ok){ const d=await r.json(); setHandoffs(d.handoffs||d||[]); } }catch{} };
-    const fetchR=async()=>{ try{ const r=await fetch(`/api/dashboard/rejection-log?limit=10${qs}`); if(r.ok){ const d=await r.json(); setRejections(d.rejections||d||[]); } }catch{} };
+    const fetchH=async()=>{ try{ const _hh=await getAuthHeaders();const r=await fetch(`/api/dashboard/handoff-log?limit=10${qs}`,{headers:_hh}); if(r.ok){ const d=await r.json(); setHandoffs(d.handoffs||d||[]); } }catch{} };
+    const fetchR=async()=>{ try{ const _hh=await getAuthHeaders();const r=await fetch(`/api/dashboard/rejection-log?limit=10${qs}`,{headers:_hh}); if(r.ok){ const d=await r.json(); setRejections(d.rejections||d||[]); } }catch{} };
     fetchH(); fetchR();
     if(sse){
       const c1=sse.register("handoffs",fetchH);
@@ -2341,8 +2341,7 @@ function BusinessProfilePage({c,mob,userImg,setUserImg,meInitial="U",aFN="Your B
     // Mark active
     const toSave=kits.map((k,i)=>({...k,active:i===activeIdx}));
     try{
-      const _bkSaveH = await getAuthHeaders();
-      await fetch('/api/dashboard/brand-kit',{method:'POST',headers:{..._bkSaveH,'Content-Type':'application/json'},body:JSON.stringify({kits:toSave})});
+      await (async()=>{const _h=await getAuthHeaders();return fetch('/api/dashboard/brand-kit',{method:'POST',headers:{..._h,'Content-Type':'application/json'},body:JSON.stringify({kits:toSave})});})();
       setKits(toSave);
       setSaved(true);setTimeout(()=>setSaved(false),2000);
     }catch{}
@@ -2600,7 +2599,7 @@ function SiteLoginsManager({c,mob,aFN="Sarah"}){
 
   const loadSites=async()=>{
     try{
-      const r=await fetch("/api/dashboard/credential-registry");
+      const _hh=await getAuthHeaders();const r=await fetch("/api/dashboard/credential-registry",{headers:_hh});
       if(r.ok){const d=await r.json();setSites(d);}
     }catch{}
     setLoading(false);
@@ -2612,7 +2611,7 @@ function SiteLoginsManager({c,mob,aFN="Sarah"}){
     if(!addForm.siteKey||!addForm.username||!addForm.password)return;
     setSaving(true);
     try{
-      const r=await fetch("/api/dashboard/credential-registry",{
+      const _hh3=await getAuthHeaders();const r=await fetch("/api/dashboard/credential-registry",{headers:_hh3,
         method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify(addForm)
       });
@@ -2623,7 +2622,7 @@ function SiteLoginsManager({c,mob,aFN="Sarah"}){
 
   const removeSite=async(siteKey)=>{
     try{
-      const r=await fetch(`/api/dashboard/credential-registry/${siteKey}`,{method:"DELETE"});
+      const _hh=await getAuthHeaders();const r=await fetch(`/api/dashboard/credential-registry/${siteKey}`,{method:"DELETE",headers:_hh});
       if(r.ok)await loadSites();
     }catch{}
   };
@@ -2726,7 +2725,7 @@ function DocsPage({c,mob,aFN="Sarah",agentId}){
     const go=async()=>{
       try{
         const qs = agentId ? `?agentId=${agentId}` : '';
-        const r=await fetch(`/api/dashboard/documents${qs}`);
+        const _hh=await getAuthHeaders();const r=await fetch(`/api/dashboard/documents${qs}`,{headers:_hh});
         if(r.ok){const d=await r.json();setDocs(d.documents||[]);}
       }catch{}
       setLoading(false);
@@ -2736,14 +2735,14 @@ function DocsPage({c,mob,aFN="Sarah",agentId}){
 
   const openDoc=async(id)=>{
     try{
-      const r=await fetch(`/api/dashboard/documents/${id}`);
+      const _hh=await getAuthHeaders();const r=await fetch(`/api/dashboard/documents/${id}`,{headers:_hh});
       if(r.ok){const d=await r.json();setDocContent(d);setSelectedDoc(id);}
     }catch{}
   };
 
   const updateStatus=async(id,status)=>{
     try{
-      const r=await fetch(`/api/dashboard/documents/${id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status})});
+      const _hh=await getAuthHeaders();const r=await fetch(`/api/dashboard/documents/${id}`,{method:"PATCH",headers:{..._hh,"Content-Type":"application/json"},body:JSON.stringify({status})});
       if(r.ok){
         setDocs(prev=>prev.map(d=>d.id===id?{...d,status,approved_at:status==="approved"?new Date().toISOString():d.approved_at}:d));
         if(docContent&&docContent.id===id)setDocContent({...docContent,status});
@@ -3704,15 +3703,15 @@ function App({ authUser }) {
 
   // Fetch trust gate status + model config + image engine config on mount
   useEffect(()=>{
-    fetch("/api/dashboard/trust-gate-status").then(r=>r.ok?r.json():null).then(d=>{if(d)setTgEnabled(d.enabled)}).catch(()=>{});
-    fetch("/api/dashboard/model-config").then(r=>r.ok?r.json():null).then(d=>{if(d)setModelConfig(d)}).catch(()=>{});
-    fetch("/api/dashboard/image-engine-config").then(r=>r.ok?r.json():null).then(d=>{if(d)setImgEngineConfig(d)}).catch(()=>{});
+    getAuthHeaders().then(h=>fetch("/api/dashboard/trust-gate-status",{headers:h})).then(r=>r.ok?r.json():null).then(d=>{if(d)setTgEnabled(d.enabled)}).catch(()=>{});
+    getAuthHeaders().then(h=>fetch("/api/dashboard/model-config",{headers:h})).then(r=>r.ok?r.json():null).then(d=>{if(d)setModelConfig(d)}).catch(()=>{});
+    getAuthHeaders().then(h=>fetch("/api/dashboard/image-engine-config",{headers:h})).then(r=>r.ok?r.json():null).then(d=>{if(d)setImgEngineConfig(d)}).catch(()=>{});
   },[]);
 
   const toggleTrustGate=async()=>{
     setTgLoading(true);
     try{
-      const r=await fetch("/api/dashboard/trust-gate-status",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:!tgEnabled})});
+      const _hh=await getAuthHeaders();const r=await fetch("/api/dashboard/trust-gate-status",{method:"POST",headers:{..._hh,"Content-Type":"application/json"},body:JSON.stringify({enabled:!tgEnabled})});
       if(r.ok){const d=await r.json();setTgEnabled(d.enabled);}
     }catch{}
     setTgLoading(false);
@@ -3786,7 +3785,7 @@ function App({ authUser }) {
     if(!isOwner)return;
     setModelSaving(true);
     try{
-      const r=await fetch("/api/dashboard/model-config",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:newModel})});
+      const _hh=await getAuthHeaders();const r=await fetch("/api/dashboard/model-config",{method:"PUT",headers:{..._hh,"Content-Type":"application/json"},body:JSON.stringify({model:newModel})});
       if(r.ok){const d=await r.json();setModelConfig(prev=>({...prev,model:d.model,reason:'dashboard override'}));}
     }catch{}
     setModelSaving(false);
@@ -3795,7 +3794,7 @@ function App({ authUser }) {
     if(!isOwner)return;
     setImgEngineSaving(true);
     try{
-      const r=await fetch("/api/dashboard/image-engine-config",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({[contentType]:engine})});
+      const _hh=await getAuthHeaders();const r=await fetch("/api/dashboard/image-engine-config",{method:"PUT",headers:{..._hh,"Content-Type":"application/json"},body:JSON.stringify({[contentType]:engine})});
       if(r.ok){const d=await r.json();setImgEngineConfig(d.config);}
     }catch{}
     setImgEngineSaving(false);
