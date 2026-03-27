@@ -1,6 +1,7 @@
 // Desktop Control API — mailbox pattern for Sarah to control BLOOM Desktop
 // Mirrors the push-screenshot pattern from browser.js (outbound only, no open ports)
 // Desktop polls GET /api/desktop/pending, executes tools, POSTs results back
+// v2.0 — Now stores capabilities (tool catalog) from registration
 
 import express from 'express';
 import crypto from 'crypto';
@@ -14,7 +15,7 @@ const router = express.Router();
 const logger = createLogger('desktop-api');
 
 // In-memory command queue keyed by sessionId
-// Structure: { [sessionId]: { commands: [], registeredAt: Date, lastSeen: Date } }
+// Structure: { [sessionId]: { commands: [], registeredAt: Date, lastSeen: Date, capabilities: {} } }
 const sessions = new Map();
 
 // Clean up sessions not seen in 30 seconds
@@ -33,10 +34,11 @@ setInterval(pruneStale, 10_000);
 // ─────────────────────────────────────────────
 // POST /api/desktop/register
 // Desktop calls this on startup to announce itself
-// Body: { sessionId, hostname?, platform? }
+// Body: { sessionId, hostname?, platform?, version?, capabilities? }
+// capabilities: { tools: [...], toolCount, categories, systemPromptInjection }
 // ─────────────────────────────────────────────
 router.post('/register', (req, res) => {
-  const { sessionId, hostname, platform } = req.body;
+  const { sessionId, hostname, platform, version, capabilities } = req.body;
   if (!sessionId) return res.status(400).json({ error: 'sessionId required' });
 
   sessions.set(sessionId, {
@@ -44,10 +46,13 @@ router.post('/register', (req, res) => {
     registeredAt: new Date().toISOString(),
     lastSeen: Date.now(),
     hostname: hostname || 'unknown',
-    platform: platform || 'unknown'
+    platform: platform || 'unknown',
+    version: version || 'unknown',
+    capabilities: capabilities || null
   });
 
-  logger.info(`Desktop registered: ${sessionId} (${hostname || 'unknown'})`);
+  const toolCount = capabilities?.toolCount || 'unknown';
+  logger.info(`Desktop registered: ${sessionId} (${platform || 'unknown'}) v${version || '?'} | ${toolCount} tools`);
   res.json({ success: true, sessionId });
 });
 
@@ -62,26 +67,71 @@ router.get('/status', (req, res) => {
     // Return all active sessions (for dashboard)
     const active = [];
     for (const [id, s] of sessions) {
-      active.push({ sessionId: id, hostname: s.hostname, platform: s.platform, registeredAt: s.registeredAt, pendingCommands: s.commands.length });
+      active.push({
+        sessionId: id,
+        hostname: s.hostname,
+        platform: s.platform,
+        version: s.version,
+        registeredAt: s.registeredAt,
+        pendingCommands: s.commands.length,
+        hasCapabilities: !!s.capabilities,
+        toolCount: s.capabilities?.toolCount || 0
+      });
     }
     return res.json({ sessions: active });
   }
+
   const session = sessions.get(sessionId);
   if (!session) return res.json({ connected: false });
-  res.json({ connected: true, hostname: session.hostname, platform: session.platform, pendingCommands: session.commands.length });
+  res.json({
+    connected: true,
+    hostname: session.hostname,
+    platform: session.platform,
+    version: session.version,
+    pendingCommands: session.commands.length,
+    hasCapabilities: !!session.capabilities,
+    toolCount: session.capabilities?.toolCount || 0
+  });
+});
+
+// ─────────────────────────────────────────────
+// GET /api/desktop/capabilities
+// Returns the tool catalog and system prompt injection
+// from the currently connected desktop
+// ─────────────────────────────────────────────
+router.get('/capabilities', (req, res) => {
+  const { sessionId } = req.query;
+  let session;
+
+  if (sessionId) {
+    session = sessions.get(sessionId);
+  } else {
+    // Return first active session's capabilities
+    for (const [, s] of sessions) {
+      if (s.capabilities) { session = s; break; }
+    }
+  }
+
+  if (!session || !session.capabilities) {
+    return res.json({ available: false, message: 'No desktop with capabilities connected' });
+  }
+
+  res.json({
+    available: true,
+    platform: session.platform,
+    version: session.version,
+    ...session.capabilities
+  });
 });
 
 // ─────────────────────────────────────────────
 // POST /api/desktop/command
 // Sarah drops a command into the mailbox
 // Body: { sessionId, commandId, tool, args }
-// Tools: bloom_click, bloom_double_click, bloom_move_mouse, bloom_scroll,
-//        bloom_drag, bloom_type_text, bloom_key_press, bloom_take_screenshot,
-//        bloom_get_screen_info
+// All 42 bloom_* tools are supported
 // ─────────────────────────────────────────────
 router.post('/command', (req, res) => {
   const { sessionId, commandId, tool, args } = req.body;
-
   if (!sessionId) return res.status(400).json({ error: 'sessionId required' });
   if (!tool) return res.status(400).json({ error: 'tool required' });
   if (!commandId) return res.status(400).json({ error: 'commandId required' });
@@ -94,7 +144,6 @@ router.post('/command', (req, res) => {
   const command = { commandId, tool, args: args || {}, queuedAt: Date.now() };
   session.commands.push(command);
   logger.info(`Queued command ${commandId} (${tool}) for session ${sessionId}`);
-
   res.json({ success: true, commandId, queuedAt: command.queuedAt });
 });
 
@@ -128,7 +177,6 @@ router.get('/pending', (req, res) => {
 // Desktop posts back the result of an executed command
 // Body: { sessionId, commandId, tool, success, result, error? }
 // ─────────────────────────────────────────────
-
 // Store results in memory for Sarah to pick up
 const results = new Map(); // commandId → result
 
@@ -138,7 +186,6 @@ router.post('/result', (req, res) => {
 
   const payload = { sessionId, commandId, tool, success, result, error, receivedAt: Date.now() };
   results.set(commandId, payload);
-
   logger.info(`Result received for command ${commandId} (${tool}): ${success ? 'OK' : 'FAILED'}`);
 
   // Auto-prune results after 60s
