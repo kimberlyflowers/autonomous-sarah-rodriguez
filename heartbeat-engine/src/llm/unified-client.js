@@ -362,6 +362,9 @@ export class UnifiedLLMClient {
     try {
       if (provider === 'anthropic') {
         return await this._callAnthropic({ messages, system, tools, maxTokens, temperature });
+      } else if (provider === 'gemini') {
+        // Use native Gemini API for thinking/thoughts support
+        return await this._callGeminiNative({ messages, system, tools, maxTokens, temperature });
       } else {
         return await this._callOpenAICompatible({ messages, system, tools, maxTokens, temperature });
       }
@@ -460,6 +463,8 @@ async _failoverChat(params, failedProvider) {
           let result;
           if (fallback.provider === 'anthropic') {
             result = await this._callAnthropic(params);
+          } else if (fallback.provider === 'gemini') {
+            result = await this._callGeminiNative(params);
           } else {
             result = await this._callOpenAICompatible(params);
           }
@@ -606,30 +611,15 @@ async _failoverChat(params, failedProvider) {
     const body = { model: this._currentModel, messages: openaiMessages, max_tokens: maxTokens, temperature };
     if (tools?.length > 0) { body.tools = formatToolsOpenAI(tools); body.tool_choice = 'auto'; }
 
-    // ── Enable thinking/reasoning for all providers (model-agnostic) ──
-    // IMPORTANT: reasoning_effort and google.thinking_config CANNOT be used together.
-    // Gemini 2.5: use thinking_budget (token count) inside google.thinking_config
-    // Gemini 3.0: use thinking_level (semantic) inside google.thinking_config
+    // ── Enable thinking/reasoning for non-Gemini providers ──
+    // Gemini now uses native API (_callGeminiNative) and won't reach this code.
     // DeepSeek R1: reasoning_content is automatic (no param needed)
     // OpenAI o-series: reasoning_effort controls reasoning depth
     const providerName = this._currentProvider;
     const thinkingBody = { ...body }; // Clone for thinking attempt
     let useThinkingFallback = false;
 
-    if (providerName === 'gemini') {
-      // Use google.thinking_config ONLY (not reasoning_effort — they conflict)
-      // include_thoughts: true → returns thought summaries in response
-      const isGemini3 = this._currentModel.includes('gemini-3');
-      thinkingBody.google = {
-        thinking_config: {
-          include_thoughts: true,
-          ...(isGemini3
-            ? { thinking_level: 'low' }       // Gemini 3: semantic levels
-            : { thinking_budget: 1024 })       // Gemini 2.5: token budget
-        }
-      };
-      useThinkingFallback = true; // If thinking params fail, retry without
-    } else if (providerName === 'openai' && this._currentModel.startsWith('o')) {
+    if (providerName === 'openai' && this._currentModel.startsWith('o')) {
       // o-series models (o3-mini, o1, etc.) support reasoning_effort
       thinkingBody.reasoning_effort = 'low';
       useThinkingFallback = true;
@@ -678,6 +668,160 @@ async _failoverChat(params, failedProvider) {
     }
 
     return parseOpenAIResponse(data, providerName);
+  }
+
+  // ── Gemini Native API (for thinking/thought support) ──────────────────
+
+  async _callGeminiNative({ messages, system, tools, maxTokens, temperature }) {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) throw new Error('Missing API key: GEMINI_API_KEY');
+
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${this._currentModel}:generateContent?key=${apiKey}`;
+
+    // ── Convert Anthropic-style messages → Gemini native format ──
+    const contents = [];
+    for (const msg of messages) {
+      if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+        const parts = [];
+        for (const b of msg.content) {
+          if (b.type === 'text' && b.text) parts.push({ text: b.text });
+          if (b.type === 'tool_use') {
+            parts.push({ functionCall: { name: b.name, args: b.input || {} } });
+          }
+          // Skip thinking blocks in history — Gemini doesn't accept them back
+        }
+        if (parts.length > 0) contents.push({ role: 'model', parts });
+      } else if (msg.role === 'user' && Array.isArray(msg.content)) {
+        const toolResults = msg.content.filter(b => b.type === 'tool_result');
+        if (toolResults.length > 0) {
+          // Gemini functionResponse needs the function NAME, not the tool_use_id.
+          // We need to find the matching tool_use block in a preceding assistant message
+          // to get the name. Fall back to tool_use_id if not found.
+          const parts = toolResults.map(r => {
+            let funcName = r.tool_use_id; // fallback
+            // Search preceding assistant messages for matching tool_use block
+            for (let i = messages.indexOf(msg) - 1; i >= 0; i--) {
+              const prev = messages[i];
+              if (prev.role === 'assistant' && Array.isArray(prev.content)) {
+                const match = prev.content.find(b => b.type === 'tool_use' && b.id === r.tool_use_id);
+                if (match) { funcName = match.name; break; }
+              }
+            }
+            const resultContent = typeof r.content === 'string' ? r.content : JSON.stringify(r.content);
+            return {
+              functionResponse: {
+                name: funcName,
+                response: { result: resultContent }
+              }
+            };
+          });
+          contents.push({ role: 'user', parts });
+        } else {
+          const text = msg.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
+          if (text) contents.push({ role: 'user', parts: [{ text }] });
+        }
+      } else {
+        const text = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+        contents.push({ role: msg.role === 'assistant' ? 'model' : 'user', parts: [{ text }] });
+      }
+    }
+
+    // ── Build request body ──
+    const body = {
+      contents,
+      generationConfig: {
+        maxOutputTokens: maxTokens,
+        temperature,
+        thinkingConfig: {
+          includeThoughts: true,
+          thinkingBudget: 2048, // Keep moderate for speed
+        },
+      },
+    };
+
+    // System instruction
+    if (system) {
+      body.systemInstruction = { parts: [{ text: system }] };
+    }
+
+    // Tools (function declarations)
+    if (tools?.length > 0) {
+      body.tools = [{
+        functionDeclarations: tools.map(t => ({
+          name: t.name,
+          description: t.description,
+          parameters: t.input_schema || t.parameters,
+        }))
+      }];
+      body.toolConfig = { functionCallingConfig: { mode: 'AUTO' } };
+    }
+
+    logger.info('Gemini native API call', { model: this._currentModel, contentsCount: contents.length, hasTools: !!tools?.length });
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      const error = new Error(`Gemini native API error ${response.status}: ${errText}`);
+      error.status = response.status;
+      throw error;
+    }
+
+    const data = await response.json();
+    return this._parseGeminiNativeResponse(data);
+  }
+
+  _parseGeminiNativeResponse(response) {
+    const candidate = response.candidates?.[0];
+    if (!candidate?.content?.parts) {
+      return { content: [], stopReason: 'end_turn', usage: {}, model: this._currentModel, raw: response };
+    }
+
+    const content = [];
+    for (const part of candidate.content.parts) {
+      // Thought parts — real AI reasoning
+      if (part.thought === true && part.text) {
+        content.push({ type: 'thinking', thinking: part.text });
+      }
+      // Function calls
+      else if (part.functionCall) {
+        const toolId = `tool_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        content.push({
+          type: 'tool_use',
+          id: toolId,
+          name: part.functionCall.name,
+          input: part.functionCall.args || {},
+        });
+      }
+      // Text parts (non-thought)
+      else if (part.text && !part.thought) {
+        content.push({ type: 'text', text: part.text });
+      }
+    }
+
+    const hasToolUse = content.some(b => b.type === 'tool_use');
+    const thinkingBlocks = content.filter(b => b.type === 'thinking');
+    if (thinkingBlocks.length > 0) {
+      logger.info('Gemini native: REAL thinking captured', {
+        thinkingBlocks: thinkingBlocks.length,
+        thinkingPreview: thinkingBlocks[0].thinking.slice(0, 200),
+      });
+    }
+
+    return {
+      content,
+      stopReason: hasToolUse ? 'tool_use' : 'end_turn',
+      usage: {
+        inputTokens: response.usageMetadata?.promptTokenCount || 0,
+        outputTokens: response.usageMetadata?.candidatesTokenCount || 0,
+      },
+      model: response.modelVersion || this._currentModel,
+      raw: response,
+    };
   }
 }
 
