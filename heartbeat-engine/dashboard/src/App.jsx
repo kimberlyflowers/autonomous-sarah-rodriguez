@@ -4948,6 +4948,16 @@ function App({ authUser }) {
                                     </div>
                                   </div>
                                 ))}
+                                <div style={{height:1,background:c.ln,margin:"4px 0"}}/>
+                                <div style={{padding:"6px 14px 4px",fontSize:11,fontWeight:700,color:c.fa,letterSpacing:"0.06em",textTransform:"uppercase"}}>Tools</div>
+                                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 14px",cursor:"pointer",transition:"background .12s"}} onClick={()=>setShowThinking(t=>!t)} onMouseEnter={e=>e.currentTarget.style.background=c.hv} onMouseLeave={e=>e.currentTarget.style.background="transparent"}}>
+                                  <div style={{display:"flex",alignItems:"center",gap:10,fontSize:13,color:c.tx}}>
+                                    <span style={{color:showThinking?"#F4A261":c.so,flexShrink:0}}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 2a7 7 0 0 0-7 7c0 3 2 5.5 4 7.5.6.6 1 1.5 1 2.5v1h4v-1c0-1 .4-1.9 1-2.5 2-2 4-4.5 4-7.5a7 7 0 0 0-7-7z"/><line x1="10" y1="22" x2="14" y2="22"/></svg></span>Thinking Stream
+                                  </div>
+                                  <div style={{width:32,height:18,borderRadius:9,background:showThinking?"linear-gradient(135deg,#F4A261,#E76F8B)":c.ln,position:"relative",transition:"all .2s",cursor:"pointer",flexShrink:0}}>
+                                    <div style={{position:"absolute",top:2,left:showThinking?14:2,width:14,height:14,borderRadius:"50%",background:"#fff",transition:"left .2s",boxShadow:"0 1px 3px rgba(0,0,0,0.3)"}}/>
+                                  </div>
+                                </div>
                                 <button onClick={()=>{setPg("customize");setShowPlusMenu(false);}} style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"9px 14px",border:"none",background:"transparent",cursor:"pointer",fontSize:13,textAlign:"left",fontWeight:700,transition:"background .12s"}} onMouseEnter={e=>e.currentTarget.style.background=c.hv} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="url(#mgGrad)" strokeWidth="2" strokeLinecap="round"><defs><linearGradient id="mgGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#F4A261"/><stop offset="100%" stopColor="#E76F8B"/></linearGradient></defs><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
                                   <span style={{background:"linear-gradient(135deg,#F4A261,#E76F8B)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",backgroundClip:"text"}}>Manage connectors</span>
