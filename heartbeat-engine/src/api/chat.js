@@ -4723,15 +4723,13 @@ NEVER skip steps 3 and 4 even if step 2 fails.
     const _extThinking = (response.content || [])
       .filter(b => b.type === "thinking")
       .map(b => b.thinking || b.text || "")
-      .join("
-")
+      .join("\n")
       .slice(0, 800);
     // 2. Capture regular text reasoning
     const _thinkingText = (response.content || [])
       .filter(b => b.type === "text")
       .map(b => b.text)
-      .join("
-")
+      .join("\n")
       .slice(0, 500);
     const _toolCalls = (response.content || [])
       .filter(b => b.type === "tool_use")
@@ -4759,8 +4757,7 @@ NEVER skip steps 3 and 4 even if step 2 fails.
         if (n.includes("clarify") || n.includes("bloom_clarify")) return "Asking for clarification...";
         if (n.includes("execute") || n.includes("run")) return "Running: " + n + "...";
         return "Using " + n.replace(/_/g, " ") + "...";
-      }).join("
-");
+      }).join("\n");
       appendThinking(sessionId, { type: "thinking", text: _desc, round });
     }
     // Log tool calls
