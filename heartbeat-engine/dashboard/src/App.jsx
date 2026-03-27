@@ -486,7 +486,7 @@ function useCRMLink() {
   const [crmUrl,setCrmUrl] = useState('https://app.gohighlevel.com');
   const [contactsUrl,setContactsUrl] = useState('https://app.gohighlevel.com');
   useEffect(()=>{
-    fetch("/api/chat/crm-link", await withAuth()).then(r=>r.json()).then(d=>{
+    fetch("/api/chat/crm-link").then(r=>r.json()).then(d=>{
       if(d.url) setCrmUrl(d.url);
       if(d.contactsUrl) setContactsUrl(d.contactsUrl);
     }).catch(()=>{});
@@ -625,7 +625,7 @@ function Stat({c,label,value,accent}) {
 function SystemHealth({c,sse}) {
   const [data,setData] = useState(null);
   useEffect(()=>{
-    const go=async()=>{ try{ const r=await fetch("/api/dashboard/health", await withAuth()); if(r.ok) setData(await r.json()); }catch{} };
+    const go=async()=>{ try{ const r=await fetch("/api/dashboard/health"); if(r.ok) setData(await r.json()); }catch{} };
     go();
     const clean=sse?.register("health",go);
     if(!clean){ const t=setInterval(go,30000); return()=>clearInterval(t); }
@@ -660,7 +660,7 @@ function SystemHealth({c,sse}) {
 function TrustGate({c,sse}) {
   const [data,setData] = useState(null);
   useEffect(()=>{
-    const go=async()=>{ try{ const r=await fetch("/api/dashboard/trust-gate", await withAuth()); if(r.ok) setData(await r.json()); }catch{} };
+    const go=async()=>{ try{ const r=await fetch("/api/dashboard/trust-gate"); if(r.ok) setData(await r.json()); }catch{} };
     go();
     const clean=sse?.register("trust",go);
     if(!clean){ const t=setInterval(go,30000); return()=>clearInterval(t); }
@@ -710,7 +710,7 @@ function TrustGate({c,sse}) {
 function AgenticExecutions({c,sse}) {
   const [execs,setExecs] = useState([]);
   useEffect(()=>{
-    const go=async()=>{ try{ const r=await fetch("/api/dashboard/agentic-executions?limit=5", await withAuth()); if(r.ok){ const d=await r.json(); setExecs(d.executions||d||[]); } }catch{} };
+    const go=async()=>{ try{ const r=await fetch("/api/dashboard/agentic-executions?limit=5"); if(r.ok){ const d=await r.json(); setExecs(d.executions||d||[]); } }catch{} };
     go();
     const clean=sse?.register("executions",go);
     if(!clean){ const t=setInterval(go,15000); return()=>clearInterval(t); }
@@ -745,7 +745,7 @@ function AgenticExecutions({c,sse}) {
 function SubAgents({c,sse}) {
   const [agents,setAgents] = useState([]);
   useEffect(()=>{
-    const go=async()=>{ try{ const r=await fetch("/api/dashboard/sub-agents", await withAuth()); if(r.ok){ const d=await r.json(); setAgents(d.agents||d||[]); } }catch{} };
+    const go=async()=>{ try{ const r=await fetch("/api/dashboard/sub-agents"); if(r.ok){ const d=await r.json(); setAgents(d.agents||d||[]); } }catch{} };
     go();
     const clean=sse?.register("subagents",go);
     if(!clean){ const t=setInterval(go,30000); return()=>clearInterval(t); }
@@ -782,7 +782,7 @@ function SubAgents({c,sse}) {
 function ToolPerformance({c,sse}) {
   const [data,setData] = useState(null);
   useEffect(()=>{
-    const go=async()=>{ try{ const r=await fetch("/api/dashboard/tool-performance", await withAuth()); if(r.ok) setData(await r.json()); }catch{} };
+    const go=async()=>{ try{ const r=await fetch("/api/dashboard/tool-performance"); if(r.ok) setData(await r.json()); }catch{} };
     go();
     const clean=sse?.register("tools",go);
     if(!clean){ const t=setInterval(go,30000); return()=>clearInterval(t); }
@@ -827,7 +827,7 @@ function ToolPerformance({c,sse}) {
 function ContextAnalytics({c,sse}) {
   const [data,setData] = useState(null);
   useEffect(()=>{
-    const go=async()=>{ try{ const r=await fetch("/api/dashboard/context-analytics", await withAuth()); if(r.ok) setData(await r.json()); }catch{} };
+    const go=async()=>{ try{ const r=await fetch("/api/dashboard/context-analytics"); if(r.ok) setData(await r.json()); }catch{} };
     go();
     const clean=sse?.register("context",go);
     if(!clean){ const t=setInterval(go,30000); return()=>clearInterval(t); }
@@ -866,7 +866,7 @@ function ContextAnalytics({c,sse}) {
 function ActionLog({c,sse}) {
   const [actions,setActions] = useState([]);
   useEffect(()=>{
-    const go=async()=>{ try{ const r=await fetch("/api/dashboard/action-log?limit=20", await withAuth()); if(r.ok){ const d=await r.json(); setActions(d.actions||d||[]); } }catch{} };
+    const go=async()=>{ try{ const r=await fetch("/api/dashboard/action-log?limit=20"); if(r.ok){ const d=await r.json(); setActions(d.actions||d||[]); } }catch{} };
     go();
     const clean=sse?.register("actions",go);
     if(!clean){ const t=setInterval(go,15000); return()=>clearInterval(t); }
@@ -900,7 +900,7 @@ function ActionLog({c,sse}) {
 function InternalTasks({c,sse,aFN="Sarah"}) {
   const [tasks,setTasks] = useState([]);
   useEffect(()=>{
-    const go=async()=>{ try{ const r=await fetch("/api/dashboard/internal-tasks", await withAuth()); if(r.ok){ const d=await r.json(); setTasks(d.tasks||d||[]); } }catch{} };
+    const go=async()=>{ try{ const r=await fetch("/api/dashboard/internal-tasks"); if(r.ok){ const d=await r.json(); setTasks(d.tasks||d||[]); } }catch{} };
     go();
     const clean=sse?.register("tasks",go);
     if(!clean){ const t=setInterval(go,20000); return()=>clearInterval(t); }
@@ -2604,7 +2604,7 @@ function SiteLoginsManager({c,mob,aFN="Sarah"}){
 
   const loadSites=async()=>{
     try{
-      const r=await fetch("/api/dashboard/credential-registry", await withAuth());
+      const r=await fetch("/api/dashboard/credential-registry");
       if(r.ok){const d=await r.json();setSites(d);}
     }catch{}
     setLoading(false);
@@ -3708,15 +3708,15 @@ function App({ authUser }) {
 
   // Fetch trust gate status + model config + image engine config on mount
   useEffect(()=>{
-    fetch("/api/dashboard/trust-gate-status", await withAuth()).then(r=>r.ok?r.json():null).then(d=>{if(d)setTgEnabled(d.enabled)}).catch(()=>{});
-    fetch("/api/dashboard/model-config", await withAuth()).then(r=>r.ok?r.json():null).then(d=>{if(d)setModelConfig(d)}).catch(()=>{});
-    fetch("/api/dashboard/image-engine-config", await withAuth()).then(r=>r.ok?r.json():null).then(d=>{if(d)setImgEngineConfig(d)}).catch(()=>{});
+    fetch("/api/dashboard/trust-gate-status").then(r=>r.ok?r.json():null).then(d=>{if(d)setTgEnabled(d.enabled)}).catch(()=>{});
+    fetch("/api/dashboard/model-config").then(r=>r.ok?r.json():null).then(d=>{if(d)setModelConfig(d)}).catch(()=>{});
+    fetch("/api/dashboard/image-engine-config").then(r=>r.ok?r.json():null).then(d=>{if(d)setImgEngineConfig(d)}).catch(()=>{});
   },[]);
 
   const toggleTrustGate=async()=>{
     setTgLoading(true);
     try{
-      const r=await fetch("/api/dashboard/trust-gate-status", await withAuth({method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:!tgEnabled})});
+      const r=await fetch("/api/dashboard/trust-gate-status",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:!tgEnabled})});
       if(r.ok){const d=await r.json();setTgEnabled(d.enabled);}
     }catch{}
     setTgLoading(false);
@@ -3739,7 +3739,7 @@ function App({ authUser }) {
       const aid = agentId || currentAgentId;
       const qs = aid ? `?agentId=${aid}` : '';
       const [pRes, tRes] = await Promise.all([
-        fetch('/api/agent/profile'+qs).then(r=>r.json()),
+        fetch('/api/agent/profile'+qs, await withAuth()).then(r=>r.json()),
         fetch('/api/agent/tasks', await withAuth()).then(r=>r.json())
       ]);
       setProfileData(pRes);
@@ -3790,7 +3790,7 @@ function App({ authUser }) {
     if(!isOwner)return;
     setModelSaving(true);
     try{
-      const r=await fetch("/api/dashboard/model-config", await withAuth({method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:newModel})});
+      const r=await fetch("/api/dashboard/model-config",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:newModel})});
       if(r.ok){const d=await r.json();setModelConfig(prev=>({...prev,model:d.model,reason:'dashboard override'}));}
     }catch{}
     setModelSaving(false);
@@ -3799,7 +3799,7 @@ function App({ authUser }) {
     if(!isOwner)return;
     setImgEngineSaving(true);
     try{
-      const r=await fetch("/api/dashboard/image-engine-config", await withAuth({method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({[contentType]:engine})});
+      const r=await fetch("/api/dashboard/image-engine-config",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({[contentType]:engine})});
       if(r.ok){const d=await r.json();setImgEngineConfig(d.config);}
     }catch{}
     setImgEngineSaving(false);
@@ -3832,7 +3832,7 @@ function App({ authUser }) {
   // Load agent avatar when agent changes
   useEffect(()=>{
     if(!currentAgentId) return;
-    fetch('/api/agent/profile?agentId='+currentAgentId).then(r=>r.json()).then(d=>{if(d.profile?.avatarUrl)setAgentImgUrl(d.profile.avatarUrl); else setAgentImgUrl(null);}).catch(()=>{});
+    fetch('/api/agent/profile?agentId='+currentAgentId, await withAuth()).then(r=>r.json()).then(d=>{if(d.profile?.avatarUrl)setAgentImgUrl(d.profile.avatarUrl); else setAgentImgUrl(null);}).catch(()=>{});
   },[currentAgentId]);
   const [projO,setProjO]=useState(false);
   const [activeProj,setActiveProj]=useState("My Business");
@@ -4339,7 +4339,7 @@ function App({ authUser }) {
                                   if(idx<0||idx>=projects.length){setOauthToast({type:'error',msg:'Invalid choice'}); setTimeout(()=>setOauthToast(null),3000);return;}
                                   const selectedProj=projects[idx];
                                   try{
-                                    const res=await fetch(`/api/projects/${selectedProj.id}/conversations`,{
+                                    const res=await fetch(`/api/projects/${selectedProj.id}/conversations`, await withAuth({
                                       method:'PATCH',
                                       headers:{'Content-Type':'application/json'},
                                       body:JSON.stringify({action:'add',sessionIds:[s.id]})
@@ -5019,7 +5019,7 @@ function App({ authUser }) {
                             const vision=prompt(`Describe what you want your AI employee to do — be as big-picture as you want:\n\nExample: 'I want ${aFN} to handle all my marketing. Blog posts, emails, social media, lead follow-up, and keep the CRM clean.'`);
                             if(!vision) return;
                             try{
-                              const r=await fetch('/api/chat/message',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+                              const r=await fetch('/api/chat/message', await withAuth({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
                                 message:`SYSTEM TASK — Do NOT respond conversationally. Break this vision into specific recurring tasks. Return ONLY a CSV with no extra text, no markdown, no explanation. Format: Task Name,Instruction,Frequency,Time\n\nVision: "${vision}"\n\nRules:\n- Each task must be specific and actionable (not vague)\n- Include the exact instruction Sarah should follow each time\n- Default to daily unless it makes sense otherwise\n- Time should be spread across the day (not all at 9am)\n- 5-10 tasks max\n- Output ONLY the CSV rows, no headers, no backticks`,
                                 sessionId:'system-decompose-'+Date.now(),
                                 agentId:currentAgentId
@@ -5050,7 +5050,7 @@ function App({ authUser }) {
                         }}>
                           <button onClick={(e)=>{
                             e.stopPropagation();
-                            (async()=>{await fetch(`/api/agent/tasks/${task.taskId}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:!task.enabled})});loadActivity();})();
+                            (async()=>{await fetch(`/api/agent/tasks/${task.taskId}`, await withAuth({method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:!task.enabled})});loadActivity();})();
                           }} style={{width:38,height:22,borderRadius:11,border:"none",background:task.enabled?c.gr:"#444",cursor:"pointer",position:"relative",flexShrink:0}}>
                             <div style={{width:16,height:16,borderRadius:"50%",background:"#fff",position:"absolute",top:3,left:task.enabled?19:3,transition:"left .2s",boxShadow:"0 1px 3px rgba(0,0,0,.3)"}}/>
                           </button>
@@ -5116,7 +5116,7 @@ function App({ authUser }) {
                             if(editForm.frequency!==editTask.frequency) body.frequency=editForm.frequency;
                             if(editForm.runTime!==editTask.runTime) body.runTime=editForm.runTime;
                             if(Object.keys(body).length===0){setEditTask(null);return;}
-                            await fetch(`/api/agent/tasks/${editTask.taskId}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+                            await fetch(`/api/agent/tasks/${editTask.taskId}`, await withAuth({method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
                             setEditTask(null);
                             loadActivity();
                           }} style={{flex:1,padding:"10px 16px",borderRadius:8,border:"none",background:c.ac,color:"#fff",fontSize:13,fontWeight:600,cursor:"pointer"}}>
@@ -5552,14 +5552,14 @@ function App({ authUser }) {
                             cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
                             const dataUrl=cv.toDataURL('image/jpeg',0.8);
                             setAgentImgUrl(dataUrl);
-                            const r=await fetch('/api/agent/profile',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({avatarUrl:dataUrl,agentId:currentAgentId})});
+                            const r=await fetch('/api/agent/profile', await withAuth({method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({avatarUrl:dataUrl,agentId:currentAgentId})});
                             const d=await r.json();
                             console.log('Agent avatar save:',d);
                           }catch(err){
                             // Fallback — save original if resize fails
                             console.error('Resize failed, saving original:',err);
                             setAgentImgUrl(ev.target.result);
-                            fetch('/api/agent/profile',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({avatarUrl:ev.target.result,agentId:currentAgentId})}).catch(()=>{});
+                            fetch('/api/agent/profile', await withAuth({method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({avatarUrl:ev.target.result,agentId:currentAgentId})}).catch(()=>{});
                           }
                         };
                         reader.readAsDataURL(file);
@@ -5596,7 +5596,7 @@ function App({ authUser }) {
                     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
                       <span style={{fontSize:14,fontWeight:700,color:c.tx}}>Job Description</span>
                       <button onClick={()=>{
-                        if(editingProfile){fetch('/api/agent/profile',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({jobTitle:editTitle,jobDescription:editDesc,agentId:currentAgentId})}).then(()=>loadProfile());}
+                        if(editingProfile){fetch('/api/agent/profile', await withAuth({method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({jobTitle:editTitle,jobDescription:editDesc,agentId:currentAgentId})}).then(()=>loadProfile());}
                         setEditingProfile(!editingProfile);
                       }} style={{padding:"5px 12px",borderRadius:6,border:"1px solid "+c.ln,background:"transparent",cursor:"pointer",fontSize:12,fontWeight:600,color:c.ac,fontFamily:"inherit"}}>
                         {editingProfile?'Save':'Edit'}
@@ -6007,7 +6007,7 @@ function App({ authUser }) {
                             return;
                           }
                           try {
-                            const res=await fetch('/api/projects',{
+                            const res=await fetch('/api/projects', await withAuth({
                               method:'POST',
                               headers:{'Content-Type':'application/json'},
                               body:JSON.stringify({name:newProjectName.trim(),description:newProjectDesc.trim()||''})
@@ -6466,7 +6466,7 @@ function App({ authUser }) {
                   <span style={{fontSize:13,fontWeight:700,color:c.tx,textTransform:"uppercase",letterSpacing:"0.5px"}}>Job Description</span>
                   <button onClick={()=>{
                     if(editingProfile){
-                      fetch('/api/agent/profile',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({jobTitle:editTitle,jobDescription:editDesc,agentId:currentAgentId})})
+                      fetch('/api/agent/profile', await withAuth({method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({jobTitle:editTitle,jobDescription:editDesc,agentId:currentAgentId})})
                         .then(()=>loadProfile());
                     }
                     setEditingProfile(!editingProfile);
@@ -6537,7 +6537,7 @@ function App({ authUser }) {
                 {scheduledTasks.map(t=>(
                   <div key={t.taskId} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",borderBottom:"1px solid "+c.ln+"40"}}>
                     <button onClick={async()=>{
-                      await fetch(`/api/agent/tasks/${t.taskId}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:!t.enabled})});
+                      await fetch(`/api/agent/tasks/${t.taskId}`, await withAuth({method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:!t.enabled})});
                       loadProfile();
                     }} style={{width:20,height:20,borderRadius:4,border:"1.5px solid "+(t.enabled?c.gr:c.ln),background:t.enabled?"rgba(52,168,83,0.15)":"transparent",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,flexShrink:0}}>
                       {t.enabled&&'✓'}
