@@ -607,43 +607,76 @@ async _failoverChat(params, failedProvider) {
     if (tools?.length > 0) { body.tools = formatToolsOpenAI(tools); body.tool_choice = 'auto'; }
 
     // ── Enable thinking/reasoning for all providers (model-agnostic) ──
-    // Gemini 2.5+: reasoning_effort maps to thinking budget (low=1K, medium=8K, high=24K)
-    //   Also needs google.thinking_config.include_thoughts to get thought text back
+    // IMPORTANT: reasoning_effort and google.thinking_config CANNOT be used together.
+    // Gemini 2.5: use thinking_budget (token count) inside google.thinking_config
+    // Gemini 3.0: use thinking_level (semantic) inside google.thinking_config
     // DeepSeek R1: reasoning_content is automatic (no param needed)
     // OpenAI o-series: reasoning_effort controls reasoning depth
     const providerName = this._currentProvider;
+    const thinkingBody = { ...body }; // Clone for thinking attempt
+    let useThinkingFallback = false;
+
     if (providerName === 'gemini') {
-      body.reasoning_effort = 'low'; // Keep budget small to avoid slowness
-      // Gemini-specific: include_thoughts returns the actual thought text in response
-      body.google = {
+      // Use google.thinking_config ONLY (not reasoning_effort — they conflict)
+      // include_thoughts: true → returns thought summaries in response
+      const isGemini3 = this._currentModel.includes('gemini-3');
+      thinkingBody.google = {
         thinking_config: {
-          include_thoughts: true
+          include_thoughts: true,
+          ...(isGemini3
+            ? { thinking_level: 'low' }       // Gemini 3: semantic levels
+            : { thinking_budget: 1024 })       // Gemini 2.5: token budget
         }
       };
+      useThinkingFallback = true; // If thinking params fail, retry without
     } else if (providerName === 'openai' && this._currentModel.startsWith('o')) {
       // o-series models (o3-mini, o1, etc.) support reasoning_effort
-      body.reasoning_effort = 'low';
+      thinkingBody.reasoning_effort = 'low';
+      useThinkingFallback = true;
     }
     // DeepSeek R1 automatically returns reasoning_content — no extra params needed
 
-    // Gemini uses /chat/completions under its OpenAI-compatible endpoint
     const baseUrl = provider.baseUrl.replace(/\/+$/, '');
     const url = `${baseUrl}/chat/completions`;
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-      body: JSON.stringify(body),
-    });
+    const doFetch = async (reqBody) => {
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        body: JSON.stringify(reqBody),
+      });
+      if (!resp.ok) {
+        const errText = await resp.text();
+        const error = new Error(`${provider.name} API error ${resp.status}: ${errText}`);
+        error.status = resp.status;
+        throw error;
+      }
+      return resp.json();
+    };
 
-    if (!response.ok) {
-      const errText = await response.text();
-      const error = new Error(`${provider.name} API error ${response.status}: ${errText}`);
-      error.status = response.status;
-      throw error;
+    // Try with thinking params first; if 400, fall back to plain request
+    let data;
+    if (useThinkingFallback) {
+      try {
+        data = await doFetch(thinkingBody);
+        logger.info('OpenAI-compatible call succeeded WITH thinking params', {
+          provider: providerName, model: this._currentModel
+        });
+      } catch (thinkErr) {
+        if (thinkErr.status === 400) {
+          logger.warn('Thinking params rejected, retrying without', {
+            provider: providerName, model: this._currentModel,
+            error: (thinkErr.message || '').slice(0, 300)
+          });
+          data = await doFetch(body); // Retry with original body (no thinking params)
+        } else {
+          throw thinkErr; // Non-400 errors (auth, quota) propagate to failover
+        }
+      }
+    } else {
+      data = await doFetch(body);
     }
 
-    const data = await response.json();
     return parseOpenAIResponse(data, providerName);
   }
 }
