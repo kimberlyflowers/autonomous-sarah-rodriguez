@@ -1236,7 +1236,6 @@ function ProgressRing({pct,sz,stroke,color,bg}) {
 function ThinkingPanel({c, sessionId, isOpen, onClose}) {
   const [events,setEvents]=useState([]);
   const scrollRef=useRef(null);
-
   useEffect(()=>{
     if(!sessionId){return;}
     const es=new EventSource(`/api/chat/progress-stream?sessionId=${encodeURIComponent(sessionId)}`);
@@ -1251,119 +1250,108 @@ function ThinkingPanel({c, sessionId, isOpen, onClose}) {
     };
     return()=>es.close();
   },[sessionId]);
-
-  // Auto-scroll to bottom
   useEffect(()=>{
     if(scrollRef.current) scrollRef.current.scrollTop=scrollRef.current.scrollHeight;
   },[events]);
-
   if(!isOpen) return null;
-
-  const iconFor=(type)=>{
-    if(type==='thinking') return '\u{1F4AD}';
-    if(type==='tool_call') return '\u{1F527}';
-    if(type==='tool_result') return '\u2705';
-    return '\u25CF';
-  };
-
-  const labelFor=(type)=>{
-    if(type==='thinking') return 'Thinking';
-    if(type==='tool_call') return 'Tool Call';
-    if(type==='tool_result') return 'Result';
-    return type;
-  };
-
-  const colorFor=(ev)=>{
-    if(ev.type==='thinking') return c.bl||'#5B8FF9';
-    if(ev.type==='tool_call') return c.ac||'#F4A261';
-    if(ev.type==='tool_result') return ev.success===false ? (c.err||'#ea4335') : (c.gr||'#34A853');
-    return c.so;
-  };
-
+  // Filter: only show thinking and tool_call, skip task_progress noise
+  const filtered = events.filter(ev => ev.type === 'thinking' || ev.type === 'tool_call' || ev.type === 'tool_result');
+  const merged = [];
+  for (const ev of filtered) {
+    if (ev.type === 'thinking' && ev.text) {
+      merged.push(ev);
+    } else if (ev.type === 'tool_call') {
+      merged.push(ev);
+    } else if (ev.type === 'tool_result' && ev.result) {
+      merged.push(ev);
+    }
+  }
   return(
     <div style={{
       margin:'8px 0',
-      maxHeight:320,
-      backgroundColor:c.cd||'#262626',
-      border:`1px solid ${c.ln||'#353535'}`,
-      borderRadius:12,
+      maxHeight:220,
+      backgroundColor:'transparent',
       display:'flex',flexDirection:'column',
       overflow:'hidden'
     }}>
-      {/* Header */}
+      {/* Compact header */}
       <div style={{
         display:'flex',alignItems:'center',justifyContent:'space-between',
-        padding:'10px 16px',
-        borderBottom:`1px solid ${c.ln||'#353535'}`,
+        padding:'4px 8px',
         flexShrink:0
       }}>
-        <div style={{display:'flex',alignItems:'center',gap:8}}>
-          <div style={{width:8,height:8,borderRadius:'50%',
-            backgroundColor:events.length>0?(c.gr||'#34A853'):(c.fa||'#5c5c5c'),
-            animation:events.length>0?'pulse 1.5s infinite':'none'
+        <div style={{display:'flex',alignItems:'center',gap:6}}>
+          <div style={{width:6,height:6,borderRadius:'50%',
+            backgroundColor:merged.length>0?(c.gr||'#34A853'):(c.fa||'#5c5c5c'),
+            animation:merged.length>0?'pulse 1.5s infinite':'none'
           }}/>
-          <span style={{fontSize:13,fontWeight:600,color:c.tx||'#d4d4d4'}}>
-            Thinking Stream
-          </span>
-          <span style={{fontSize:11,color:c.so||'#a0a0a0'}}>
-            {events.length} events
+          <span style={{fontSize:11,fontWeight:500,color:c.so||'#a0a0a0',fontStyle:'italic'}}>
+            Sarah is thinking...
           </span>
         </div>
         <button onClick={onClose} style={{
           background:'none',border:'none',color:c.so||'#a0a0a0',
-          cursor:'pointer',fontSize:18,padding:'0 4px',lineHeight:1
-        }}>\u00D7</button>
+          cursor:'pointer',fontSize:14,padding:'0 4px',lineHeight:1
+        }}>×</button>
       </div>
-
-      {/* Events list */}
+      {/* Conversational thought stream */}
       <div ref={scrollRef} style={{
-        flex:1,overflowY:'auto',padding:'8px 12px',
-        fontSize:12,fontFamily:'monospace',lineHeight:1.6
+        flex:1,overflowY:'auto',padding:'4px 12px',
+        fontSize:12,lineHeight:1.5
       }}>
-        {events.length===0 ? (
-          <div style={{color:c.fa||'#5c5c5c',textAlign:'center',padding:20,fontSize:12}}>
-            Waiting for activity...
+        {merged.length===0 ? (
+          <div style={{color:c.fa||'#5c5c5c',padding:'8px 0',fontSize:12,fontStyle:'italic'}}>
+            Waiting for Sarah to start thinking...
           </div>
-        ) : events.map((ev,i)=>(
-          <div key={i} style={{
-            display:'flex',gap:8,marginBottom:6,
-            padding:'4px 8px',borderRadius:6,
-            backgroundColor:i===events.length-1?`${colorFor(ev)}10`:'transparent'
-          }}>
-            <span style={{flexShrink:0,fontSize:11}}>{iconFor(ev.type)}</span>
-            <div style={{flex:1,minWidth:0}}>
-              <span style={{color:colorFor(ev),fontWeight:600,fontSize:11}}>
-                {ev.type==='tool_call'?ev.name:ev.type==='tool_result'?ev.name:labelFor(ev.type)}
-              </span>
-              {ev.type==='thinking' && ev.text && (
-                <div style={{color:c.tx||'#d4d4d4',marginTop:2,whiteSpace:'pre-wrap',wordBreak:'break-word'}}>
-                  {ev.text.length>200?ev.text.slice(0,200)+'...':ev.text}
-                </div>
-              )}
-              {ev.type==='tool_call' && ev.args && (
-                <div style={{color:c.so||'#a0a0a0',marginTop:2,wordBreak:'break-all'}}>
-                  {ev.args.length>150?ev.args.slice(0,150)+'...':ev.args}
-                </div>
-              )}
-              {ev.type==='tool_result' && ev.result && (
-                <div style={{color:ev.success===false?(c.err||'#ea4335'):(c.so||'#a0a0a0'),marginTop:2,wordBreak:'break-word'}}>
-                  {ev.result.length>200?ev.result.slice(0,200)+'...':ev.result}
-                </div>
-              )}
-            </div>
-            <span style={{flexShrink:0,fontSize:10,color:c.fa||'#5c5c5c'}}>
-              R{ev.round||0}
-            </span>
-          </div>
-        ))}
+        ) : merged.map((ev,i)=>{
+          if(ev.type==='thinking' && ev.text) {
+            return (
+              <div key={i} style={{
+                color:c.so||'#a0a0a0',
+                padding:'3px 0',
+                fontStyle:'italic',
+                fontSize:12,
+                lineHeight:1.5,
+                borderLeft:'2px solid '+(c.ln||'#353535'),
+                paddingLeft:10,
+                marginBottom:4
+              }}>
+                {ev.text.length>300?ev.text.slice(0,300)+'...':ev.text}
+              </div>
+            );
+          }
+          if(ev.type==='tool_call') {
+            const name = (ev.name||'unknown').replace(/_/g,' ');
+            return (
+              <div key={i} style={{
+                color:c.ac||'#F4A261',
+                padding:'2px 0',
+                fontSize:11,
+                opacity:0.7
+              }}>
+                {'🔧'} {name}
+              </div>
+            );
+          }
+          if(ev.type==='tool_result') {
+            return (
+              <div key={i} style={{
+                color:ev.success===false?(c.err||'#ea4335'):(c.gr||'#34A853'),
+                padding:'2px 0',
+                fontSize:11,
+                opacity:0.7
+              }}>
+                {ev.success===false?'❌':'✅'} {(ev.result||'done').slice(0,100)}
+              </div>
+            );
+          }
+          return null;
+        })}
       </div>
-
-      {/* Pulse animation */}
       <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}`}</style>
     </div>
   );
 }
-
 function ActiveTaskTracker({c, sessionId}) {
   const [todos,setTodos]=useState([]);
   const [isActive,setIsActive]=useState(false);

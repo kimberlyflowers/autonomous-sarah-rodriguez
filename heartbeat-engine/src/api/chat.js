@@ -4719,23 +4719,56 @@ NEVER skip steps 3 and 4 even if step 2 fails.
     }, 3); // no agentClient — unified client handles all providers + failover
 
     // ── THINKING LOG: Record LLM reasoning for thinking panel ──
+    // 1. Capture Anthropic extended thinking blocks (most detailed reasoning)
+    const _extThinking = (response.content || [])
+      .filter(b => b.type === "thinking")
+      .map(b => b.thinking || b.text || "")
+      .join("
+")
+      .slice(0, 800);
+    // 2. Capture regular text reasoning
     const _thinkingText = (response.content || [])
-      .filter(b => b.type === 'text')
+      .filter(b => b.type === "text")
       .map(b => b.text)
-      .join('\n')
+      .join("
+")
       .slice(0, 500);
     const _toolCalls = (response.content || [])
-      .filter(b => b.type === 'tool_use')
-      .map(b => ({ name: b.name, input: JSON.stringify(b.input || {}).slice(0, 200) }));
-    if (_thinkingText) {
-      appendThinking(sessionId, { type: 'thinking', text: _thinkingText, round });
+      .filter(b => b.type === "tool_use")
+      .map(b => ({ name: b.name, input: b.input || {} }));
+    if (_extThinking) {
+      appendThinking(sessionId, { type: "thinking", text: _extThinking, round });
     }
+    if (_thinkingText) {
+      appendThinking(sessionId, { type: "thinking", text: _thinkingText, round });
+    }
+    // If no reasoning text but there are tool calls, generate readable description
+    if (!_extThinking && !_thinkingText && _toolCalls.length > 0) {
+      const _desc = _toolCalls.map(tc => {
+        const n = tc.name || "";
+        const inp = tc.input || {};
+        if (n.includes("screenshot") || n.includes("screen_capture")) return "Taking a screenshot to see what is on screen...";
+        if (n.includes("browser") && n.includes("navigate")) return "Opening " + (inp.url || "a webpage") + " in the browser...";
+        if (n.includes("browser") && n.includes("click")) return "Clicking on an element on the page...";
+        if (n.includes("browser") && n.includes("type")) return "Typing into a form field...";
+        if (n.includes("search")) return "Searching for: " + (inp.query || inp.search_query || "information") + "...";
+        if (n.includes("read") || n.includes("get")) return "Reading " + (inp.path || inp.file || "data") + "...";
+        if (n.includes("write") || n.includes("create") || n.includes("save")) return "Creating " + (inp.path || inp.filename || "content") + "...";
+        if (n.includes("send") || n.includes("email") || n.includes("sms")) return "Sending a message...";
+        if (n.includes("load_skill")) return "Loading skill: " + (inp.skill_name || inp.skillName || "") + "...";
+        if (n.includes("clarify") || n.includes("bloom_clarify")) return "Asking for clarification...";
+        if (n.includes("execute") || n.includes("run")) return "Running: " + n + "...";
+        return "Using " + n.replace(/_/g, " ") + "...";
+      }).join("
+");
+      appendThinking(sessionId, { type: "thinking", text: _desc, round });
+    }
+    // Log tool calls
     if (_toolCalls.length > 0) {
       for (const tc of _toolCalls) {
-        appendThinking(sessionId, { type: 'tool_call', name: tc.name, args: tc.input, round });
+        appendThinking(sessionId, { type: "tool_call", name: tc.name, args: JSON.stringify(tc.input || {}).slice(0, 200), round });
       }
     }
-
     // Accumulate token usage every round
     if (response.usage) {
       totalInputTokens += response.usage.input_tokens || 0;

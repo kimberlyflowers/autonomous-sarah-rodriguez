@@ -180,6 +180,21 @@ function parseOpenAIResponse(response) {
   if (!choice) return { content: [], stopReason: 'end_turn', usage: {}, model: response.model, raw: response };
 
   const content = [];
+
+  // ── Capture reasoning/thinking from all providers ──
+  // DeepSeek: reasoning_content field contains Chain-of-Thought reasoning
+  if (choice.message.reasoning_content) {
+    content.push({ type: 'thinking', thinking: choice.message.reasoning_content });
+  }
+  // Gemini (OpenAI-compatible): may include thought parts or reasoning field
+  if (choice.message.thought) {
+    content.push({ type: 'thinking', thinking: choice.message.thought });
+  }
+  // OpenAI o-series: reasoning tokens are hidden, but reasoning summary may appear
+  if (choice.message.reasoning) {
+    content.push({ type: 'thinking', thinking: typeof choice.message.reasoning === 'string' ? choice.message.reasoning : JSON.stringify(choice.message.reasoning) });
+  }
+
   if (choice.message.content) content.push({ type: 'text', text: choice.message.content });
 
   let validToolCalls = 0;
