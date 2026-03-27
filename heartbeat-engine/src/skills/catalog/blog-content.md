@@ -7,6 +7,46 @@ description: "Write high-performing blog posts that rank on Google AND AI search
 
 Every blog post should read like it came from a paid content strategist, not a chatbot. The standard: would an editor at a respected publication approve this?
 
+## MANDATORY PRE-BUILD GATE — NO EXCEPTIONS
+
+**You MUST collect all required information via bloom_clarify BEFORE writing any content or generating images. This is a hard rule with zero exceptions.**
+
+### The 5 things you MUST know before writing:
+1. **Topic** — What is the blog post about? What specific angle or question does it answer?
+2. **Audience** — Who is this written for? (their customers, industry peers, general public)
+3. **Goal** — What should the blog do for the business? (drive traffic, establish authority, educate, generate leads)
+4. **Tone & style** — How should it read? (professional/formal, conversational/friendly, bold/opinionated, educational)
+5. **Key points** — Any specific facts, stats, stories, or talking points that must be included?
+
+### Discovery Flow — call bloom_clarify for each missing piece (one at a time):
+
+**Question 1 — Topic & angle:**
+Options: "I have a specific topic in mind (I'll describe)", "Suggest topics based on my industry", "I want to write about a recent trend or news", "Help me pick from a content calendar"
+Context: "What should this blog post be about? A specific angle helps me write something focused and valuable."
+
+**Question 2 — Who is this for?**
+Options: "My customers / potential clients", "Industry peers / professionals", "General audience / public", "Internal team / employees"
+Context: "Who will read this? This changes the language, depth, and examples I use."
+
+**Question 3 — What should this blog do for your business?**
+Options: "Drive search traffic (SEO focus)", "Establish thought leadership", "Educate & inform readers", "Generate leads (with CTA)", "Support a product or service launch"
+
+**Question 4 — Tone & voice:**
+Options: "Professional & authoritative", "Conversational & approachable", "Bold & opinionated", "Educational & detailed"
+
+**Question 5 — Key details (FREE TEXT — do not use buttons):**
+Ask: "Any specific points, stats, stories, or examples you want included? Also, how long should this be — quick read (~600 words), standard (~1,200 words), or deep-dive (~2,000+ words)?"
+
+### SKIP LOGIC:
+- If the user already gave a specific topic → skip Question 1
+- If audience is obvious from context → skip Question 2
+- If tone matches their brand voice on file → skip Question 4
+- NEVER ask more than one bloom_clarify at a time
+
+### HARD STOP: Do NOT write content or generate images until at least Questions 1, 2, and 3 are answered.
+
+---
+
 ## CRITICAL WORKFLOW — EVERY BLOG POST
 
 Follow this exact sequence for every blog post:

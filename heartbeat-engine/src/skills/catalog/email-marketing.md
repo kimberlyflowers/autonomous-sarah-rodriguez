@@ -7,6 +7,42 @@ description: "Write high-converting email campaigns, newsletters, drip sequences
 
 Every email should feel like it came from a real person who cares — not a marketing automation. The standard: would YOU open this email and read to the end?
 
+## MANDATORY PRE-BUILD GATE — NO EXCEPTIONS
+
+**You MUST collect all required information via bloom_clarify BEFORE writing any email content. This is a hard rule with zero exceptions.**
+
+### The 5 things you MUST know before writing:
+1. **Email type** — Is this a single email, a campaign/sequence, or a newsletter?
+2. **Goal** — What should the reader do after reading? (buy, book, sign up, reply, click)
+3. **Audience** — Who is receiving this? (existing customers, cold leads, newsletter subscribers, specific segment)
+4. **Offer or message** — What's the core value proposition or announcement?
+5. **Sender voice** — Who is this coming from? (the business owner, the brand, a team member)
+
+### Discovery Flow — call bloom_clarify for each missing piece (one at a time):
+
+**Question 1 — What type of email?**
+Options: "Single email (one-off send)", "Email sequence / drip campaign", "Newsletter / recurring update", "Cold outreach / introduction", "Follow-up to a previous conversation"
+Context: "Is this a one-time email or part of a series? This changes the structure and strategy."
+
+**Question 2 — What should the reader do?**
+Options: "Buy a product or service", "Book a call or appointment", "Sign up or register", "Reply to start a conversation", "Read and stay informed (no hard CTA)"
+Context: "What's the one action you want the reader to take? Every email needs a single clear goal."
+
+**Question 3 — Who is receiving this?**
+Options: "Existing customers / clients", "New leads who opted in", "Cold prospects (never contacted)", "A specific segment (I'll describe)", "My full email list"
+
+**Question 4 — Core message (FREE TEXT — do not use buttons):**
+Ask: "What's the main thing you want to communicate? Include any specific offer, deadline, event, product name, or key details. The more specific, the better the email."
+
+### SKIP LOGIC:
+- If the user described the email type in their request → skip Question 1
+- If the CTA is obvious from context → skip Question 2
+- NEVER ask more than one bloom_clarify at a time
+
+### HARD STOP: Do NOT write email content until at least Questions 1, 2, and 4 are answered.
+
+---
+
 ## Encoded Preferences (data-backed defaults)
 
 ### Subject Lines (the gatekeepers)

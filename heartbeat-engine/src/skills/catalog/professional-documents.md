@@ -5,6 +5,41 @@ description: "Create polished professional documents: SOPs, reports, proposals, 
 
 # Professional Documents — Real .docx Word Documents
 
+## MANDATORY PRE-BUILD GATE — NO EXCEPTIONS
+
+**You MUST collect all required information via bloom_clarify BEFORE creating any document. This is a hard rule with zero exceptions.**
+
+### The 5 things you MUST know before writing:
+1. **Document type** — What kind of document? (SOP, proposal, report, handbook, contract, one-pager, memo)
+2. **Audience** — Who will read this? (internal team, clients, investors, regulators, partners)
+3. **Purpose** — What should this document accomplish? (inform, persuade, standardize, train, sell)
+4. **Key sections** — What must be covered? Any required sections or topics?
+5. **Brand & formatting** — Should it follow the brand kit? Any specific formatting needs?
+
+### Discovery Flow — call bloom_clarify for each missing piece (one at a time):
+
+**Question 1 — What type of document?**
+Options: "SOP / Standard Operating Procedure", "Proposal or pitch", "Report (quarterly, annual, project)", "Handbook or guide", "Contract or agreement", "One-pager or memo", "Other (I'll describe)"
+Context: "What kind of document are you creating? This determines the structure, tone, and formatting."
+
+**Question 2 — Who is this for?**
+Options: "My internal team / employees", "Clients or customers", "Investors or leadership", "Partners or vendors", "Regulatory / compliance audience"
+
+**Question 3 — What should this document do?**
+Options: "Standardize a process (SOP)", "Persuade or sell (proposal)", "Report results or findings", "Train or onboard someone", "Communicate a policy", "Other (I'll describe)"
+
+**Question 4 — Key content (FREE TEXT — do not use buttons):**
+Ask: "What are the main topics or sections this document needs to cover? Include any specific data, names, dates, policies, or details that must appear. The more context you give me, the more polished the output."
+
+### SKIP LOGIC:
+- If the user already specified the document type → skip Question 1
+- If audience is clear from context → skip Question 2
+- NEVER ask more than one bloom_clarify at a time
+
+### HARD STOP: Do NOT create the document until at least Questions 1, 2, and 4 are answered.
+
+---
+
 ## Rule #1: CREATE .DOCX FILES, NOT MARKDOWN
 When a user asks for a document, report, handbook, SOP, proposal, or any professional deliverable:
 - Use the `dispatch_to_specialist` tool with taskType "coding" to generate a Node.js script that uses the `docx` npm library

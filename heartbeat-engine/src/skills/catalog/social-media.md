@@ -7,6 +7,43 @@ description: "Create scroll-stopping social media content, captions, content cal
 
 Every post should make someone stop scrolling. The standard: would this post get saved, shared, or commented on — not just liked?
 
+## MANDATORY PRE-BUILD GATE — NO EXCEPTIONS
+
+**You MUST collect all required information via bloom_clarify BEFORE writing any social content. This is a hard rule with zero exceptions.**
+
+### The 5 things you MUST know before creating:
+1. **Platform** — Which platform(s) is this for?
+2. **Content type** — What format? (single post, carousel, reel/video script, story, content calendar)
+3. **Topic or message** — What is the post about? What's the key takeaway?
+4. **Goal** — What should this post do? (drive engagement, generate leads, build authority, promote something)
+5. **Brand voice** — How should it sound? (professional, fun/casual, bold, inspirational)
+
+### Discovery Flow — call bloom_clarify for each missing piece (one at a time):
+
+**Question 1 — Which platform?**
+Options: "Instagram", "LinkedIn", "Facebook", "TikTok", "Twitter/X", "Multiple platforms (I'll specify)"
+Context: "Which platform is this for? Each one has different optimal formats, lengths, and strategies."
+
+**Question 2 — What type of content?**
+Options: "Single post with caption", "Carousel (multi-slide)", "Reel or video script", "Content calendar (multiple posts)", "Story or stories series"
+
+**Question 3 — What's the post about?**
+Options: "Promote a product or service", "Share a tip or teach something", "Tell a story or share a win", "Announce an event or news", "Other (I'll describe)"
+Context: "What's the main message or topic? This helps me craft the right hook and structure."
+
+**Question 4 — Key details (FREE TEXT — do not use buttons):**
+Ask: "Give me the specifics — product name, event date, tip you want to share, story details, or any key facts. Also, do you want me to include hashtags and a call to action?"
+
+### SKIP LOGIC:
+- If the user named the platform → skip Question 1
+- If the content type is clear from their request → skip Question 2
+- If the topic is obvious → skip Question 3
+- NEVER ask more than one bloom_clarify at a time
+
+### HARD STOP: Do NOT write content until at least Questions 1, 3, and 4 are answered.
+
+---
+
 ## Encoded Preferences (data-backed defaults)
 
 ### Platform-Specific Lengths (optimal for engagement)

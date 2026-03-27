@@ -7,6 +7,41 @@ description: Generate professional event flyers, promotional posters, and print 
 
 Create stunning, attention-grabbing flyers that follow proven design principles and leverage Google Gemini's image generation capabilities for maximum impact.
 
+## MANDATORY PRE-BUILD GATE — NO EXCEPTIONS
+
+**You MUST collect all required information via bloom_clarify BEFORE creating any flyer or generating images. This is a hard rule with zero exceptions.**
+
+### The 5 things you MUST know before designing:
+1. **What is the flyer for?** — Event, promotion, announcement, menu, service ad
+2. **Key details** — Event name, date, time, location, prices, contact info
+3. **Target audience** — Who should this attract? (customers, community, professionals)
+4. **Brand or colors** — Follow brand kit or custom colors?
+5. **Call to action** — What should people do? (register, call, visit, scan QR code)
+
+### Discovery Flow — call bloom_clarify for each missing piece (one at a time):
+
+**Question 1 — What is this flyer for?**
+Options: "Event (workshop, concert, fundraiser, etc.)", "Product or service promotion", "Business announcement or grand opening", "Menu or price list", "Other (I'll describe)"
+Context: "What's the flyer promoting? This shapes the layout, imagery, and messaging."
+
+**Question 2 — Key details (FREE TEXT — do not use buttons):**
+Ask: "Give me all the details that need to appear on this flyer — event name, date, time, location, price, who's performing/speaking, contact info, website, or any must-have information. I won't use placeholders."
+
+**Question 3 — Design direction:**
+Options: "Use my brand kit colors and fonts", "I have specific colors in mind (I'll share)", "Bold and eye-catching", "Clean and elegant", "Fun and playful"
+
+**Question 4 — What should people do?**
+Options: "Register or sign up online", "Call or text a number", "Visit a location", "Scan a QR code", "No specific CTA needed"
+
+### SKIP LOGIC:
+- If the user provided event details upfront → skip Question 2
+- If brand kit is on file and no alternative requested → skip Question 3
+- NEVER ask more than one bloom_clarify at a time
+
+### HARD STOP: Do NOT create flyer or generate images until at least Questions 1 and 2 are answered.
+
+---
+
 ## The 3-Second Rule
 
 **YOU HAVE 3 SECONDS.** If your flyer can't communicate its message in a single glance, it fails. Every design decision must serve instant comprehension.

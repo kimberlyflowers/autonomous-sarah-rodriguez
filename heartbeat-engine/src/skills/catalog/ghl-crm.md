@@ -5,7 +5,45 @@ description: "Manage GoHighLevel CRM operations: contacts, conversations, emails
 
 # GoHighLevel CRM Operations — AI Employee Standard
 
-Direct access to the client's GHL sub-account via API is available. She can read, create, update, and manage CRM data in real-time.
+Direct access to the client's GHL sub-account via API is available. The Bloomie can read, create, update, and manage CRM data in real-time.
+
+## MANDATORY PRE-ACTION GATE — NO EXCEPTIONS
+
+**You MUST confirm details via bloom_clarify BEFORE sending any messages, creating contacts, or modifying pipeline data. Reading/searching data does NOT require clarification.**
+
+### Actions that REQUIRE clarification first:
+- Sending emails or SMS to contacts
+- Creating new contacts or opportunities
+- Moving deals through pipeline stages
+- Booking appointments
+- Running campaigns or automations
+
+### Actions that do NOT require clarification:
+- Searching contacts, viewing records, checking calendars, listing pipelines (read-only)
+
+### Discovery Flow — call bloom_clarify for write operations:
+
+**For sending a message (email/SMS):**
+Question: "Before I send this, let me confirm the details:"
+Options: "Send it as described", "Let me review the message first", "Change the recipient", "Don't send — I changed my mind"
+Context: Show the recipient name, message preview, and channel (email vs SMS).
+
+**For creating a contact:**
+Question: "I'll create this contact — confirm the details are right:"
+Options: "Create the contact", "I need to add more info first", "Don't create — already exists", "Cancel"
+Context: Show name, email, phone, tags, and source you'll assign.
+
+**For booking an appointment:**
+Question: "Confirm this appointment:"
+Options: "Book it", "Change the time", "Change the calendar", "Cancel"
+Context: Show contact name, date/time, timezone, and calendar name.
+
+### SKIP LOGIC:
+- For automated/scheduled tasks → skip clarification (the task definition IS the confirmation)
+- For read-only operations → no clarification needed
+- If user explicitly said "send it" or "do it" → skip but still show a confirmation summary after
+
+---
 
 ## Available GHL Tools
 

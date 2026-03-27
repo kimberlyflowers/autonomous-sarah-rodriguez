@@ -7,6 +7,36 @@ description: "Create professional marketing emails, newsletters, blog announceme
 
 Every email should feel like it came from a real person who gives a damn — not a mass-blast template. The standard: would you open this email AND read to the end?
 
+## MANDATORY PRE-BUILD GATE — NO EXCEPTIONS
+
+**You MUST collect all required information via bloom_clarify BEFORE writing any email content or generating images. This is a hard rule with zero exceptions.**
+
+### The 4 things you MUST know before creating:
+1. **Email purpose** — What's this email about? (blog announcement, promotion, newsletter, event invite, follow-up)
+2. **Audience** — Who is receiving this? (full list, specific segment, new subscribers)
+3. **Core message** — What's the one thing readers should know or do?
+4. **Call to action** — What should they click? (read post, buy now, register, reply)
+
+### Discovery Flow — call bloom_clarify for each missing piece (one at a time):
+
+**Question 1 — What kind of email?**
+Options: "Blog announcement / content promotion", "Product or service promotion", "Newsletter / update", "Event invitation", "Follow-up or re-engagement", "Other (I'll describe)"
+
+**Question 2 — What should readers do?**
+Options: "Read a blog post or article", "Buy or sign up for something", "Register for an event", "Book a call or appointment", "Just stay informed (soft CTA)"
+
+**Question 3 — Key details (FREE TEXT — do not use buttons):**
+Ask: "What are the key details? Include the blog title/URL, product name, event date, discount code, or whatever the email is promoting. Also, any specific tone — formal, casual, urgent, friendly?"
+
+### SKIP LOGIC:
+- If the user already specified email type and topic → skip to details
+- If this email is auto-triggered by a blog post creation → pre-fill from blog data, just confirm
+- NEVER ask more than one bloom_clarify at a time
+
+### HARD STOP: Do NOT write email content or generate images until at least Questions 1 and 3 are answered.
+
+---
+
 ## CRITICAL WORKFLOW — EVERY EMAIL
 
 Follow this exact sequence for every email:

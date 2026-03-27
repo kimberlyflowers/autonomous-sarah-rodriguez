@@ -7,6 +7,41 @@ description: "Generate professional images for flyers, social posts, website her
 
 Generate production-quality images using Google's Gemini 2.5 Flash Image (Nano Banana). This skill teaches Google's official prompting best practices.
 
+## MANDATORY PRE-BUILD GATE — NO EXCEPTIONS
+
+**You MUST collect all required information via bloom_clarify BEFORE generating any images. This is a hard rule with zero exceptions.**
+
+### The 4 things you MUST know before generating:
+1. **What is the image for?** — Website hero, social post, flyer, presentation, product shot, profile photo
+2. **Subject** — What should be in the image? (people, product, scene, abstract)
+3. **Style** — Photorealistic, illustration, minimalist, bold/vibrant, editorial
+4. **Brand alignment** — Should it match a brand kit, or is this freestyle?
+
+### Discovery Flow — call bloom_clarify for each missing piece (one at a time):
+
+**Question 1 — What is this image for?**
+Options: "Website hero or banner", "Social media post", "Flyer or print material", "Presentation or document", "Profile or headshot", "Other (I'll describe)"
+Context: "Where will this image be used? This determines the size, aspect ratio, and style."
+
+**Question 2 — What should be in the image?**
+Options: "People (professional/lifestyle)", "A product or object", "A scene or environment", "Abstract or pattern", "Text-based graphic", "Other (I'll describe)"
+Context: "What's the main subject? The more specific you are, the better the result."
+
+**Question 3 — Visual style:**
+Options: "Photorealistic (looks like a real photo)", "Clean and modern illustration", "Bold and colorful / vibrant", "Minimalist and elegant", "Match my brand kit style"
+
+**Question 4 — Specifics (FREE TEXT — do not use buttons):**
+Ask: "Describe the image you're imagining — colors, mood, setting, any specific details. If you have a reference image or website you want it to look like, share that too."
+
+### SKIP LOGIC:
+- If the image is being generated as PART of another skill (website, blog, flyer) → the parent skill already gathered context, so skip the gate entirely
+- If the user described exactly what they want → skip to generation
+- NEVER ask more than one bloom_clarify at a time
+
+### HARD STOP: Do NOT generate images until at least Questions 1 and 2 are answered (unless called from another skill).
+
+---
+
 ## Core Principle (From Google)
 
 **"Describe the scene, don't just list keywords."** — Google Gemini Docs

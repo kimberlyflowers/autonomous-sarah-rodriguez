@@ -15,7 +15,7 @@ description: Build professional, conversion-optimized websites and landing pages
 
 ### The 8 things you MUST know before building:
 1. **Brand** — Which brand/business is this website for?
-2. **Purpose** — What is the site for? What should visitors understand or do?
+2. **Purpose** — What should the website do for the business? (capture leads, sell products, get registrations, share info)
 3. **Pages** — How many pages and what are they?
 4. **CTA** — What is the single primary call to action?
 5. **Colors** — Should the site follow the brand kit colors, or does the user have a different palette?
@@ -29,9 +29,9 @@ description: Build professional, conversion-optimized websites and landing pages
 Options: "Use my brand kit on file", "This is for a different brand (I'll describe)", "I don't have a brand yet — suggest something"
 Context: "Which brand or business is this website for? I want to make sure I use the right name, logo, and identity."
 
-**Question 2 — Purpose:**
-Options: "Capture leads / grow my email list", "Sell a product or service", "Share information / educate visitors", "Event registration / sign-ups", "Other (I'll describe)"
-Context: "What is the main goal of this website? This helps me structure the layout and messaging."
+**Question 2 — What should the website do for your business?**
+Options: "Capture leads & sign-ups", "Sell products or services", "Get event registrations", "Share info about the business", "Other (I'll describe)"
+Context: "What's the main job of this website? This helps me structure the layout, messaging, and calls to action."
 
 **Question 3 — Pages needed:**
 Options: "Just one page (landing page)", "Homepage + About", "Homepage + About + Details page", "Full site (Home, About, Services, Contact)"
