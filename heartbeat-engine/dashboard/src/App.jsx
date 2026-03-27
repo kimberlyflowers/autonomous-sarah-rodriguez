@@ -3601,9 +3601,8 @@ function App({ authUser }) {
 
   // Extracted so it can be called both on mount and after OAuth success
   const loadActiveConnectors = () => {
-    // Multi-tenant: resolve org from logged-in user's profile, not hardcoded BLOOM org
-    const orgId = meProfile?.orgId || 'a1000000-0000-0000-0000-000000000001';
-    fetch(`/api/connectors/active?orgId=${orgId}`)
+    // Backend resolves org from JWT — no need to send orgId from frontend
+    fetch('/api/connectors/active')
       .then(r=>r.ok?r.json():null)
       .then(data=>{
         if(data?.connectors){
@@ -3615,7 +3614,7 @@ function App({ authUser }) {
       .catch(()=>{});
   };
 
-  useEffect(()=>{ loadActiveConnectors(); },[meProfile?.orgId]);
+  useEffect(()=>{ loadActiveConnectors(); },[]);
 
   useEffect(()=>{
     const params=new URLSearchParams(window.location.search);
