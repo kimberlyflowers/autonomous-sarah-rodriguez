@@ -13,32 +13,59 @@ description: Build professional, conversion-optimized websites and landing pages
 
 **You MUST collect all required information via bloom_clarify BEFORE writing any code, generating images, or calling create_artifact. This is a hard rule with zero exceptions.**
 
-### The 4 things you MUST know before building:
-1. **Purpose** — What should visitors DO on this site? (register, donate, learn, buy, contact)
-2. **Pages** — How many pages and what are they?
-3. **CTA** — What is the single primary call to action?
-4. **Real content** — Actual text: event name, dates, speaker names, prices, contact info. NOT placeholders.
+### The 8 things you MUST know before building:
+1. **Brand** — Which brand/business is this website for?
+2. **Purpose** — What is the site for? What should visitors understand or do?
+3. **Pages** — How many pages and what are they?
+4. **CTA** — What is the single primary call to action?
+5. **Colors** — Should the site follow the brand kit colors, or does the user have a different palette?
+6. **Domain** — Does the user have an existing domain to connect, or is this a standalone new site?
+7. **Content source** — Does the user have existing content/copy to include, or should you write it based on what you know about the business?
+8. **Real details** — Actual text: business name, event name, dates, speaker names, prices, contact info. NOT placeholders.
 
-### Discovery Flow — call bloom_clarify for each missing piece:
+### Discovery Flow — call bloom_clarify for each missing piece (one question at a time):
 
-**Question 1 — Purpose:**
-Options: "Event registration / sign-ups", "Capture leads / opt-in", "Share information only", "Sell a product or service", "Other (I'll describe)"
+**Question 1 — Brand:**
+Options: "Use my brand kit on file", "This is for a different brand (I'll describe)", "I don't have a brand yet — suggest something"
+Context: "Which brand or business is this website for? I want to make sure I use the right name, logo, and identity."
 
-**Question 2 — Pages needed:**
-Options: "Just one page", "Homepage + About", "Homepage + About + Details page", "Full site (Home, About, Services, Contact)"
+**Question 2 — Purpose:**
+Options: "Capture leads / grow my email list", "Sell a product or service", "Share information / educate visitors", "Event registration / sign-ups", "Other (I'll describe)"
+Context: "What is the main goal of this website? This helps me structure the layout and messaging."
 
-**Question 3 — Call to action:**
-Options: "Register / Sign Up", "Book a consultation", "Donate", "Contact us", "No CTA needed"
+**Question 3 — Pages needed:**
+Options: "Just one page (landing page)", "Homepage + About", "Homepage + About + Details page", "Full site (Home, About, Services, Contact)"
 
-**Question 4 — Content (FREE TEXT — do not use buttons):**
-Ask: "Give me the real details that should appear on this page — event name, date, location, speaker names, pricing, contact info, or any key copy. I won't use placeholders."
+**Question 4 — Call to action:**
+Options: "Register / Sign Up", "Book a consultation", "Buy now / Shop", "Contact us", "No CTA needed"
+
+**Question 5 — Color scheme:**
+Options: "Use my brand kit colors", "I have specific colors in mind (I'll share them)", "Surprise me — pick something that fits", "Match colors from a reference site or image"
+Context: "Should I follow your brand kit color scheme, or do you have a different palette in mind for this site?"
+
+**Question 6 — Domain & hosting:**
+Options: "I have a domain — connect it", "This is a new standalone site (no domain yet)", "Add this as a page on my existing site", "I'm not sure yet — just build it first"
+Context: "Do you have an existing domain name you want this site connected to, or should this be its own new site?"
+
+**Question 7 — Content source:**
+Options: "I have content/copy to provide — I'll paste or upload it", "Write the copy for me based on what you know about my business", "I'll give you bullet points and you polish them", "Use content from my existing site/materials"
+Context: "Do you have written content you'd like included, or should I write the copy for you?"
+
+**Question 8 — Real details (FREE TEXT — do not use buttons):**
+Ask: "Give me the real details that should appear on this site — business name, tagline, services offered, pricing, contact info, team names, event dates, or any key information. I won't use placeholders — everything on the site will be real."
 
 ### HARD STOP RULE:
-Do NOT call `image_generate`, `create_artifact`, or write any HTML until ALL 4 are answered.
+Do NOT call `image_generate`, `create_artifact`, or write any HTML until ALL 8 are answered.
 If the user says "just build it" or "use your judgment" on content — ask one more time:
-"I want the site to have accurate information. What are the real details? (event name, date, contact, etc.)"
+"I want the site to be accurate and on-brand. What are the real details? (business name, services, pricing, contact, etc.)"
 
-**Brand kit:** If multiple brand kits exist, you will already have asked which brand before this skill loaded.
+### SKIP LOGIC — be smart, don't re-ask what you already know:
+- If the user already named the brand in their request → skip Question 1
+- If the user described the purpose clearly → skip Question 2
+- If you already have their brand kit loaded → skip Question 5 (but confirm you'll use it)
+- If the user pasted content in their message → skip Question 7
+- Combine related questions if the user is giving detailed answers
+- NEVER ask more than one bloom_clarify at a time — wait for each answer before asking the next
 
 ---
 
