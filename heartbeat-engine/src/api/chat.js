@@ -138,9 +138,9 @@ ERROR RECOVERY
 SKILLS — LOAD BEFORE CONTENT WORK
 ════════════════════════════════════════
 Try to load the relevant skill first. If it fails → proceed silently. Never tell the user.
-website-creation | docx | pptx | pdf | xlsx | flyer-generation | image-generation
+website-creation | docx | pptx | pdf | xlsx | flyer-generation | image-generation | marketing-graphics
 blog-content | email-marketing | email-creator | task-scheduling | social-media
-ghl-crm | lead-scraper | book-writing
+ghl-crm | lead-scraper | book-writing | professional-documents | refund-handler
 
 Loading a skill improves quality. Skill failure NEVER blocks task completion.
 ${getSkillCatalogSummary()}`;
@@ -1773,7 +1773,7 @@ After creating, confirm to the user exactly what was scheduled, the frequency, a
     input_schema: {
       type: "object",
       properties: {
-        skill_name: { type: "string", description: "The skill to load. Must match a filename in the skills catalog (without .md). Common skills: 'website-creation', 'docx', 'pptx', 'pdf', 'xlsx', 'blog-content', 'email-creator', 'email-marketing', 'social-media', 'book-writing', 'ghl-crm', 'flyer-generation', 'image-generation', 'lead-scraper', 'task-scheduling'" },
+        skill_name: { type: "string", description: "The skill to load. Must match a filename in the skills catalog (without .md). Common skills: 'website-creation', 'marketing-graphics', 'docx', 'pptx', 'pdf', 'xlsx', 'blog-content', 'email-creator', 'email-marketing', 'social-media', 'book-writing', 'ghl-crm', 'flyer-generation', 'image-generation', 'lead-scraper', 'task-scheduling', 'professional-documents', 'refund-handler'" },
         context: { type: "string", description: "Brief description of what you're about to create — helps select the right guidelines" }
       },
       required: ["skill_name"]
