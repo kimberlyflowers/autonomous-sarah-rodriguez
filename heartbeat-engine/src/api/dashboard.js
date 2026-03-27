@@ -338,58 +338,60 @@ router.get('/user-avatar', async (req, res) => {
 // GHL Business Profile Sync — pulls location data from GoHighLevel
 router.get('/business-profile', async (req, res) => {
   try {
-    // Multi-tenant: resolve org from JWT, look up their GHL credentials
     const { createClient } = await import('@supabase/supabase-js');
     const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-    const orgId = await getUserOrgId(req);
 
-    // Look up GHL connector credentials for this specific org
-    let apiKey = null;
-    let locationId = null;
+    // ── Multi-tenant: resolve org from JWT ──
+    const orgId = await getUserOrgId(req) || ORG_ID;
 
-    if (orgId) {
-      // Check user_connectors for org-specific GHL OAuth token
-      const { data: ghlConn } = await sb
-        .from('user_connectors')
-        .select('access_token, external_account_id, api_key')
+    // 1. Try per-org GHL credentials from user_connectors
+    const { data: ghlConnector } = await sb
+      .from('user_connectors')
+      .select('api_key, external_account_id')
+      .eq('organization_id', orgId)
+      .eq('status', 'active')
+      .ilike('connector_id::text', '%ghl%')
+      .maybeSingle();
+
+    // 2. Try agents.config.ghlConfig for this org
+    const { data: agent } = await sb
+      .from('agents')
+      .select('config')
+      .eq('organization_id', orgId)
+      .maybeSingle();
+    const agentGhl = agent?.config?.ghlConfig;
+
+    // 3. For BLOOM org only — use env vars
+    const isBloomOrg = orgId === (process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001');
+    const apiKey = ghlConnector?.api_key || agentGhl?.apiKey || (isBloomOrg ? process.env.GHL_API_KEY : null);
+    const locationId = ghlConnector?.external_account_id || agentGhl?.locationId || (isBloomOrg ? process.env.GHL_LOCATION_ID : null);
+
+    // 4. If no GHL config — return profile from Supabase organizations table
+    if (!apiKey || !locationId) {
+      const { data: org } = await sb
+        .from('organizations')
+        .select('name, industry, logo_url')
+        .eq('id', orgId)
+        .maybeSingle();
+      const { data: member } = await sb
+        .from('organization_members')
+        .select('users(email)')
         .eq('organization_id', orgId)
-        .eq('status', 'active')
-        .in('connector_id', sb.from('connectors').select('id').eq('slug', 'ghl'))
-        .maybeSingle()
-        .catch(() => ({ data: null }));
-
-      if (ghlConn) {
-        apiKey = ghlConn.access_token || ghlConn.api_key;
-        locationId = ghlConn.external_account_id;
-      }
-
-      // Fall back to org_config stored GHL settings
-      if (!apiKey || !locationId) {
-        const { data: cfg } = await sb
-          .from('org_config')
-          .select('feature_flags')
-          .eq('organization_id', orgId)
-          .maybeSingle();
-        const flags = cfg?.feature_flags || {};
-        if (flags.ghlApiKey) apiKey = flags.ghlApiKey;
-        if (flags.ghlLocationId) locationId = flags.ghlLocationId;
-      }
+        .eq('role', 'owner')
+        .maybeSingle();
+      return res.json({
+        profile: org ? {
+          name: org.name || '',
+          email: member?.users?.email || '',
+          logoUrl: org.logo_url || '',
+          industry: org.industry || '',
+          locationId: null,
+        } : null,
+        error: orgId === ORG_ID ? null : 'GHL not connected for this org'
+      });
     }
 
-    // Only fall back to env vars if this is the BLOOM owner org
-    if (!apiKey || !locationId) {
-      const bloomOrgId = process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001';
-      if (!orgId || orgId === bloomOrgId) {
-        apiKey = process.env.GHL_API_KEY;
-        locationId = process.env.GHL_LOCATION_ID;
-      }
-    }
-
-    // No GHL credentials for this org — return null cleanly
-    if (!apiKey || !locationId) {
-      return res.json({ profile: null, error: null, notConnected: true });
-    }
-
+    // 5. GHL configured — fetch from API
     const ghlRes = await fetch(`https://services.leadconnectorhq.com/locations/${locationId}`, {
       headers: {
         'Authorization': `Bearer ${apiKey}`,
@@ -397,14 +399,14 @@ router.get('/business-profile', async (req, res) => {
         'Accept': 'application/json'
       }
     });
-    
+
     if (!ghlRes.ok) {
       return res.json({ profile: null, error: `GHL API ${ghlRes.status}` });
     }
-    
+
     const data = await ghlRes.json();
     const loc = data.location || data;
-    
+
     res.json({
       profile: {
         name: loc.name || '',
@@ -558,7 +560,8 @@ router.get('/health', async (req, res) => {
     });
 
     // 6. OAuth / Connectors
-    const { data: connectors } = await supabase.from('user_connectors').select('connector_slug, status').eq('organization_id', ORG_ID);
+    const _hcOrgId = await getUserOrgId(req) || ORG_ID;
+    const { data: connectors } = await supabase.from('user_connectors').select('connector_slug, status').eq('organization_id', _hcOrgId);
     const activeConns = (connectors || []).filter(c => c.status === 'active').length;
     components.push({
       name: 'Connectors',
@@ -792,7 +795,7 @@ router.get('/sub-agents', async (req, res) => {
     // Pull all agents in the org
     const { data: agents } = await supabase.from('agents')
       .select('id, name, role, status, model, specialization')
-      .eq('organization_id', ORG_ID);
+      .eq('organization_id', await getUserOrgId(req) || ORG_ID);
 
     // Count task runs per agent
     const agentList = [];
@@ -907,7 +910,7 @@ router.get('/documents', async (req, res) => {
 
     let q = sb.from('documents')
       .select('id, title, doc_type, status, tags, requires_approval, approved_by, approved_at, metadata, created_at, updated_at, agent_id')
-      .eq('org_id', ORG_ID)
+      .eq('org_id', await getUserOrgId(req) || ORG_ID)
       .order('created_at', { ascending: false })
       .limit(parseInt(limit));
 
