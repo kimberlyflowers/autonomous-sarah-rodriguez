@@ -488,7 +488,22 @@ async _failoverChat(params, failedProvider) {
 
   async _callAnthropic({ messages, system, tools, maxTokens, temperature }) {
     const client = this._getAnthropicClient();
-    const params = { model: this._currentModel, max_tokens: maxTokens, temperature, messages };
+    const params = { model: this._currentModel, max_tokens: maxTokens, messages };
+
+    // Enable extended thinking for models that support it
+    // This gives us real internal reasoning (type: 'thinking' blocks)
+    // Temperature must be 1 (or omitted) when thinking is enabled
+    const thinkingModels = ['claude-sonnet-4-6', 'claude-sonnet-4-5-20250929', 'claude-sonnet-4-20250514', 'claude-opus-4-6', 'claude-opus-4-5-20250414', 'claude-haiku-4-5-20251001'];
+    const supportsThinking = thinkingModels.some(m => this._currentModel.includes(m));
+    if (supportsThinking) {
+      params.thinking = { type: 'enabled', budget_tokens: 3000 };
+      params.temperature = 1; // Required when thinking is enabled
+      // Ensure max_tokens can fit thinking + response
+      if (params.max_tokens < 12000) params.max_tokens = 12000;
+    } else {
+      params.temperature = temperature;
+    }
+
     if (system) params.system = system;
     if (tools?.length > 0) params.tools = formatToolsAnthropic(tools);
     const response = await client.messages.create(params);

@@ -4737,9 +4737,8 @@ NEVER skip steps 3 and 4 even if step 2 fails.
     if (_extThinking) {
       appendThinking(sessionId, { type: "thinking", text: _extThinking, round });
     }
-    if (_thinkingText) {
-      appendThinking(sessionId, { type: "thinking", text: _thinkingText, round });
-    }
+    // NOTE: _thinkingText (type:text blocks) is the FINAL RESPONSE shown to user.
+    // We do NOT log it as thinking. Real thinking comes from extended thinking blocks above.
     // If no reasoning text but there are tool calls, generate readable description
     if (!_extThinking && !_thinkingText && _toolCalls.length > 0) {
       const _desc = _toolCalls.map(tc => {

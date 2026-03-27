@@ -1235,7 +1235,9 @@ function ProgressRing({pct,sz,stroke,color,bg}) {
    ═══════════════════════════════════════════════════════════════ */
 function ThinkingPanel({c, sessionId, isOpen, onClose}) {
   const [events,setEvents]=useState([]);
+  const [collapsed,setCollapsed]=useState(false);
   const scrollRef=useRef(null);
+  const lastEventTime=useRef(0);
   useEffect(()=>{
     if(!sessionId){return;}
     const es=new EventSource(`/api/chat/progress-stream?sessionId=${encodeURIComponent(sessionId)}`);
@@ -1245,31 +1247,53 @@ function ThinkingPanel({c, sessionId, isOpen, onClose}) {
         if(d.connected) return;
         if(d.thinkingEvents && Array.isArray(d.thinkingEvents)){
           setEvents(prev=>[...prev,...d.thinkingEvents]);
+          setCollapsed(false);
+          lastEventTime.current=Date.now();
         }
       }catch{}
     };
     return()=>es.close();
   },[sessionId]);
+  // Auto-collapse when no new events for 4 seconds (Sarah finished thinking)
   useEffect(()=>{
-    if(scrollRef.current) scrollRef.current.scrollTop=scrollRef.current.scrollHeight;
-  },[events]);
+    if(events.length===0) return;
+    const timer=setInterval(()=>{
+      if(lastEventTime.current>0 && Date.now()-lastEventTime.current>4000){
+        setCollapsed(true);
+      }
+    },2000);
+    return()=>clearInterval(timer);
+  },[events.length]);
+  useEffect(()=>{
+    if(scrollRef.current && !collapsed) scrollRef.current.scrollTop=scrollRef.current.scrollHeight;
+  },[events,collapsed]);
   if(!isOpen) return null;
   // Filter: only show thinking and tool_call, skip task_progress noise
   const filtered = events.filter(ev => ev.type === 'thinking' || ev.type === 'tool_call' || ev.type === 'tool_result');
   const merged = [];
   for (const ev of filtered) {
-    if (ev.type === 'thinking' && ev.text) {
-      merged.push(ev);
-    } else if (ev.type === 'tool_call') {
-      merged.push(ev);
-    } else if (ev.type === 'tool_result' && ev.result) {
-      merged.push(ev);
-    }
+    if (ev.type === 'thinking' && ev.text) merged.push(ev);
+    else if (ev.type === 'tool_call') merged.push(ev);
+    else if (ev.type === 'tool_result' && ev.result) merged.push(ev);
+  }
+  if(merged.length===0) return null;
+  // Collapsed state — just a subtle line showing Sarah finished
+  if(collapsed) {
+    return(
+      <div onClick={()=>setCollapsed(false)} style={{
+        margin:'4px 0',padding:'6px 12px',cursor:'pointer',
+        display:'flex',alignItems:'center',gap:6,
+        opacity:0.5,fontSize:11,color:c.so||'#a0a0a0',fontStyle:'italic'
+      }}>
+        <span style={{color:c.ac||'#F4A261'}}>{String.fromCodePoint(0x1F4AD)}</span>
+        Sarah's thought process ({merged.length} steps) — tap to expand
+      </div>
+    );
   }
   return(
     <div style={{
-      margin:'8px 0',
-      maxHeight:220,
+      margin:'6px 0',
+      maxHeight:150,
       backgroundColor:'transparent',
       display:'flex',flexDirection:'column',
       overflow:'hidden'
@@ -1277,71 +1301,57 @@ function ThinkingPanel({c, sessionId, isOpen, onClose}) {
       {/* Compact header */}
       <div style={{
         display:'flex',alignItems:'center',justifyContent:'space-between',
-        padding:'4px 8px',
+        padding:'2px 8px',
         flexShrink:0
       }}>
         <div style={{display:'flex',alignItems:'center',gap:6}}>
           <div style={{width:6,height:6,borderRadius:'50%',
-            backgroundColor:merged.length>0?(c.gr||'#34A853'):(c.fa||'#5c5c5c'),
-            animation:merged.length>0?'pulse 1.5s infinite':'none'
+            backgroundColor:c.ac||'#F4A261',
+            animation:'pulse 1.5s infinite'
           }}/>
           <span style={{fontSize:11,fontWeight:500,color:c.so||'#a0a0a0',fontStyle:'italic'}}>
             Sarah is thinking...
           </span>
         </div>
-        <button onClick={onClose} style={{
+        <button onClick={()=>setCollapsed(true)} style={{
           background:'none',border:'none',color:c.so||'#a0a0a0',
           cursor:'pointer',fontSize:14,padding:'0 4px',lineHeight:1
         }}>×</button>
       </div>
       {/* Conversational thought stream */}
       <div ref={scrollRef} style={{
-        flex:1,overflowY:'auto',padding:'4px 12px',
-        fontSize:12,lineHeight:1.5
+        flex:1,overflowY:'auto',padding:'2px 12px',
+        fontSize:12,lineHeight:1.4
       }}>
-        {merged.length===0 ? (
-          <div style={{color:c.fa||'#5c5c5c',padding:'8px 0',fontSize:12,fontStyle:'italic'}}>
-            Waiting for Sarah to start thinking...
-          </div>
-        ) : merged.map((ev,i)=>{
+        {merged.map((ev,i)=>{
           if(ev.type==='thinking' && ev.text) {
             return (
               <div key={i} style={{
                 color:c.so||'#a0a0a0',
-                padding:'3px 0',
+                padding:'2px 0',
                 fontStyle:'italic',
                 fontSize:12,
-                lineHeight:1.5,
+                lineHeight:1.4,
                 borderLeft:'2px solid '+(c.ln||'#353535'),
                 paddingLeft:10,
-                marginBottom:4
+                marginBottom:3
               }}>
-                {ev.text.length>300?ev.text.slice(0,300)+'...':ev.text}
+                {ev.text.length>250?ev.text.slice(0,250)+'...':ev.text}
               </div>
             );
           }
           if(ev.type==='tool_call') {
             const name = (ev.name||'unknown').replace(/_/g,' ');
             return (
-              <div key={i} style={{
-                color:c.ac||'#F4A261',
-                padding:'2px 0',
-                fontSize:11,
-                opacity:0.7
-              }}>
-                {'🔧'} {name}
+              <div key={i} style={{color:c.ac||'#F4A261',padding:'1px 0',fontSize:11,opacity:0.6}}>
+                {String.fromCodePoint(0x1F527)} {name}
               </div>
             );
           }
           if(ev.type==='tool_result') {
             return (
-              <div key={i} style={{
-                color:ev.success===false?(c.err||'#ea4335'):(c.gr||'#34A853'),
-                padding:'2px 0',
-                fontSize:11,
-                opacity:0.7
-              }}>
-                {ev.success===false?'❌':'✅'} {(ev.result||'done').slice(0,100)}
+              <div key={i} style={{color:ev.success===false?(c.err||'#ea4335'):(c.gr||'#34A853'),padding:'1px 0',fontSize:11,opacity:0.6}}>
+                {ev.success===false?String.fromCodePoint(0x274C):String.fromCodePoint(0x2705)} {(ev.result||'done').slice(0,80)}
               </div>
             );
           }
