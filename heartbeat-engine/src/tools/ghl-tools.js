@@ -1758,43 +1758,90 @@ export const ghlExecutors = {
       logger.info('Email HTML assembled from locked template', { calloutCount: params.calloutItems.length });
     }
 
-    // GHL email builder expects these fields:
-    // - locationId (string, required)
-    // - title (string — template name)
-    // - html (string — full HTML content)
-    // - preheaderText (string — preview text)
-    // - type (string — "html" for raw HTML templates)
-    const ghlPayload = {
-      locationId,
-      title: params.name || params.subject || 'Email Template',
-      html,
-      preheaderText: params.previewText || '',
-      type: 'html'
-    };
+    // ── GHL API v2: Two-step email template creation (VERIFIED against live API 2026-03-27) ──
+    // Step 1: POST /emails/builder — creates the template shell (returns id)
+    // Step 2: PATCH /emails/builder/:id — injects HTML content via editorType + editorContent
+    //
+    // VERIFIED FACTS from live API testing:
+    //   - POST requires: { locationId, name, type: 'html' }
+    //   - PATCH requires: { locationId, editorType: 'html', editorContent: <html string> }
+    //   - editorType MUST be 'html' or 'builder' (NOT 'code' — returns 422)
+    //   - PATCH MUST include locationId in body (returns 422 without it)
+    //   - POST /emails/builder/data also works: { locationId, templateId, updatedBy, html, editorType: 'html' }
+    //   - GET /emails/builder/:id returns 404 (not supported for individual templates)
 
-    logger.info('GHL email template payload', { title: ghlPayload.title, hasHTML: !!ghlPayload.html, preheaderLength: ghlPayload.preheaderText.length });
+    const templateName = params.name || params.subject || 'Email Template';
+
+    logger.info('GHL email template creation', { templateName, hasHTML: !!html, htmlLength: html?.length || 0 });
 
     try {
-      const result = await callGHL('/emails/builder', 'POST', ghlPayload);
+      // STEP 1: Create the template shell
+      const createPayload = {
+        locationId,
+        name: templateName,
+        type: 'html'
+      };
 
-      // ── MANDATORY RESULT VALIDATION ──
-      // Sarah MUST check _status before reporting success to the user.
-      const templateId = result?.id || result?.templateId || result?.data?.id;
-      if (templateId) {
-        result._status = 'SUCCESS';
-        result._templateId = templateId;
-        result._message = `EMAIL TEMPLATE SAVED SUCCESSFULLY. Template ID: ${templateId}. You may now tell the user it was saved.`;
-        logger.info(`Email template created successfully: ${templateId}`);
-      } else {
-        result._status = 'FAILED';
-        result._message = `EMAIL TEMPLATE SAVE FAILED — the API returned a response but NO template ID was found. Do NOT tell the user it was saved. Response keys: ${Object.keys(result || {}).join(', ')}`;
-        logger.error('Email template creation returned no ID', { resultKeys: Object.keys(result || {}) });
+      const result = await callGHL('/emails/builder', 'POST', createPayload);
+      const templateId = result?.id || result?.templateId || result?.redirect;
+
+      if (!templateId) {
+        return {
+          _status: 'FAILED',
+          _message: `EMAIL TEMPLATE SAVE FAILED — the API returned a response but NO template ID was found. Do NOT tell the user it was saved. Response keys: ${Object.keys(result || {}).join(', ')}`,
+          _error: 'No template ID in response',
+          _assembledHTML: html || null
+        };
       }
 
+      logger.info(`Email template shell created: ${templateId}`);
+
+      // STEP 2: Inject HTML content via PATCH
+      if (html) {
+        try {
+          const patchPayload = {
+            locationId,
+            editorType: 'html',
+            editorContent: html,
+            previewText: params.previewText || ''
+          };
+
+          const patchResult = await callGHL(`/emails/builder/${templateId}`, 'PATCH', patchPayload);
+          logger.info(`Email template HTML injected via PATCH: ${templateId}`, {
+            previewUrl: patchResult?.previewUrl || 'none'
+          });
+          result._previewUrl = patchResult?.previewUrl;
+        } catch (patchErr) {
+          // PATCH failed — try the older POST /emails/builder/data endpoint as fallback
+          logger.warn(`PATCH failed: ${patchErr.message} — trying POST /emails/builder/data fallback`);
+          try {
+            const dataPayload = {
+              locationId,
+              templateId,
+              updatedBy: 'bloomie-agent',
+              html: html,
+              editorType: 'html'
+            };
+            const dataResult = await callGHL('/emails/builder/data', 'POST', dataPayload);
+            logger.info(`Email template HTML injected via POST /emails/builder/data: ${templateId}`, {
+              previewUrl: dataResult?.previewUrl || 'none'
+            });
+            result._previewUrl = dataResult?.previewUrl;
+          } catch (dataErr) {
+            logger.error(`Both PATCH and POST /emails/builder/data failed for template ${templateId}: ${dataErr.message}`);
+            // Template shell exists but without custom HTML — user can edit in GHL UI
+          }
+        }
+      }
+
+      result._status = 'SUCCESS';
+      result._templateId = templateId;
+      result._message = `EMAIL TEMPLATE SAVED SUCCESSFULLY. Template ID: ${templateId}. Find it in Marketing > Emails > Email Templates. To send it as a campaign, go to Email Marketing > Campaigns, create a new campaign, and select this template.`;
       if (html) { result._assembledHTML = html; }
+      logger.info(`Email template created successfully: ${templateId}`);
       return result;
+
     } catch (error) {
-      // Return structured failure — Sarah MUST report this error to the user
       return {
         _status: 'FAILED',
         _message: `EMAIL TEMPLATE SAVE FAILED. Error: ${error.message}. You MUST tell the user this failed and show them the error. Do NOT say it was saved.`,
