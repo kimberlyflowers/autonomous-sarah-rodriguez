@@ -338,10 +338,56 @@ router.get('/user-avatar', async (req, res) => {
 // GHL Business Profile Sync — pulls location data from GoHighLevel
 router.get('/business-profile', async (req, res) => {
   try {
-    const apiKey = process.env.GHL_API_KEY;
-    const locationId = process.env.GHL_LOCATION_ID;
+    // Multi-tenant: resolve org from JWT, look up their GHL credentials
+    const { createClient } = await import('@supabase/supabase-js');
+    const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const orgId = await getUserOrgId(req);
+
+    // Look up GHL connector credentials for this specific org
+    let apiKey = null;
+    let locationId = null;
+
+    if (orgId) {
+      // Check user_connectors for org-specific GHL OAuth token
+      const { data: ghlConn } = await sb
+        .from('user_connectors')
+        .select('access_token, external_account_id, api_key')
+        .eq('organization_id', orgId)
+        .eq('status', 'active')
+        .in('connector_id', sb.from('connectors').select('id').eq('slug', 'ghl'))
+        .maybeSingle()
+        .catch(() => ({ data: null }));
+
+      if (ghlConn) {
+        apiKey = ghlConn.access_token || ghlConn.api_key;
+        locationId = ghlConn.external_account_id;
+      }
+
+      // Fall back to org_config stored GHL settings
+      if (!apiKey || !locationId) {
+        const { data: cfg } = await sb
+          .from('org_config')
+          .select('feature_flags')
+          .eq('organization_id', orgId)
+          .maybeSingle();
+        const flags = cfg?.feature_flags || {};
+        if (flags.ghlApiKey) apiKey = flags.ghlApiKey;
+        if (flags.ghlLocationId) locationId = flags.ghlLocationId;
+      }
+    }
+
+    // Only fall back to env vars if this is the BLOOM owner org
     if (!apiKey || !locationId) {
-      return res.json({ profile: null, error: 'GHL not configured' });
+      const bloomOrgId = process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001';
+      if (!orgId || orgId === bloomOrgId) {
+        apiKey = process.env.GHL_API_KEY;
+        locationId = process.env.GHL_LOCATION_ID;
+      }
+    }
+
+    // No GHL credentials for this org — return null cleanly
+    if (!apiKey || !locationId) {
+      return res.json({ profile: null, error: null, notConnected: true });
     }
 
     const ghlRes = await fetch(`https://services.leadconnectorhq.com/locations/${locationId}`, {
