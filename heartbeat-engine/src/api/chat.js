@@ -1199,6 +1199,30 @@ const _ALL_TOOLS = [
     }
   },
   {
+    name: "ghl_update_email_template",
+    description: "Update an existing email template in the CRM. Use this when the user asks to edit, fix, or change an email template that was already created. You can update the HTML content, subject, preview text, or rebuild from structured fields. You MUST provide the templateId of the template to update. The templateId is returned from ghl_create_email_template as _templateId.",
+    input_schema: {
+      type: "object",
+      properties: {
+        templateId: { type: "string", description: "The GHL template ID to update (returned from ghl_create_email_template as _templateId)" },
+        html: { type: "string", description: "Full replacement HTML for the template. Use this for raw HTML updates (e.g. link changes, text edits)." },
+        subject: { type: "string", description: "Updated email subject line" },
+        previewText: { type: "string", description: "Updated preview text" },
+        headline: { type: "string", description: "If rebuilding from structured data: updated headline" },
+        openingHook: { type: "string", description: "If rebuilding: updated opening paragraph" },
+        calloutHeading: { type: "string", description: "If rebuilding: updated callout heading" },
+        calloutItems: { type: "array", items: { type: "string" }, description: "If rebuilding: updated callout items" },
+        extraParagraph: { type: "string", description: "If rebuilding: updated extra paragraph" },
+        ctaButtonText: { type: "string", description: "If rebuilding: updated CTA button text" },
+        ctaButtonUrl: { type: "string", description: "If rebuilding: updated CTA button URL" },
+        ctaHeadline: { type: "string", description: "If rebuilding: updated Bloomie CTA headline" },
+        ctaBody: { type: "string", description: "If rebuilding: updated Bloomie CTA body" },
+        imageUrl: { type: "string", description: "If rebuilding: updated hero image URL" }
+      },
+      required: ["templateId"]
+    }
+  },
+  {
     name: "ghl_create_trigger_link",
     description: "Create a trigger link that fires a workflow when clicked.",
     input_schema: {
@@ -4284,10 +4308,10 @@ NEVER skip steps 3 and 4 even if step 2 fails.
         'IMPORTANT: Every website must be mobile-first HTML, include brand kit colors, have a CRM-connected form, and be saved as a published artifact.');
     }
 
-    // EMAIL — marketing emails, newsletters, campaigns
-    if (/\b(email.*campaign|newsletter|email.*blast|drip.*email|welcome.*email|marketing.*email|email.*template|send.*to.*list|announce.*blog|promote.*blog|create.*email|draft.*email)\b/i.test(_skillMsgText)) {
+    // EMAIL — marketing emails, newsletters, campaigns, AND editing existing emails
+    if (/\b(email.*campaign|newsletter|email.*blast|drip.*email|welcome.*email|marketing.*email|email.*template|send.*to.*list|announce.*blog|promote.*blog|create.*email|draft.*email|edit.*email|update.*email|change.*email|fix.*email|email.*link|email.*cta|modify.*email)\b/i.test(_skillMsgText)) {
       await _injectSkillByName('email-creator',
-        'IMPORTANT: Email creation is a TWO-STEP process. Step 1: Use ghl_create_email_template to create the template via API with structured data (name, subject, calloutItems, etc.). Step 2: IMMEDIATELY after the template is created, use bloom_browser_* tools (BLOOM Desktop) to navigate GHL in the user\'s real browser — go to Email Marketing > Campaigns, click New, select the template, and create the campaign. Do NOT use browser_task for GHL — it gets blocked. You MUST use bloom_browser_navigate, bloom_browser_click, bloom_browser_type, bloom_browser_screenshot to control the user\'s desktop browser. The GHL API cannot create campaigns — only the UI can. Do NOT skip the browser step. Do NOT create HTML artifacts for emails. Do NOT ask more than 2 clarifying questions.');
+        'IMPORTANT: Email creation is a TWO-STEP process. Step 1: Use ghl_create_email_template to create the template via API with structured data (name, subject, calloutItems, etc.). Step 2: IMMEDIATELY after the template is created, use bloom_browser_* tools (BLOOM Desktop) to navigate GHL in the user\'s real browser — go to Email Marketing > Campaigns, click New, select the template, and create the campaign. Do NOT use browser_task for GHL — it gets blocked. You MUST use bloom_browser_navigate, bloom_browser_click, bloom_browser_type, bloom_browser_screenshot to control the user\'s desktop browser. The GHL API cannot create campaigns — only the UI can. Do NOT skip the browser step. Do NOT create HTML artifacts for emails. Do NOT ask more than 2 clarifying questions. EDITING: To edit an existing email template, use ghl_update_email_template with the templateId. CRM templates CAN be edited — never tell the user they cannot be edited or that you need to recreate them.');
     }
 
     // SOCIAL MEDIA — posts, captions, content calendars
