@@ -488,24 +488,39 @@ async _failoverChat(params, failedProvider) {
 
   async _callAnthropic({ messages, system, tools, maxTokens, temperature }) {
     const client = this._getAnthropicClient();
-    const params = { model: this._currentModel, max_tokens: maxTokens, messages };
-
-    // Enable extended thinking for models that support it
-    // This gives us real internal reasoning (type: 'thinking' blocks)
-    // Temperature must be 1 (or omitted) when thinking is enabled
-    const thinkingModels = ['claude-sonnet-4-6', 'claude-sonnet-4-5-20250929', 'claude-sonnet-4-20250514', 'claude-opus-4-6', 'claude-opus-4-5-20250414', 'claude-haiku-4-5-20251001'];
-    const supportsThinking = thinkingModels.some(m => this._currentModel.includes(m));
-    if (supportsThinking) {
-      params.thinking = { type: 'enabled', budget_tokens: 3000 };
-      params.temperature = 1; // Required when thinking is enabled
-      // Ensure max_tokens can fit thinking + response
-      if (params.max_tokens < 12000) params.max_tokens = 12000;
-    } else {
-      params.temperature = temperature;
-    }
+    const params = { model: this._currentModel, max_tokens: maxTokens, temperature, messages };
 
     if (system) params.system = system;
     if (tools?.length > 0) params.tools = formatToolsAnthropic(tools);
+
+    // Enable extended thinking for models that support it
+    const thinkingModels = ['claude-sonnet-4-6', 'claude-sonnet-4-5-20250929', 'claude-sonnet-4-20250514', 'claude-opus-4-6', 'claude-opus-4-5-20250414', 'claude-haiku-4-5-20251001'];
+    const supportsThinking = thinkingModels.some(m => this._currentModel.includes(m));
+
+    if (supportsThinking) {
+      // Try with extended thinking first
+      const thinkingParams = { ...params };
+      thinkingParams.thinking = { type: 'enabled', budget_tokens: 3000 };
+      delete thinkingParams.temperature; // Must be omitted when thinking is enabled
+      if (thinkingParams.max_tokens < 16000) thinkingParams.max_tokens = 16000;
+
+      try {
+        const response = await client.messages.create(thinkingParams);
+        return parseAnthropicResponse(response);
+      } catch (thinkErr) {
+        // Log the FULL error so we can debug
+        logger.warn('Extended thinking failed, retrying without thinking', {
+          status: thinkErr?.status,
+          message: (thinkErr?.message || '').slice(0, 500),
+          errorBody: JSON.stringify(thinkErr?.error || {}).slice(0, 500),
+          model: this._currentModel
+        });
+        // Fall back to normal call (no thinking) — don't failover to Gemini
+        const response = await client.messages.create(params);
+        return parseAnthropicResponse(response);
+      }
+    }
+
     const response = await client.messages.create(params);
     return parseAnthropicResponse(response);
   }
