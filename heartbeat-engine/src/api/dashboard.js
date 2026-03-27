@@ -338,60 +338,12 @@ router.get('/user-avatar', async (req, res) => {
 // GHL Business Profile Sync — pulls location data from GoHighLevel
 router.get('/business-profile', async (req, res) => {
   try {
-    const { createClient } = await import('@supabase/supabase-js');
-    const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-
-    // ── Multi-tenant: resolve org from JWT ──
-    const orgId = await getUserOrgId(req) || ORG_ID;
-
-    // 1. Try per-org GHL credentials from user_connectors
-    const { data: ghlConnector } = await sb
-      .from('user_connectors')
-      .select('api_key, external_account_id')
-      .eq('organization_id', orgId)
-      .eq('status', 'active')
-      .ilike('connector_id::text', '%ghl%')
-      .maybeSingle();
-
-    // 2. Try agents.config.ghlConfig for this org
-    const { data: agent } = await sb
-      .from('agents')
-      .select('config')
-      .eq('organization_id', orgId)
-      .maybeSingle();
-    const agentGhl = agent?.config?.ghlConfig;
-
-    // 3. For BLOOM org only — use env vars
-    const isBloomOrg = orgId === (process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001');
-    const apiKey = ghlConnector?.api_key || agentGhl?.apiKey || (isBloomOrg ? process.env.GHL_API_KEY : null);
-    const locationId = ghlConnector?.external_account_id || agentGhl?.locationId || (isBloomOrg ? process.env.GHL_LOCATION_ID : null);
-
-    // 4. If no GHL config — return profile from Supabase organizations table
+    const apiKey = process.env.GHL_API_KEY;
+    const locationId = process.env.GHL_LOCATION_ID;
     if (!apiKey || !locationId) {
-      const { data: org } = await sb
-        .from('organizations')
-        .select('name, industry, logo_url')
-        .eq('id', orgId)
-        .maybeSingle();
-      const { data: member } = await sb
-        .from('organization_members')
-        .select('users(email)')
-        .eq('organization_id', orgId)
-        .eq('role', 'owner')
-        .maybeSingle();
-      return res.json({
-        profile: org ? {
-          name: org.name || '',
-          email: member?.users?.email || '',
-          logoUrl: org.logo_url || '',
-          industry: org.industry || '',
-          locationId: null,
-        } : null,
-        error: orgId === ORG_ID ? null : 'GHL not connected for this org'
-      });
+      return res.json({ profile: null, error: 'GHL not configured' });
     }
 
-    // 5. GHL configured — fetch from API
     const ghlRes = await fetch(`https://services.leadconnectorhq.com/locations/${locationId}`, {
       headers: {
         'Authorization': `Bearer ${apiKey}`,
@@ -399,14 +351,14 @@ router.get('/business-profile', async (req, res) => {
         'Accept': 'application/json'
       }
     });
-
+    
     if (!ghlRes.ok) {
       return res.json({ profile: null, error: `GHL API ${ghlRes.status}` });
     }
-
+    
     const data = await ghlRes.json();
     const loc = data.location || data;
-
+    
     res.json({
       profile: {
         name: loc.name || '',
@@ -793,9 +745,10 @@ router.get('/sub-agents', async (req, res) => {
     const supabase = await getSupabase();
 
     // Pull all agents in the org
+    const _saOrgId = await getUserOrgId(req) || ORG_ID;
     const { data: agents } = await supabase.from('agents')
       .select('id, name, role, status, model, specialization')
-      .eq('organization_id', await getUserOrgId(req) || ORG_ID);
+      .eq('organization_id', _saOrgId);
 
     // Count task runs per agent
     const agentList = [];
@@ -975,7 +928,8 @@ router.patch('/documents/:id', async (req, res) => {
 router.get('/credential-registry', async (req, res) => {
   try {
     const { getRegistrySummary } = await import('../config/credential-registry.js');
-    const summary = await getRegistrySummary(ORG_ID);
+    const _crOrgId = await getUserOrgId(req) || ORG_ID;
+    const summary = await getRegistrySummary(_crOrgId);
     res.json(summary);
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -990,7 +944,8 @@ router.post('/credential-registry', async (req, res) => {
       return res.status(400).json({ error: 'siteKey, username, and password are required' });
     }
     const { upsertCredential } = await import('../config/credential-registry.js');
-    const result = await upsertCredential(ORG_ID, siteKey, { siteName, domain, loginUrl, username, password, notes });
+    const _ucOrgId = await getUserOrgId(req) || ORG_ID;
+    const result = await upsertCredential(_ucOrgId, siteKey, { siteName, domain, loginUrl, username, password, notes });
     res.json(result);
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -1001,7 +956,8 @@ router.post('/credential-registry', async (req, res) => {
 router.delete('/credential-registry/:siteKey', async (req, res) => {
   try {
     const { deleteCredential } = await import('../config/credential-registry.js');
-    const result = await deleteCredential(ORG_ID, req.params.siteKey);
+    const _dcOrgId = await getUserOrgId(req) || ORG_ID;
+    const result = await deleteCredential(_dcOrgId, req.params.siteKey);
     res.json(result);
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -1013,7 +969,8 @@ router.delete('/credential-registry/:siteKey', async (req, res) => {
 router.get('/model-config', async (req, res) => {
   try {
     const { getResolvedConfig } = await import('../config/admin-config.js');
-    const config = await getResolvedConfig(ORG_ID);
+    const _mcOrgId = await getUserOrgId(req) || ORG_ID;
+    const config = await getResolvedConfig(_mcOrgId);
     res.json({
       model: config.model,
       tier: config.tier,
