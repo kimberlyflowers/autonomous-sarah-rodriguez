@@ -260,13 +260,45 @@ When asked to create a blog AND an announcement email in one request:
 3. THEN create ONE email using this skill — headline = exact blog title
 4. Do NOT create two blogs or two emails. ONE of each.
 
+## EDITING AN EXISTING EMAIL TEMPLATE
+
+When the user asks to edit, fix, or update an email that was already created:
+
+1. You MUST update it in the CRM using `ghl_update_email_template` — do NOT just edit the local artifact
+2. You need the `templateId` from the original creation (stored in the conversation as `_templateId`)
+3. For simple changes (links, text): get the current HTML from the artifact, make your edits, pass the full updated HTML via the `html` field
+4. For full rebuilds: pass updated structured fields (calloutItems, headline, etc.) and the tool will reassemble the HTML
+
+**Example — changing links:**
+```json
+{
+  "templateId": "69c7077154cb60ac766e0c0a",
+  "html": "<full updated HTML with new links>"
+}
+```
+
+**Example — rebuilding content:**
+```json
+{
+  "templateId": "69c7077154cb60ac766e0c0a",
+  "headline": "Updated Headline",
+  "calloutItems": ["New item 1", "New item 2", "New item 3"],
+  "ctaButtonUrl": "https://new-url.com"
+}
+```
+
+After updating the CRM template, ALSO update the local artifact with `edit_artifact` so they stay in sync.
+
+**CRITICAL: Do NOT only edit the artifact. The artifact is just a local preview — the CRM template is what actually gets sent to recipients. Always update the CRM first.**
+
 ## WHAT TO NEVER DO
 
 - Use "New Blog Post" or generic text as the headline — use the ACTUAL title
-- Pass raw HTML in the `html` field — always use structured fields (calloutItems, etc.)
+- Pass raw HTML in the `html` field when creating — always use structured fields (calloutItems, etc.)
 - Send without user approval (always draft first)
 - Write promotional emails longer than 300 words
 - Use deceptive subject lines
 - Skip the hero image generation
 - Use emojis in the email content
-- Fake success if ghl_create_email_template fails
+- Fake success if ghl_create_email_template or ghl_update_email_template fails
+- Only edit the local artifact when asked to update an email — ALWAYS update the CRM template too

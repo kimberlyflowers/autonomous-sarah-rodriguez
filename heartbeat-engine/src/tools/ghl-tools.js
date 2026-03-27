@@ -1161,6 +1161,33 @@ export const ghlToolDefinitions = {
     operation: "write"
   },
 
+  ghl_update_email_template: {
+    name: "ghl_update_email_template",
+    description: "Update an existing email template in the CRM. Use this when the user asks to edit, fix, or change an email template that was already created. You can update the HTML content, subject, preview text, or rebuild from structured fields. You MUST provide the templateId of the template to update.",
+    parameters: {
+      type: "object",
+      properties: {
+        templateId: { type: "string", description: "The GHL template ID to update (returned from ghl_create_email_template as _templateId)" },
+        html: { type: "string", description: "Full replacement HTML for the template. Use this for raw HTML updates (e.g. link changes, text edits)." },
+        subject: { type: "string", description: "Updated email subject line" },
+        previewText: { type: "string", description: "Updated preview text" },
+        headline: { type: "string", description: "If rebuilding from structured data: updated headline" },
+        openingHook: { type: "string", description: "If rebuilding: updated opening paragraph" },
+        calloutHeading: { type: "string", description: "If rebuilding: updated callout heading" },
+        calloutItems: { type: "array", items: { type: "string" }, description: "If rebuilding: updated callout items" },
+        extraParagraph: { type: "string", description: "If rebuilding: updated extra paragraph" },
+        ctaButtonText: { type: "string", description: "If rebuilding: updated CTA button text" },
+        ctaButtonUrl: { type: "string", description: "If rebuilding: updated CTA button URL" },
+        ctaHeadline: { type: "string", description: "If rebuilding: updated Bloomie CTA headline" },
+        ctaBody: { type: "string", description: "If rebuilding: updated Bloomie CTA body" },
+        imageUrl: { type: "string", description: "If rebuilding: updated hero image URL" }
+      },
+      required: ["templateId"]
+    },
+    category: "email_builder",
+    operation: "write"
+  },
+
   // SOCIAL PLANNER
   ghl_list_social_posts: {
     name: "ghl_list_social_posts",
@@ -1849,6 +1876,106 @@ export const ghlExecutors = {
         _error: error.message,
         _assembledHTML: html || null
       };
+    }
+  },
+
+  // UPDATE an existing email template — PATCH /emails/builder/:templateId
+  // Verified against live GHL API: PATCH requires {locationId, editorType:'html', editorContent:<html>}
+  ghl_update_email_template: async (params) => {
+    const locationId = await resolveLocationId(params._orgId);
+    const templateId = params.templateId;
+
+    if (!templateId) {
+      return { _status: 'FAILED', _message: 'Missing templateId — you must provide the ID of the template to update.' };
+    }
+
+    // If structured fields provided, rebuild the HTML
+    let html = params.html || '';
+    if (!html && params.calloutItems && Array.isArray(params.calloutItems)) {
+      // Look up brand kit for tagline
+      let brandTagline;
+      try {
+        const { createClient } = await import('@supabase/supabase-js');
+        const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+        const orgId = params._orgId || process.env.BLOOM_ORG_ID;
+        if (orgId) {
+          const { data: bkRow } = await sb.from('user_settings').select('value').eq('organization_id', orgId).eq('key', 'brand_kits').maybeSingle();
+          let kits = bkRow?.value ? (Array.isArray(bkRow.value) ? bkRow.value : [bkRow.value]) : [];
+          const bk = kits.find(k => k.active) || kits[0];
+          if (bk?.tagline) brandTagline = bk.tagline;
+        }
+      } catch(e) { /* non-critical */ }
+
+      html = assembleEmailHTML({
+        subject: params.subject,
+        headline: params.headline || params.subject,
+        heroImageUrl: params.imageUrl,
+        openingHook: params.openingHook,
+        calloutHeading: params.calloutHeading,
+        calloutItems: params.calloutItems,
+        extraParagraph: params.extraParagraph,
+        ctaButtonText: params.ctaButtonText,
+        ctaButtonUrl: params.ctaButtonUrl,
+        ctaHeadline: params.ctaHeadline,
+        ctaBody: params.ctaBody,
+        tagline: brandTagline
+      });
+    }
+
+    if (!html) {
+      return { _status: 'FAILED', _message: 'No content to update. Provide either html (raw HTML) or structured fields (calloutItems, headline, etc.) to rebuild the template.' };
+    }
+
+    logger.info(`Updating email template ${templateId}`, { htmlLength: html.length });
+
+    try {
+      // PATCH /emails/builder/:templateId — verified working with {locationId, editorType:'html', editorContent}
+      const patchPayload = {
+        locationId,
+        editorType: 'html',
+        editorContent: html,
+        previewText: params.previewText || ''
+      };
+
+      const result = await callGHL(`/emails/builder/${templateId}`, 'PATCH', patchPayload);
+      logger.info(`Email template updated: ${templateId}`, { previewUrl: result?.previewUrl || 'none' });
+
+      return {
+        ...result,
+        _status: 'SUCCESS',
+        _templateId: templateId,
+        _previewUrl: result?.previewUrl,
+        _message: `EMAIL TEMPLATE UPDATED SUCCESSFULLY. Template ID: ${templateId}. The changes are now live in the CRM. If this template is already used in a campaign, the campaign will use the updated content.`,
+        _assembledHTML: html
+      };
+    } catch (patchErr) {
+      // Try POST /emails/builder/data as fallback
+      logger.warn(`PATCH update failed: ${patchErr.message} — trying POST /emails/builder/data`);
+      try {
+        const dataPayload = {
+          locationId,
+          templateId,
+          updatedBy: 'bloomie-agent',
+          html: html,
+          editorType: 'html'
+        };
+        const result = await callGHL('/emails/builder/data', 'POST', dataPayload);
+        logger.info(`Email template updated via POST /emails/builder/data: ${templateId}`);
+        return {
+          ...result,
+          _status: 'SUCCESS',
+          _templateId: templateId,
+          _previewUrl: result?.previewUrl,
+          _message: `EMAIL TEMPLATE UPDATED SUCCESSFULLY. Template ID: ${templateId}. The changes are now live in the CRM.`,
+          _assembledHTML: html
+        };
+      } catch (dataErr) {
+        return {
+          _status: 'FAILED',
+          _message: `EMAIL TEMPLATE UPDATE FAILED. Error: ${dataErr.message}. Template ID: ${templateId}. The original template is unchanged.`,
+          _error: dataErr.message
+        };
+      }
     }
   },
 
