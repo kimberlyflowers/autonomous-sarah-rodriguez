@@ -5970,6 +5970,114 @@ router.get('/progress-stream', (req, res) => {
   });
 });
 
+// ── THINKING DIAGNOSTIC ──────────────────────────────────────────────────
+// GET /api/chat/thinking-diagnostic — test whether the current LLM returns thinking blocks
+router.get('/thinking-diagnostic', async (req, res) => {
+  try {
+    const provider = process.env.GEMINI_API_KEY ? 'gemini' : 'unknown';
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) return res.json({ error: 'No GEMINI_API_KEY set' });
+
+    const model = 'gemini-2.5-flash';
+    const baseUrl = 'https://generativelanguage.googleapis.com/v1beta/openai';
+    const url = `${baseUrl}/chat/completions`;
+    const prompt = 'What is 17 * 23? Think step by step.';
+
+    // Test 1: WITH thinking params
+    const bodyWithThinking = {
+      model,
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 2000,
+      temperature: 0.7,
+      google: {
+        thinking_config: {
+          include_thoughts: true,
+          thinking_budget: 1024
+        }
+      }
+    };
+
+    let withThinkingResult;
+    try {
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        body: JSON.stringify(bodyWithThinking),
+      });
+      const status = resp.status;
+      const text = await resp.text();
+      let parsed;
+      try { parsed = JSON.parse(text); } catch { parsed = text; }
+      withThinkingResult = {
+        status,
+        ok: resp.ok,
+        messageFields: parsed?.choices?.[0]?.message ? Object.keys(parsed.choices[0].message) : [],
+        messagePreview: parsed?.choices?.[0]?.message
+          ? Object.fromEntries(
+              Object.entries(parsed.choices[0].message).map(([k, v]) => [
+                k,
+                typeof v === 'string' ? v.slice(0, 300) : JSON.stringify(v).slice(0, 300)
+              ])
+            )
+          : null,
+        rawPreview: typeof parsed === 'string' ? parsed.slice(0, 500) : JSON.stringify(parsed).slice(0, 1000),
+      };
+    } catch (err) {
+      withThinkingResult = { error: err.message };
+    }
+
+    // Test 2: WITHOUT thinking params (baseline)
+    const bodyPlain = {
+      model,
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 2000,
+      temperature: 0.7,
+    };
+
+    let plainResult;
+    try {
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        body: JSON.stringify(bodyPlain),
+      });
+      const status = resp.status;
+      const text = await resp.text();
+      let parsed;
+      try { parsed = JSON.parse(text); } catch { parsed = text; }
+      plainResult = {
+        status,
+        ok: resp.ok,
+        messageFields: parsed?.choices?.[0]?.message ? Object.keys(parsed.choices[0].message) : [],
+        messagePreview: parsed?.choices?.[0]?.message
+          ? Object.fromEntries(
+              Object.entries(parsed.choices[0].message).map(([k, v]) => [
+                k,
+                typeof v === 'string' ? v.slice(0, 300) : JSON.stringify(v).slice(0, 300)
+              ])
+            )
+          : null,
+      };
+    } catch (err) {
+      plainResult = { error: err.message };
+    }
+
+    res.json({
+      provider,
+      model,
+      withThinkingParams: withThinkingResult,
+      withoutThinkingParams: plainResult,
+      diagnosis: withThinkingResult.ok
+        ? (withThinkingResult.messageFields.some(f => ['thought', 'thoughts', 'reasoning_content', 'reasoning', 'thinking'].includes(f))
+            ? 'THINKING WORKS — found thinking fields in response'
+            : 'THINKING PARAMS ACCEPTED but no thinking fields in response — thoughts may be in content or unsupported')
+        : `THINKING PARAMS REJECTED with status ${withThinkingResult.status}`,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── MODEL SWITCHING ──────────────────────────────────────────────────────
 
 // GET /api/chat/models — list available models (org-aware)
