@@ -81,7 +81,7 @@ function useW() {
    ═══════════════════════════════════════════════════════════════ */
 function Face({sz,agent,onClick,style:extraStyle}) {
   const s=sz||30;
-  const ag=agent||{nm:"Sarah",img:null,grad:"linear-gradient(135deg,#F4A261,#E76F8B)"};
+  const ag=agent||{nm:"Agent",img:null,grad:"linear-gradient(135deg,#F4A261,#E76F8B)"};
   if(ag.img) return(
     <div onClick={onClick} style={{width:s,height:s,flexShrink:0,...(extraStyle||{})}}>
       <div style={{width:s,height:s,borderRadius:s*0.3,overflow:"hidden",boxShadow:"0 2px 8px rgba(0,0,0,.12)"}}>
@@ -342,7 +342,7 @@ function useSarahChat() {
     // Casual chat: "Thinking..." with dots (NOT bare dots)
     const startTime = Date.now();
     let progressInterval = null;
-    const fn=(currentAgent?.name||"Sarah").split(" ")[0];
+    const fn=(currentAgent?.name||"Agent").split(" ")[0];
     if(isWorkTask){
       setWorkingStatus(`Sending to ${fn}...`);
       progressInterval = setInterval(()=>{
@@ -903,7 +903,7 @@ function ActionLog({c,sse}) {
 }
 
 // ── INTERNAL TASKS
-function InternalTasks({c,sse,aFN="Sarah"}) {
+function InternalTasks({c,sse,aFN="Agent"}) {
   const [tasks,setTasks] = useState([]);
   useEffect(()=>{
     const go=async()=>{ try{ const _hh=await getAuthHeaders();const r=await fetch("/api/dashboard/internal-tasks",{headers:_hh}); if(r.ok){ const d=await r.json(); setTasks(d.tasks||d||[]); } }catch{} };
@@ -1105,7 +1105,7 @@ function ResizablePanel({c,defaultWidth,minWidth,maxWidth,children}) {
 
 
 // ── SCREEN VIEWER — live feed from Sarah's browser via SSE
-function Screen({c,mob,mode,setMode,aFN="Sarah"}) {
+function Screen({c,mob,mode,setMode,aFN="Agent"}) {
   const [screenshot,setScreenshot] = useState(null);
   const [browserUrl,setBrowserUrl] = useState(null);
   const [live,setLive] = useState(false);
@@ -1563,7 +1563,7 @@ function ImageLightbox({src, alt, onClose}) {
   );
 }
 
-function SessionFilesPanel({c, sessionId, setActiveArtifact, aFN="Sarah"}){
+function SessionFilesPanel({c, sessionId, setActiveArtifact, aFN="Agent"}){
   const [lightbox,setLightbox]=useState(null);
   const [files,setFiles]=useState([]);
   const [uploads,setUploads]=useState([]);
@@ -2052,7 +2052,7 @@ function BillingUsageBar({icon,label,used,limit,rate,unit,c}){
 
 // ── SKILLS PAGE — Train your Bloomie ────────────────────────────────────────
 // ── CALLS PAGE — Phone transcript viewer ────────────────────────────────────
-function CallsPage({c,mob,aFN="Sarah"}){
+function CallsPage({c,mob,aFN="Agent"}){
   const [calls,setCalls]=useState([]);
   const [loading,setLoading]=useState(true);
   const [expanded,setExpanded]=useState(null);
@@ -2124,7 +2124,7 @@ function CallsPage({c,mob,aFN="Sarah"}){
   );
 }
 
-function SkillsPage({c,mob,aFN="Sarah"}){
+function SkillsPage({c,mob,aFN="Agent"}){
   const [skills,setSkills]=useState([]);
   const [bloomSkills,setBloomSkills]=useState([]);
   const [loading,setLoading]=useState(true);
@@ -2600,7 +2600,7 @@ function BusinessProfilePage({c,mob,userImg,setUserImg,meInitial="U",aFN="Your B
   );
 }
 
-function SiteLoginsManager({c,mob,aFN="Sarah"}){
+function SiteLoginsManager({c,mob,aFN="Agent"}){
   const [sites,setSites]=useState({configured:[],available:[]});
   const [loading,setLoading]=useState(true);
   const [showAdd,setShowAdd]=useState(false);
@@ -2725,7 +2725,7 @@ function SiteLoginsManager({c,mob,aFN="Sarah"}){
   );
 }
 
-function DocsPage({c,mob,aFN="Sarah",agentId}){
+function DocsPage({c,mob,aFN="Agent",agentId}){
   const [docs,setDocs]=useState([]);
   const [loading,setLoading]=useState(true);
   const [selectedDoc,setSelectedDoc]=useState(null);
@@ -2872,7 +2872,7 @@ function DocsPage({c,mob,aFN="Sarah",agentId}){
   );
 }
 
-function BillingPage({c,mob,aFN="Sarah"}){
+function BillingPage({c,mob,aFN="Agent"}){
   const [showEstimate,setShowEstimate]=useState(false);
   const currentPlan="enterprise";
   const plan=PLANS_DATA[currentPlan];
@@ -3135,7 +3135,7 @@ function DispatchPage({c, mob, currentAgent, agentImgUrl}) {
     });
   };
 
-  const agentName = currentAgent?.name || 'Sarah Rodriguez';
+  const agentName = currentAgent?.name || 'AI Agent';
   const agentFirst = agentName.split(' ')[0];
   const agentImg = agentImgUrl || currentAgent?.avatar_url || null;
 
@@ -3902,8 +3902,8 @@ function App({ authUser }) {
   const [pendingFiles,setPendingFiles]=useState([]);
   const sbOpen=sbO==="full"||sbO==="mini";
 
-  const agent={nm:currentAgent?.name||"Sarah Rodriguez",role:currentAgent?.role||"Marketing & Operations Executive",img:agentImgUrl||currentAgent?.avatar_url||null,grad:"linear-gradient(135deg,#F4A261,#E76F8B)"};
-  const aFN=(currentAgent?.name||"Sarah").split(" ")[0]; // agent first name for dynamic UI text
+  const agent={nm:currentAgent?.name||"AI Agent",role:currentAgent?.role||"AI Employee",img:agentImgUrl||currentAgent?.avatar_url||null,grad:"linear-gradient(135deg,#F4A261,#E76F8B)"};
+  const aFN=(currentAgent?.name||"Agent").split(" ")[0]; // agent first name for dynamic UI text
   const fmtFreq=(f)=>({every_10_min:"Every 10 min",every_30_min:"Every 30 min",hourly:"Hourly",daily:"Daily",weekdays:"Weekdays",weekly:"Weekly",monthly:"Monthly"}[f]||f);
 
   useEffect(()=>{ if(btm.current) setTimeout(()=>btm.current?.scrollIntoView({behavior:"smooth"}),100); },[messages]);
@@ -6908,7 +6908,7 @@ function App({ authUser }) {
             <Bloom sz={40}/>
             <div style={{flex:1}}>
               <div style={{fontSize:16,fontWeight:700,color:"#fff"}}>Bloomie Help</div>
-              <div style={{fontSize:11,color:"rgba(255,255,255,.8)"}}>{currentAgent?.name||"Sarah Rodriguez"}</div>
+              <div style={{fontSize:11,color:"rgba(255,255,255,.8)"}}>{currentAgent?.name||"AI Agent"}</div>
             </div>
             <button onClick={()=>setHlpO(false)} style={{width:28,height:28,borderRadius:"50%",border:"1px solid rgba(255,255,255,.3)",background:"rgba(255,255,255,.15)",cursor:"pointer",color:"#fff",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
           </div>
