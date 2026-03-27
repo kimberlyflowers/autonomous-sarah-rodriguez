@@ -2156,7 +2156,7 @@ function SkillsPage({c,mob,aFN="Sarah"}){
 
   const toggleBloomSkill=async(id)=>{
     setBloomSkills(prev=>prev.map(s=>s.id===id?{...s,enabled:!s.enabled}:s));
-    try{ await fetch(`/api/skills/${id}/toggle`, await withAuth({method:'POST'}); }catch(e){}
+    try{ await fetch(`/api/skills/${id}/toggle`, await withAuth({method:'POST'})); }catch(e){}
   };
 
   const saveSkill=async()=>{
@@ -2186,7 +2186,7 @@ function SkillsPage({c,mob,aFN="Sarah"}){
 
   const deleteSkill=async(id)=>{
     setSkills(prev=>prev.filter(s=>s.id!==id));
-    try{ await fetch(`/api/skills/${id}`, await withAuth({method:'DELETE'}); }catch(e){}
+    try{ await fetch(`/api/skills/${id}`, await withAuth({method:'DELETE'})); }catch(e){}
   };
 
   const startEdit=(skill)=>{
@@ -2619,7 +2619,7 @@ function SiteLoginsManager({c,mob,aFN="Sarah"}){
       const r=await fetch("/api/dashboard/credential-registry", await withAuth({
         method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify(addForm)
-      });
+      }));
       if(r.ok){setShowAdd(false);setAddForm({siteKey:'',username:'',password:'',notes:''});await loadSites();}
     }catch{}
     setSaving(false);
@@ -4343,7 +4343,7 @@ function App({ authUser }) {
                                       method:'PATCH',
                                       headers:{'Content-Type':'application/json'},
                                       body:JSON.stringify({action:'add',sessionIds:[s.id]})
-                                    });
+                                    }));
                                     const data=await res.json();
                                     if(data.success){
                                       setOauthToast({type:'success',msg:`Added to "${selectedProj.name}"`}); setTimeout(()=>setOauthToast(null),3000);
@@ -5007,7 +5007,7 @@ function App({ authUser }) {
                               const name=parts[0];const instruction=parts[1]||parts[0];
                               const frequency=(parts[2]||'daily').toLowerCase();const runTime=parts[3]||'09:00';
                               const taskType=instruction.match(/blog|post|write|content/i)?'content':instruction.match(/email|newsletter|campaign/i)?'email':instruction.match(/crm|contact|lead/i)?'crm':instruction.match(/research|search|find/i)?'research':'custom';
-                              if(name){try{await fetch('/api/agent/tasks', await withAuth({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,instruction,taskType,frequency,runTime})});created++;}catch{}}
+                              if(name){try{await fetch('/api/agent/tasks', await withAuth({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,instruction,taskType,frequency,runTime})}));created++;}catch{}}
                             }
                             setBulkText('');setBulkImportOpen(false);loadActivity();
                           }} disabled={!bulkText.trim()} style={{padding:"10px 24px",borderRadius:8,border:"none",background:bulkText.trim()?c.gradient:"#444",cursor:bulkText.trim()?"pointer":"not-allowed",fontSize:13,fontWeight:700,color:"#fff",fontFamily:"inherit"}}>
@@ -5064,7 +5064,7 @@ function App({ authUser }) {
                             <div style={{fontSize:11,color:task.enabled?c.so:c.fa,marginTop:2}}>{task.enabled?"Active":"Paused"}</div>
                             {task.runCount>0&&<div style={{fontSize:10,color:c.fa,marginTop:1}}>{task.runCount} runs</div>}
                           </div>
-                          <button onClick={(e)=>{e.stopPropagation();if(confirm('Delete this task?')){(async()=>{await fetch(`/api/agent/tasks/${task.taskId}`, await withAuth({method:'DELETE'});loadActivity();})();}}} style={{width:28,height:28,borderRadius:6,border:"1px solid "+c.ln,background:"transparent",cursor:"pointer",color:c.fa,fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>✕</button>
+                          <button onClick={(e)=>{e.stopPropagation();if(confirm('Delete this task?')){(async()=>{await fetch(`/api/agent/tasks/${task.taskId}`, await withAuth({method:'DELETE'}));loadActivity();})();}}} style={{width:28,height:28,borderRadius:6,border:"1px solid "+c.ln,background:"transparent",cursor:"pointer",color:c.fa,fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>✕</button>
                         </div>
                       );
                     })}
@@ -5772,7 +5772,7 @@ function App({ authUser }) {
                           {f.description&&<div style={{fontSize:11,color:c.so,marginBottom:6,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.description}</div>}
                           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                             <span style={{fontSize:10,color:c.fa}}>{sizeStr} · {date||'Just now'}</span>
-                            <button onClick={async()=>{if(confirm('Remove?')){await fetch(`/api/files/artifacts/${f.fileId}`, await withAuth({method:'DELETE'});setFiles(p=>p.filter(x=>x.fileId!==f.fileId));}}} style={{width:22,height:22,borderRadius:6,border:'1px solid rgba(234,67,53,0.25)',background:'transparent',cursor:'pointer',fontSize:12,color:'#ea4335',display:'flex',alignItems:'center',justifyContent:'center'}}>×</button>
+                            <button onClick={async()=>{if(confirm('Remove?')){await fetch(`/api/files/artifacts/${f.fileId}`, await withAuth({method:'DELETE'}));setFiles(p=>p.filter(x=>x.fileId!==f.fileId));}}} style={{width:22,height:22,borderRadius:6,border:'1px solid rgba(234,67,53,0.25)',background:'transparent',cursor:'pointer',fontSize:12,color:'#ea4335',display:'flex',alignItems:'center',justifyContent:'center'}}>×</button>
                           </div>
                           {ext==='html'&&(
                             <div style={{display:'flex',gap:6,marginTop:8}}>
