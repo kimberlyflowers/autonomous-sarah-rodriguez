@@ -1563,7 +1563,7 @@ function SessionFilesPanel({c, sessionId, setActiveArtifact, aFN="Sarah"}){
   const [uploads,setUploads]=useState([]);
   const [loading,setLoading]=useState(true);
 
-  const fetchAll = ()=>{
+  const fetchAll = async ()=>{
     if(!sessionId) return;
     Promise.all([
       fetch(`/api/files/artifacts?sessionId=${sessionId}&limit=20`, await withAuth()).then(r=>r.json()).catch(()=>({})),
