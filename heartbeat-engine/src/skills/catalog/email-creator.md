@@ -75,66 +75,67 @@ Call `ghl_create_email_template` with STRUCTURED DATA. The tool auto-assembles t
 }
 ```
 
-### Step 3: Create Campaign from Template in GHL UI
+### Step 3: Create Campaign from Template in GHL UI (via BLOOM Desktop)
 
-The GHL API can only create templates — campaigns MUST be created through the UI. After Step 2 saves the template, you MUST use `browser_task` to open the GHL web app in your browser and create a campaign.
+The GHL API can only create templates — campaigns MUST be created through the UI. After Step 2 saves the template, you MUST use the BLOOM Desktop `bloom_browser_*` tools to navigate the user's real browser and create a campaign in GHL.
+
+**IMPORTANT:** Do NOT use `browser_task` for GHL — the cloud browser (Browserless) gets blocked by GHL's anti-bot protection. You MUST use the `bloom_browser_*` tools which control the user's actual desktop browser via BLOOM Desktop.
 
 **GHL Location URL:** `https://app.gohighlevel.com/v2/location/iGy4nrpDVU0W1jAvseL3`
 
 #### Full GHL Campaign UI Flow (source: GHL official docs)
 
-Use `browser_task` to execute these steps. Break into multiple browser_task calls if needed.
+Use `bloom_browser_*` tools to execute these steps. Take a screenshot after each action to verify the page state before proceeding.
 
-**3a. Navigate to Campaigns & Start New Campaign**
-```json
-{
-  "task": "Navigate to Email Marketing Campaigns. In the left sidebar, click 'Email Marketing' then click 'Campaigns'. Once on the Campaigns page, click the 'New' button. From the dropdown, select 'Email Marketing Templates'. This opens the template picker.",
-  "url": "https://app.gohighlevel.com/v2/location/iGy4nrpDVU0W1jAvseL3/email-marketing/campaigns",
-  "max_steps": 15
-}
-```
+**3a. Navigate to Campaigns Page**
+1. `bloom_browser_navigate` → `https://app.gohighlevel.com/v2/location/iGy4nrpDVU0W1jAvseL3/email-marketing/campaigns`
+2. `bloom_browser_screenshot` → verify you're on the Campaigns page
+3. If not logged in, stop and tell the user to log into GHL first
 
-**3b. Select the Template You Just Created**
-```json
-{
-  "task": "In the template picker, search or scroll to find the template named '[EXACT TEMPLATE NAME from Step 2]'. It should be near the top since it was just created. Click on it to preview it, then click 'Continue' to open it in the campaign email editor.",
-  "max_steps": 15
-}
-```
+**3b. Start New Campaign**
+1. `bloom_browser_click` → click the **"New"** button on the Campaigns page
+2. `bloom_browser_screenshot` → verify the dropdown appeared
+3. `bloom_browser_click` → select **"Email Marketing Templates"** from the dropdown
+4. `bloom_browser_screenshot` → verify the template picker is open
 
-**3c. Configure & Save the Campaign (or Schedule/Send)**
+**3c. Select Your Template**
+1. `bloom_browser_screenshot` → look for the template you just created by name
+2. The template named `[EXACT NAME from Step 2]` should be near the top (most recently created)
+3. `bloom_browser_click` → click on the template to select/preview it
+4. `bloom_browser_click` → click **"Continue"** to open it in the campaign editor
+5. `bloom_browser_screenshot` → verify the campaign editor loaded with your template
 
-The campaign editor opens with the template loaded. From here:
+**3d. Configure Campaign Settings**
+1. `bloom_browser_click` → click **"Send or Schedule"** button in the top menu
+2. `bloom_browser_screenshot` → verify the Send/Schedule configuration screen
+3. Fill in the fields using `bloom_browser_click` and `bloom_browser_type`:
+   - **Subject Line** → type the email subject from Step 2
+   - **Preview Text** → type the previewText from Step 2
+   - **Sender Name** → use org default or "BLOOM Consulting Group"
+   - **Sender Email** → use the org default configured email
+   - **Recipients** → click to select the target smart list, tag, or "All Contacts"
+4. `bloom_browser_screenshot` → verify all fields are filled
 
-- Click **Preview** in the top menu to verify the email looks correct
-- Click **Send or Schedule** button to proceed to the delivery screen
+**3e. Save, Schedule, or Send**
 
-The Send/Schedule screen has these fields:
-- **Subject Line** — pre-fill with the email subject from Step 2
-- **Preview Text** — pre-fill with the previewText from Step 2
-- **Sender Name** — use the org default or "BLOOM Consulting Group"
-- **Sender Email** — use the org default configured email
-- **Recipients** — select the target smart list, tag, or "All Contacts"
-- **Link Tracking** — enable if available
-- **UTM Tracking** — enable if needed
+**If the user asked to save as draft:**
+- Click the back/close button or navigate away — GHL auto-saves the campaign
+- Do NOT click Send or Schedule
 
-**If the user asked to save as draft:** Click the back/close button or navigate away after saving — GHL auto-saves the campaign. Do NOT click Send or Schedule.
+**If the user asked to schedule:**
+- Set the date and time in the schedule fields
+- `bloom_browser_click` → click **"Schedule"**
+- `bloom_browser_screenshot` → verify confirmation
 
-**If the user asked to schedule:** Set the date and time, configure all fields above, then click **Schedule**.
+**If the user asked to send now:**
+- `bloom_browser_click` → click **"Confirm & Send"**
+- A validation checklist may appear — resolve any missing fields before confirming
+- `bloom_browser_screenshot` → verify the campaign was sent
 
-**If the user asked to send now:** Configure all fields above, then click **Confirm & Send**.
-
-```json
-{
-  "task": "In the campaign editor, click 'Send or Schedule' button. Fill in: Subject Line = '[email subject]', Preview Text = '[preview text]'. For Sender Name use the default. For Recipients, select 'All Contacts' (or the list the user specified). Then [DRAFT: click back/close to save as draft | SCHEDULE: set date/time and click Schedule | SEND: click Confirm & Send]. A validation checklist will appear — resolve any missing fields before confirming.",
-  "max_steps": 30
-}
-```
-
-#### If browser_task fails
-If the browser cannot access GHL (not logged in, session expired, sidecar down), tell the user:
-"I created the email template '[template name]' successfully. I wasn't able to access the GHL app to create the campaign automatically. Here's what to do:
-1. Go to Marketing > Emails > Campaigns
+#### If BLOOM Desktop is not connected
+If `bloom_browser_*` tools fail (desktop app not running), tell the user:
+"I created the email template '[template name]' successfully. To turn it into a campaign, I need the BLOOM Desktop app running on your computer. Please open it, or you can create the campaign manually:
+1. Go to Marketing > Emails > Campaigns in GHL
 2. Click New > Email Marketing Templates
 3. Select the template named '[template name]'
 4. Click Continue, then Send or Schedule
@@ -150,7 +151,7 @@ Send the user a message with:
 - A brief summary (1-2 sentences)
 - Whether the campaign was created, scheduled, or saved as draft in GHL
 - If draft: "Your email campaign is saved in Email Marketing > Campaigns. Review and send when ready."
-- If scheduled: "Your email campaign is scheduled for [date/time]. You can reschedule up to 1 hour before send time."
+- If scheduled: "Your email campaign is scheduled for [date/time]."
 - If sent: "Your email campaign has been sent to [recipient count/list]."
 
 If ghl_create_email_template FAILS, report the exact error to the user. Do NOT pretend it worked.

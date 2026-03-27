@@ -1837,7 +1837,7 @@ export const ghlExecutors = {
       result._status = 'SUCCESS';
       result._templateId = templateId;
       result._templateName = templateName;
-      result._message = `EMAIL TEMPLATE SAVED SUCCESSFULLY. Template ID: ${templateId}. Template name: "${templateName}". NEXT STEP: You MUST now use browser_task to create a campaign from this template in the GHL UI. Navigate to Email Marketing > Campaigns, create a new campaign, select this template "${templateName}", and save as draft. Do NOT skip this step — the user expects a campaign, not just a template.`;
+      result._message = `EMAIL TEMPLATE SAVED SUCCESSFULLY. Template ID: ${templateId}. Template name: "${templateName}". NEXT STEP: You MUST now use bloom_browser_* tools (BLOOM Desktop) to create a campaign from this template in the GHL UI. Do NOT use browser_task — GHL blocks cloud browsers. Use bloom_browser_navigate to go to https://app.gohighlevel.com/v2/location/iGy4nrpDVU0W1jAvseL3/email-marketing/campaigns, then use bloom_browser_click/bloom_browser_type/bloom_browser_screenshot to: click New > Email Marketing Templates > find and select "${templateName}" > Continue > configure and save as draft. Do NOT skip this step — the user expects a campaign, not just a template.`;
       if (html) { result._assembledHTML = html; }
       logger.info(`Email template created successfully: ${templateId}`);
       return result;
