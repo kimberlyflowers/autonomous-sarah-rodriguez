@@ -155,14 +155,26 @@ router.get('/profile', async (req, res) => {
         files:       fileCount   || 0,
         activeTasks: taskCount   || 0
       },
-      connectedTools: [
-        { name: 'GoHighLevel CRM',    connected: true,  icon: '📊', capabilities: ['Contacts', 'Conversations', 'Email', 'SMS', 'Campaigns'] },
-        { name: 'Browser & Research', connected: true,  icon: '🌐', capabilities: ['Web browsing', 'Screenshots', 'Form filling'] },
-        { name: 'File Creation',      connected: true,  icon: '📄', capabilities: ['Blog posts', 'Email copy', 'SOPs', 'Reports'] },
-        { name: 'Email & SMS',        connected: true,  icon: '✉️', capabilities: ['Send via GHL', 'Campaign management'] },
-        { name: 'Google Drive',       connected: false, icon: '📁', capabilities: ['Save files', 'Read docs'] },
-        { name: 'Social Media',       connected: false, icon: '📱', capabilities: ['Post content', 'Schedule posts'] }
-      ]
+      connectedTools: await (async () => {
+        // Dynamic: query connectors for the agent's org
+        const orgId = access.orgId;
+        const { data: allConnectors } = await supabase.from('connectors').select('id, name, slug, category').eq('active', true);
+        const { data: activeConns } = await supabase.from('user_connectors').select('connector_id').eq('organization_id', orgId).eq('status', 'active');
+        const activeIds = new Set((activeConns || []).map(c => c.connector_id));
+        const categoryIcons = { crm: '📊', social: '📱', email: '✉️', calendar: '📅', storage: '📁', productivity: '🔧', ecommerce: '🛒', custom: '⚡' };
+        // Always include built-in tools
+        const builtIn = [
+          { name: 'Browser & Research', connected: true, icon: '🌐', capabilities: ['Web browsing', 'Screenshots', 'Form filling'] },
+          { name: 'File Creation',      connected: true, icon: '📄', capabilities: ['Blog posts', 'Email copy', 'SOPs', 'Reports'] },
+        ];
+        const dynamic = (allConnectors || []).map(c => ({
+          name: c.name,
+          connected: activeIds.has(c.id),
+          icon: categoryIcons[c.category] || '🔌',
+          capabilities: []
+        }));
+        return [...builtIn, ...dynamic];
+      })()
     });
   } catch (error) {
     logger.error('Get profile error', { error: error.message });

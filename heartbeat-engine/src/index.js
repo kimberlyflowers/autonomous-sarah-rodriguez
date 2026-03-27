@@ -82,7 +82,9 @@ process.on('unhandledRejection', (error) => {
 // Active connectors for an org — used by dashboard + menu
 app.get('/api/connectors/active', async (req, res) => {
   try {
-    const { orgId } = req.query;
+    // Resolve org from JWT first, fall back to query param for backward compat
+    const { getUserOrgId } = await import('./api/org-boundary.js');
+    const orgId = await getUserOrgId(req) || req.query.orgId;
     if (!orgId) return res.json({ connectors: [] });
     const { data, error } = await supabase
       .from('user_connectors')

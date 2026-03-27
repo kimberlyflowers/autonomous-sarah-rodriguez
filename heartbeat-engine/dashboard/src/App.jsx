@@ -3615,7 +3615,7 @@ function App({ authUser }) {
       .catch(()=>{});
   };
 
-  useEffect(()=>{ loadActiveConnectors(); },[]);
+  useEffect(()=>{ loadActiveConnectors(); },[meProfile?.orgId]);
 
   useEffect(()=>{
     const params=new URLSearchParams(window.location.search);
