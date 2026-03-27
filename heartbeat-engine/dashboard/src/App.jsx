@@ -2321,8 +2321,8 @@ function BusinessProfilePage({c,mob,userImg,setUserImg,meInitial="U",aFN="Your B
 
   useEffect(()=>{
     Promise.all([
-      fetch('/api/dashboard/business-profile').then(r=>r.json()),
-      fetch('/api/dashboard/brand-kit').then(r=>r.json()).catch(()=>({kits:[],brand:null}))
+      getAuthHeaders().then(h=>fetch('/api/dashboard/business-profile',{headers:h})).then(r=>r.json()),
+      getAuthHeaders().then(h=>fetch('/api/dashboard/brand-kit',{headers:h})).then(r=>r.json()).catch(()=>({kits:[],brand:null}))
     ]).then(([bizD,brandD])=>{
       setBiz(bizD.profile);
       if(brandD.kits?.length>0){
@@ -2341,7 +2341,8 @@ function BusinessProfilePage({c,mob,userImg,setUserImg,meInitial="U",aFN="Your B
     // Mark active
     const toSave=kits.map((k,i)=>({...k,active:i===activeIdx}));
     try{
-      await fetch('/api/dashboard/brand-kit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kits:toSave})});
+      const _bkSaveH = await getAuthHeaders();
+      await fetch('/api/dashboard/brand-kit',{method:'POST',headers:{..._bkSaveH,'Content-Type':'application/json'},body:JSON.stringify({kits:toSave})});
       setKits(toSave);
       setSaved(true);setTimeout(()=>setSaved(false),2000);
     }catch{}
@@ -3822,7 +3823,7 @@ function App({ authUser }) {
   // Fallback: Load user avatar from old endpoint if /me didn't provide one
   useEffect(()=>{
     if(userImg) return; // already loaded from /me
-    fetch('/api/dashboard/user-avatar').then(r=>r.json()).then(d=>{if(d.avatar)setUserImg(d.avatar);}).catch(()=>{});
+    getAuthHeaders().then(h=>fetch('/api/dashboard/user-avatar',{headers:h})).then(r=>r.json()).then(d=>{if(d.avatar)setUserImg(d.avatar);}).catch(()=>{});
   },[]);
   // Load agent avatar when agent changes
   useEffect(()=>{
@@ -3837,7 +3838,7 @@ function App({ authUser }) {
   // Fallback: Load business profile for logo (only if /me didn't provide org info)
   useEffect(()=>{
     if(meOrgName) return; // already got org from /me
-    fetch('/api/dashboard/business-profile').then(r=>r.json()).then(d=>{
+    getAuthHeaders().then(h=>fetch('/api/dashboard/business-profile',{headers:h})).then(r=>r.json()).then(d=>{
       if(d.profile?.logoUrl)setBizLogo(d.profile.logoUrl);
       if(d.profile?.name){setBizName(d.profile.name);setActiveProj(d.profile.name);}
     }).catch(()=>{});
