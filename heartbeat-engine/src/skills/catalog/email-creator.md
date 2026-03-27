@@ -77,7 +77,7 @@ Call `ghl_create_email_template` with STRUCTURED DATA. The tool auto-assembles t
 
 ### Step 3: Create Campaign from Template in GHL UI
 
-The GHL API can only create templates — campaigns MUST be created through the UI. After Step 2 saves the template, you MUST use `browser_task` to open the GHL desktop app and create a campaign.
+The GHL API can only create templates — campaigns MUST be created through the UI. After Step 2 saves the template, you MUST use `browser_task` to open the GHL web app in your browser and create a campaign.
 
 **GHL Location URL:** `https://app.gohighlevel.com/v2/location/iGy4nrpDVU0W1jAvseL3`
 
