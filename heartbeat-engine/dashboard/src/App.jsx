@@ -12,6 +12,11 @@ async function getAuthHeaders() {
   return { "Content-Type": "application/json", "Authorization": `Bearer ${session.access_token}` };
 }
 
+async function withAuth(opts = {}) {
+  const headers = await getAuthHeaders();
+  return { ...opts, headers: { ...headers, ...(opts.headers || {}) } };
+}
+
 // Error boundary — prevents white screen crashes
 class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { hasError: false, error: null }; }
@@ -620,7 +625,7 @@ function Stat({c,label,value,accent}) {
 function SystemHealth({c,sse}) {
   const [data,setData] = useState(null);
   useEffect(()=>{
-    const go=async()=>{ try{ const _hh=await getAuthHeaders();const r=await fetch("/api/dashboard/health",{headers:_hh}); if(r.ok) setData(await r.json()); }catch{} };
+    const go=async()=>{ try{ const r=await fetch("/api/dashboard/health"); if(r.ok) setData(await r.json()); }catch{} };
     go();
     const clean=sse?.register("health",go);
     if(!clean){ const t=setInterval(go,30000); return()=>clearInterval(t); }
@@ -655,7 +660,7 @@ function SystemHealth({c,sse}) {
 function TrustGate({c,sse}) {
   const [data,setData] = useState(null);
   useEffect(()=>{
-    const go=async()=>{ try{ const _hh=await getAuthHeaders();const r=await fetch("/api/dashboard/trust-gate",{headers:_hh}); if(r.ok) setData(await r.json()); }catch{} };
+    const go=async()=>{ try{ const r=await fetch("/api/dashboard/trust-gate"); if(r.ok) setData(await r.json()); }catch{} };
     go();
     const clean=sse?.register("trust",go);
     if(!clean){ const t=setInterval(go,30000); return()=>clearInterval(t); }
@@ -705,7 +710,7 @@ function TrustGate({c,sse}) {
 function AgenticExecutions({c,sse}) {
   const [execs,setExecs] = useState([]);
   useEffect(()=>{
-    const go=async()=>{ try{ const _hh=await getAuthHeaders();const r=await fetch("/api/dashboard/agentic-executions?limit=5",{headers:_hh}); if(r.ok){ const d=await r.json(); setExecs(d.executions||d||[]); } }catch{} };
+    const go=async()=>{ try{ const r=await fetch("/api/dashboard/agentic-executions?limit=5"); if(r.ok){ const d=await r.json(); setExecs(d.executions||d||[]); } }catch{} };
     go();
     const clean=sse?.register("executions",go);
     if(!clean){ const t=setInterval(go,15000); return()=>clearInterval(t); }
@@ -740,7 +745,7 @@ function AgenticExecutions({c,sse}) {
 function SubAgents({c,sse}) {
   const [agents,setAgents] = useState([]);
   useEffect(()=>{
-    const go=async()=>{ try{ const _hh=await getAuthHeaders();const r=await fetch("/api/dashboard/sub-agents",{headers:_hh}); if(r.ok){ const d=await r.json(); setAgents(d.agents||d||[]); } }catch{} };
+    const go=async()=>{ try{ const r=await fetch("/api/dashboard/sub-agents"); if(r.ok){ const d=await r.json(); setAgents(d.agents||d||[]); } }catch{} };
     go();
     const clean=sse?.register("subagents",go);
     if(!clean){ const t=setInterval(go,30000); return()=>clearInterval(t); }
@@ -777,7 +782,7 @@ function SubAgents({c,sse}) {
 function ToolPerformance({c,sse}) {
   const [data,setData] = useState(null);
   useEffect(()=>{
-    const go=async()=>{ try{ const _hh=await getAuthHeaders();const r=await fetch("/api/dashboard/tool-performance",{headers:_hh}); if(r.ok) setData(await r.json()); }catch{} };
+    const go=async()=>{ try{ const r=await fetch("/api/dashboard/tool-performance"); if(r.ok) setData(await r.json()); }catch{} };
     go();
     const clean=sse?.register("tools",go);
     if(!clean){ const t=setInterval(go,30000); return()=>clearInterval(t); }
@@ -822,7 +827,7 @@ function ToolPerformance({c,sse}) {
 function ContextAnalytics({c,sse}) {
   const [data,setData] = useState(null);
   useEffect(()=>{
-    const go=async()=>{ try{ const _hh=await getAuthHeaders();const r=await fetch("/api/dashboard/context-analytics",{headers:_hh}); if(r.ok) setData(await r.json()); }catch{} };
+    const go=async()=>{ try{ const r=await fetch("/api/dashboard/context-analytics"); if(r.ok) setData(await r.json()); }catch{} };
     go();
     const clean=sse?.register("context",go);
     if(!clean){ const t=setInterval(go,30000); return()=>clearInterval(t); }
@@ -861,7 +866,7 @@ function ContextAnalytics({c,sse}) {
 function ActionLog({c,sse}) {
   const [actions,setActions] = useState([]);
   useEffect(()=>{
-    const go=async()=>{ try{ const _hh=await getAuthHeaders();const r=await fetch("/api/dashboard/action-log?limit=20",{headers:_hh}); if(r.ok){ const d=await r.json(); setActions(d.actions||d||[]); } }catch{} };
+    const go=async()=>{ try{ const r=await fetch("/api/dashboard/action-log?limit=20"); if(r.ok){ const d=await r.json(); setActions(d.actions||d||[]); } }catch{} };
     go();
     const clean=sse?.register("actions",go);
     if(!clean){ const t=setInterval(go,15000); return()=>clearInterval(t); }
@@ -895,7 +900,7 @@ function ActionLog({c,sse}) {
 function InternalTasks({c,sse,aFN="Sarah"}) {
   const [tasks,setTasks] = useState([]);
   useEffect(()=>{
-    const go=async()=>{ try{ const _hh=await getAuthHeaders();const r=await fetch("/api/dashboard/internal-tasks",{headers:_hh}); if(r.ok){ const d=await r.json(); setTasks(d.tasks||d||[]); } }catch{} };
+    const go=async()=>{ try{ const r=await fetch("/api/dashboard/internal-tasks"); if(r.ok){ const d=await r.json(); setTasks(d.tasks||d||[]); } }catch{} };
     go();
     const clean=sse?.register("tasks",go);
     if(!clean){ const t=setInterval(go,20000); return()=>clearInterval(t); }
@@ -931,7 +936,7 @@ function TaskRunTimeline({c, agentId}) {
     const go=async()=>{
       try{
         const qs = agentId ? `?agentId=${agentId}` : '';
-        const r=await fetch(`/api/agent/tasks/runs${qs}`);
+        const r=await fetch(`/api/agent/tasks/runs${qs}`, await withAuth());
         if(r.ok){ const d=await r.json(); setRuns((d.runs||d||[]).slice(0,24)); }
       }catch{}
     };
@@ -1006,8 +1011,8 @@ function EscalationPanel({c,sse,agentId}) {
 
   useEffect(()=>{
     const qs = agentId ? `&agentId=${agentId}` : '';
-    const fetchH=async()=>{ try{ const _hh=await getAuthHeaders();const r=await fetch(`/api/dashboard/handoff-log?limit=10${qs}`,{headers:_hh}); if(r.ok){ const d=await r.json(); setHandoffs(d.handoffs||d||[]); } }catch{} };
-    const fetchR=async()=>{ try{ const _hh=await getAuthHeaders();const r=await fetch(`/api/dashboard/rejection-log?limit=10${qs}`,{headers:_hh}); if(r.ok){ const d=await r.json(); setRejections(d.rejections||d||[]); } }catch{} };
+    const fetchH=async()=>{ try{ const r=await fetch(`/api/dashboard/handoff-log?limit=10${qs}`, await withAuth()); if(r.ok){ const d=await r.json(); setHandoffs(d.handoffs||d||[]); } }catch{} };
+    const fetchR=async()=>{ try{ const r=await fetch(`/api/dashboard/rejection-log?limit=10${qs}`, await withAuth()); if(r.ok){ const d=await r.json(); setRejections(d.rejections||d||[]); } }catch{} };
     fetchH(); fetchR();
     if(sse){
       const c1=sse.register("handoffs",fetchH);
@@ -1561,8 +1566,8 @@ function SessionFilesPanel({c, sessionId, setActiveArtifact, aFN="Sarah"}){
   const fetchAll = ()=>{
     if(!sessionId) return;
     Promise.all([
-      fetch(`/api/files/artifacts?sessionId=${sessionId}&limit=20`).then(r=>r.json()).catch(()=>({})),
-      fetch(`/api/chat/uploads/list?sessionId=${sessionId}`).then(r=>r.json()).catch(()=>({}))
+      fetch(`/api/files/artifacts?sessionId=${sessionId}&limit=20`, await withAuth()).then(r=>r.json()).catch(()=>({})),
+      fetch(`/api/chat/uploads/list?sessionId=${sessionId}`, await withAuth()).then(r=>r.json()).catch(()=>({}))
     ]).then(([artifactsData, uploadsData])=>{
       setFiles(artifactsData.artifacts||[]);
       setUploads(uploadsData.uploads||[]);
@@ -1644,7 +1649,7 @@ function SessionFilesPanel({c, sessionId, setActiveArtifact, aFN="Sarah"}){
                 return;
               }
               try{
-                const pr=await fetch(`/api/files/preview/${f.fileId}`);
+                const pr=await fetch(`/api/files/preview/${f.fileId}`, await withAuth());
                 if(pr.headers.get('content-type')?.includes('json')){
                   const pd=await pr.json();
                   setActiveArtifact({name:f.name,content:pd.content||'',fileId:f.fileId});
@@ -1805,7 +1810,7 @@ function ArtifactPane({ art, c, onClose, onRequestChanges }) {
   // If content wasn't loaded yet, fetch it
   useEffect(() => {
     if (!art.content && art.fileId) {
-      fetch(`/api/files/preview/${art.fileId}`)
+      fetch(`/api/files/preview/${art.fileId}`, await withAuth())
         .then(r => r.json())
         .then(d => { if (d.content) setArtContent(d.content); })
         .catch(() => {});
@@ -1924,7 +1929,7 @@ function ArtifactCard({ name, c, onOpenSide, mob }) {
   useEffect(() => {
     (async () => {
       try {
-        const r = await fetch('/api/files/artifacts?limit=10');
+        const r = await fetch('/api/files/artifacts?limit=10', await withAuth());
         const d = await r.json();
         const match = name === '__latest__'
           ? d.artifacts?.[0]
@@ -1937,7 +1942,7 @@ function ArtifactCard({ name, c, onOpenSide, mob }) {
   const handleClick = async () => {
     if (!artData?.fileId) return;
     try {
-      const pr = await fetch(`/api/files/preview/${artData.fileId}`);
+      const pr = await fetch(`/api/files/preview/${artData.fileId}`, await withAuth());
       let content = 'Preview not available';
       if (pr.headers.get('content-type')?.includes('json')) {
         const pd = await pr.json();
@@ -2047,7 +2052,7 @@ function CallsPage({c,mob,aFN="Sarah"}){
   const [expanded,setExpanded]=useState(null);
 
   useEffect(()=>{
-    fetch('/api/chat/calls').then(r=>r.json()).then(d=>{setCalls(d.calls||[]);setLoading(false);}).catch(()=>setLoading(false));
+    fetch('/api/chat/calls', await withAuth()).then(r=>r.json()).then(d=>{setCalls(d.calls||[]);setLoading(false);}).catch(()=>setLoading(false));
   },[]);
 
   if(loading) return <div style={{textAlign:"center",padding:40,color:c.so}}>Loading calls...</div>;
@@ -2130,7 +2135,7 @@ function SkillsPage({c,mob,aFN="Sarah"}){
   const loadSkills=async()=>{
     setLoading(true);
     try{
-      const r=await fetch('/api/skills');
+      const r=await fetch('/api/skills', await withAuth());
       const d=await r.json();
       setBloomSkills(d.bloomSkills||[]);
       setSkills(d.companySkills||[]);
@@ -2151,7 +2156,7 @@ function SkillsPage({c,mob,aFN="Sarah"}){
 
   const toggleBloomSkill=async(id)=>{
     setBloomSkills(prev=>prev.map(s=>s.id===id?{...s,enabled:!s.enabled}:s));
-    try{ await fetch(`/api/skills/${id}/toggle`,{method:'POST'}); }catch(e){}
+    try{ await fetch(`/api/skills/${id}/toggle`, await withAuth({method:'POST'}); }catch(e){}
   };
 
   const saveSkill=async()=>{
@@ -2181,7 +2186,7 @@ function SkillsPage({c,mob,aFN="Sarah"}){
 
   const deleteSkill=async(id)=>{
     setSkills(prev=>prev.filter(s=>s.id!==id));
-    try{ await fetch(`/api/skills/${id}`,{method:'DELETE'}); }catch(e){}
+    try{ await fetch(`/api/skills/${id}`, await withAuth({method:'DELETE'}); }catch(e){}
   };
 
   const startEdit=(skill)=>{
@@ -2321,8 +2326,8 @@ function BusinessProfilePage({c,mob,userImg,setUserImg,meInitial="U",aFN="Your B
 
   useEffect(()=>{
     Promise.all([
-      getAuthHeaders().then(h=>fetch('/api/dashboard/business-profile',{headers:h})).then(r=>r.json()),
-      getAuthHeaders().then(h=>fetch('/api/dashboard/brand-kit',{headers:h})).then(r=>r.json()).catch(()=>({kits:[],brand:null}))
+      fetch('/api/dashboard/business-profile').then(r=>r.json()),
+      fetch('/api/dashboard/brand-kit').then(r=>r.json()).catch(()=>({kits:[],brand:null}))
     ]).then(([bizD,brandD])=>{
       setBiz(bizD.profile);
       if(brandD.kits?.length>0){
@@ -2341,7 +2346,7 @@ function BusinessProfilePage({c,mob,userImg,setUserImg,meInitial="U",aFN="Your B
     // Mark active
     const toSave=kits.map((k,i)=>({...k,active:i===activeIdx}));
     try{
-      await (async()=>{const _h=await getAuthHeaders();return fetch('/api/dashboard/brand-kit',{method:'POST',headers:{..._h,'Content-Type':'application/json'},body:JSON.stringify({kits:toSave})});})();
+      await fetch('/api/dashboard/brand-kit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kits:toSave})});
       setKits(toSave);
       setSaved(true);setTimeout(()=>setSaved(false),2000);
     }catch{}
@@ -2599,7 +2604,7 @@ function SiteLoginsManager({c,mob,aFN="Sarah"}){
 
   const loadSites=async()=>{
     try{
-      const _hh=await getAuthHeaders();const r=await fetch("/api/dashboard/credential-registry",{headers:_hh});
+      const r=await fetch("/api/dashboard/credential-registry");
       if(r.ok){const d=await r.json();setSites(d);}
     }catch{}
     setLoading(false);
@@ -2611,7 +2616,7 @@ function SiteLoginsManager({c,mob,aFN="Sarah"}){
     if(!addForm.siteKey||!addForm.username||!addForm.password)return;
     setSaving(true);
     try{
-      const _hh3=await getAuthHeaders();const r=await fetch("/api/dashboard/credential-registry",{headers:_hh3,
+      const r=await fetch("/api/dashboard/credential-registry",{
         method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify(addForm)
       });
@@ -2622,7 +2627,7 @@ function SiteLoginsManager({c,mob,aFN="Sarah"}){
 
   const removeSite=async(siteKey)=>{
     try{
-      const _hh=await getAuthHeaders();const r=await fetch(`/api/dashboard/credential-registry/${siteKey}`,{method:"DELETE",headers:_hh});
+      const r=await fetch(`/api/dashboard/credential-registry/${siteKey}`,{method:"DELETE"});
       if(r.ok)await loadSites();
     }catch{}
   };
@@ -2725,7 +2730,7 @@ function DocsPage({c,mob,aFN="Sarah",agentId}){
     const go=async()=>{
       try{
         const qs = agentId ? `?agentId=${agentId}` : '';
-        const _hh=await getAuthHeaders();const r=await fetch(`/api/dashboard/documents${qs}`,{headers:_hh});
+        const r=await fetch(`/api/dashboard/documents${qs}`, await withAuth());
         if(r.ok){const d=await r.json();setDocs(d.documents||[]);}
       }catch{}
       setLoading(false);
@@ -2735,14 +2740,14 @@ function DocsPage({c,mob,aFN="Sarah",agentId}){
 
   const openDoc=async(id)=>{
     try{
-      const _hh=await getAuthHeaders();const r=await fetch(`/api/dashboard/documents/${id}`,{headers:_hh});
+      const r=await fetch(`/api/dashboard/documents/${id}`, await withAuth());
       if(r.ok){const d=await r.json();setDocContent(d);setSelectedDoc(id);}
     }catch{}
   };
 
   const updateStatus=async(id,status)=>{
     try{
-      const _hh=await getAuthHeaders();const r=await fetch(`/api/dashboard/documents/${id}`,{method:"PATCH",headers:{..._hh,"Content-Type":"application/json"},body:JSON.stringify({status})});
+      const r=await fetch(`/api/dashboard/documents/${id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status})});
       if(r.ok){
         setDocs(prev=>prev.map(d=>d.id===id?{...d,status,approved_at:status==="approved"?new Date().toISOString():d.approved_at}:d));
         if(docContent&&docContent.id===id)setDocContent({...docContent,status});
@@ -3642,7 +3647,7 @@ function App({ authUser }) {
   useEffect(()=>{
     if(pg==="projects" && projects.length===0 && !loadingProjects){
       setLoadingProjects(true);
-      fetch('/api/projects')
+      fetch('/api/projects', await withAuth())
         .then(r=>r.json())
         .then(data=>{
           if(data.success){
@@ -3703,15 +3708,15 @@ function App({ authUser }) {
 
   // Fetch trust gate status + model config + image engine config on mount
   useEffect(()=>{
-    getAuthHeaders().then(h=>fetch("/api/dashboard/trust-gate-status",{headers:h})).then(r=>r.ok?r.json():null).then(d=>{if(d)setTgEnabled(d.enabled)}).catch(()=>{});
-    getAuthHeaders().then(h=>fetch("/api/dashboard/model-config",{headers:h})).then(r=>r.ok?r.json():null).then(d=>{if(d)setModelConfig(d)}).catch(()=>{});
-    getAuthHeaders().then(h=>fetch("/api/dashboard/image-engine-config",{headers:h})).then(r=>r.ok?r.json():null).then(d=>{if(d)setImgEngineConfig(d)}).catch(()=>{});
+    fetch("/api/dashboard/trust-gate-status").then(r=>r.ok?r.json():null).then(d=>{if(d)setTgEnabled(d.enabled)}).catch(()=>{});
+    fetch("/api/dashboard/model-config").then(r=>r.ok?r.json():null).then(d=>{if(d)setModelConfig(d)}).catch(()=>{});
+    fetch("/api/dashboard/image-engine-config").then(r=>r.ok?r.json():null).then(d=>{if(d)setImgEngineConfig(d)}).catch(()=>{});
   },[]);
 
   const toggleTrustGate=async()=>{
     setTgLoading(true);
     try{
-      const _hh=await getAuthHeaders();const r=await fetch("/api/dashboard/trust-gate-status",{method:"POST",headers:{..._hh,"Content-Type":"application/json"},body:JSON.stringify({enabled:!tgEnabled})});
+      const r=await fetch("/api/dashboard/trust-gate-status",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:!tgEnabled})});
       if(r.ok){const d=await r.json();setTgEnabled(d.enabled);}
     }catch{}
     setTgLoading(false);
@@ -3735,7 +3740,7 @@ function App({ authUser }) {
       const qs = aid ? `?agentId=${aid}` : '';
       const [pRes, tRes] = await Promise.all([
         fetch('/api/agent/profile'+qs).then(r=>r.json()),
-        fetch('/api/agent/tasks').then(r=>r.json())
+        fetch('/api/agent/tasks', await withAuth()).then(r=>r.json())
       ]);
       setProfileData(pRes);
       setScheduledTasks(tRes.tasks||[]);
@@ -3764,8 +3769,8 @@ function App({ authUser }) {
       const aid = agentId || currentAgentId || '';
       const qs = aid ? `?agentId=${aid}` : '';
       const [tRes, rRes] = await Promise.all([
-        fetch(`/api/agent/tasks${qs}`).then(r=>r.json()),
-        fetch(`/api/agent/tasks/runs${qs}`).then(r=>r.json()).catch(()=>({runs:[]}))
+        fetch(`/api/agent/tasks${qs}`, await withAuth()).then(r=>r.json()),
+        fetch(`/api/agent/tasks/runs${qs}`, await withAuth()).then(r=>r.json()).catch(()=>({runs:[]}))
       ]);
       setScheduledTasks(tRes.tasks||[]);
       setTaskRuns(rRes.runs||[]);
@@ -3785,7 +3790,7 @@ function App({ authUser }) {
     if(!isOwner)return;
     setModelSaving(true);
     try{
-      const _hh=await getAuthHeaders();const r=await fetch("/api/dashboard/model-config",{method:"PUT",headers:{..._hh,"Content-Type":"application/json"},body:JSON.stringify({model:newModel})});
+      const r=await fetch("/api/dashboard/model-config",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:newModel})});
       if(r.ok){const d=await r.json();setModelConfig(prev=>({...prev,model:d.model,reason:'dashboard override'}));}
     }catch{}
     setModelSaving(false);
@@ -3794,7 +3799,7 @@ function App({ authUser }) {
     if(!isOwner)return;
     setImgEngineSaving(true);
     try{
-      const _hh=await getAuthHeaders();const r=await fetch("/api/dashboard/image-engine-config",{method:"PUT",headers:{..._hh,"Content-Type":"application/json"},body:JSON.stringify({[contentType]:engine})});
+      const r=await fetch("/api/dashboard/image-engine-config",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({[contentType]:engine})});
       if(r.ok){const d=await r.json();setImgEngineConfig(d.config);}
     }catch{}
     setImgEngineSaving(false);
@@ -3822,7 +3827,7 @@ function App({ authUser }) {
   // Fallback: Load user avatar from old endpoint if /me didn't provide one
   useEffect(()=>{
     if(userImg) return; // already loaded from /me
-    getAuthHeaders().then(h=>fetch('/api/dashboard/user-avatar',{headers:h})).then(r=>r.json()).then(d=>{if(d.avatar)setUserImg(d.avatar);}).catch(()=>{});
+    fetch('/api/dashboard/user-avatar').then(r=>r.json()).then(d=>{if(d.avatar)setUserImg(d.avatar);}).catch(()=>{});
   },[]);
   // Load agent avatar when agent changes
   useEffect(()=>{
@@ -3837,7 +3842,7 @@ function App({ authUser }) {
   // Fallback: Load business profile for logo (only if /me didn't provide org info)
   useEffect(()=>{
     if(meOrgName) return; // already got org from /me
-    getAuthHeaders().then(h=>fetch('/api/dashboard/business-profile',{headers:h})).then(r=>r.json()).then(d=>{
+    fetch('/api/dashboard/business-profile').then(r=>r.json()).then(d=>{
       if(d.profile?.logoUrl)setBizLogo(d.profile.logoUrl);
       if(d.profile?.name){setBizName(d.profile.name);setActiveProj(d.profile.name);}
     }).catch(()=>{});
@@ -4934,7 +4939,7 @@ function App({ authUser }) {
                         </div>
                         <button onClick={async()=>{
                           if(!newTask.name||!newTask.instruction) return;
-                          await fetch('/api/agent/tasks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(newTask)});
+                          await fetch('/api/agent/tasks', await withAuth({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(newTask)});
                           setNewTask({name:'',instruction:'',taskType:'content',frequency:'daily',runTime:'09:00'});
                           setTaskFormOpen(false);
                           loadActivity();
@@ -5002,7 +5007,7 @@ function App({ authUser }) {
                               const name=parts[0];const instruction=parts[1]||parts[0];
                               const frequency=(parts[2]||'daily').toLowerCase();const runTime=parts[3]||'09:00';
                               const taskType=instruction.match(/blog|post|write|content/i)?'content':instruction.match(/email|newsletter|campaign/i)?'email':instruction.match(/crm|contact|lead/i)?'crm':instruction.match(/research|search|find/i)?'research':'custom';
-                              if(name){try{await fetch('/api/agent/tasks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,instruction,taskType,frequency,runTime})});created++;}catch{}}
+                              if(name){try{await fetch('/api/agent/tasks', await withAuth({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,instruction,taskType,frequency,runTime})});created++;}catch{}}
                             }
                             setBulkText('');setBulkImportOpen(false);loadActivity();
                           }} disabled={!bulkText.trim()} style={{padding:"10px 24px",borderRadius:8,border:"none",background:bulkText.trim()?c.gradient:"#444",cursor:bulkText.trim()?"pointer":"not-allowed",fontSize:13,fontWeight:700,color:"#fff",fontFamily:"inherit"}}>
@@ -5059,7 +5064,7 @@ function App({ authUser }) {
                             <div style={{fontSize:11,color:task.enabled?c.so:c.fa,marginTop:2}}>{task.enabled?"Active":"Paused"}</div>
                             {task.runCount>0&&<div style={{fontSize:10,color:c.fa,marginTop:1}}>{task.runCount} runs</div>}
                           </div>
-                          <button onClick={(e)=>{e.stopPropagation();if(confirm('Delete this task?')){(async()=>{await fetch(`/api/agent/tasks/${task.taskId}`,{method:'DELETE'});loadActivity();})();}}} style={{width:28,height:28,borderRadius:6,border:"1px solid "+c.ln,background:"transparent",cursor:"pointer",color:c.fa,fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>✕</button>
+                          <button onClick={(e)=>{e.stopPropagation();if(confirm('Delete this task?')){(async()=>{await fetch(`/api/agent/tasks/${task.taskId}`, await withAuth({method:'DELETE'});loadActivity();})();}}} style={{width:28,height:28,borderRadius:6,border:"1px solid "+c.ln,background:"transparent",cursor:"pointer",color:c.fa,fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>✕</button>
                         </div>
                       );
                     })}
@@ -5323,7 +5328,7 @@ function App({ authUser }) {
                           <button onClick={async()=>{
                             if(!calTask.name||!calTask.instruction) return;
                             const taskType=calTask.instruction.match(/blog|post|write|content/i)?'content':calTask.instruction.match(/email|newsletter/i)?'email':calTask.instruction.match(/crm|contact|lead/i)?'crm':'custom';
-                            await fetch('/api/agent/tasks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...calTask,taskType})});
+                            await fetch('/api/agent/tasks', await withAuth({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...calTask,taskType})});
                             setCalTask({name:'',instruction:'',frequency:'daily',runTime:'09:00'});
                             setCalSelDay(null);
                             loadActivity();
@@ -5689,7 +5694,7 @@ function App({ authUser }) {
                               return;
                             }
                             try{
-                              const pr=await fetch(`/api/files/preview/${f.fileId}`);
+                              const pr=await fetch(`/api/files/preview/${f.fileId}`, await withAuth());
                               if(pr.headers.get('content-type')?.includes('json')){
                                 const pd=await pr.json();
                                 setPreviewFile({name:f.name,content:pd.content||'No content',fileId:f.fileId,fileType:f.fileType,slug:f.slug||null});
@@ -5767,7 +5772,7 @@ function App({ authUser }) {
                           {f.description&&<div style={{fontSize:11,color:c.so,marginBottom:6,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.description}</div>}
                           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                             <span style={{fontSize:10,color:c.fa}}>{sizeStr} · {date||'Just now'}</span>
-                            <button onClick={async()=>{if(confirm('Remove?')){await fetch(`/api/files/artifacts/${f.fileId}`,{method:'DELETE'});setFiles(p=>p.filter(x=>x.fileId!==f.fileId));}}} style={{width:22,height:22,borderRadius:6,border:'1px solid rgba(234,67,53,0.25)',background:'transparent',cursor:'pointer',fontSize:12,color:'#ea4335',display:'flex',alignItems:'center',justifyContent:'center'}}>×</button>
+                            <button onClick={async()=>{if(confirm('Remove?')){await fetch(`/api/files/artifacts/${f.fileId}`, await withAuth({method:'DELETE'});setFiles(p=>p.filter(x=>x.fileId!==f.fileId));}}} style={{width:22,height:22,borderRadius:6,border:'1px solid rgba(234,67,53,0.25)',background:'transparent',cursor:'pointer',fontSize:12,color:'#ea4335',display:'flex',alignItems:'center',justifyContent:'center'}}>×</button>
                           </div>
                           {ext==='html'&&(
                             <div style={{display:'flex',gap:6,marginTop:8}}>
@@ -5924,7 +5929,7 @@ function App({ authUser }) {
                       setSelectedProject(proj);
                       // Fetch conversations for this project
                       try{
-                        const res=await fetch(`/api/chat/sessions?projectId=${proj.id}`);
+                        const res=await fetch(`/api/chat/sessions?projectId=${proj.id}`, await withAuth());
                         const data=await res.json();
                         setProjectConversations(data.sessions||[]);
                       }catch(err){
@@ -6517,7 +6522,7 @@ function App({ authUser }) {
                     </div>
                     <button onClick={async()=>{
                       if(!newTask.name||!newTask.instruction) return;
-                      await fetch('/api/agent/tasks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(newTask)});
+                      await fetch('/api/agent/tasks', await withAuth({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(newTask)});
                       setNewTask({name:'',instruction:'',taskType:'content',frequency:'daily',runTime:'09:00'});
                       setTaskFormOpen(false);
                       loadProfile();
@@ -6543,7 +6548,7 @@ function App({ authUser }) {
                     </div>
                     <button onClick={async()=>{
                       if(confirm('Delete this task?')){
-                        await fetch(`/api/agent/tasks/${t.taskId}`,{method:'DELETE'});
+                        await fetch(`/api/agent/tasks/${t.taskId}`, await withAuth({method:'DELETE'});
                         loadProfile();
                       }
                     }} style={{padding:"2px 6px",borderRadius:4,border:"none",background:"transparent",cursor:"pointer",fontSize:12,color:"#ea4335"}}>✕</button>
@@ -6694,7 +6699,7 @@ function App({ authUser }) {
                       }
                     }
                     try{
-                      const r=await fetch(`/api/files/artifacts/${previewFile.fileId}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({content})});
+                      const r=await fetch(`/api/files/artifacts/${previewFile.fileId}`, await withAuth({method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({content})});
                       const d=await r.json();
                       if(d.success){setPreviewFile(p=>({...p,content}));setEditMode(false);}
                     }catch{}
@@ -6789,7 +6794,7 @@ function App({ authUser }) {
                       <a href={publishUrl} target="_blank" rel="noopener noreferrer" style={{fontSize:12,color:c.ac,fontWeight:600,textDecoration:"none",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{publishUrl}</a>
                       <button onClick={()=>{navigator.clipboard?.writeText(publishUrl);}} style={{padding:"5px 12px",borderRadius:6,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:11,fontWeight:600,color:c.tx,fontFamily:"inherit"}}>Copy Link</button>
                       <button onClick={async()=>{
-                        await fetch(`/api/files/publish-site/${previewFile.fileId}`,{method:'DELETE'});
+                        await fetch(`/api/files/publish-site/${previewFile.fileId}`, await withAuth({method:'DELETE'});
                         setPublishUrl(null);setPublishSlug('');
                       }} style={{padding:"5px 12px",borderRadius:6,border:"1px solid rgba(234,67,53,0.3)",background:"transparent",cursor:"pointer",fontSize:11,color:"#ea4335",fontFamily:"inherit"}}>Unpublish</button>
                     </>
@@ -6800,7 +6805,7 @@ function App({ authUser }) {
                       <button onClick={async()=>{
                         if(!publishSlug.trim())return;
                         setPublishError(null);
-                        const r=await fetch(`/api/files/publish-site/${previewFile.fileId}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({slug:publishSlug})});
+                        const r=await fetch(`/api/files/publish-site/${previewFile.fileId}`, await withAuth({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({slug:publishSlug})});
                         const d=await r.json();
                         if(d.success){setPublishUrl(d.url);setPublishOpen(false);}
                         else setPublishError(d.error||'Failed');
@@ -6814,7 +6819,7 @@ function App({ authUser }) {
                       const suggest=(previewFile.name||'').replace(/\.[^.]+$/,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
                       setPublishSlug(suggest);setPublishOpen(true);setPublishError(null);
                       // Check if already published
-                      fetch(`/api/files/preview/${previewFile.fileId}`).then(r=>r.json()).then(d=>{
+                      fetch(`/api/files/preview/${previewFile.fileId}`, await withAuth()).then(r=>r.json()).then(d=>{
                         if(d.slug){setPublishUrl(`${window.location.origin}/s/${d.slug}`);setPublishOpen(false);}
                       }).catch(()=>{});
                     }} style={{padding:"8px 20px",borderRadius:8,border:"none",background:c.gradient,cursor:"pointer",fontSize:12,fontWeight:700,color:"#fff",fontFamily:"inherit"}}>
@@ -6858,7 +6863,7 @@ function App({ authUser }) {
                 <button onClick={async()=>{
                   if(!publishSlug.trim())return setPublishError('Enter a URL slug');
                   try{
-                    const r=await fetch(`/api/files/artifacts/${previewFile.fileId}/publish`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({slug:publishSlug.trim()})});
+                    const r=await fetch(`/api/files/artifacts/${previewFile.fileId}/publish`, await withAuth({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({slug:publishSlug.trim()})});
                     const d=await r.json();
                     if(d.success){
                       const url=`${window.location.origin}/p/${d.slug}`;
@@ -6873,7 +6878,7 @@ function App({ authUser }) {
                 </button>
                 {previewFile.slug&&(
                   <button onClick={async()=>{
-                    await fetch(`/api/files/artifacts/${previewFile.fileId}/unpublish`,{method:'POST'});
+                    await fetch(`/api/files/artifacts/${previewFile.fileId}/unpublish`, await withAuth({method:'POST'});
                     setPublishedUrl(null);setPublishOpen(false);
                     setPreviewFile(p=>({...p,slug:null}));
                   }} style={{padding:"12px 16px",borderRadius:10,border:"1px solid rgba(234,67,53,0.3)",background:"transparent",cursor:"pointer",fontSize:13,fontWeight:600,color:"#ea4335",fontFamily:"inherit"}}>
