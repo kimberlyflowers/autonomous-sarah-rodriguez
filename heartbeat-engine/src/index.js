@@ -391,122 +391,124 @@ app.get('/test-email-create', async (req, res) => {
     };
   }
 
-  // TEST 2: PATCH /emails/builder/:templateId with editorType + editorContent
+  // TEST 2: PATCH with locationId + editorType:'html' (round 1 said needs locationId, editorType must be html|builder)
   if (templateId) {
     try {
       const r = await axios.patch(`${base}/emails/builder/${templateId}`, {
-        editorType: 'code',
+        locationId,
+        editorType: 'html',
         editorContent: testHtml,
         subject: 'API Test Subject Line',
         previewText: 'This is a preview text from API test'
       }, { headers, timeout: 15000 });
-      results.tests.step2_patch_editorContent = {
+      results.tests.step2_patch_with_locationId = {
         status: 'OK', httpStatus: r.status,
         responseKeys: Object.keys(r.data || {}),
         fullResponse: r.data
       };
     } catch (e) {
-      results.tests.step2_patch_editorContent = {
+      results.tests.step2_patch_with_locationId = {
         status: 'FAILED', httpStatus: e.response?.status,
         error: e.response?.data || e.message
       };
     }
   }
 
-  // TEST 3: Create another template with html field directly in POST
-  let templateId2 = null;
-  try {
-    const r = await axios.post(`${base}/emails/builder`, {
-      locationId,
-      name: `API-Test-WithHTML-${Date.now()}`,
-      type: 'html',
-      html: testHtml,
-      subject: 'Direct HTML Test',
-      preheaderText: 'Preview from direct POST'
-    }, { headers, timeout: 15000 });
-    templateId2 = r.data?.id || r.data?.templateId || null;
-    results.tests.step3_post_with_html = {
-      status: 'OK', httpStatus: r.status, templateId: templateId2,
-      responseKeys: Object.keys(r.data || {}),
-      fullResponse: r.data
-    };
-  } catch (e) {
-    results.tests.step3_post_with_html = {
-      status: 'FAILED', httpStatus: e.response?.status,
-      error: e.response?.data || e.message
-    };
-  }
-
-  // TEST 4: POST /emails/builder/data (older update endpoint)
+  // TEST 3: POST /emails/builder/data with corrected fields (updatedBy, html, editorType:'html')
   if (templateId) {
     try {
       const r = await axios.post(`${base}/emails/builder/data`, {
         locationId,
         templateId,
-        editorType: 'code',
-        editorContent: testHtml
+        updatedBy: 'bloomie-agent',
+        html: testHtml,
+        editorType: 'html'
       }, { headers, timeout: 15000 });
-      results.tests.step4_post_builder_data = {
+      results.tests.step3_post_builder_data_corrected = {
         status: 'OK', httpStatus: r.status,
         responseKeys: Object.keys(r.data || {}),
         fullResponse: r.data
       };
     } catch (e) {
-      results.tests.step4_post_builder_data = {
+      results.tests.step3_post_builder_data_corrected = {
         status: 'FAILED', httpStatus: e.response?.status,
         error: e.response?.data || e.message
       };
     }
   }
 
-  // TEST 5: Verify template content by GETting it back
+  // TEST 4: Verify template via GET (try with locationId query param)
   if (templateId) {
     try {
       const r = await axios.get(`${base}/emails/builder/${templateId}`, {
-        headers, timeout: 10000
+        headers, params: { locationId }, timeout: 10000
       });
-      results.tests.step5_verify_get = {
+      results.tests.step4_verify_get = {
         status: 'OK', httpStatus: r.status,
         responseKeys: Object.keys(r.data || {}),
         hasHtml: !!(r.data?.html || r.data?.editorContent),
-        htmlPreview: (r.data?.html || r.data?.editorContent || '').substring(0, 200),
+        htmlPreview: (r.data?.html || r.data?.editorContent || '').substring(0, 300),
         editorType: r.data?.editorType,
         fullResponse: r.data
       };
     } catch (e) {
-      results.tests.step5_verify_get = {
+      results.tests.step4_verify_get = {
         status: 'FAILED', httpStatus: e.response?.status,
         error: e.response?.data || e.message
       };
     }
   }
 
-  // TEST 6: Create with editorType and editorContent directly in POST
+  // TEST 5: Single-step — POST with type:'html' + html field + editorType:'html'
+  let templateId2 = null;
   try {
     const r = await axios.post(`${base}/emails/builder`, {
       locationId,
-      name: `API-Test-EditorDirect-${Date.now()}`,
-      editorType: 'code',
-      editorContent: testHtml,
-      subject: 'Editor Direct Test',
-      previewText: 'Direct editor test preview'
+      name: `API-Test-AllInOne-${Date.now()}`,
+      type: 'html',
+      html: testHtml,
+      editorType: 'html',
+      subject: 'All-In-One Test',
+      previewText: 'All in one preview'
     }, { headers, timeout: 15000 });
-    results.tests.step6_post_with_editor = {
-      status: 'OK', httpStatus: r.status,
-      templateId: r.data?.id || r.data?.templateId,
+    templateId2 = r.data?.id || r.data?.templateId || null;
+    results.tests.step5_post_all_in_one = {
+      status: 'OK', httpStatus: r.status, templateId: templateId2,
       responseKeys: Object.keys(r.data || {}),
       fullResponse: r.data
     };
   } catch (e) {
-    results.tests.step6_post_with_editor = {
+    results.tests.step5_post_all_in_one = {
       status: 'FAILED', httpStatus: e.response?.status,
       error: e.response?.data || e.message
     };
   }
 
+  // TEST 6: Verify the all-in-one template
+  if (templateId2) {
+    try {
+      const r = await axios.get(`${base}/emails/builder/${templateId2}`, {
+        headers, params: { locationId }, timeout: 10000
+      });
+      results.tests.step6_verify_allinone = {
+        status: 'OK', httpStatus: r.status,
+        hasHtml: !!(r.data?.html || r.data?.editorContent),
+        htmlPreview: (r.data?.html || r.data?.editorContent || '').substring(0, 300),
+        editorType: r.data?.editorType,
+        responseKeys: Object.keys(r.data || {}),
+        fullResponse: r.data
+      };
+    } catch (e) {
+      results.tests.step6_verify_allinone = {
+        status: 'FAILED', httpStatus: e.response?.status,
+        error: e.response?.data || e.message
+      };
+    }
+  }
+
   results.summary = {
     templateIdsCreated: [templateId, templateId2].filter(Boolean),
-    note: 'Check GHL UI to see which templates have actual HTML content vs default Lorem Ipsum'
+    note: 'Round 2: corrected editorType to html, added locationId to PATCH, added updatedBy+html to builder/data'
   };
 
   res.json(results);
