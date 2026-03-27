@@ -2747,7 +2747,7 @@ function DocsPage({c,mob,aFN="Sarah",agentId}){
 
   const updateStatus=async(id,status)=>{
     try{
-      const r=await fetch(`/api/dashboard/documents/${id}`, await withAuth({method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status})});
+      const r=await fetch(`/api/dashboard/documents/${id}`, await withAuth({method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status})}));
       if(r.ok){
         setDocs(prev=>prev.map(d=>d.id===id?{...d,status,approved_at:status==="approved"?new Date().toISOString():d.approved_at}:d));
         if(docContent&&docContent.id===id)setDocContent({...docContent,status});
@@ -3716,7 +3716,7 @@ function App({ authUser }) {
   const toggleTrustGate=async()=>{
     setTgLoading(true);
     try{
-      const r=await fetch("/api/dashboard/trust-gate-status", await withAuth({method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:!tgEnabled})});
+      const r=await fetch("/api/dashboard/trust-gate-status", await withAuth({method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:!tgEnabled})}));
       if(r.ok){const d=await r.json();setTgEnabled(d.enabled);}
     }catch{}
     setTgLoading(false);
@@ -3790,7 +3790,7 @@ function App({ authUser }) {
     if(!isOwner)return;
     setModelSaving(true);
     try{
-      const r=await fetch("/api/dashboard/model-config", await withAuth({method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:newModel})});
+      const r=await fetch("/api/dashboard/model-config", await withAuth({method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:newModel})}));
       if(r.ok){const d=await r.json();setModelConfig(prev=>({...prev,model:d.model,reason:'dashboard override'}));}
     }catch{}
     setModelSaving(false);
@@ -3799,7 +3799,7 @@ function App({ authUser }) {
     if(!isOwner)return;
     setImgEngineSaving(true);
     try{
-      const r=await fetch("/api/dashboard/image-engine-config", await withAuth({method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({[contentType]:engine})});
+      const r=await fetch("/api/dashboard/image-engine-config", await withAuth({method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({[contentType]:engine})}));
       if(r.ok){const d=await r.json();setImgEngineConfig(d.config);}
     }catch{}
     setImgEngineSaving(false);
@@ -4939,7 +4939,7 @@ function App({ authUser }) {
                         </div>
                         <button onClick={async()=>{
                           if(!newTask.name||!newTask.instruction) return;
-                          await fetch('/api/agent/tasks', await withAuth({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(newTask)});
+                          await fetch('/api/agent/tasks', await withAuth({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(newTask)}));
                           setNewTask({name:'',instruction:'',taskType:'content',frequency:'daily',runTime:'09:00'});
                           setTaskFormOpen(false);
                           loadActivity();
@@ -5050,7 +5050,7 @@ function App({ authUser }) {
                         }}>
                           <button onClick={(e)=>{
                             e.stopPropagation();
-                            (async()=>{await fetch(`/api/agent/tasks/${task.taskId}`, await withAuth({method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:!task.enabled})});loadActivity();})();
+                            (async()=>{await fetch(`/api/agent/tasks/${task.taskId}`, await withAuth({method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:!task.enabled})});loadActivity();})());
                           }} style={{width:38,height:22,borderRadius:11,border:"none",background:task.enabled?c.gr:"#444",cursor:"pointer",position:"relative",flexShrink:0}}>
                             <div style={{width:16,height:16,borderRadius:"50%",background:"#fff",position:"absolute",top:3,left:task.enabled?19:3,transition:"left .2s",boxShadow:"0 1px 3px rgba(0,0,0,.3)"}}/>
                           </button>
@@ -5116,7 +5116,7 @@ function App({ authUser }) {
                             if(editForm.frequency!==editTask.frequency) body.frequency=editForm.frequency;
                             if(editForm.runTime!==editTask.runTime) body.runTime=editForm.runTime;
                             if(Object.keys(body).length===0){setEditTask(null);return;}
-                            await fetch(`/api/agent/tasks/${editTask.taskId}`, await withAuth({method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+                            await fetch(`/api/agent/tasks/${editTask.taskId}`, await withAuth({method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}));
                             setEditTask(null);
                             loadActivity();
                           }} style={{flex:1,padding:"10px 16px",borderRadius:8,border:"none",background:c.ac,color:"#fff",fontSize:13,fontWeight:600,cursor:"pointer"}}>
@@ -5328,7 +5328,7 @@ function App({ authUser }) {
                           <button onClick={async()=>{
                             if(!calTask.name||!calTask.instruction) return;
                             const taskType=calTask.instruction.match(/blog|post|write|content/i)?'content':calTask.instruction.match(/email|newsletter/i)?'email':calTask.instruction.match(/crm|contact|lead/i)?'crm':'custom';
-                            await fetch('/api/agent/tasks', await withAuth({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...calTask,taskType})});
+                            await fetch('/api/agent/tasks', await withAuth({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...calTask,taskType})}));
                             setCalTask({name:'',instruction:'',frequency:'daily',runTime:'09:00'});
                             setCalSelDay(null);
                             loadActivity();
@@ -6522,7 +6522,7 @@ function App({ authUser }) {
                     </div>
                     <button onClick={async()=>{
                       if(!newTask.name||!newTask.instruction) return;
-                      await fetch('/api/agent/tasks', await withAuth({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(newTask)});
+                      await fetch('/api/agent/tasks', await withAuth({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(newTask)}));
                       setNewTask({name:'',instruction:'',taskType:'content',frequency:'daily',runTime:'09:00'});
                       setTaskFormOpen(false);
                       loadProfile();
@@ -6537,7 +6537,7 @@ function App({ authUser }) {
                 {scheduledTasks.map(t=>(
                   <div key={t.taskId} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",borderBottom:"1px solid "+c.ln+"40"}}>
                     <button onClick={async()=>{
-                      await fetch(`/api/agent/tasks/${t.taskId}`, await withAuth({method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:!t.enabled})});
+                      await fetch(`/api/agent/tasks/${t.taskId}`, await withAuth({method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:!t.enabled})}));
                       loadProfile();
                     }} style={{width:20,height:20,borderRadius:4,border:"1.5px solid "+(t.enabled?c.gr:c.ln),background:t.enabled?"rgba(52,168,83,0.15)":"transparent",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,flexShrink:0}}>
                       {t.enabled&&'✓'}
@@ -6548,7 +6548,7 @@ function App({ authUser }) {
                     </div>
                     <button onClick={async()=>{
                       if(confirm('Delete this task?')){
-                        await fetch(`/api/agent/tasks/${t.taskId}`, await withAuth({method:'DELETE'});
+                        await fetch(`/api/agent/tasks/${t.taskId}`, await withAuth({method:'DELETE'}));
                         loadProfile();
                       }
                     }} style={{padding:"2px 6px",borderRadius:4,border:"none",background:"transparent",cursor:"pointer",fontSize:12,color:"#ea4335"}}>✕</button>
@@ -6699,7 +6699,7 @@ function App({ authUser }) {
                       }
                     }
                     try{
-                      const r=await fetch(`/api/files/artifacts/${previewFile.fileId}`, await withAuth({method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({content})});
+                      const r=await fetch(`/api/files/artifacts/${previewFile.fileId}`, await withAuth({method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({content})}));
                       const d=await r.json();
                       if(d.success){setPreviewFile(p=>({...p,content}));setEditMode(false);}
                     }catch{}
@@ -6794,7 +6794,7 @@ function App({ authUser }) {
                       <a href={publishUrl} target="_blank" rel="noopener noreferrer" style={{fontSize:12,color:c.ac,fontWeight:600,textDecoration:"none",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{publishUrl}</a>
                       <button onClick={()=>{navigator.clipboard?.writeText(publishUrl);}} style={{padding:"5px 12px",borderRadius:6,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:11,fontWeight:600,color:c.tx,fontFamily:"inherit"}}>Copy Link</button>
                       <button onClick={async()=>{
-                        await fetch(`/api/files/publish-site/${previewFile.fileId}`, await withAuth({method:'DELETE'});
+                        await fetch(`/api/files/publish-site/${previewFile.fileId}`, await withAuth({method:'DELETE'}));
                         setPublishUrl(null);setPublishSlug('');
                       }} style={{padding:"5px 12px",borderRadius:6,border:"1px solid rgba(234,67,53,0.3)",background:"transparent",cursor:"pointer",fontSize:11,color:"#ea4335",fontFamily:"inherit"}}>Unpublish</button>
                     </>
@@ -6805,7 +6805,7 @@ function App({ authUser }) {
                       <button onClick={async()=>{
                         if(!publishSlug.trim())return;
                         setPublishError(null);
-                        const r=await fetch(`/api/files/publish-site/${previewFile.fileId}`, await withAuth({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({slug:publishSlug})});
+                        const r=await fetch(`/api/files/publish-site/${previewFile.fileId}`, await withAuth({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({slug:publishSlug})}));
                         const d=await r.json();
                         if(d.success){setPublishUrl(d.url);setPublishOpen(false);}
                         else setPublishError(d.error||'Failed');
@@ -6863,7 +6863,7 @@ function App({ authUser }) {
                 <button onClick={async()=>{
                   if(!publishSlug.trim())return setPublishError('Enter a URL slug');
                   try{
-                    const r=await fetch(`/api/files/artifacts/${previewFile.fileId}/publish`, await withAuth({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({slug:publishSlug.trim()})});
+                    const r=await fetch(`/api/files/artifacts/${previewFile.fileId}/publish`, await withAuth({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({slug:publishSlug.trim()})}));
                     const d=await r.json();
                     if(d.success){
                       const url=`${window.location.origin}/p/${d.slug}`;
@@ -6878,7 +6878,7 @@ function App({ authUser }) {
                 </button>
                 {previewFile.slug&&(
                   <button onClick={async()=>{
-                    await fetch(`/api/files/artifacts/${previewFile.fileId}/unpublish`, await withAuth({method:'POST'});
+                    await fetch(`/api/files/artifacts/${previewFile.fileId}/unpublish`, await withAuth({method:'POST'}));
                     setPublishedUrl(null);setPublishOpen(false);
                     setPreviewFile(p=>({...p,slug:null}));
                   }} style={{padding:"12px 16px",borderRadius:10,border:"1px solid rgba(234,67,53,0.3)",background:"transparent",cursor:"pointer",fontSize:13,fontWeight:600,color:"#ea4335",fontFamily:"inherit"}}>
