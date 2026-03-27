@@ -5971,108 +5971,78 @@ router.get('/progress-stream', (req, res) => {
 });
 
 // ── THINKING DIAGNOSTIC ──────────────────────────────────────────────────
-// GET /api/chat/thinking-diagnostic — test whether the current LLM returns thinking blocks
+// GET /api/chat/thinking-diagnostic — test Gemini thinking in multiple ways
 router.get('/thinking-diagnostic', async (req, res) => {
   try {
-    const provider = process.env.GEMINI_API_KEY ? 'gemini' : 'unknown';
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) return res.json({ error: 'No GEMINI_API_KEY set' });
 
     const model = 'gemini-2.5-flash';
-    const baseUrl = 'https://generativelanguage.googleapis.com/v1beta/openai';
-    const url = `${baseUrl}/chat/completions`;
     const prompt = 'What is 17 * 23? Think step by step.';
+    const results = {};
 
-    // Test 1: WITH thinking params
-    const bodyWithThinking = {
-      model,
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 2000,
-      temperature: 0.7,
-      google: {
-        thinking_config: {
-          include_thoughts: true,
-          thinking_budget: 1024
-        }
-      }
+    // Helper to call OpenAI-compat endpoint
+    const callOpenAI = async (label, body) => {
+      try {
+        const resp = await fetch('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', {
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+          body: JSON.stringify(body),
+        });
+        const text = await resp.text();
+        let parsed; try { parsed = JSON.parse(text); } catch { parsed = text; }
+        const msg = parsed?.choices?.[0]?.message;
+        results[label] = {
+          status: resp.status, ok: resp.ok,
+          messageFields: msg ? Object.keys(msg) : [],
+          messagePreview: msg ? Object.fromEntries(Object.entries(msg).map(([k, v]) => [k, typeof v === 'string' ? v.slice(0, 300) : JSON.stringify(v).slice(0, 300)])) : null,
+          errorPreview: !resp.ok ? (typeof parsed === 'string' ? parsed.slice(0, 400) : JSON.stringify(parsed).slice(0, 400)) : undefined,
+        };
+      } catch (err) { results[label] = { error: err.message }; }
     };
 
-    let withThinkingResult;
-    try {
-      const resp = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-        body: JSON.stringify(bodyWithThinking),
-      });
-      const status = resp.status;
-      const text = await resp.text();
-      let parsed;
-      try { parsed = JSON.parse(text); } catch { parsed = text; }
-      withThinkingResult = {
-        status,
-        ok: resp.ok,
-        messageFields: parsed?.choices?.[0]?.message ? Object.keys(parsed.choices[0].message) : [],
-        messagePreview: parsed?.choices?.[0]?.message
-          ? Object.fromEntries(
-              Object.entries(parsed.choices[0].message).map(([k, v]) => [
-                k,
-                typeof v === 'string' ? v.slice(0, 300) : JSON.stringify(v).slice(0, 300)
-              ])
-            )
-          : null,
-        rawPreview: typeof parsed === 'string' ? parsed.slice(0, 500) : JSON.stringify(parsed).slice(0, 1000),
-      };
-    } catch (err) {
-      withThinkingResult = { error: err.message };
-    }
-
-    // Test 2: WITHOUT thinking params (baseline)
-    const bodyPlain = {
-      model,
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 2000,
-      temperature: 0.7,
+    // Helper to call Gemini native API
+    const callNative = async (label, thinkingConfig) => {
+      try {
+        const nativeUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        const body = {
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generationConfig: { maxOutputTokens: 2000, temperature: 0.7 },
+        };
+        if (thinkingConfig) body.generationConfig.thinkingConfig = thinkingConfig;
+        const resp = await fetch(nativeUrl, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const text = await resp.text();
+        let parsed; try { parsed = JSON.parse(text); } catch { parsed = text; }
+        const parts = parsed?.candidates?.[0]?.content?.parts;
+        results[label] = {
+          status: resp.status, ok: resp.ok,
+          partsCount: parts?.length || 0,
+          parts: parts?.map(p => ({
+            hasThought: !!p.thought,
+            thought: p.thought || false,
+            textPreview: p.text ? p.text.slice(0, 300) : undefined,
+            keys: Object.keys(p),
+          })) || [],
+          errorPreview: !resp.ok ? (typeof parsed === 'string' ? parsed.slice(0, 400) : JSON.stringify(parsed).slice(0, 400)) : undefined,
+        };
+      } catch (err) { results[label] = { error: err.message }; }
     };
 
-    let plainResult;
-    try {
-      const resp = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-        body: JSON.stringify(bodyPlain),
-      });
-      const status = resp.status;
-      const text = await resp.text();
-      let parsed;
-      try { parsed = JSON.parse(text); } catch { parsed = text; }
-      plainResult = {
-        status,
-        ok: resp.ok,
-        messageFields: parsed?.choices?.[0]?.message ? Object.keys(parsed.choices[0].message) : [],
-        messagePreview: parsed?.choices?.[0]?.message
-          ? Object.fromEntries(
-              Object.entries(parsed.choices[0].message).map(([k, v]) => [
-                k,
-                typeof v === 'string' ? v.slice(0, 300) : JSON.stringify(v).slice(0, 300)
-              ])
-            )
-          : null,
-      };
-    } catch (err) {
-      plainResult = { error: err.message };
-    }
+    // Run all tests
+    await Promise.all([
+      // Test 1: OpenAI endpoint — plain (baseline)
+      callOpenAI('openai_plain', { model, messages: [{ role: 'user', content: prompt }], max_tokens: 2000, temperature: 0.7 }),
+      // Test 2: OpenAI endpoint — with reasoning_effort only
+      callOpenAI('openai_reasoning_effort', { model, messages: [{ role: 'user', content: prompt }], max_tokens: 2000, temperature: 0.7, reasoning_effort: 'low' }),
+      // Test 3: Native Gemini API — with includeThoughts
+      callNative('native_with_thoughts', { includeThoughts: true, thinkingBudget: 1024 }),
+      // Test 4: Native Gemini API — plain
+      callNative('native_plain', null),
+    ]);
 
-    res.json({
-      provider,
-      model,
-      withThinkingParams: withThinkingResult,
-      withoutThinkingParams: plainResult,
-      diagnosis: withThinkingResult.ok
-        ? (withThinkingResult.messageFields.some(f => ['thought', 'thoughts', 'reasoning_content', 'reasoning', 'thinking'].includes(f))
-            ? 'THINKING WORKS — found thinking fields in response'
-            : 'THINKING PARAMS ACCEPTED but no thinking fields in response — thoughts may be in content or unsupported')
-        : `THINKING PARAMS REJECTED with status ${withThinkingResult.status}`,
-    });
+    res.json({ model, results });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
