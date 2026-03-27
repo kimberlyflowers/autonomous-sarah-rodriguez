@@ -1238,8 +1238,7 @@ function ThinkingPanel({c, sessionId, isOpen, onClose}) {
   const scrollRef=useRef(null);
 
   useEffect(()=>{
-    if(!sessionId||!isOpen){setEvents([]);return;}
-    setEvents([]);
+    if(!sessionId){return;}
     const es=new EventSource(`/api/chat/progress-stream?sessionId=${encodeURIComponent(sessionId)}`);
     es.onmessage=(e)=>{
       try{
@@ -1251,7 +1250,7 @@ function ThinkingPanel({c, sessionId, isOpen, onClose}) {
       }catch{}
     };
     return()=>es.close();
-  },[sessionId,isOpen]);
+  },[sessionId]);
 
   // Auto-scroll to bottom
   useEffect(()=>{
@@ -1283,14 +1282,13 @@ function ThinkingPanel({c, sessionId, isOpen, onClose}) {
 
   return(
     <div style={{
-      position:'absolute',bottom:'100%',left:0,right:0,
+      margin:'8px 0',
       maxHeight:320,
       backgroundColor:c.cd||'#262626',
-      borderTop:`1px solid ${c.ln||'#353535'}`,
-      borderRadius:'12px 12px 0 0',
+      border:`1px solid ${c.ln||'#353535'}`,
+      borderRadius:12,
       display:'flex',flexDirection:'column',
-      zIndex:10,
-      boxShadow:'0 -4px 20px rgba(0,0,0,0.3)'
+      overflow:'hidden'
     }}>
       {/* Header */}
       <div style={{
@@ -4830,6 +4828,7 @@ function App({ authUser }) {
                           <button onClick={stopSarah} title={"Stop "+aFN} style={{width:32,height:32,borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:14,color:"#ea4335",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"background .15s"}} onMouseEnter={e=>e.currentTarget.style.background="rgba(234,67,53,0.1)"} onMouseLeave={e=>e.currentTarget.style.background=c.cd}>■</button>
                         </div>
                       )}
+                      {showThinking && <ThinkingPanel c={c} sessionId={sid.current} isOpen={showThinking} onClose={()=>setShowThinking(false)}/>}
                       <div ref={btm}/>
                     </div>
                     {!mob&&scrM!=="hidden"&&(
@@ -4901,10 +4900,7 @@ function App({ authUser }) {
                           ))}
                         </div>
                       )}
-                      {/* ── Thinking Panel — shows Sarah's reasoning in real-time ── */}
-                      <div style={{position:"relative"}}>
-                        <ThinkingPanel c={c} sessionId={sid.current} isOpen={showThinking} onClose={()=>setShowThinking(false)}/>
-                      </div>
+
                       {/* ── Input pill — + and mic inside like Claude ── */}
                       <div style={{display:"flex",alignItems:"flex-end",gap:6,padding:"10px 12px 10px 8px",borderRadius:20,border:"1.5px solid "+(vcRec?c.ac:c.ln),background:c.inp,transition:"border-color .2s",boxShadow:"0 1px 4px rgba(0,0,0,0.1)"}}>
                         {/* ── Claude-style + menu ── */}
