@@ -5316,10 +5316,12 @@ async function generateSessionTitle(sessionId, userMsg, assistantMsg) {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       const msgText = typeof userMsg === 'string' ? userMsg : JSON.stringify(userMsg);
+      const asstText = typeof assistantMsg === 'string' ? assistantMsg
+        : (assistantMsg?.text || assistantMsg?.clarification?.question || JSON.stringify(assistantMsg) || '');
       const prompt = `Based on this conversation, generate a short specific chat title (4-6 words max). No punctuation at the end. No quotes. Just the title.
 
 User: ${msgText.slice(0, 300)}
-Assistant: ${assistantMsg.slice(0, 300)}
+Assistant: ${asstText.slice(0, 300)}
 
 Title:`;
       // Model-agnostic: uses whatever model the agent is currently running (Claude, Gemini, DeepSeek, etc.)
@@ -5353,6 +5355,9 @@ Title:`;
 
 async function saveMessages(_pool, sessionId, userMsg, assistantMsg, files = null, userId = null, agentId = null, opts = {}) {
   const userText = typeof userMsg === 'string' ? userMsg : JSON.stringify(userMsg);
+  // Safety: assistantMsg must be a string for DB storage — convert objects/arrays
+  const assistantText = typeof assistantMsg === 'string' ? assistantMsg
+    : (assistantMsg?.text || JSON.stringify(assistantMsg) || '');
 
   // Save messages to SUPABASE (source of truth for millions of users)
   try {
@@ -5388,9 +5393,9 @@ async function saveMessages(_pool, sessionId, userMsg, assistantMsg, files = nul
         user_id: resolvedUserId,
         agent_id: resolvedAgentId,
         role: 'assistant',
-        content: assistantMsg
+        content: assistantText
       });
-    
+
     // Update session updated_at only — title is set by generateSessionTitle with Claude
     await supabase.from('sessions').update({ updated_at: new Date().toISOString() }).eq('id', sessionId);
     
@@ -5692,12 +5697,15 @@ router.post('/message', async (req, res) => {
       });
     }
 
+    // Safety: ensure response is a string before string operations
+    const responseText = typeof response === 'string' ? response
+      : (response?.text || JSON.stringify(response) || '');
     logger.info(`💬 Chat [${sessionId}] User: ${message.slice(0, 100)}${message.length > 100 ? '...' : ''}`);
-    logger.info(`💬 Chat [${sessionId}] ${agentConfig.name || 'Agent'}: ${response.replace(/\[Session context[\s\S]*$/, '').slice(0, 100)}${response.length > 100 ? '...' : ''}`);
-    await saveMessages(null, sessionId, message, response, null, userId, agentConfig.agentId, { skipUserSave: !!skipUserSave });
+    logger.info(`💬 Chat [${sessionId}] ${agentConfig.name || 'Agent'}: ${responseText.replace(/\[Session context[\s\S]*$/, '').slice(0, 100)}${responseText.length > 100 ? '...' : ''}`);
+    await saveMessages(null, sessionId, message, responseText, null, userId, agentConfig.agentId, { skipUserSave: !!skipUserSave });
 
     // Strip internal session context before sending to client
-    const cleanResponse = response.replace(/\s*\[Session context[\s\S]*$/g, '').trim();
+    const cleanResponse = responseText.replace(/\s*\[Session context[\s\S]*$/g, '').trim();
 
     // Generate a smart title after the first message (history was empty = first exchange)
     if (history.length === 0) {
@@ -5822,6 +5830,30 @@ router.post('/upload', async (req, res) => {
 
     const response = await chatWithAgent(content, history, agentConfig, sessionId, userOrgId);
 
+    // Handle clarification pause — bloom_clarify returns structured data instead of text
+    // (Mirror of the same handling in the text endpoint)
+    if (response && typeof response === 'object' && response.__clarification) {
+      logger.info(`💬 Upload Chat [${sessionId}] User: ${(message || '').slice(0, 100)}`);
+      logger.info(`💬 Upload Chat [${sessionId}] Agent: [CLARIFICATION] ${response.clarification?.question || ''}`);
+      const clarifyText = response.text || `I need to clarify something before I proceed.`;
+      const historyLabel = files.length
+        ? `[Files: ${files.map(f => f.name).join(', ')}]${message ? ' ' + message : ''}`
+        : message || '';
+      await saveMessages(null, sessionId, historyLabel, clarifyText, files.map(f => ({ name: f.name, type: f.type })), userId, agentConfig.agentId);
+
+      if (history.length === 0) {
+        const titleMsg = message || (files.length ? `Uploaded ${files.map(f=>f.name).join(', ')}` : 'Shared files');
+        generateSessionTitle(sessionId, titleMsg, clarifyText).catch(() => {});
+      }
+
+      return res.json({
+        response: clarifyText,
+        clarification: response.clarification,
+        sessionId,
+        agentId: agentConfig.agentId
+      });
+    }
+
     // Save uploaded images to chat_uploads (separate from artifacts/Files tab)
     // These are user-provided context images, NOT Bloomie-created deliverables
     const uploadedFiles = [];
@@ -5889,15 +5921,18 @@ router.post('/upload', async (req, res) => {
     if (imageUrls.length > 0) {
       filesMeta.push({ _imageUrls: imageUrls });
     }
-    await saveMessages(null, sessionId, historyLabel, response, filesMeta, userId, agentConfig.agentId);
+    // Safety: ensure response is a string for storage and client
+    const responseText = typeof response === 'string' ? response
+      : (response?.text || JSON.stringify(response) || '');
+    await saveMessages(null, sessionId, historyLabel, responseText, filesMeta, userId, agentConfig.agentId);
 
     // Generate smart title on first message (same as text endpoint)
     if (history.length === 0) {
       const titleMsg = textMsg || (files.length ? `Uploaded ${files.map(f=>f.name).join(', ')}` : 'Shared files');
-      generateSessionTitle(sessionId, titleMsg, response).catch(() => {});
+      generateSessionTitle(sessionId, titleMsg, responseText).catch(() => {});
     }
 
-    return res.json({ response, sessionId, uploadedFiles });
+    return res.json({ response: responseText, sessionId, uploadedFiles });
   } catch (error) {
     logger.error('Upload chat error', { 
       error: error.message, 
