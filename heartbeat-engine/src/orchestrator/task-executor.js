@@ -5,22 +5,22 @@ import { createLogger } from '../logging/logger.js';
 
 const logger = createLogger('task-executor');
 
-const SARAH_AGENT_ID = process.env.AGENT_UUID || 'c3000000-0000-0000-0000-000000000003';
-const BLOOM_ORG_ID   = 'a1000000-0000-0000-0000-000000000001';
+// MULTI-TENANT: No hardcoded agent/org IDs.
+// Tasks carry their own agent_id and organization_id — we query ALL enabled agents.
 
 async function getSupabase() {
   const { createClient } = await import('@supabase/supabase-js');
   return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
 }
 
-// ═══ Load memory context for the orchestrator ═══
-async function loadMemoryContext() {
+// ═══ Load memory context for a specific agent (multi-tenant) ═══
+async function loadMemoryContext(agentId) {
   try {
     const supabase = await getSupabase();
     const { data: agent } = await supabase
       .from('agents')
       .select('role, standing_instructions')
-      .eq('id', SARAH_AGENT_ID)
+      .eq('id', agentId)
       .single();
 
     let context = '';
@@ -30,7 +30,7 @@ async function loadMemoryContext() {
 
     return context || 'AI Employee for a small business. Focus on quality, professional tone.';
   } catch (e) {
-    logger.warn('Failed to load memory context', { error: e.message });
+    logger.warn('Failed to load memory context', { agentId, error: e.message });
     return 'AI Employee for a small business. Focus on quality, professional tone.';
   }
 }
@@ -41,16 +41,15 @@ export async function checkAndRunScheduledTasks() {
   try {
     supabase = await getSupabase();
 
-    // Find tasks that are due (past next_run_at and enabled)
+    // MULTI-TENANT: Find due tasks for ALL agents across all orgs
     const { data: dueTasks, error } = await supabase
       .from('scheduled_tasks')
       .select('*')
-      .eq('agent_id', SARAH_AGENT_ID)
       .eq('enabled', true)
       .not('next_run_at', 'is', null)
       .lte('next_run_at', new Date().toISOString())
       .order('next_run_at', { ascending: true })
-      .limit(3);
+      .limit(10);
 
     if (error) throw new Error(error.message);
     if (!dueTasks || dueTasks.length === 0) return { tasksRun: 0 };
@@ -82,12 +81,16 @@ async function executeScheduledTask(supabase, task) {
 
   logger.info('Executing scheduled task', { taskId: task.task_id, name: task.name, runId });
 
+  // MULTI-TENANT: Use the task's own agent_id and organization_id
+  const agentId = task.agent_id;
+  const orgId   = task.organization_id;
+
   // 1. Create task_run record
   await supabase.from('task_runs').insert({
     run_id:          runId,
     task_id:         task.task_id,
-    agent_id:        SARAH_AGENT_ID,
-    organization_id: BLOOM_ORG_ID,
+    agent_id:        agentId,
+    organization_id: orgId,
     task_name:       task.name,
     task_type:       task.task_type,
     status:          'pending',
@@ -96,8 +99,8 @@ async function executeScheduledTask(supabase, task) {
   });
 
   try {
-    // 2. Load memory context for Sarah
-    const memoryContext = await loadMemoryContext();
+    // 2. Load memory context for THIS agent (multi-tenant)
+    const memoryContext = await loadMemoryContext(agentId);
 
     // 3. Route the task
     const routing = await routeTask(task.instruction, memoryContext);
@@ -109,8 +112,8 @@ async function executeScheduledTask(supabase, task) {
       routing_cost_cents:  routing.routingCostCents || 0
     }).eq('run_id', runId);
 
-    // 4. Execute the sub-agent
-    const result = await executeSubAgent(routing);
+    // 4. Execute the sub-agent WITH skill injection (multi-tenant)
+    const result = await executeSubAgent(routing, { orgId, agentId });
 
     // 5. Post-process — save files, log CRM actions
     const evidence = await postProcess(supabase, routing, result, task);
@@ -300,16 +303,22 @@ function generateFileName(taskName, ext) {
   return `${slug}-${date}.${ext}`;
 }
 
-// ═══ Get task run history for the Activity page ═══
-export async function getTaskRuns(limit = 50) {
+// ═══ Get task run history for the Activity page (multi-tenant) ═══
+export async function getTaskRuns(limit = 50, agentId = null) {
   try {
     const supabase = await getSupabase();
-    const { data, error } = await supabase
+    let query = supabase
       .from('task_runs')
       .select('*')
-      .eq('agent_id', SARAH_AGENT_ID)
       .order('created_at', { ascending: false })
       .limit(limit);
+
+    // Filter by agent if specified, otherwise return all (for admin views)
+    if (agentId) {
+      query = query.eq('agent_id', agentId);
+    }
+
+    const { data, error } = await query;
 
     if (error) throw new Error(error.message);
 

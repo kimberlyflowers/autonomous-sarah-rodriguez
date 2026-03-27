@@ -11,6 +11,7 @@
 import { callModel, calculateCost } from '../llm/unified-client.js';
 import { getResolvedConfig } from '../config/admin-config.js';
 import { createLogger } from '../logging/logger.js';
+import { getSkillContext } from '../skills/skill-loader.js';
 
 const logger = createLogger('orchestrator-router');
 
@@ -18,20 +19,23 @@ const logger = createLogger('orchestrator-router');
 export { calculateCost };
 
 // ── Default model — resolved from admin config at runtime ────────────────
-// This gets set on first call to getSettings() and cached for 60s
-let _cachedDefaultModel = null;
-let _cachedModelExpiry = 0;
+// MULTI-TENANT: per-org model cache
+const _modelCache = new Map(); // orgId → { model, expiry }
 
-async function getDefaultModel() {
+async function getDefaultModel(orgId = null) {
+  const cacheKey = orgId || '_global';
   const now = Date.now();
-  if (_cachedDefaultModel && now < _cachedModelExpiry) return _cachedDefaultModel;
+  const cached = _modelCache.get(cacheKey);
+  if (cached && now < cached.expiry) return cached.model;
   try {
-    const config = await getResolvedConfig('a1000000-0000-0000-0000-000000000001');
-    _cachedDefaultModel = config.model || 'gemini-2.5-flash';
-    _cachedModelExpiry = now + 60_000;
-    return _cachedDefaultModel;
+    // Use the org's config if we have an orgId, otherwise fall back to global
+    const resolveId = orgId || 'a1000000-0000-0000-0000-000000000001';
+    const config = await getResolvedConfig(resolveId);
+    const model = config.model || 'gemini-2.5-flash';
+    _modelCache.set(cacheKey, { model, expiry: now + 60_000 });
+    return model;
   } catch {
-    return _cachedDefaultModel || 'gemini-2.5-flash';
+    return cached?.model || 'gemini-2.5-flash';
   }
 }
 
@@ -220,15 +224,29 @@ Respond with ONLY valid JSON:
 }
 
 /**
- * Execute a specialist task with the routed model
+ * Execute a specialist task with the routed model.
+ * MULTI-TENANT: Now injects skill context from the skill-loader so scheduled
+ * tasks get the same expert guidance that interactive chat tasks get.
+ * @param {object} routing - The routing result from routeTask/routeTaskFast
+ * @param {object} [context] - Optional multi-tenant context { orgId, agentId }
  */
-export async function executeSubAgent(routing) {
+export async function executeSubAgent(routing, context = {}) {
   const { model, subAgentSystemPrompt, subAgentUserPrompt } = routing;
 
-  logger.info('Executing sub-agent', { model, taskType: routing.taskType });
+  // Inject skill context — this is the critical fix for "abandoned" scheduled tasks.
+  // Previously only chat.js did this; now scheduled tasks get skills too.
+  const skillContext = getSkillContext(routing.taskType, subAgentUserPrompt || routing.instruction || '');
+  const systemWithSkills = (subAgentSystemPrompt || 'You are a helpful specialist.') + skillContext;
+
+  logger.info('Executing sub-agent', {
+    model,
+    taskType: routing.taskType,
+    skillsInjected: skillContext.length > 0,
+    orgId: context.orgId || 'unknown',
+  });
 
   const result = await callModel(model, {
-    system: subAgentSystemPrompt || 'You are a helpful specialist.',
+    system: systemWithSkills,
     messages: [{ role: 'user', content: subAgentUserPrompt || routing.instruction || '' }],
     maxTokens: 4096,
     temperature: 0.4,

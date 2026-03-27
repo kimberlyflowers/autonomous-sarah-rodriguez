@@ -18,7 +18,8 @@ import { getProgressText } from './progress-log.js';
 
 const logger = createLogger('think');
 
-const BLOOM_ORG_ID = 'a1000000-0000-0000-0000-000000000001';
+// MULTI-TENANT: No hardcoded org ID — org is passed via context.agentProfile
+const DEFAULT_ORG_ID = 'a1000000-0000-0000-0000-000000000001'; // fallback only
 
 // ═══════════════════════════════════════════════════════════════════════════
 // VALID ACTION TYPES — the ONLY strings act.js knows how to execute.
@@ -570,13 +571,14 @@ export async function think(context) {
   });
 
   try {
-    // Resolve model from admin config
+    // MULTI-TENANT: Resolve model from the agent's org config, not a hardcoded org
+    const orgId = context.agentProfile?.organizationId || context.agentProfile?.orgId || DEFAULT_ORG_ID;
     let thinkModel = 'gemini-2.5-flash';
     try {
-      const config = await getResolvedConfig(BLOOM_ORG_ID);
+      const config = await getResolvedConfig(orgId);
       thinkModel = config.model || 'gemini-2.5-flash';
     } catch (cfgErr) {
-      logger.warn('Could not load admin config for think, using default:', { error: cfgErr.message });
+      logger.warn('Could not load admin config for think, using default:', { orgId, error: cfgErr.message });
     }
 
     const provider = detectProvider(thinkModel);
