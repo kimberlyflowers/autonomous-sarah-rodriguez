@@ -351,6 +351,168 @@ app.get('/ghl-diagnostics', async (req, res) => {
   res.json(results);
 });
 
+// ===== TEMPORARY: Email template creation test endpoint =====
+// Tests the exact payload formats against live GHL API to determine what works
+// DELETE THIS ENDPOINT after testing is complete
+app.get('/test-email-create', async (req, res) => {
+  const { default: axios } = await import('axios');
+  const apiKey = process.env.GHL_API_KEY;
+  const locationId = process.env.GHL_LOCATION_ID;
+  const base = 'https://services.leadconnectorhq.com';
+  const headers = {
+    'Authorization': `Bearer ${apiKey}`,
+    'Version': '2021-07-28',
+    'Content-Type': 'application/json',
+    'Accept': 'application/json'
+  };
+
+  const testHtml = `<html><body style="font-family:Arial,sans-serif;background:#f4f4f4;padding:20px;"><div style="max-width:600px;margin:0 auto;background:#fff;padding:30px;border-radius:8px;"><h1 style="color:#6C2BD9;">API Test Email</h1><p>This template was created via API test at ${new Date().toISOString()}</p><p style="color:#666;">If you can see this HTML, the content injection worked correctly.</p><a href="https://example.com" style="display:inline-block;background:#6C2BD9;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;">Test CTA Button</a></div></body></html>`;
+
+  const results = { timestamp: new Date().toISOString(), tests: {} };
+
+  // TEST 1: Create template shell with POST /emails/builder
+  let templateId = null;
+  try {
+    const r = await axios.post(`${base}/emails/builder`, {
+      locationId,
+      name: `API-Test-${Date.now()}`,
+      type: 'html'
+    }, { headers, timeout: 15000 });
+    templateId = r.data?.id || r.data?.templateId || null;
+    results.tests.step1_create = {
+      status: 'OK', httpStatus: r.status, templateId,
+      responseKeys: Object.keys(r.data || {}),
+      fullResponse: r.data
+    };
+  } catch (e) {
+    results.tests.step1_create = {
+      status: 'FAILED', httpStatus: e.response?.status,
+      error: e.response?.data || e.message
+    };
+  }
+
+  // TEST 2: PATCH /emails/builder/:templateId with editorType + editorContent
+  if (templateId) {
+    try {
+      const r = await axios.patch(`${base}/emails/builder/${templateId}`, {
+        editorType: 'code',
+        editorContent: testHtml,
+        subject: 'API Test Subject Line',
+        previewText: 'This is a preview text from API test'
+      }, { headers, timeout: 15000 });
+      results.tests.step2_patch_editorContent = {
+        status: 'OK', httpStatus: r.status,
+        responseKeys: Object.keys(r.data || {}),
+        fullResponse: r.data
+      };
+    } catch (e) {
+      results.tests.step2_patch_editorContent = {
+        status: 'FAILED', httpStatus: e.response?.status,
+        error: e.response?.data || e.message
+      };
+    }
+  }
+
+  // TEST 3: Create another template with html field directly in POST
+  let templateId2 = null;
+  try {
+    const r = await axios.post(`${base}/emails/builder`, {
+      locationId,
+      name: `API-Test-WithHTML-${Date.now()}`,
+      type: 'html',
+      html: testHtml,
+      subject: 'Direct HTML Test',
+      preheaderText: 'Preview from direct POST'
+    }, { headers, timeout: 15000 });
+    templateId2 = r.data?.id || r.data?.templateId || null;
+    results.tests.step3_post_with_html = {
+      status: 'OK', httpStatus: r.status, templateId: templateId2,
+      responseKeys: Object.keys(r.data || {}),
+      fullResponse: r.data
+    };
+  } catch (e) {
+    results.tests.step3_post_with_html = {
+      status: 'FAILED', httpStatus: e.response?.status,
+      error: e.response?.data || e.message
+    };
+  }
+
+  // TEST 4: POST /emails/builder/data (older update endpoint)
+  if (templateId) {
+    try {
+      const r = await axios.post(`${base}/emails/builder/data`, {
+        locationId,
+        templateId,
+        editorType: 'code',
+        editorContent: testHtml
+      }, { headers, timeout: 15000 });
+      results.tests.step4_post_builder_data = {
+        status: 'OK', httpStatus: r.status,
+        responseKeys: Object.keys(r.data || {}),
+        fullResponse: r.data
+      };
+    } catch (e) {
+      results.tests.step4_post_builder_data = {
+        status: 'FAILED', httpStatus: e.response?.status,
+        error: e.response?.data || e.message
+      };
+    }
+  }
+
+  // TEST 5: Verify template content by GETting it back
+  if (templateId) {
+    try {
+      const r = await axios.get(`${base}/emails/builder/${templateId}`, {
+        headers, timeout: 10000
+      });
+      results.tests.step5_verify_get = {
+        status: 'OK', httpStatus: r.status,
+        responseKeys: Object.keys(r.data || {}),
+        hasHtml: !!(r.data?.html || r.data?.editorContent),
+        htmlPreview: (r.data?.html || r.data?.editorContent || '').substring(0, 200),
+        editorType: r.data?.editorType,
+        fullResponse: r.data
+      };
+    } catch (e) {
+      results.tests.step5_verify_get = {
+        status: 'FAILED', httpStatus: e.response?.status,
+        error: e.response?.data || e.message
+      };
+    }
+  }
+
+  // TEST 6: Create with editorType and editorContent directly in POST
+  try {
+    const r = await axios.post(`${base}/emails/builder`, {
+      locationId,
+      name: `API-Test-EditorDirect-${Date.now()}`,
+      editorType: 'code',
+      editorContent: testHtml,
+      subject: 'Editor Direct Test',
+      previewText: 'Direct editor test preview'
+    }, { headers, timeout: 15000 });
+    results.tests.step6_post_with_editor = {
+      status: 'OK', httpStatus: r.status,
+      templateId: r.data?.id || r.data?.templateId,
+      responseKeys: Object.keys(r.data || {}),
+      fullResponse: r.data
+    };
+  } catch (e) {
+    results.tests.step6_post_with_editor = {
+      status: 'FAILED', httpStatus: e.response?.status,
+      error: e.response?.data || e.message
+    };
+  }
+
+  results.summary = {
+    templateIdsCreated: [templateId, templateId2].filter(Boolean),
+    note: 'Check GHL UI to see which templates have actual HTML content vs default Lorem Ipsum'
+  };
+
+  res.json(results);
+});
+// ===== END TEMPORARY TEST ENDPOINT =====
+
 // Manual heartbeat trigger (for testing)
 app.post('/trigger-heartbeat', async (req, res) => {
   try {
