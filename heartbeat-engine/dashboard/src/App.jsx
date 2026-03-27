@@ -1566,8 +1566,8 @@ function SessionFilesPanel({c, sessionId, setActiveArtifact, aFN="Sarah"}){
   const fetchAll = async ()=>{
     if(!sessionId) return;
     Promise.all([
-      fetch(`/api/files/artifacts?sessionId=${sessionId}&limit=20`, await withAuth()).then(r=>r.json()).catch(()=>({})),
-      fetch(`/api/chat/uploads/list?sessionId=${sessionId}`, await withAuth()).then(r=>r.json()).catch(()=>({}))
+      withAuth().then(h=>fetch(`/api/files/artifacts?sessionId=${sessionId}&limit=20`,h)).then(r=>r.json()).catch(()=>({})),
+      withAuth().then(h=>fetch(`/api/chat/uploads/list?sessionId=${sessionId}`,h)).then(r=>r.json()).catch(()=>({}))
     ]).then(([artifactsData, uploadsData])=>{
       setFiles(artifactsData.artifacts||[]);
       setUploads(uploadsData.uploads||[]);
@@ -1810,7 +1810,7 @@ function ArtifactPane({ art, c, onClose, onRequestChanges }) {
   // If content wasn't loaded yet, fetch it
   useEffect(() => {
     if (!art.content && art.fileId) {
-      fetch(`/api/files/preview/${art.fileId}`, await withAuth())
+      withAuth().then(h=>fetch(`/api/files/preview/${art.fileId}`,h))
         .then(r => r.json())
         .then(d => { if (d.content) setArtContent(d.content); })
         .catch(() => {});
@@ -2052,7 +2052,7 @@ function CallsPage({c,mob,aFN="Sarah"}){
   const [expanded,setExpanded]=useState(null);
 
   useEffect(()=>{
-    fetch('/api/chat/calls', await withAuth()).then(r=>r.json()).then(d=>{setCalls(d.calls||[]);setLoading(false);}).catch(()=>setLoading(false));
+    withAuth().then(h=>fetch('/api/chat/calls',h)).then(r=>r.json()).then(d=>{setCalls(d.calls||[]);setLoading(false);}).catch(()=>setLoading(false));
   },[]);
 
   if(loading) return <div style={{textAlign:"center",padding:40,color:c.so}}>Loading calls...</div>;
@@ -2326,8 +2326,8 @@ function BusinessProfilePage({c,mob,userImg,setUserImg,meInitial="U",aFN="Your B
 
   useEffect(()=>{
     Promise.all([
-      fetch('/api/dashboard/business-profile', await withAuth()).then(r=>r.json()),
-      fetch('/api/dashboard/brand-kit', await withAuth()).then(r=>r.json()).catch(()=>({kits:[],brand:null}))
+      withAuth().then(h=>fetch('/api/dashboard/business-profile',h)).then(r=>r.json()),
+      withAuth().then(h=>fetch('/api/dashboard/brand-kit',h)).then(r=>r.json()).catch(()=>({kits:[],brand:null}))
     ]).then(([bizD,brandD])=>{
       setBiz(bizD.profile);
       if(brandD.kits?.length>0){
@@ -3647,7 +3647,7 @@ function App({ authUser }) {
   useEffect(()=>{
     if(pg==="projects" && projects.length===0 && !loadingProjects){
       setLoadingProjects(true);
-      fetch('/api/projects', await withAuth())
+      withAuth().then(h=>fetch('/api/projects',h))
         .then(r=>r.json())
         .then(data=>{
           if(data.success){
@@ -3708,9 +3708,9 @@ function App({ authUser }) {
 
   // Fetch trust gate status + model config + image engine config on mount
   useEffect(()=>{
-    fetch("/api/dashboard/trust-gate-status", await withAuth()).then(r=>r.ok?r.json():null).then(d=>{if(d)setTgEnabled(d.enabled)}).catch(()=>{});
-    fetch("/api/dashboard/model-config", await withAuth()).then(r=>r.ok?r.json():null).then(d=>{if(d)setModelConfig(d)}).catch(()=>{});
-    fetch("/api/dashboard/image-engine-config", await withAuth()).then(r=>r.ok?r.json():null).then(d=>{if(d)setImgEngineConfig(d)}).catch(()=>{});
+    withAuth().then(h=>fetch("/api/dashboard/trust-gate-status",h)).then(r=>r.ok?r.json():null).then(d=>{if(d)setTgEnabled(d.enabled)}).catch(()=>{});
+    withAuth().then(h=>fetch("/api/dashboard/model-config",h)).then(r=>r.ok?r.json():null).then(d=>{if(d)setModelConfig(d)}).catch(()=>{});
+    withAuth().then(h=>fetch("/api/dashboard/image-engine-config",h)).then(r=>r.ok?r.json():null).then(d=>{if(d)setImgEngineConfig(d)}).catch(()=>{});
   },[]);
 
   const toggleTrustGate=async()=>{
@@ -3827,12 +3827,12 @@ function App({ authUser }) {
   // Fallback: Load user avatar from old endpoint if /me didn't provide one
   useEffect(()=>{
     if(userImg) return; // already loaded from /me
-    fetch('/api/dashboard/user-avatar', await withAuth()).then(r=>r.json()).then(d=>{if(d.avatar)setUserImg(d.avatar);}).catch(()=>{});
+    withAuth().then(h=>fetch('/api/dashboard/user-avatar',h)).then(r=>r.json()).then(d=>{if(d.avatar)setUserImg(d.avatar);}).catch(()=>{});
   },[]);
   // Load agent avatar when agent changes
   useEffect(()=>{
     if(!currentAgentId) return;
-    fetch('/api/agent/profile?agentId='+currentAgentId, await withAuth()).then(r=>r.json()).then(d=>{if(d.profile?.avatarUrl)setAgentImgUrl(d.profile.avatarUrl); else setAgentImgUrl(null);}).catch(()=>{});
+    withAuth().then(h=>fetch('/api/agent/profile?agentId='+currentAgentId,h)).then(r=>r.json()).then(d=>{if(d.profile?.avatarUrl)setAgentImgUrl(d.profile.avatarUrl); else setAgentImgUrl(null);}).catch(()=>{});
   },[currentAgentId]);
   const [projO,setProjO]=useState(false);
   const [activeProj,setActiveProj]=useState("My Business");
@@ -3842,7 +3842,7 @@ function App({ authUser }) {
   // Fallback: Load business profile for logo (only if /me didn't provide org info)
   useEffect(()=>{
     if(meOrgName) return; // already got org from /me
-    fetch('/api/dashboard/business-profile', await withAuth()).then(r=>r.json()).then(d=>{
+    withAuth().then(h=>fetch('/api/dashboard/business-profile',h)).then(r=>r.json()).then(d=>{
       if(d.profile?.logoUrl)setBizLogo(d.profile.logoUrl);
       if(d.profile?.name){setBizName(d.profile.name);setActiveProj(d.profile.name);}
     }).catch(()=>{});
@@ -6819,7 +6819,7 @@ function App({ authUser }) {
                       const suggest=(previewFile.name||'').replace(/\.[^.]+$/,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
                       setPublishSlug(suggest);setPublishOpen(true);setPublishError(null);
                       // Check if already published
-                      fetch(`/api/files/preview/${previewFile.fileId}`, await withAuth()).then(r=>r.json()).then(d=>{
+                      withAuth().then(h=>fetch(`/api/files/preview/${previewFile.fileId}`,h)).then(r=>r.json()).then(d=>{
                         if(d.slug){setPublishUrl(`${window.location.origin}/s/${d.slug}`);setPublishOpen(false);}
                       }).catch(()=>{});
                     }} style={{padding:"8px 20px",borderRadius:8,border:"none",background:c.gradient,cursor:"pointer",fontSize:12,fontWeight:700,color:"#fff",fontFamily:"inherit"}}>
