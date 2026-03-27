@@ -103,6 +103,7 @@ export async function getResolvedConfig(organizationId) {
       const tierModels = {
         bloom: global.default_model,
         premium: global.default_client_model,
+        trial: global.default_client_model,             // trial gets same as premium
         standard: global.default_client_model_after_trial,
         budget: 'gpt-4o-mini',
       };
@@ -165,12 +166,14 @@ export function invalidateCache(organizationId = null) {
 
 // ── Hardcoded fallback (no DB) ───────────────────────────────────────────
 function getHardcodedDefaults() {
+  // IMPORTANT: These must match bloom_admin_settings in Supabase.
+  // Gemini is the default — Claude is a fallback only when credits are available.
   return {
-    default_model: 'claude-sonnet-4-6',
+    default_model: process.env.DEFAULT_MODEL || 'gemini-2.5-flash',
     default_client_model: 'gpt-4o',
     default_client_model_after_trial: 'gemini-2.5-flash',
     client_trial_days: 30,
-    failover_chain: ['claude-sonnet-4-6', 'claude-haiku-4-5-20251001', 'gpt-4o', 'gpt-4o-mini', 'gemini-2.5-flash'],
+    failover_chain: ['gemini-2.5-flash', 'gemini-2.0-flash', 'gpt-4o', 'gpt-4o-mini', 'claude-sonnet-4-6'],
     global_feature_flags: {
       image_generation: true, web_search: true, blog_posting: true,
       email_templates: true, sms_sending: true, calendar_booking: true,

@@ -1,22 +1,26 @@
 ---
 name: flyer-generation
-description: Generate professional event flyers, promotional posters, and print marketing materials. Use this skill whenever the user asks for a flyer, poster, event announcement, promotional material, or print marketing collateral. Also trigger when the user mentions creating marketing materials for events, concerts, festivals, workshops, sales, fundraisers, or community gatherings. Even if they don't say "flyer" specifically, trigger this when they need single-page promotional designs.
+description: "Generate professional event flyers, promotional posters, and print marketing materials. Use this skill whenever the user asks for a flyer, poster, event announcement, promotional material, or print marketing collateral. Triggers on: 'flyer', 'poster', 'event flyer', 'promotional flyer', 'print material', 'concert flyer', 'event poster'. Even if they don't say 'flyer' specifically, trigger when they need single-page promotional designs for events, sales, workshops, or community gatherings."
 ---
 
-# Professional Flyer Generation
+# Professional Flyer Generation — Print-Ready Marketing Materials
 
-Create stunning, attention-grabbing flyers that follow proven design principles and leverage Google Gemini's image generation capabilities for maximum impact.
+**MISSION:** Create stunning, attention-grabbing flyers that stop people in their tracks and make them take action. Every flyer should look like a professional graphic designer made it — not like a Canva template.
+
+**COMPANION SKILL:** The `image-generation` skill is auto-loaded alongside this one. It contains the core prompting framework (7-element structure, engine selection, photorealistic defaults). This skill adds print-specific design rules, layout formulas, and flyer-type templates on top of that foundation.
+
+---
 
 ## MANDATORY PRE-BUILD GATE — NO EXCEPTIONS
 
-**You MUST collect all required information via bloom_clarify BEFORE creating any flyer or generating images. This is a hard rule with zero exceptions.**
+**You MUST collect all required information via bloom_clarify BEFORE creating any flyer. Zero exceptions.**
 
 ### The 5 things you MUST know before designing:
 1. **What is the flyer for?** — Event, promotion, announcement, menu, service ad
 2. **Key details** — Event name, date, time, location, prices, contact info
-3. **Target audience** — Who should this attract? (customers, community, professionals)
-4. **Brand or colors** — Follow brand kit or custom colors?
-5. **Call to action** — What should people do? (register, call, visit, scan QR code)
+3. **Target audience** — Who should this attract?
+4. **Brand or colors** — Follow brand kit or custom look?
+5. **Call to action** — What should people do?
 
 ### Discovery Flow — call bloom_clarify for each missing piece (one at a time):
 
@@ -25,345 +29,257 @@ Options: "Event (workshop, concert, fundraiser, etc.)", "Product or service prom
 Context: "What's the flyer promoting? This shapes the layout, imagery, and messaging."
 
 **Question 2 — Key details (FREE TEXT — do not use buttons):**
-Ask: "Give me all the details that need to appear on this flyer — event name, date, time, location, price, who's performing/speaking, contact info, website, or any must-have information. I won't use placeholders."
+Ask: "Give me all the details that need to appear on this flyer — event name, date, time, location, price, who's performing/speaking, contact info, website, or any must-have information. I'll use REAL details only — no placeholders."
 
 **Question 3 — Design direction:**
-Options: "Use my brand kit colors and fonts", "I have specific colors in mind (I'll share)", "Bold and eye-catching", "Clean and elegant", "Fun and playful"
+Options: "Use my brand kit colors and fonts", "Bold and eye-catching (high energy)", "Clean and elegant (upscale)", "Fun and playful (community/family)", "I have specific colors in mind (I'll share)"
 
 **Question 4 — What should people do?**
 Options: "Register or sign up online", "Call or text a number", "Visit a location", "Scan a QR code", "No specific CTA needed"
 
 ### SKIP LOGIC:
-- If the user provided event details upfront → skip Question 2
-- If brand kit is on file and no alternative requested → skip Question 3
+- User provided event details upfront → skip Question 2
+- Brand kit loaded and no alternative requested → skip Question 3
 - NEVER ask more than one bloom_clarify at a time
 
 ### HARD STOP: Do NOT create flyer or generate images until at least Questions 1 and 2 are answered.
 
 ---
 
-## The 3-Second Rule
+## ENGINE SELECTION FOR FLYERS
+
+**Flyers use GPT Image 1.5 as primary engine** (set `engine: "gpt"`).
+
+GPT excels at:
+- Composed designs with text + imagery together
+- Bold layouts with clear visual hierarchy
+- Text rendering within the image (short headlines)
+- High-contrast, attention-grabbing compositions
+- Product + scene compositions
+
+**Fall back to Gemini for:**
+- Pure photographic backgrounds (no text baked in)
+- Natural/lifestyle scene generation for the background layer
+- When you'll composite all text via HTML overlay
+
+---
+
+## THE 3-SECOND RULE
 
 **YOU HAVE 3 SECONDS.** If your flyer can't communicate its message in a single glance, it fails. Every design decision must serve instant comprehension.
 
-## Core Design Framework
+---
 
-### Visual Hierarchy (Priority Order)
-1. **Hero Headline** - Largest, boldest element (24-36pt minimum)
-2. **Hero Image** - Emotional connection, fills negative space
-3. **Supporting Details** - Scannable, essential information only
-4. **Call-to-Action** - Clear next step ("Register Now", "Buy Tickets", "Visit Us")
-5. **Contact/Location** - Small but legible
+## DEFAULT SIZE: PORTRAIT 2:3
 
-### Typography Rules (STRICT)
-- **Maximum 2 fonts** - One bold for headlines, one clean for body
-- **Headline**: 24-36pt (visible from reading distance)
-- **Subheadings**: 14-18pt (organize content)
-- **Body text**: 10-12pt (comfortable reading)
-- **Font pairing**: Bold sans-serif + Clean sans-serif (e.g., Impact/Bebas + Helvetica/Roboto)
+**Standard flyer generation:**
+- Size parameter: `1024x1536` (portrait)
+- Target: `1024x1536` (or `2048x3072` for print-ready)
+- This fits standard 11×17 or A4/A3 print
+- Optimal for bulletin boards and hand distribution
+
+**Other sizes when requested:**
+- Landscape banner: `1536x1024`
+- Square (social-friendly): `1024x1024`
+- Always ask or infer from context
+
+---
+
+## VISUAL HIERARCHY (Priority Order)
+
+Every flyer must follow this hierarchy. The eye reads in this order:
+
+1. **Hero Headline** — Largest, boldest element (the "what")
+2. **Hero Image** — Emotional connection, fills negative space
+3. **Supporting Details** — Date, time, location (scannable)
+4. **Call-to-Action** — Clear next step ("Register Now", "Buy Tickets")
+5. **Contact/Location** — Small but legible
 
 ### Z-Pattern Layout
 Guide the eye naturally:
 ```
-Top-left (Start) → Top-right (Key detail)
-       ↓ (Diagonal scan)
-Bottom-left (Supporting) → Bottom-right (CTA/Contact)
+Top-left (Start → Headline)  →  Top-right (Key detail / image)
+          ↓ Diagonal scan ↓
+Bottom-left (Details)  →  Bottom-right (CTA / Contact / QR)
 ```
 
-This follows natural left-to-right reading patterns.
+---
 
-## 2026 Design Trends
+## TYPOGRAPHY RULES (STRICT)
 
-### Authenticity Over Perfection
-- Raw, handmade elements
-- Intentional imperfections (torn edges, handwritten fonts)
-- Real photography over stock images
+- **Maximum 2 fonts** — One bold for headlines, one clean for body
+- **Headline**: 24-36pt equivalent (visible from reading distance)
+- **Subheadings**: 14-18pt (organize content)
+- **Body text**: 10-12pt (comfortable reading)
+- **Font pairing**: Bold sans-serif headline + Clean sans-serif body (Impact/Bebas + Roboto/Open Sans)
 
-### Bento Grid Layouts
-- Modular sections with balanced structure
-- Clear visual containers for different info types
-- Works especially well for multi-event flyers
+---
 
-### Mixed-Media Design
-- Layer photo + illustration + texture
-- Combine realistic images with graphic elements
-- Creates depth and visual interest
+## FLYER TYPE PROMPT FORMULAS
 
-### Strategic QR Codes
-- ALWAYS include a QR code in 2026
-- Place in bottom corner or CTA area
-- Bridge print to digital experience
-- Link to: tickets, registration, more info
+### 1. Concert / Music Event Flyer
 
-### Neo-Brutalism
-- Raw layouts, oversized typography
-- High contrast, bold colors
-- Intentional friction creates memorability
-- Use sparingly for edgy events
-
-### Micrographics
-- Small technical details brought forward
-- Fine print as design element
-- Creates sophistication
-
-## Flyer Type Formulas
-
-### 1. Concert/Music Festival Flyer
-
-**Gemini Prompt Structure:**
+**Use this prompt structure (adapt to specific event):**
 ```
-A professional concert flyer poster for [EVENT NAME].
-
-SUBJECT: Bold massive headline "[EVENT NAME]" text dominates the top third, festival vibes with [describe vibe - e.g., "vibrant Coachella energy" or "underground punk aesthetic"]. [Artist names] in large bold text. Date and venue details clearly visible.
-
-COMPOSITION: Centered vertical portrait layout, Z-pattern flow. Main headline at top, hero image in middle third, lineup/details in lower third. QR code in bottom right corner.
-
-ACTION: Dynamic concert atmosphere - [describe scene: crowd energy, stage lighting, artist performing, festival grounds at golden hour]
-
-LOCATION: [Describe background - outdoor festival grounds, indoor venue, desert landscape, urban setting]. [Weather/time of day for mood]
-
-STYLE: [2026 festival poster aesthetic | Neo-brutalist concert design | Authentic raw photography] with high contrast, bold typography, vibrant [color palette - e.g., "sunset gradients orange to purple" or "neon pink and electric blue"]. Modern sans-serif fonts (Bebas Neue style for headline, Helvetica for details).
-
-TECHNICAL: Sharp focus on headline text and artist names. Dramatic lighting - [golden hour | stage spotlights | neon glow]. Professional print quality, vivid colors, portrait orientation 2:3 ratio.
-
-MUST INCLUDE TEXT:
-- Headline: "[EVENT NAME]" in massive bold letters
-- Artists: "[Artist 1, Artist 2, Artist 3]"
-- Date: "[Month Day, Year]"
-- Location: "[Venue, City]"
-- QR code graphic in bottom right
+A professional concert event poster for [EVENT NAME], portrait format.
+[Describe the visual scene — stage, performer silhouette, crowd energy, lighting atmosphere].
+The headline "[EVENT NAME]" dominates the top third in massive bold [white/gold] sans-serif
+letters with a [subtle glow/dark shadow] for readability against the background.
+Artist lineup — [Artist 1, Artist 2, Artist 3] — in bold condensed type below the headline.
+Event details in the lower third: "[DATE]" and "[VENUE, CITY]" in clean sans-serif.
+[Color palette — describe specific colors that match the event vibe: neon for EDM, warm golds
+for jazz, dark moody for rock, bright pastels for indie].
+Dramatic [stage lighting / golden hour / neon glow] creating depth and energy.
+Professional event poster design, high-contrast, print-ready quality. Shot on [camera] with
+[lens] for any photographic elements. Bold, high-energy, makes you want to buy tickets.
 ```
 
-**Example:**
+### 2. Workshop / Class Flyer
+
+**Prompt structure:**
 ```
-A professional concert flyer poster for RISE FESTIVAL.
-
-SUBJECT: Bold massive "RISE" text dominates the top third, vibrant Coachella-style energy. Artists Kendrick Lamar, The Weeknd, Billie Eilish in large text. April 12-14 2024 and Indio, California details visible.
-
-COMPOSITION: Centered vertical portrait layout. "RISE" headline at top, desert sunset landscape in middle, artist lineup in lower third with semi-transparent dark overlay. QR code bottom right.
-
-ACTION: Epic music festival atmosphere - desert landscape at golden hour, silhouettes of palm trees, crowd energy in distance, stage lights beginning to glow
-
-LOCATION: Southern California desert setting with iconic Coachella valley mountains. Golden hour sunset with warm orange and purple gradient sky transitioning to deep blue.
-
-STYLE: Modern festival poster aesthetic with high contrast, bold typography. Sunset gradients from golden orange to deep purple to midnight blue. Bebas Neue style for "RISE", clean Helvetica for lineup. Professional photography mixed with graphic design elements.
-
-TECHNICAL: Sharp focus on "RISE" headline and artist names. Dramatic golden hour lighting washing over landscape. Professional print quality, vivid saturated colors, portrait 2:3 ratio.
-
-MUST INCLUDE TEXT:
-- Headline: "RISE" in massive white bold letters
-- Artists: "KENDRICK LAMAR • THE WEEKND • BILLIE EILISH • TYLER THE CREATOR • SZA • FRANK OCEAN"
-- Date: "APRIL 12-14, 2024"
-- Location: "INDIO, CALIFORNIA"
-- QR code in bottom right corner
+A professional workshop flyer for "[WORKSHOP TITLE]", portrait format.
+[Describe the visual — instructor at whiteboard, hands-on activity, learning environment,
+or relevant subject matter imagery]. Clean, organized, approachable design.
+Headline "[WORKSHOP TITLE]" in professional bold [navy/teal/brand color] sans-serif at the top.
+Subtitle: "[What you'll learn — one sentence]" in lighter weight below.
+Bento-grid layout for details: date/time block, location block, instructor name + credentials,
+price, and registration CTA. Each section clearly separated with clean borders or background
+color blocks. QR code in bottom-right linking to registration.
+[Trust-building color scheme — blues, greens, or warm professional tones].
+Soft professional lighting, [natural window light / bright studio].
+Clean modern design, organized hierarchy, easy to scan. Professional educational aesthetic.
 ```
 
-### 2. Workshop/Class Flyer
+### 3. Sale / Promotion Flyer
 
-**Gemini Prompt Structure:**
+**Prompt structure:**
 ```
-A professional educational workshop flyer for [TOPIC/CLASS NAME].
-
-SUBJECT: Clear headline "[WORKSHOP TITLE]" in professional sans-serif. Instructor photo or relevant topic imagery. Trust-building design - clean, organized, approachable.
-
-COMPOSITION: Bento grid layout with distinct sections: headline box, image area, details box (date/time/location), instructor bio box, registration CTA box. Clean margins, organized hierarchy.
-
-ACTION: [Learning environment - students engaged, instructor presenting, hands-on activity, collaborative work]
-
-LOCATION: [Setting - modern classroom, workshop space, community center, online virtual background]. Professional, welcoming atmosphere.
-
-STYLE: Clean professional design, organized bento grid structure. [Color scheme - trust colors like blue/green or warm orange/yellow]. Modern readable fonts (Montserrat for headings, Open Sans for body). Balanced whitespace.
-
-TECHNICAL: Clean professional photography, even lighting. High readability, accessible design. Portrait 2:3 or square 1:1 depending on distribution method.
-
-MUST INCLUDE TEXT:
-- Headline: "[WORKSHOP TITLE]"
-- Subtitle: "[What you'll learn in one sentence]"
-- Date: "[Day, Month Date, Year]"
-- Time: "[Start Time - End Time]"
-- Location: "[Venue/Platform]"
-- Instructor: "[Name, credentials]"
-- Price: "$[Amount]" or "Free"
-- CTA: "Register at [URL]" with QR code
+An attention-grabbing promotional flyer for [BUSINESS NAME] [SALE TYPE], portrait format.
+Massive bold "[X]% OFF" or "[SALE NAME]" in [red/yellow/orange] Impact-style font dominating
+the center — this is the first thing anyone sees. [Product photography or store imagery]
+arranged dynamically around the discount text.
+"[DATES: Month Day - Month Day]" in contrasting clean font below the headline.
+Key details: "[what's included, exclusions, special offers]" in scannable bullet format.
+Store info at bottom: "[ADDRESS]" | "[PHONE]" | "[WEBSITE]". QR code for online shopping.
+High-energy urgency colors — [red, orange, yellow, white]. Bold diagonal elements or starburst
+shapes to create movement and urgency.
+Bright, high-contrast design optimized for [window display / hand distribution / social media].
+Professional retail promotion aesthetic — makes people feel like they'll miss out if they don't act.
 ```
 
-### 3. Sale/Promotion Flyer
+### 4. Restaurant / Food Event Flyer
 
-**Gemini Prompt Structure:**
+**Prompt structure:**
 ```
-An attention-grabbing promotional sale flyer for [BUSINESS/PRODUCT].
-
-SUBJECT: Explosive bold headline "[X]% OFF" or "[SALE EVENT NAME]" in massive impact font. Product photography or store interior. High-energy, urgency-driven design.
-
-COMPOSITION: Asymmetric dynamic layout - large discount number dominates one side, product images cascade on the other. Diagonal elements create movement and urgency.
-
-ACTION: [Shopping energy - customers browsing, hands reaching for products, shopping bags, register activity]
-
-LOCATION: [Store interior | Product display | E-commerce layout]. Vibrant retail environment.
-
-STYLE: High-energy promotional design with bold contrasts. Red/yellow urgency colors with strategic white space. Impact or Anton font for discount, modern sans-serif for details. Neo-brutalist influences for edginess.
-
-TECHNICAL: Bright even lighting on products. Sharp product photography. High contrast for shelf visibility. Portrait or landscape depending on display location.
-
-MUST INCLUDE TEXT:
-- Discount: "[50]% OFF" in huge bold numbers
-- Event: "[LIMITED TIME SALE]"
-- Dates: "[Month Day - Month Day]"
-- Details: "[Exclusions or special terms]"
-- Store name and location
-- QR code for online shopping
+A mouth-watering [restaurant event / menu / grand opening] flyer for [NAME], portrait format.
+Hero food photography filling 60% of the space — [describe the signature dish in vivid detail:
+colors, textures, plating, garnishes, steam rising]. Shot with 50mm f/1.4 lens, shallow depth
+of field, [warm ambient / golden hour / soft studio] lighting creating appetite-triggering
+highlights on the food. Rich, warm color palette — [golds, deep reds, rich browns, fresh greens].
+Restaurant name "[NAME]" in [elegant serif for fine dining / bold sans-serif for casual] at top.
+Event details: "[SPECIAL EVENT NAME]" | "[DATE]" | "[TIME]" | "[PRICE if applicable]".
+Reservation info: "[PHONE]" or "[WEBSITE]". QR code for reservations bottom-right.
+[Upscale elegant / rustic authentic / modern clean] design matching the restaurant's vibe.
+Professional food photography quality, editorial magazine aesthetic, makes the viewer hungry.
 ```
 
-### 4. Restaurant/Food Event Flyer
+### 5. Community / Church / Nonprofit Event Flyer
 
-**Gemini Prompt Structure:**
+**Prompt structure:**
 ```
-A mouth-watering restaurant event flyer for [EVENT/RESTAURANT NAME].
-
-SUBJECT: Appetizing hero food photography - [signature dish, drink, or dining scene]. Restaurant name in elegant or bold typography depending on vibe. Make viewers hungry.
-
-COMPOSITION: Centered food hero image fills 60% of space. Restaurant name overlays or sits above. Event details in clean text block below. Golden ratio composition.
-
-ACTION: [Dining experience - plated dish close-up with garnish, chef preparing food, diners enjoying meal, cocktails being poured]
-
-LOCATION: [Restaurant interior ambiance - warm lighting, elegant table setting, rustic kitchen, outdoor patio]. Inviting, appetite-appealing environment.
-
-STYLE: [Upscale elegant | Rustic authentic | Modern clean] depending on restaurant type. Food photography with professional styling. Warm color palette (browns, golds, reds, greens). Elegant serif for fine dining, bold sans-serif for casual.
-
-TECHNICAL: Shallow depth of field on food hero shot. Warm ambient lighting. Professional food styling. Rich colors that trigger appetite. Portrait 2:3 ratio.
-
-MUST INCLUDE TEXT:
-- Restaurant Name: "[NAME]"
-- Event: "[Special Menu | Wine Pairing | Chef's Table | Grand Opening]"
-- Date: "[Day, Month Date]"
-- Time: "[Dining Hours]"
-- Reservation: "[Phone] or [Website]"
-- Address: "[Street, City]"
-- QR code for reservations
+A warm, welcoming community event flyer for "[EVENT NAME]", portrait format.
+[Describe the visual — families gathering, community space, volunteers, relevant activity].
+Warm, inclusive photography style — diverse group of people, genuine smiles, natural interaction.
+Headline "[EVENT NAME]" in friendly, approachable bold sans-serif at top.
+Key details clearly organized: "[DATE]" | "[TIME]" | "[LOCATION]" | "FREE" or "[COST]".
+[What to expect / bring / activities listed in scannable format].
+Contact: "[ORGANIZER NAME]" | "[PHONE]" | "[EMAIL]".
+Warm, inviting color palette — [soft blues, warm yellows, community greens, sunset oranges].
+Natural outdoor or community center lighting, authentic feel, NOT corporate.
+Professional but approachable design — feels like a personal invitation, not a sales pitch.
 ```
 
-## Common Mistakes to AVOID
+---
 
-### ❌ No Clear Hierarchy
-When everything screams, nothing is heard. Establish clear size/weight differences.
+## PHOTOGRAPHY LANGUAGE FOR REALISTIC FLYER IMAGES
 
-### ❌ Weak or Missing CTA
-Don't make people guess. "Call Now", "Register Here", "Visit [URL]" - make it obvious.
+When the flyer needs photorealistic imagery (most of the time), include camera-specific language from the image-generation core skill:
 
-### ❌ Wall of Text
-Instant turn-off. Use bullet points, short phrases, scannable chunks.
+**Camera Angles:**
+- "wide-angle shot" — captures full event scene
+- "medium shot" — balanced subject framing
+- "close-up" — food, product detail, emotional face
+- "bird's eye view" — overhead layout, flat-lays
+- "low-angle shot" — dramatic, imposing (concerts, buildings)
 
-### ❌ Too Many Fonts
-3+ fonts = visual chaos. Stick to 2 maximum.
+**Lenses:**
+- "35mm" — natural environmental context
+- "50mm f/1.4" — classic portrait, beautiful bokeh
+- "85mm portrait lens" — tight portraits, speaker headshots
+- "24mm wide-angle" — full scene, event spaces
 
-### ❌ Poor Photo Quality
-Low-resolution or poorly lit photos kill credibility faster than bad typography.
+**Lighting (always specify):**
+- "golden hour lighting" — warm, flattering, outdoor events
+- "studio softbox" — professional, even, controlled
+- "dramatic rim lighting" — concerts, nightlife
+- "natural window light" — workshops, offices, cafes
+- "neon glow" — clubs, modern events, tech
 
-### ❌ Missing QR Code in 2026
-QR codes are expected in 2026. Always include one for digital engagement.
+---
 
-## Size Selection Guide
+## TEXT IN FLYERS — THE RULES
 
-### Portrait (1024x1536 / 2:3 ratio)
-- **Standard flyer size**
-- Best for: Most events, workshops, sales, restaurants
-- Fits standard 11x17 or A4/A3 print
-- Optimal for bulletin boards and hand distribution
+**Short text (headline, 5 words or fewer) → bake it into the image prompt:**
+Include the exact text in quotes in the prompt. Specify font style, size, color, position, and shadow/outline treatment.
 
-### Landscape (1536x1024 / 3:2 ratio)
-- Wide format
-- Best for: Banners, window displays, presentation slides
-- Good for text-heavy content that needs width
+**Medium text (details block, 10-30 words) → two options:**
+- Option A: Include in prompt if it's a simple list (date, time, place)
+- Option B: Generate image WITHOUT text, then composite via HTML overlay
 
-### Square (1024x1024 / 1:1 ratio)
-- Social media friendly
-- Best for: Instagram posts, digital displays
-- Less common for traditional print flyers
+**Long text (paragraph, menu, lineup) → always use HTML overlay:**
+Generate the visual background, then create an HTML artifact with the image as background and all text styled with CSS.
 
-**Default to portrait 2:3 for most flyer requests unless user specifies otherwise.**
+**NEVER let the image model render:**
+- Phone numbers (too many digits — will garble)
+- URLs or email addresses
+- Paragraphs or long descriptions
+- Fine print or disclaimers
 
-## Quality Guidelines
+---
 
-### When to use "high" quality:
-- Final print-ready flyers
-- Client presentations
-- Professional events
-- Anything that will be physically printed
+## COMMON MISTAKES TO AVOID
 
-### When to use "medium" quality:
-- Draft iterations
-- Quick mockups
-- Digital-only distribution
-- Social media versions
+1. **Wrong dimensions** → Default to portrait 1024x1536. Always set target dimensions.
+2. **No clear hierarchy** → Headline must be 3x larger than body text minimum
+3. **Too much text baked in** → Use HTML overlay for anything beyond headline + date
+4. **Weak or missing CTA** → Every flyer needs "Call Now", "Register Here", "Visit [URL]"
+5. **No QR code in 2026** → Always include or mention adding one
+6. **Cartoonish/stylized default** → Flyers should be photorealistic + bold typography by default
+7. **Missing contact info** → Flyers without a way to respond are useless
+8. **Placeholder text** → NEVER use "Lorem ipsum", "Your Company", "555-1234". Use REAL details from the user or leave blank and ask.
+9. **Flat lighting** → Always specify dramatic or professional lighting in the prompt
+10. **Keyword-list prompts** → Write narrative paragraphs following the 7-element framework
 
-### When to use "low" quality:
-- Rapid concept exploration
-- Testing layouts
-- Internal reviews only
+---
 
-**Default to "high" quality unless explicitly drafting.**
+## EXECUTION CHECKLIST
 
-## Execution Checklist
+**Before generating:**
+- [ ] Flyer type identified (concert, workshop, sale, restaurant, community)
+- [ ] Engine set to `gpt` (primary for composed designs)
+- [ ] Size: 1024x1536 portrait (default) or user-specified
+- [ ] All real details collected (name, date, time, location, price, CTA)
+- [ ] Visual style determined (photorealistic default)
+- [ ] Color scheme chosen (matches event vibe + brand)
+- [ ] Prompt follows 7-element framework (subject, action, wardrobe/details, environment, lighting, camera, mood)
 
-Before generating, verify:
-- [ ] Flyer type identified (concert, workshop, sale, restaurant, other)
-- [ ] Size selected (default portrait 2:3)
-- [ ] Key text content gathered (headline, date, location, CTA)
-- [ ] Visual style determined (authentic, bento, neo-brutalist, mixed-media)
-- [ ] Color scheme chosen (matches event vibe and brand)
-- [ ] QR code planned (where it links, where it's placed)
-
-After generation, check:
-- [ ] Headline readable from 3 feet away
+**After generation:**
+- [ ] Headline readable at arm's length
 - [ ] Z-pattern flow guides eye naturally
 - [ ] CTA is obvious and actionable
 - [ ] Contact info is legible
-- [ ] QR code is visible (bottom corner)
-- [ ] Typography limited to 2 fonts
-- [ ] No visual clutter
-
-## Photography Language for Realism
-
-When you want photorealistic flyer images (not illustrated/graphic designs), use camera-specific language:
-
-**Camera Angles:**
-- "wide-angle shot" - captures full scene
-- "medium shot" - balanced framing
-- "close-up shot" - intimate details
-- "bird's eye view" - overhead perspective
-- "low-angle shot" - dramatic upward view
-
-**Lenses:**
-- "35mm lens" - natural perspective
-- "50mm lens" - classic portrait
-- "85mm portrait lens" - beautiful bokeh
-- "wide-angle 24mm" - environmental context
-
-**Lighting:**
-- "golden hour lighting" - warm sunset glow
-- "studio softbox lighting" - professional even light
-- "dramatic rim lighting" - edge highlights
-- "natural window light" - soft directional
-- "high-key lighting" - bright and airy
-- "low-key lighting" - dramatic shadows
-
-**Composition:**
-- "rule of thirds composition"
-- "shallow depth of field" - blurred background
-- "leading lines" - guide viewer's eye
-- "symmetrical composition" - balanced and formal
-
-**Example Realistic Prompt:**
-```
-Professional food photography shot with 50mm f/1.4 lens. Shallow depth of field with background elegantly blurred. Golden hour natural window light from left creating warm highlights and gentle shadows. Rule of thirds composition. Sharp focus on foreground dish with restaurant interior softly visible behind. Photorealistic, editorial food magazine quality.
-```
-
-## Final Reminders
-
-1. **Always embed the image in chat** using markdown after generation
-2. **Always use portrait 2:3** for flyers unless specified otherwise  
-3. **Always include a QR code** in the prompt
-4. **Keep text content in the prompt** - specify exact headlines, dates, locations
-5. **Follow the 6-element framework**: Subject, Composition, Action, Location, Style, Technical
-
-The goal is a flyer that stops people in their tracks and makes them take action - not just look pretty.
+- [ ] Text is sharp (not garbled by AI)
+- [ ] Typography limited to 2 font styles
+- [ ] Professional, photorealistic look (not cartoonish)
+- [ ] Correct portrait dimensions

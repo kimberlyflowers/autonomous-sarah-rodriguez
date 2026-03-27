@@ -2,8 +2,13 @@
 // Primary: GPT Image 1.5 (OpenAI) — best for flyers, book covers, social assets
 // Fallback: Nano Banana / Imagen 4 (Google Gemini) — great text consistency
 // Model-agnostic tool interface — works with any LLM brain
+//
+// PROMPT UPSAMPLING: Every prompt is enriched by a fast LLM before hitting the
+// image API — just like ChatGPT does. This guarantees professional-quality output
+// even when the agent writes a lazy prompt.
 
 import { createLogger } from '../logging/logger.js';
+import { callModel } from '../llm/unified-client.js';
 import fs from 'fs';
 import path from 'path';
 
@@ -13,6 +18,106 @@ const logger = createLogger('image-tools');
 // Railway injects env vars before process starts, but dynamic reading is safer
 function getOpenAIKey() { return (process.env.OPENAI_API_KEY || "").trim(); }
 function getGeminiKey() { return (process.env.GEMINI_API_KEY || "").trim(); }
+
+// ── PROMPT UPSAMPLING ─────────────────────────────────────────────────────
+// Like ChatGPT's internal prompt rewriter — transforms short/vague prompts
+// into rich, detailed scene descriptions that produce professional images.
+// Uses a cheap, fast model (Gemini Flash) to keep costs near zero.
+//
+// RULES:
+// 1. Only upsample if the prompt is "thin" (< 200 chars or missing key details)
+// 2. Preserve ALL user-specified text verbatim (headlines, dates, names, phone numbers)
+// 3. Add: lighting, camera/lens, composition, color palette, mood, style
+// 4. Default to photorealistic commercial photography (not cartoon/illustrated)
+// 5. Never change the user's intent — only enrich the description
+
+const UPSAMPLE_SYSTEM = `You are a professional image prompt engineer. Your ONLY job is to rewrite image generation prompts to produce stunning, photorealistic, commercial-quality images.
+
+RULES:
+1. PRESERVE all user-specified text, names, dates, numbers, and specific details EXACTLY as given
+2. DEFAULT to photorealistic commercial photography unless the user explicitly asked for illustration/cartoon/stylized
+3. ADD these elements if missing:
+   - Specific lighting (direction, quality, color temperature)
+   - Camera and lens (e.g., "Shot on Canon R5 with 85mm f/1.4")
+   - Composition and framing (rule of thirds, leading lines, depth layers)
+   - Color palette and mood
+   - Material textures and fine details
+   - Quality anchors ("Professional editorial photography", "Commercial product shot", etc.)
+4. Write as ONE flowing descriptive paragraph — NOT a keyword list, NOT bullet points
+5. Keep it under 350 words — image models perform worse with extremely long prompts
+6. If the prompt already has 5+ of these elements, return it UNCHANGED (prefix with SKIP:)
+7. For flyers/posters: describe the visual composition AND specify text placement, font style, size
+8. For people: add specific physical details, wardrobe, expression, posture
+9. For products: add surface texture, lighting reflections, staging/props, background
+10. NEVER add elements that contradict the user's description
+11. NEVER use "imagine" or meta-language — write the scene description directly
+
+OUTPUT: Return ONLY the rewritten prompt. No explanations, no "Here's the enhanced prompt:", just the prompt text itself.
+If the original prompt is already detailed enough, return it prefixed with "SKIP:" to indicate no changes needed.`;
+
+const UPSAMPLE_MODEL = process.env.UPSAMPLE_MODEL || 'gemini-2.5-flash';
+const UPSAMPLE_ENABLED = process.env.IMAGE_UPSAMPLE !== 'false'; // opt-out via env
+
+async function upsamplePrompt(prompt, contentType = null) {
+  // Skip upsampling if disabled or prompt is already rich
+  if (!UPSAMPLE_ENABLED) return prompt;
+
+  // Quick heuristic: if the prompt is already detailed (200+ chars AND has lighting/camera language), skip
+  const hasLighting = /\b(lighting|light|backlit|rim light|softbox|golden hour|natural light|studio light|shadow|highlight)\b/i.test(prompt);
+  const hasCamera = /\b(shot on|lens|f\/\d|camera|bokeh|depth of field|focal|aperture|canon|sony|nikon|hasselblad)\b/i.test(prompt);
+  const hasMood = /\b(professional|editorial|commercial|cinematic|magazine|high-end|premium|polished)\b/i.test(prompt);
+
+  if (prompt.length > 250 && hasLighting && hasCamera) {
+    logger.info('Prompt already detailed, skipping upsample', { length: prompt.length });
+    return prompt;
+  }
+
+  // Additional context based on content type
+  const contextHint = contentType
+    ? `\n\nThis image is for: ${contentType}. Optimize the prompt accordingly (e.g., flyers need bold text placement, social posts need scroll-stopping composition, website heroes need wide cinematic framing).`
+    : '';
+
+  try {
+    // Race the upsample call against a 8-second timeout — never block image generation
+    const upsampleCall = callModel(UPSAMPLE_MODEL, {
+      system: UPSAMPLE_SYSTEM + contextHint,
+      messages: [{ role: 'user', content: `Rewrite this image prompt to produce a stunning professional result:\n\n${prompt}` }],
+      maxTokens: 600,
+      temperature: 0.7,
+    });
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Upsample timed out after 8s')), 8000)
+    );
+    const result = await Promise.race([upsampleCall, timeoutPromise]);
+
+    const upsampled = (result.text || '').trim();
+
+    // If model returned SKIP: prefix, use original
+    if (upsampled.startsWith('SKIP:')) {
+      logger.info('Upsample model says prompt is already good');
+      return prompt;
+    }
+
+    // Sanity check: upsampled should be longer and non-empty
+    if (upsampled.length > 50 && upsampled.length > prompt.length * 0.5) {
+      logger.info('Prompt upsampled', {
+        originalLength: prompt.length,
+        upsampledLength: upsampled.length,
+        contentType
+      });
+      return upsampled;
+    }
+
+    // Bad result — use original
+    logger.warn('Upsample produced bad result, using original', { upsampledLength: upsampled.length });
+    return prompt;
+
+  } catch (err) {
+    // Upsampling is a nice-to-have, never block image generation
+    logger.warn('Prompt upsample failed, using original prompt', { error: err.message });
+    return prompt;
+  }
+}
 
 // ── TOOL DEFINITIONS ─────────────────────────────────────────────────────
 
@@ -179,7 +284,13 @@ async function getImageEngineConfig() {
 export const imageToolExecutors = {
   image_generate: async (params) => {
     const engine = params.engine || 'auto';
-    const prompt = params.prompt;
+    const contentType = params._contentType || params._context || null;
+    // PROMPT UPSAMPLING: Enrich the prompt before it hits the image API
+    const rawPrompt = params.prompt;
+    const prompt = await upsamplePrompt(rawPrompt, contentType);
+    if (prompt !== rawPrompt) {
+      logger.info('Using upsampled prompt', { original: rawPrompt.slice(0, 80), upsampled: prompt.slice(0, 80) });
+    }
     const size = params.size || '1024x1024';
     const quality = params.quality || 'high';
     const background = params.background || 'opaque';

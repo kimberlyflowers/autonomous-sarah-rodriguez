@@ -3,8 +3,7 @@
 import express from 'express';
 import mammoth from 'mammoth';
 import Anthropic from '@anthropic-ai/sdk';
-import { getLLMClient } from '../llm/unified-client.js';
-
+import { getLLMClient, detectProvider } from '../llm/unified-client.js';
 import { createLogger } from '../logging/logger.js';
 
 // Safe skill import — don't crash the whole chat if skills fail to load
@@ -2525,7 +2524,7 @@ function getCapabilityNotes() {
   // Tell Sarah what she CAN do
   const capabilities = [];
   if (available.some(t => t.name === 'image_generate')) {
-    capabilities.push('Image generation is AVAILABLE — use image_generate to create visuals for websites, social posts, flyers, etc.');
+    capabilities.push('Image generation is AVAILABLE — use image_generate to create visuals for websites, social posts, flyers, etc. Prompts are auto-enhanced for quality, but YOU should still write detailed prompts: describe subject, lighting, camera/lens, composition, colors, mood. Set engine=gpt for social/flyers/thumbnails, engine=gemini for website heroes/blog images. Default style is PHOTOREALISTIC — never produce cartoon or illustrated unless the user asks.');
   }
   if (available.some(t => t.name === 'web_search')) {
     capabilities.push('Web search is AVAILABLE — use web_search for any research, finding information, or looking up current data.');
@@ -3605,12 +3604,21 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
         const { calculateCost } = await import('../orchestrator/router.js');
 
         // Model mapping
+        // Model selection for specialist dispatch — respects admin config, falls back to env vars
+        // NEVER hardcode to a provider that may have no credits (e.g. Claude without budget)
+        // Resolve the org's configured model fresh (resolvedAdminConfig may be in scope from parent)
+        let adminModel = 'gemini-2.5-flash'; // safe fallback
+        try {
+          const { getResolvedConfig } = await import('../config/admin-config.js');
+          const _cfg = await getResolvedConfig(orgId || null);
+          adminModel = _cfg?.model || 'gemini-2.5-flash';
+        } catch (_e) { /* use fallback */ }
         const modelForType = {
-          writing: process.env.MODEL_WRITING || 'claude-sonnet-4-5-20250929',
+          writing: process.env.MODEL_WRITING || adminModel,   // use org's configured model
           email: process.env.MODEL_EMAIL || 'gpt-4o',
           coding: process.env.MODEL_CODING || 'deepseek-chat',
-          image: 'gpt-4o', // placeholder — will use DALL-E/Flux later
-          video: 'veo3', // placeholder — premium tier only
+          image: 'gpt-4o',
+          video: 'veo3', // premium tier only
         };
 
         const taskType = toolInput.taskType || 'writing';
@@ -3634,7 +3642,7 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
           writing: 'You are a world-class content writer. Write polished, engaging, professional content. Output in clean markdown format. No preamble — go straight into the content.',
           email: 'You are an expert email and copy specialist. Write punchy, persuasive, conversion-focused copy. Be concise and compelling. No preamble — deliver the copy directly.',
           coding: 'You are an expert frontend developer and coder. Write clean, production-ready code. Include comments where helpful. No explanations unless asked — just deliver working code.',
-          image: 'You are a creative director. Describe the visual in detail so it can be generated as an image. Include composition, colors, typography, mood, and style.',
+          image: 'You are an elite commercial photography director and prompt engineer. Write image prompts as rich narrative paragraphs that produce photorealistic, magazine-quality results. Every prompt MUST include: (1) specific subject with physical details, (2) exact lighting setup with direction and quality, (3) camera + lens specs (e.g. "Shot on Canon R5 with 85mm f/1.4, shallow depth of field"), (4) composition and framing, (5) color palette and mood, (6) quality anchor ("Professional editorial photography, magazine quality"). Default style is ALWAYS photorealistic commercial photography — never cartoon or illustrated unless explicitly asked. For text in images: specify exact words in quotes, font style, size, color, placement, and shadow/outline treatment.',
           video: 'You are a video creative director. Write a detailed video generation prompt including: scene description, camera movement, duration, mood, lighting, style, and any text overlays. Be specific enough for AI video generation.',
         };
 
@@ -3720,12 +3728,13 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
       }
     }
 
-    // ── MODEL SWITCHING — on-the-fly model changes ──────────────────────
+    // ── MODEL SWITCHING — on-the-fly per-org model changes (multi-tenant safe) ──
     if (toolName === 'switch_model') {
-      const { getLLMClient } = await import('../llm/unified-client.js');
-      const llm = getLLMClient();
-      const oldModel = llm.model;
-      const oldProvider = llm.provider;
+      const { setOrgModelPreference, getOrgModelPreference, getLLMClient: _getLLM } = await import('../llm/unified-client.js');
+      const llm = _getLLM();
+      const currentOrgId = orgId || process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001';
+      const currentPref = getOrgModelPreference(currentOrgId);
+      const oldModel = currentPref?.model || llm.model;
 
       // Shorthand → full model string mapping
       const MODEL_SHORTHANDS = {
@@ -3745,17 +3754,16 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
 
       const requestedModel = toolInput.model?.toLowerCase()?.trim();
       const resolvedModel = MODEL_SHORTHANDS[requestedModel] || requestedModel;
-      const switched = llm.switchModel(resolvedModel);
+      const switched = setOrgModelPreference(currentOrgId, resolvedModel);
 
       if (switched) {
-        logger.info('Model switched via tool', { from: oldModel, to: resolvedModel, reason: toolInput.reason, provider: llm.provider });
+        logger.info('Model switched via tool (per-org)', { orgId: currentOrgId, from: oldModel, to: resolvedModel, reason: toolInput.reason });
         return {
           _status: 'SUCCESS',
           _message: `Model switched successfully.`,
           previousModel: oldModel,
-          previousProvider: oldProvider,
-          currentModel: llm.model,
-          currentProvider: llm.provider,
+          currentModel: resolvedModel,
+          currentProvider: detectProvider(resolvedModel),
           reason: toolInput.reason || 'Operator requested'
         };
       } else {
@@ -3769,11 +3777,16 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
     }
 
     if (toolName === 'get_model_status') {
-      const { getLLMClient } = await import('../llm/unified-client.js');
-      const llm = getLLMClient();
+      const { getLLMClient: _getLLM2, getOrgModelPreference: _getOrgPref } = await import('../llm/unified-client.js');
+      const llm = _getLLM2();
+      const currentOrgId = orgId || process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001';
+      const userPref = _getOrgPref(currentOrgId);
+      const effectiveModel = userPref?.model || llm.model;
       return {
-        currentModel: llm.model,
-        currentProvider: llm.provider,
+        currentModel: effectiveModel,
+        currentProvider: detectProvider(effectiveModel),
+        userPreferenceSet: !!userPref,
+        singletonDefault: llm.model,
         failoverActive: llm.isFailoverActive,
         availableModels: llm.getAvailableModels(),
         providerHealth: llm.getProviderHealth()
@@ -3895,8 +3908,9 @@ function toAnthropicFormat(unifiedResponse) {
 // Primary call path — uses unified client with failover + retry
 async function callLLMWithRetry(params, maxRetries = 3, client = null) {
   const llm = getLLMClient();
-  const currentProvider = llm.provider;
-  const currentModel = llm.model;
+  // Use per-request model if provided (multi-tenant safe), otherwise fall back to singleton
+  const requestModel = params.model || llm.model;
+  const requestProvider = detectProvider(requestModel);
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
@@ -3909,8 +3923,11 @@ async function callLLMWithRetry(params, maxRetries = 3, client = null) {
       // - Anthropic: sends native format
       // - OpenAI/Gemini/DeepSeek: converts messages + tools to OpenAI format
       // - Response is always normalized to Anthropic-style content blocks
+      //
+      // chatWithModel() is multi-tenant safe — it does NOT mutate the singleton.
+      // The model is scoped to this single call and doesn't affect concurrent requests.
       const unifiedResult = await Promise.race([
-        llm.chat({
+        llm.chatWithModel(requestModel, {
           messages: params.messages,
           system: params.system,
           tools: params.tools || [],
@@ -3920,10 +3937,8 @@ async function callLLMWithRetry(params, maxRetries = 3, client = null) {
         timeoutPromise,
       ]);
 
-      // Log which model actually handled the request (may differ during failover)
-      if (llm.model !== currentModel || llm.provider !== currentProvider) {
-        logger.info(`Request handled by failover: ${llm.provider}/${llm.model} (primary: ${currentProvider}/${currentModel})`);
-      }
+      // Log which model handled the request
+      logger.info(`Request completed`, { model: requestModel, provider: requestProvider });
 
       return toAnthropicFormat(unifiedResult);
     } catch (err) {
@@ -4254,13 +4269,13 @@ NEVER skip steps 3 and 4 even if step 2 fails.
     // FLYER — event announcements, posters, promotional print materials
     if (/\b(flyer|flier|poster|event.*flyer|flyer.*event|promotional.*material|print.*material|event.*announcement|event.*poster|promo.*flyer)\b/i.test(_skillMsgText)) {
       await _injectSkillByName('flyer-generation',
-        'IMPORTANT: For flyers use portrait 1024x1536, high quality, engine=gpt. Build SUBJECT/COMPOSITION/ACTION/LOCATION/STYLE/TECHNICAL prompt. Always include QR code. _contentType="flyer".');
+        'IMPORTANT: For flyers use portrait 1024x1536, high quality, engine=gpt. Write a rich narrative prompt: describe the visual scene, specify bold headline text with exact font/size/placement, include lighting + camera specs, specify color palette. Set _contentType="flyer". Default PHOTOREALISTIC — not cartoon.');
     }
 
     // STANDALONE IMAGE — banners, hero images, graphics (not covered by flyer/social)
     if (/\b(generate.*image|create.*image|make.*image|banner|hero.*image|product.*photo|infographic|brand.*graphic|visual.*asset|thumbnail|logo.*design)\b/i.test(_skillMsgText)) {
       await _injectSkillByName('image-generation',
-        'IMPORTANT: Be extremely detailed in image prompts. Include subject, composition, lighting, style, colors, mood. Use engine=gpt for design assets, gemini for character consistency.');
+        'IMPORTANT: Write prompts as rich narrative paragraphs, NOT keyword lists. Include: subject with specific details, lighting (direction + quality), camera + lens (e.g. "Canon R5, 85mm f/1.4"), composition, color palette, mood anchor. Default to PHOTOREALISTIC. Set engine=gpt for social/flyers/thumbnails, engine=gemini for website heroes/editorial. Prompts are auto-enhanced but start detailed for best results.');
     }
 
     // WEBSITE / LANDING PAGE
@@ -4446,26 +4461,47 @@ NEVER skip steps 3 and 4 even if step 2 fails.
         }
       }
     }
-    logger.info('Model adaptation applied', { provider: activeProvider, model: llmClient.model });
+    logger.info('Model adaptation applied', { provider: activeProvider, model: llmClient.model, note: 'pre-resolution default, may be overridden by per-org config' });
   } else {
     logger.info('Model adaptation skipped — provider-native task injection active', { provider: activeProvider, taskType: detectedTaskType });
   }
 
-  // Apply per-org model tier from Supabase admin settings (bloom=Sonnet, premium=GPT, standard=Gemini)
+  // ── Model resolution — TWO layers working together ──────────────────────
+  //
+  // Layer 1: Admin config / tier → calls switchModel() to update the singleton baseline.
+  //          This is the primary path for most clients (bloom/premium/standard/trial tiers).
+  //          It ensures the singleton reflects the current org's tier so any code that
+  //          reads llmClient.model gets a reasonable default.
+  //
+  // Layer 2: Per-org admin preference (dashboard /models/switch) → stored in-memory per-org.
+  //          This is an OVERRIDE for admins who explicitly choose a model.
+  //          When set, it takes priority over the tier-based default for this specific request.
+  //
+  // The actual API call uses chatWithModel() so it doesn't permanently alter the singleton
+  // mid-request in a way that bleeds into other concurrent requests.
+  //
+  // Priority: admin dashboard preference → admin config tier → singleton default
+  //
   let resolvedAdminConfig = null;
+  let requestModel = null; // the model for THIS specific request
+  // orgId comes from the function parameter; enrich from agentConfig if the param was null
+  const resolvedOrgId = orgId || agentConfig?.organizationId || agentConfig?.organization_id || null;
+
+  // ── Layer 1: Admin config / org tier → update singleton baseline ──
   try {
     const { getResolvedConfig } = await import('../config/admin-config.js');
-    const orgId = agentConfig?.organizationId || agentConfig?.organization_id || null;
-    resolvedAdminConfig = await getResolvedConfig(orgId);
+    resolvedAdminConfig = await getResolvedConfig(resolvedOrgId);
 
     if (resolvedAdminConfig?.model && resolvedAdminConfig.model !== llmClient.model) {
       const switched = llmClient.switchModel(resolvedAdminConfig.model);
       if (switched) {
-        logger.info(`Admin config applied: tier="${resolvedAdminConfig.tier}" → ${resolvedAdminConfig.model}`, { reason: resolvedAdminConfig.reason, orgId });
+        logger.info(`Admin config applied (singleton updated): tier="${resolvedAdminConfig.tier}" → ${resolvedAdminConfig.model}`, { reason: resolvedAdminConfig.reason, orgId: resolvedOrgId });
       } else {
         logger.warn(`Admin config tier "${resolvedAdminConfig.tier}" requested ${resolvedAdminConfig.model} but API key not available, staying on ${llmClient.model}`);
       }
     }
+    // Set requestModel from admin config (may be overridden by Layer 2 below)
+    requestModel = resolvedAdminConfig?.model || llmClient.model;
   } catch (e) {
     logger.warn('Admin config resolution failed (non-critical), using defaults:', e.message);
     // Fallback to legacy env-var based resolution
@@ -4482,16 +4518,31 @@ NEVER skip steps 3 and 4 even if step 2 fails.
         if (resolved.model && resolved.model !== llmClient.model) {
           llmClient.switchModel(resolved.model);
         }
+        requestModel = resolved.model || llmClient.model;
       }
     } catch (e2) { /* silent fallback */ }
   }
 
-  const chatModel = llmClient.model;
-  logger.info('Chat model selected', { model: chatModel, provider: llmClient.provider, failoverReady: !llmClient.isFailoverActive });
+  // ── Layer 2: Admin dashboard preference → overrides tier for this request ──
+  try {
+    const { getOrgModelPreference } = await import('../llm/unified-client.js');
+    const userPref = getOrgModelPreference(resolvedOrgId);
+    if (userPref?.model) {
+      requestModel = userPref.model;
+      logger.info(`Admin model preference override: ${requestModel}`, { orgId: resolvedOrgId });
+    }
+  } catch (_) { /* no preference set — use Layer 1 result */ }
+
+  // Final fallback: use whatever the singleton has (env/tier default)
+  if (!requestModel) requestModel = llmClient.model;
+
+  const chatModel = requestModel;
+  const chatProvider = detectProvider(chatModel);
+  logger.info('Chat model selected', { model: chatModel, provider: chatProvider, orgId: resolvedOrgId, source: requestModel !== llmClient.model ? 'admin-override' : 'tier-default' });
 
   // ── NOW APPLY PROVIDER-NATIVE TASK INJECTION (model is known) ────────────
-  // Update activeProvider in case admin config switched the model/provider above
-  activeProvider = llmClient.provider;
+  // Use the per-request resolved provider (NOT the singleton — multi-tenant safe)
+  activeProvider = chatProvider;
   if (detectedTaskType) {
     const injection = getTaskInjection(detectedTaskType, activeProvider);
     if (injection) {
@@ -4694,8 +4745,8 @@ NEVER skip steps 3 and 4 even if step 2 fails.
     // ── RESPONSE NORMALIZATION — fix known model-specific quirks ─────────
     // Some models return text blocks that contain JSON tool calls instead of
     // native tool_use blocks. Detect and convert before the loop processes them.
-    const activeModel = llmClient.model;
-    const activeModelProvider = llmClient.provider;
+    const activeModel = chatModel;
+    const activeModelProvider = chatProvider;
     if (response.stop_reason === 'end_turn' && (activeModelProvider === 'gemini' || activeModelProvider === 'deepseek')) {
       // Check if any text block looks like a JSON tool call that should have been a tool_use block
       const textBlocks = response.content.filter(b => b.type === 'text');
@@ -5133,7 +5184,7 @@ NEVER skip steps 3 and 4 even if step 2 fails.
         // Modeled after Anthropic's <investigate_before_answering> pattern.
         const wrappedToolResults = [
           ...toolResultBlocks,
-          { type: 'text', text: getInvestigationWrapper(llmClient.provider) }
+          { type: 'text', text: getInvestigationWrapper(chatProvider) }
         ];
         currentMessages.push({ role: 'user', content: wrappedToolResults });
       } else {
@@ -5892,14 +5943,33 @@ router.get('/progress-stream', (req, res) => {
 
 // ── MODEL SWITCHING ──────────────────────────────────────────────────────
 
-// GET /api/chat/models — list available models
+// GET /api/chat/models — list available models (org-aware)
 router.get('/models', async (req, res) => {
   try {
-    const { getLLMClient } = await import('../llm/unified-client.js');
-    const client = getLLMClient();
+    const { getLLMClient: _getLLM4, getOrgModelPreference: _getOrgPref2, detectProvider: _detect2 } = await import('../llm/unified-client.js');
+    const client = _getLLM4();
+
+    // Resolve orgId from query param or auth header
+    let orgId = req.query.orgId || process.env.BLOOM_ORG_ID || null;
+    try {
+      const authHeader = req.headers['authorization'];
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.slice(7);
+        const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
+        if (payload.app_metadata?.org_id) orgId = payload.app_metadata.org_id;
+        else if (payload.user_metadata?.org_id) orgId = payload.user_metadata.org_id;
+      }
+    } catch (_) {}
+
+    const userPref = orgId ? _getOrgPref2(orgId) : null;
+    const effectiveModel = userPref?.model || client.model;
+
     res.json({
-      current: client.model,
-      provider: client.provider,
+      current: effectiveModel,
+      provider: _detect2(effectiveModel),
+      userPreferenceSet: !!userPref,
+      singletonDefault: client.model,
+      orgId: orgId || null,
       available: client.getAvailableModels(),
     });
   } catch (error) {
@@ -5907,27 +5977,42 @@ router.get('/models', async (req, res) => {
   }
 });
 
-// POST /api/chat/models/switch — switch active model
+// POST /api/chat/models/switch — switch active model (per-org, multi-tenant safe)
+// Requires auth header (Supabase JWT) or falls back to org ID from body/env
 router.post('/models/switch', async (req, res) => {
   try {
-    const { model } = req.body;
+    const { model, orgId: bodyOrgId } = req.body;
     if (!model) return res.status(400).json({ error: 'model is required' });
 
-    const { getLLMClient } = await import('../llm/unified-client.js');
-    const client = getLLMClient();
-    const success = client.switchModel(model);
+    // Resolve org ID from JWT or body or env
+    let orgId = bodyOrgId || process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001';
+    try {
+      const authHeader = req.headers['authorization'];
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.slice(7);
+        const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
+        // Use org_id from JWT metadata if present, otherwise user's sub
+        if (payload.app_metadata?.org_id) orgId = payload.app_metadata.org_id;
+        else if (payload.user_metadata?.org_id) orgId = payload.user_metadata.org_id;
+      }
+    } catch (_) { /* use fallback orgId */ }
+
+    const { setOrgModelPreference, getOrgModelPreference, getLLMClient: _getLLM3, detectProvider: _detect } = await import('../llm/unified-client.js');
+    const success = setOrgModelPreference(orgId, model);
 
     if (success) {
+      const pref = getOrgModelPreference(orgId);
       res.json({
         success: true,
-        model: client.model,
-        provider: client.provider,
-        message: `Switched to ${model}`,
+        model: pref.model,
+        provider: pref.provider,
+        orgId,
+        message: `Switched to ${model} for org ${orgId}`,
       });
     } else {
       res.status(400).json({
         success: false,
-        error: `Cannot switch to ${model} — missing API key`,
+        error: `Cannot switch to ${model} — missing API key for ${_detect(model)}`,
       });
     }
   } catch (error) {

@@ -1,298 +1,244 @@
 ---
-name: image-generation  
-description: "Generate professional images for flyers, social posts, website heroes, product photos, and infographics. Use this skill whenever the user asks for images, graphics, visuals, banners, posters, social media content, marketing materials, or any visual design asset. Also use when building websites/landing pages that need hero images or when creating documents/presentations that need visual content. Make sure to use this skill for ANY image generation request - flyers, social posts, product shots, website backgrounds, infographics, banners, or creative visuals."
+name: image-generation
+description: "CORE image prompting engine — the foundational skill for ALL image generation across the platform. Teaches how to write professional prompts that produce stunning, realistic images. This skill is referenced by marketing-graphics, flyer-generation, and website-creation. Use directly when the user wants a standalone AI-generated image that isn't tied to a specific platform (social, print, web). Triggers on: 'generate image', 'AI image', 'create image', 'create a photo', 'image prompt', 'generate a photo', 'headshot', 'product photo', 'hero image'."
 ---
 
-# Professional Image Generation with Gemini
+# Image Generation — Core Prompting Engine
 
-Generate production-quality images using Google's Gemini 2.5 Flash Image (Nano Banana). This skill teaches Google's official prompting best practices.
+**MISSION:** Generate professional, photorealistic images that look like they were shot by a commercial photographer — not like generic AI art. This is a business platform. Every image should look like something a real brand would use.
 
-## MANDATORY PRE-BUILD GATE — NO EXCEPTIONS
+---
 
-**You MUST collect all required information via bloom_clarify BEFORE generating any images. This is a hard rule with zero exceptions.**
+## DEFAULT STYLE: PHOTOREALISTIC
 
-### The 4 things you MUST know before generating:
-1. **What is the image for?** — Website hero, social post, flyer, presentation, product shot, profile photo
-2. **Subject** — What should be in the image? (people, product, scene, abstract)
-3. **Style** — Photorealistic, illustration, minimalist, bold/vibrant, editorial
-4. **Brand alignment** — Should it match a brand kit, or is this freestyle?
+**This is a business tool. The default output is ALWAYS photorealistic unless the user explicitly asks for something else.**
 
-### Discovery Flow — call bloom_clarify for each missing piece (one at a time):
+- NO cartoon filters
+- NO watercolor effects
+- NO "AI art" stylization
+- NO overly saturated fantasy looks
+- YES clean commercial photography
+- YES editorial magazine quality
+- YES professional lifestyle shots
+- YES studio product photography
+
+If the user says "create an image of a woman at a desk" — that means a real-looking photo of a real-looking woman at a real desk. Not an illustration. Not a 3D render. A photograph.
+
+**The ONLY times to deviate from photorealistic:**
+- User explicitly asks for "cartoon", "illustrated", "animated", "stylized", "watercolor", etc.
+- YouTube thumbnails (bold, high-contrast, slightly stylized is acceptable)
+- Infographics (clean vector/graphic design style)
+- Logo concepts (graphic design, not photo)
+
+---
+
+## ENGINE SELECTION RULES
+
+**The `image_generate` tool has an `engine` parameter. Use the RIGHT engine for the job:**
+
+| Use Case | Primary Engine | Why |
+|----------|---------------|-----|
+| Social media graphics | `gpt` | GPT Image 1.5 excels at composed designs with text, faces, and bold visuals |
+| YouTube thumbnails | `gpt` | Better at dramatic expressions, bold compositions, text areas |
+| Ad creatives | `gpt` | Better product + text compositions |
+| Instagram/Facebook posts | `gpt` | Better at designed graphics with overlays |
+| Website hero images | `gemini` | Gemini produces cleaner, wider cinematic scenes |
+| Blog featured images | `gemini` | Better at natural, editorial-style photography |
+| Product photography | `gpt` | Better studio lighting and product detail |
+| Headshots / portraits | `gpt` | More realistic faces and expressions |
+| Landscapes / environments | `gemini` | Better at wide, atmospheric scenes |
+| Flyers / posters | `gpt` | Better at composed layouts with text areas |
+
+**Always set the engine explicitly. Never rely on "auto" for professional work.**
+
+---
+
+## MANDATORY PRE-BUILD GATE
+
+**Skip this gate when called from a parent skill** (marketing-graphics, flyer-generation, website-creation already collected context).
+
+### When called directly, collect via bloom_clarify:
 
 **Question 1 — What is this image for?**
-Options: "Website hero or banner", "Social media post", "Flyer or print material", "Presentation or document", "Profile or headshot", "Other (I'll describe)"
-Context: "Where will this image be used? This determines the size, aspect ratio, and style."
+Options: "Website hero or banner", "Social media post", "Flyer or print material", "Presentation or document", "Profile or headshot", "Product photo", "Other (I'll describe)"
 
 **Question 2 — What should be in the image?**
-Options: "People (professional/lifestyle)", "A product or object", "A scene or environment", "Abstract or pattern", "Text-based graphic", "Other (I'll describe)"
-Context: "What's the main subject? The more specific you are, the better the result."
+Options: "People (professional/lifestyle)", "A product or object", "A scene or environment", "Abstract or pattern", "Other (I'll describe)"
 
 **Question 3 — Visual style:**
-Options: "Photorealistic (looks like a real photo)", "Clean and modern illustration", "Bold and colorful / vibrant", "Minimalist and elegant", "Match my brand kit style"
+Options: "Photorealistic (default — real photo look)", "Clean and modern illustration", "Bold and colorful / vibrant", "Minimalist and elegant", "Match my brand kit style"
 
-**Question 4 — Specifics (FREE TEXT — do not use buttons):**
-Ask: "Describe the image you're imagining — colors, mood, setting, any specific details. If you have a reference image or website you want it to look like, share that too."
+**Question 4 — Describe specifics (FREE TEXT):**
+Ask: "Describe the image — colors, mood, setting, any must-have details. The more specific, the better the result."
 
 ### SKIP LOGIC:
-- If the image is being generated as PART of another skill (website, blog, flyer) → the parent skill already gathered context, so skip the gate entirely
-- If the user described exactly what they want → skip to generation
+- Called from another skill → skip entire gate
+- User gave detailed description → skip to generation
+- User said "realistic" or "photo" → skip Q3, style = photorealistic
 - NEVER ask more than one bloom_clarify at a time
 
-### HARD STOP: Do NOT generate images until at least Questions 1 and 2 are answered (unless called from another skill).
+---
+
+## THE PROMPT FRAMEWORK
+
+Every professional image prompt follows this structure. **Write it as a narrative paragraph, NOT a keyword list.**
+
+### The 7 Elements (write in this order):
+
+**1. SHOT TYPE + SUBJECT (who/what)**
+Start with the camera framing and describe the subject in specific detail.
+- "Close-up portrait of a confident Black woman in her 30s with natural hair..."
+- "Wide establishing shot of a modern co-working space..."
+- "Overhead flat-lay of premium skincare products on white marble..."
+
+**2. ACTION / EXPRESSION (what's happening)**
+Give the subject life. Static images look like stock photos.
+- "...smiling warmly while reviewing documents on her laptop..."
+- "...with morning light streaming through floor-to-ceiling windows as people collaborate..."
+- "...arranged in a diagonal composition with fresh eucalyptus sprigs..."
+
+**3. WARDROBE / DETAILS (texture, material, specifics)**
+Details sell realism. Generic descriptions produce generic images.
+- "...wearing a tailored navy blazer over a cream silk blouse, small gold stud earrings..."
+- "...mid-century modern furniture, exposed brick walls, large potted monstera plant..."
+- "...frosted glass bottles with minimalist labels, droplets of serum catching the light..."
+
+**4. ENVIRONMENT / SETTING (where)**
+Place the subject in a believable space with depth.
+- "...seated at a clean white desk in a bright, airy home office with floating shelves..."
+- "...in a converted warehouse loft with polished concrete floors and industrial pendant lights..."
+- "...on a pale blush linen cloth with subtle texture, soft shadows..."
+
+**5. LIGHTING (the #1 differentiator between amateur and professional)**
+This is the single most important element. Specify it precisely.
+- "Soft diffused natural window light from the left, creating gentle shadows on the right side of her face"
+- "Warm golden hour sunlight streaming through large windows, casting long directional shadows across the space"
+- "Studio softbox lighting from 45 degrees above, clean highlights on glass surfaces, minimal harsh shadows"
+- "Three-point lighting setup: key light at camera-left, fill light camera-right, hair light from behind"
+
+**6. CAMERA + LENS (tells the AI what kind of photo this is)**
+Photographic language produces photographic results.
+- "Shot on Canon R5 with 85mm f/1.4 lens, shallow depth of field, background softly blurred"
+- "Shot on Sony A7IV with 35mm lens, f/2.8, medium depth of field for environmental context"
+- "Shot on Hasselblad medium format with 50mm lens, tack-sharp details, commercial product photography"
+- "Shot on iPhone 15 Pro, natural casual feel" (for lifestyle/social content)
+
+**7. QUALITY + MOOD KEYWORDS (the finishing polish)**
+- "Professional editorial photography. Clean, modern, aspirational. Magazine-quality lighting and composition."
+- "Commercial lifestyle photography. Warm, inviting, authentic. Real-life feeling, not staged."
+- "High-end product photography. Luxurious, premium feel. Impeccable detail and lighting."
 
 ---
 
-## Core Principle (From Google)
+## EXAMPLE: BAD vs GOOD PROMPTS
 
-**"Describe the scene, don't just list keywords."** — Google Gemini Docs
-
-Gemini's strength is deep language understanding. A narrative, descriptive paragraph produces better images than keyword lists.
-
-❌ Bad: "sunset, beach, woman, yoga"  
-✅ Good: "A serene beach scene at golden hour. A woman in a flowing white dress practices yoga on the sand, her silhouette backlit by the warm orange sunset. Gentle waves lap at the shore in the background. Peaceful, meditative atmosphere. Professional lifestyle photography, shot on Canon 5D with 85mm lens, shallow depth of field."
-
----
-
-## The 6-Element Framework (Google Official)
-
-Every professional prompt includes:
-
-1. **Subject** - Who/what (be specific with details)
-2. **Composition** - Camera angle, framing, perspective  
-3. **Action** - What's happening in the scene
-4. **Location** - Setting, environment, background
-5. **Style** - Photography style, artistic approach, mood
-6. **Technical** - Lighting, camera specs, quality level
-
----
-
-## Photography Language for Realism
-
-**From Google:** "For realistic images, think like a photographer. Mentioning camera angles, lens types, lighting, and fine details will guide the model toward a photorealistic result."
-
-### Camera Angles & Framing
-- "wide-angle shot", "macro shot", "low-angle perspective", "bird's eye view"
-- "three-quarter view", "profile shot", "over-the-shoulder"
-- "rule of thirds composition", "centered symmetry", "leading lines"
-
-### Lenses & Camera Specs  
-- "85mm portrait lens", "35mm", "50mm f/1.4", "telephoto", "fisheye"
-- "shot on Canon 5D", "Hasselblad medium format", "Sony A7IV"
-- "shallow depth of field", "bokeh background", "tack-sharp focus"
-
-### Lighting Styles
-- "golden hour", "blue hour", "studio softbox", "dramatic rim lighting"
-- "natural window light", "moody low-key", "high-key bright"
-- "backlit silhouette", "diffused overcast", "hard directional sunlight"
-
----
-
-## Image Type Formulas
-
-### FLYERS & POSTERS  
-**Purpose:** Event marketing, promotions, announcements
-
-**Template:**
+### BAD (generic AI art):
 ```
-A [bold/minimalist/vintage] [event type] flyer design.
-[Primary visual - photo/illustration/pattern with specific details].
-[Typography - hierarchy, fonts, placement].
-[Color palette - specific colors and mood].
-Professional graphic design, print-ready, 300 DPI quality.
+A businesswoman at a desk with a laptop
+```
+**Result:** Flat lighting, generic stock photo, possibly stylized/cartoonish, no personality.
+
+### GOOD (professional photograph):
+```
+Close-up portrait of a confident Black businesswoman in her early 30s with natural curly hair pulled back, smiling warmly while typing on a MacBook Pro. She's wearing a tailored charcoal blazer over a white crew-neck top, with small gold hoop earrings. Seated at a clean modern desk in a bright, airy office with large windows behind her, a small fiddle-leaf fig plant visible in the soft-focus background. Warm natural window light from the left side illuminates her face with soft, flattering shadows. Shot on Canon R5 with 85mm f/1.4 lens, shallow depth of field creating beautiful background bokeh. Professional editorial lifestyle photography, authentic and aspirational, magazine quality.
+```
+**Result:** Looks like it belongs in Forbes or a brand's About page.
+
+### BAD (keyword list):
+```
+sunset, beach, yoga, woman, peaceful, orange sky
 ```
 
-**Example - Music Festival:**
+### GOOD (narrative scene):
 ```
-A bold, energetic music festival poster design.
-Vibrant abstract wave patterns in neon colors (electric blue, hot pink, lime green) flowing diagonally across the composition from bottom-left to top-right.
-Thick geometric sans-serif title "ELECTRIC SUMMER" dominating the top third, artist lineup in condensed font stacked vertically on the right side.
-Dark midnight blue background with glowing accents creating a modern club aesthetic.
-Professional graphic design, high-impact visuals, suitable for both print and digital distribution.
-```
-
-### SOCIAL MEDIA POSTS
-**Purpose:** Instagram, Facebook, LinkedIn graphics
-
-**Template:**
-```
-A [platform]-optimized [post type] graphic.
-[Eye-catching visual element that stops scrolling - specific scene/subject].
-[Text overlay style if any - font, placement, effect].
-[Brand colors and mood - specific palette].
-Professional social media design, mobile-first composition, [aspect ratio].
-```
-
-**Example - Product Launch:**
-```
-An Instagram announcement post for a product launch.
-Hero shot of sleek wireless earbuds floating on a diagonal against a gradient background (deep midnight blue transitioning to rich purple).
-Bold sans-serif "NOW AVAILABLE" text at top in white with subtle glow, product name "Aurora Pro" below in elegant thin serif.
-Modern tech aesthetic with premium feel, dramatic studio lighting creating edge highlights on the product.
-Professional social media design, eye-catching scroll-stopper, 1080x1080 square format.
-```
-
-### WEBSITE HERO IMAGES  
-**Purpose:** Website headers, landing page banners
-
-**Template:**
-```
-A [wide/cinematic] hero image for a [business type] website.
-[Scene description with depth - foreground, midground, background layers].
-[Lighting quality and direction - specific time/source].
-[Emotional mood and atmosphere].
-Professional [photography style], shot on [camera] with [lens], [aspect ratio].
-```
-
-**Example - SaaS Platform:**
-```
-A clean, modern hero image for a productivity software landing page.
-Bright, airy workspace scene: laptop in foreground displaying colorful dashboard UI, coffee cup and notebook to the left, small potted succulent to the right, blurred coworkers collaborating at whiteboard in the soft-focus background.
-Natural window light from left side creating gentle shadows and warm glow across the scene.
-Inspiring, organized, professional atmosphere conveying productivity and teamwork.
-Professional lifestyle photography, shot on Sony A7IV with 35mm lens, shallow depth of field creating separation between layers, 16:9 widescreen format.
-```
-
-### PRODUCT PHOTOGRAPHY
-**Purpose:** E-commerce, catalogs, promotional materials
-
-**Template:**
-```
-Professional product photography of [product with specific details].
-[Camera angle and framing - specific perspective].
-[Background and staging - materials, props, context].
-[Lighting setup - specific quality, direction, mood].
-[Overall style and aesthetic].
-Shot on [camera], commercial photography quality.
-```
-
-**Example - Skincare Product:**
-```
-Professional product photography of a luxury face serum in frosted glass bottle with gold pump.
-Three-quarter front angle, bottle positioned slightly off-center right following rule of thirds, subtle 5-degree tilt for dynamic energy.
-Minimal white marble surface with natural texture, three fresh eucalyptus leaves arranged artfully to the left, soft shadow falling to bottom-right.
-Soft diffused studio lighting from 45-degree angle above, creating elegant highlights on the glass and gold accents while maintaining detail in the frosted texture.
-Clean, spa-like, premium aesthetic conveying luxury and natural ingredients.
-Shot on Phase One medium format camera, commercial beauty photography, suitable for high-end e-commerce and print advertising.
-```
-
-### INFOGRAPHICS
-**Purpose:** Data visualization, educational content, process flows
-
-**Template:**
-```
-A [clean/modern/playful] infographic design showing [specific data/process].
-[Layout structure - vertical flow/circular/grid/timeline with specific organization].
-[Visual elements - icons, charts, illustrations with style description].
-[Color palette for data categories - specific colors].
-Professional information design, easy to scan, suitable for [use case].
-```
-
-**Example - Process Flow:**
-```
-A clean, modern infographic showing a 5-step customer onboarding process.
-Vertical flow layout with numbered circular icons (1-5) connected by dotted gradient lines flowing from top to bottom.
-Minimalist line icons for each step: welcome handshake, form clipboard, verification checkmark, tutorial play button, success star. Short 10-15 word descriptions beside each icon in clean sans-serif.
-Blue gradient color scheme transitioning from deep navy at top through ocean blue to cyan at bottom, white background with subtle grid pattern.
-Professional information design, clear visual hierarchy with progressive disclosure, suitable for B2B presentation slides and website onboarding pages.
+Wide shot of a woman in her 40s practicing tree pose on an empty beach at golden hour. She's wearing fitted black yoga pants and a dusty rose tank top, barefoot on firm wet sand at the waterline. The sun is setting behind her at camera-right, casting a warm golden backlight that creates a subtle rim light around her silhouette. Gentle waves lap at the shore in the distance. The sky gradients from deep coral near the horizon through warm peach to soft lavender above. Shot on Sony A7III with 24mm wide-angle lens, f/5.6 for sharp foreground-to-background focus. Professional lifestyle photography, peaceful and meditative mood, warm natural color palette.
 ```
 
 ---
 
-## Advanced Techniques
+## TEXT IN IMAGES
 
-### Consistent Characters (Google Best Practice)
-**From Google:** "Gemini can maintain the likeness of a person or character across different poses, lighting and environments."
+**GPT Image 1.5 can render text reliably — but keep it short.**
 
-Establish character first, then reuse in same conversation:
+Rules for text in images:
+- **5 words or fewer** for headlines → high accuracy
+- **Short phrases** (up to ~10 words) → usually accurate
+- **Full sentences or paragraphs** → will likely garble, use HTML overlay instead
+- **Always specify exact text in quotes** in your prompt: `with the text "SUMMER SALE" in bold white sans-serif letters`
+- **Specify font style**: "bold Impact-style", "elegant serif", "clean sans-serif", "handwritten script"
+- **Specify placement**: "centered at the top third", "bottom-right corner", "overlaid on a dark band across the lower third"
+- **Specify treatment**: "with a dark drop shadow for readability", "white text on a semi-transparent black bar"
 
-**Turn 1:** "A whimsical illustration of a tiny glowing mushroom sprite. The sprite has a large bioluminescent mushroom cap for a hat, wide curious eyes, and a body made of woven vines."
-
-**Turn 2:** "Now show the same sprite riding on the back of a friendly moss-covered snail through a sunny meadow full of colorful wildflowers."
-
-### Iterative Editing (Google Best Practice)
-Make precise, conversational edits:
-
-**Turn 1:** Generate base image  
-**Turn 2:** "Change the sofa color to navy blue"  
-**Turn 3:** "Add a stack of three books to the coffee table"
-
-### Multiple Variations (Google Best Practice)
-Request options: "Generate three distinct variations of this product mockup" or "Show four different color palettes for this design"
+**For longer text** or **pixel-perfect text placement**, use the two-step method:
+1. Generate the image WITHOUT text (or with just the headline)
+2. Create an HTML artifact that composites the image + styled text overlay
 
 ---
 
-## Aspect Ratios by Use Case
+## ASPECT RATIO + SIZE RULES
 
-- **Flyers/Posters:** Vertical 2:3 or 3:4 (print-friendly)
-- **Instagram Feed:** Square 1:1  
-- **Instagram Stories:** Vertical 9:16
-- **Facebook/LinkedIn:** Horizontal 16:9
-- **Website Heroes:** Wide 16:9 or ultra-wide 21:9
-- **Product Photos:** Square 1:1 or vertical 4:5
-- **Email Banners:** Horizontal 3:1 or 4:1
+Always match size to use case:
 
----
+| Use Case | Size Parameter | Target Dimensions |
+|----------|---------------|-------------------|
+| Instagram feed | 1024x1024 | 1080x1080 |
+| Instagram story | 1024x1536 | 1080x1920 |
+| YouTube thumbnail | 1536x1024 | 1280x720 |
+| Facebook post | 1536x1024 | 1200x630 |
+| Facebook cover | 1536x1024 | 820x312 |
+| LinkedIn post | 1536x1024 | 1200x627 |
+| Website hero | 1536x1024 | 1920x1080 or 1200x630 |
+| Blog featured | 1536x1024 | 1200x630 |
+| Flyer (portrait) | 1024x1536 | actual print size |
+| Product photo | 1024x1024 | 1080x1080 |
+| Profile/headshot | 1024x1024 | 800x800 |
 
-## Workflow
-
-1. **Identify image type** - Flyer? Social post? Hero? Product? Infographic?
-2. **Apply the formula** from above for that type
-3. **Use the 6-element framework** - Subject, composition, action, location, style, technical
-4. **Write descriptive narrative** - Not keyword lists, full scenes
-5. **Add photography language** for realism - Camera, lens, lighting
-6. **Specify aspect ratio** based on use case
-7. **Call image_generate** with your detailed prompt
-8. **Return the image URL** to user or embed in deliverable
+**Always set `target_width` and `target_height`** for platform-specific images. The base `size` picks the closest aspect ratio for generation, then it gets resized to exact dimensions.
 
 ---
 
-## Common Mistakes to Avoid
+## STYLE MODIFIERS (when user requests non-photorealistic)
 
-❌ **Keyword lists:** "beach sunset yoga woman"  
-✅ **Narrative scene:** Full descriptive paragraph
+Only apply these when the user explicitly asks:
 
-❌ **Vague style:** "make it look good"  
-✅ **Specific direction:** "shot on Canon 5D, golden hour lighting, shallow depth of field"
+**Illustrated / Cartoon:**
+Add: "Clean digital illustration style. Bold outlines, flat color fills, vibrant saturated palette. Modern vector illustration aesthetic, NOT 3D render."
 
-❌ **Generic subjects:** "a person"  
-✅ **Detailed subjects:** "a woman in her 30s with flowing auburn hair, wearing a cream linen dress"
+**Minimalist / Abstract:**
+Add: "Minimalist graphic design. Clean geometric shapes, limited color palette (2-3 colors maximum), generous negative space. Professional and refined."
 
-❌ **Missing technical details:** Forgetting lighting, camera, aspect ratio  
-✅ **Complete specs:** Include all technical elements
+**Vintage / Retro:**
+Add: "Vintage film photography look. Warm color cast, slightly faded shadows, subtle grain texture. Kodak Portra 400 film aesthetic."
 
----
-
-## Real-World Example
-
-**User request:** "Create a flyer for a summer BBQ event"
-
-**Your process:**
-1. Type: Flyer/Poster  
-2. Apply formula + 6 elements
-3. Write narrative prompt:
-
-```
-A vibrant, playful summer BBQ event flyer design.
-Bright illustrated composition featuring juicy grilled burgers with visible grill marks and melted cheese, golden corn on the cob with butter glaze, and stylized orange-red flame elements rising from bottom of design.
-Red-and-white checkered picnic table pattern fills the background creating classic BBQ atmosphere.
-Bold, chunky serif title "BACKYARD BBQ BASH" dominates top third in bright red and sunny yellow with slight shadow for depth, event details (date, time, location) stacked below in clean black sans-serif font.
-Warm color palette: fire-engine red, burnt orange, sunshine yellow, with pops of fresh green from illustrated lettuce garnish.
-Professional graphic design, fun family-friendly aesthetic, high contrast for readability, print-ready quality at 300 DPI.
-Vertical poster format optimized for 11x17 printing.
-```
-
-4. Generate: `image_generate(prompt, size="1024x1536", quality="high")`
-5. Return URL to user
+**Bold / Vibrant (YouTube thumbnails, attention-grabbing):**
+Add: "High-contrast, saturated colors. Dramatic lighting with strong highlights and deep shadows. Eye-catching and scroll-stopping. Bold, punchy composition."
 
 ---
 
-## Pro Tips from Google
+## COMMON MISTAKES THE AGENT MAKES
 
-- **World knowledge:** Gemini can use real-world knowledge - reference actual locations, eras, concepts
-- **Text rendering:** Nano Banana Pro excels at rendering legible text in images - great for posters, infographics, product labels
-- **Multi-image composition:** Can blend multiple reference images for complex scenes
-- **Conversational refinement:** Make iterative improvements in the same conversation
+1. **Using "auto" engine** → Always specify `gpt` or `gemini` based on use case
+2. **Forgetting lighting** → Lighting is 50% of image quality. ALWAYS specify it.
+3. **Keyword lists instead of narrative** → Write full descriptive paragraphs
+4. **Not specifying camera/lens** → Without this, the AI defaults to "digital art" look
+5. **Not setting target dimensions** → Images come back at wrong size for the platform
+6. **Defaulting to stylized/artistic** → This is a business tool. Default to PHOTOREALISTIC.
+7. **Vague subjects** → "A woman" produces generic. "A Latina woman in her late 20s with shoulder-length dark hair and warm brown eyes" produces specific.
+8. **No mood/quality anchors** → End every prompt with "Professional [type] photography. [Mood]. [Quality level]."
+9. **Asking the image model to render long text** → Keep it to 5 words. Use HTML overlay for more.
+10. **Not using reference images for consistency** → When generating multiple images for the same project, always pass `reference_image_url` from the first image.
 
 ---
 
-**Remember:** The difference between amateur AI images and professional results is in the prompt. Be specific. Use photography language. Include technical details. Create narrative scenes, not keyword lists.
+## QUALITY CHECKLIST
+
+Before calling `image_generate`:
+- [ ] Engine explicitly set (gpt or gemini) based on use case
+- [ ] Prompt is a narrative paragraph, not a keyword list
+- [ ] Subject described with specific physical/visual details
+- [ ] Lighting explicitly specified (type, direction, mood)
+- [ ] Camera + lens specified for photorealistic shots
+- [ ] Size and target dimensions set for the platform
+- [ ] Style defaults to photorealistic unless user asked otherwise
+- [ ] Text (if any) is 5 words or fewer with exact quotes, font, and placement
+- [ ] Mood/quality anchor at the end of the prompt

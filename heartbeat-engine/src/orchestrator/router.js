@@ -18,6 +18,12 @@ const logger = createLogger('orchestrator-router');
 // Re-export calculateCost for other modules
 export { calculateCost };
 
+// ── Constants ────────────────────────────────────────────────────────────
+// MULTI-TENANT: Ultimate fallback model when no org config can be resolved.
+// This is NOT a hardcoded preference — it's a safety net so the system never crashes.
+const FALLBACK_MODEL = process.env.DEFAULT_MODEL || 'gemini-2.5-flash';
+const FALLBACK_ORG_ID = process.env.DEFAULT_ORG_ID || 'a1000000-0000-0000-0000-000000000001';
+
 // ── Default model — resolved from admin config at runtime ────────────────
 // MULTI-TENANT: per-org model cache
 const _modelCache = new Map(); // orgId → { model, expiry }
@@ -29,13 +35,13 @@ async function getDefaultModel(orgId = null) {
   if (cached && now < cached.expiry) return cached.model;
   try {
     // Use the org's config if we have an orgId, otherwise fall back to global
-    const resolveId = orgId || 'a1000000-0000-0000-0000-000000000001';
+    const resolveId = orgId || FALLBACK_ORG_ID;
     const config = await getResolvedConfig(resolveId);
-    const model = config.model || 'gemini-2.5-flash';
+    const model = config.model || FALLBACK_MODEL;
     _modelCache.set(cacheKey, { model, expiry: now + 60_000 });
     return model;
   } catch {
-    return cached?.model || 'gemini-2.5-flash';
+    return cached?.model || FALLBACK_MODEL;
   }
 }
 
@@ -54,6 +60,10 @@ function buildTierModelMap(defaultModel) {
       crm:       defaultModel,
       research:  defaultModel,
       data:      defaultModel,
+      design:    defaultModel,
+      scraping:  defaultModel,
+      refund:    defaultModel,
+      docx:      defaultModel,
     },
     pro: {
       chat:      defaultModel,
@@ -63,6 +73,10 @@ function buildTierModelMap(defaultModel) {
       crm:       defaultModel,
       research:  defaultModel,
       data:      defaultModel,
+      design:    defaultModel,
+      scraping:  defaultModel,
+      refund:    defaultModel,
+      docx:      'claude-sonnet-4-5-20250929',   // Pro: Sonnet for documents
     },
     enterprise: {
       chat:      defaultModel,
@@ -72,12 +86,16 @@ function buildTierModelMap(defaultModel) {
       crm:       defaultModel,
       research:  defaultModel,
       data:      defaultModel,
+      design:    defaultModel,
+      scraping:  defaultModel,
+      refund:    defaultModel,
+      docx:      'claude-sonnet-4-5-20250929',   // Enterprise: Sonnet for documents
     },
   };
 }
 
 // Fallback static map until async init completes
-const TIER_MODEL_MAP = buildTierModelMap('gemini-2.5-flash');
+const TIER_MODEL_MAP = buildTierModelMap(FALLBACK_MODEL);
 
 // ── Settings (loaded from env, overridable per client later) ──────────────
 
@@ -93,9 +111,13 @@ function getSettings() {
 // Only falls back to LLM routing for ambiguous tasks when dispatch is ON.
 
 const TASK_PATTERNS = {
-  writing: /\b(blog|article|post|write|sop|report|whitepaper|guide|ebook|essay|draft|compose|content)\b/i,
+  // Order matters — first match wins. More specific patterns go first.
+  scraping:/\b(scrape|scraping|prospect|directory|find emails|build a list|lead gen|lead.?generation|lead.?scraping)\b/i,
+  refund:  /\b(refund|money back|cancel|cancellation|complaint|billing issue|overcharged|charged me|want my money)\b/i,
+  docx:    /\b(document|word doc|docx|proposal|memo|letter|sop|grant|quarterly report)\b/i,
+  writing: /\b(blog|article|post|write|whitepaper|guide|ebook|essay|draft|compose|content)\b/i,
   email:   /\b(email|subject line|newsletter|campaign|sms|message|outreach|follow.?up email|drip)\b/i,
-  coding:  /\b(code|script|html|css|javascript|python|automate|function|api|endpoint|webhook|deploy)\b/i,
+  coding:  /\b(code|script|html|css|javascript|python|automate|function|api|endpoint|webhook|deploy|website|landing page)\b/i,
   crm:     /\b(contact|lead|crm|ghl|pipeline|deal|appointment|calendar|invoice|workflow)\b/i,
   research:/\b(research|search|find|look.?up|competitor|analyze|summarize|compare|review)\b/i,
   design:  /\b(flyer|graphic|image|design|poster|banner|logo|thumbnail|social.?media.?post|quote.?card|cover.?image|ad.?creative|promo.?image|carousel.?design|pinterest.?pin|youtube.?thumbnail)\b/i,
@@ -135,8 +157,8 @@ function getModelForTask(taskType, tier = 'standard', defaultModel = null) {
   }[provider];
 
   if (!process.env[envKey]) {
-    // Fall back to Gemini Flash (NOT Claude — respect the Gemini-first admin setting)
-    const fallback = defaultModel || 'gemini-2.5-flash';
+    // Fall back to admin default (NOT Claude — respect the Gemini-first admin setting)
+    const fallback = defaultModel || FALLBACK_MODEL;
     logger.debug(`${model} unavailable (no ${envKey}), falling back to ${fallback}`);
     return fallback;
   }
@@ -186,17 +208,20 @@ export async function routeTask(instruction, memoryContext = '') {
 Available task types:
 - "writing" → Blog posts, articles, reports (needs quality writing model)
 - "email" → Emails, subject lines, SMS, social copy (needs punchy copy model)
-- "coding" → Scripts, HTML, automation code (needs fast coder)
+- "coding" → Scripts, HTML, websites, automation code (needs fast coder)
 - "crm" → CRM operations, contacts, deals (just API calls)
 - "research" → Web research, summaries (fast model with search)
-- "design" → Visual content, images (image generation)
+- "design" → Visual content, graphics, images (image generation)
 - "data" → Spreadsheets, calculations (structured data)
+- "scraping" → Lead scraping, prospecting, directory scraping
+- "refund" → Refund requests, billing complaints, cancellations
+- "docx" → Documents, proposals, SOPs, Word docs, memos, letters
 - "chat" → General conversation (cheapest model)
 
 Memory context: ${memoryContext || 'None'}
 
 Respond with ONLY valid JSON:
-{"taskType":"writing|email|coding|crm|research|design|data|chat","subAgentSystemPrompt":"System prompt for the specialist","subAgentUserPrompt":"The enriched task","expectedOutput":"markdown|html|code|text|json"}`;
+{"taskType":"writing|email|coding|crm|research|design|data|scraping|refund|docx|chat","subAgentSystemPrompt":"System prompt for the specialist","subAgentUserPrompt":"The enriched task","expectedOutput":"markdown|html|code|text|json"}`;
 
   try {
     const result = await callModel(routerModel, {

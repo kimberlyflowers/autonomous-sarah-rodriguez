@@ -60,12 +60,14 @@ const PROVIDERS = {
 // Order defined in bloom_admin_settings.failover_chain — this is the code-level safety net only.
 // The chain skips whatever the current primary model is.
 
+// Failover order: Gemini first (always has credits), then OpenAI, then Anthropic last
+// This matches bloom_admin_settings.failover_chain in Supabase
 const FAILOVER_CHAIN = [
-  { provider: 'anthropic', model: 'claude-sonnet-4-6' },
-  { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
+  { provider: 'gemini',    model: 'gemini-2.5-flash' },
   { provider: 'openai',    model: 'gpt-4o' },
   { provider: 'openai',    model: 'gpt-4o-mini' },
-  { provider: 'gemini',    model: 'gemini-2.5-flash' },
+  { provider: 'anthropic', model: 'claude-sonnet-4-6' },
+  { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
 ];
 
 // Errors that trigger failover (not user errors, provider errors)
@@ -127,7 +129,7 @@ export function calculateCost(model, usage) {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-function detectProvider(model) {
+export function detectProvider(model) {
   for (const [key, prov] of Object.entries(PROVIDERS)) {
     if (prov.models.includes(model)) return key;
   }
@@ -338,6 +340,50 @@ export class UnifiedLLMClient {
   }
 
   /**
+   * Per-request chat — uses the specified model WITHOUT mutating singleton state.
+   * This is the multi-tenant-safe way to call the LLM. The model/provider is
+   * scoped to this single call and doesn't affect other concurrent requests.
+   *
+   * @param {string} model — full model string (e.g. 'gemini-2.5-flash')
+   * @param {object} params — same as chat(): { messages, system, tools, maxTokens, temperature }
+   * @returns {object} — normalized response
+   */
+  async chatWithModel(model, { messages, system, tools = [], maxTokens = 1024, temperature = 0.1 }) {
+    const provider = detectProvider(model);
+    if (!hasApiKey(provider)) {
+      throw new Error(`Cannot use ${model} — missing API key for ${provider}`);
+    }
+
+    // Save + restore current state (failover may mutate during execution)
+    const savedModel = this._currentModel;
+    const savedProvider = this._currentProvider;
+    const savedFailover = this._failoverActive;
+
+    try {
+      // Temporarily set model for this call only
+      this._currentModel = model;
+      this._currentProvider = provider;
+
+      if (provider === 'anthropic') {
+        return await this._callAnthropic({ messages, system, tools, maxTokens, temperature });
+      } else {
+        return await this._callOpenAICompatible({ messages, system, tools, maxTokens, temperature });
+      }
+    } catch (error) {
+      if (shouldFailover(error)) {
+        logger.warn(`chatWithModel: ${provider} (${model}) failed (${error.status || error.message}), attempting failover...`);
+        return await this._failoverChat({ messages, system, tools, maxTokens, temperature }, provider);
+      }
+      throw error;
+    } finally {
+      // ALWAYS restore singleton state regardless of success/failure
+      this._currentModel = savedModel;
+      this._currentProvider = savedProvider;
+      this._failoverActive = savedFailover;
+    }
+  }
+
+  /**
    * Silent failover — try each provider in the chain until one works
    */
 async _failoverChat(params, failedProvider) {
@@ -486,6 +532,30 @@ async _failoverChat(params, failedProvider) {
     const data = await response.json();
     return parseOpenAIResponse(data);
   }
+}
+
+// ── Per-Org Model Preferences ──────────────────────────────────────────────
+// In-memory map: orgId → { model, updatedAt }
+// Dashboard /models/switch writes here; chat reads here.
+// This is per-process — if you scale to multiple processes, move to Redis or Supabase.
+const _orgModelPrefs = new Map();
+
+export function setOrgModelPreference(orgId, model) {
+  if (!orgId) return false;
+  const provider = detectProvider(model);
+  if (!hasApiKey(provider)) return false;
+  _orgModelPrefs.set(orgId, { model, provider, updatedAt: Date.now() });
+  logger.info('Org model preference saved', { orgId, model, provider });
+  return true;
+}
+
+export function getOrgModelPreference(orgId) {
+  if (!orgId) return null;
+  return _orgModelPrefs.get(orgId) || null;
+}
+
+export function clearOrgModelPreference(orgId) {
+  _orgModelPrefs.delete(orgId);
 }
 
 // ── Singleton ──────────────────────────────────────────────────────────────

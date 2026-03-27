@@ -97,11 +97,11 @@ const TASK_TO_SKILL_MAP = {
   writing:  ['blog-content'],
   email:    ['email-marketing'],
   coding:   ['website-creation'],
-  docx:     ['docx-documents', 'professional-documents'],
+  docx:     ['docx', 'professional-documents'],   // FIX: was 'docx-documents' — file declares name: 'docx'
   crm:      ['ghl-crm'],
   scraping: ['lead-scraper'],
   refund:   ['refund-handler'],
-  design:   ['marketing-graphics'],
+  design:   ['marketing-graphics', 'image-generation'],  // image-generation is the core prompting engine
   research: [],
   data:     [],
   chat:     [],
@@ -119,37 +119,67 @@ const KEYWORD_SKILL_MAP = [
   { keywords: /\b(refund|money back|cancel|cancellation|complaint|dissatisfied|unhappy|not what I paid|doesn't work|doesn't work|want my money|speak to a manager|charged me|billing issue|overcharged|rip.?off|scam|waste of money)\b/i, skill: 'refund-handler' },
   { keywords: /\b(graphic|thumbnail|youtube thumbnail|banner|cover image|cover photo|quote card|ad creative|promo image|social graphic|instagram graphic|carousel design|story graphic|header image|profile banner|pinterest pin|create a graphic|make a graphic|design a post|visual asset|marketing image)\b/i, skill: 'marketing-graphics' },
   { keywords: /\b(flyer|poster|event flyer|promotional flyer|print material|concert flyer|event poster)\b/i, skill: 'flyer-generation' },
+  // Orphaned skills — now reachable via keyword matching
+  { keywords: /\b(book|novel|manuscript|chapter|ebook|write a book|memoir|nonfiction book|fiction book)\b/i, skill: 'book-writing' },
+  { keywords: /\b(pdf|convert to pdf|merge pdf|split pdf|fill pdf|pdf form)\b/i, skill: 'pdf' },
+  { keywords: /\b(powerpoint|pptx|slide deck|slides|presentation|pitch deck|keynote)\b/i, skill: 'pptx' },
+  { keywords: /\b(excel|xlsx|spreadsheet|workbook|pivot table|vlookup|sheet)\b/i, skill: 'xlsx' },
+  { keywords: /\b(generate image|ai image|create image|image prompt|midjourney|dall-?e|stable diffusion|generate a photo|create a photo)\b/i, skill: 'image-generation' },
+  { keywords: /\b(schedule|scheduled task|recurring task|automate task|cron|run daily|run weekly|run every)\b/i, skill: 'task-scheduling' },
+  { keywords: /\b(draft an email|compose an email|write an email|cold email|outbound email|email template|email copy)\b/i, skill: 'email-creator' },
 ];
+
+// ── Companion skills — auto-loaded alongside a primary skill ──────────────
+// When skill X loads, its companions also load so the agent has full context.
+// Example: marketing-graphics needs the core prompting engine from image-generation.
+const COMPANION_SKILL_MAP = {
+  'marketing-graphics':  ['image-generation'],
+  'flyer-generation':    ['image-generation'],
+  'website-creation':    ['image-generation'],  // websites need hero images
+  'social-media':        ['image-generation'],  // social posts often need graphics
+};
 
 /**
  * Find matching skills for a task.
- * Uses both task type mapping AND keyword matching.
- * Returns array of skill objects (usually 1, occasionally 2 for complex tasks).
+ * Uses task type mapping, keyword matching, AND companion skill loading.
+ * Returns array of skill objects (usually 1-3 for complex tasks).
  */
 export function findSkills(taskType, instruction = '') {
   const catalog = loadSkillCatalog();
   const matched = new Set();
-  
+
   // 1. Match by task type
   const taskSkills = TASK_TO_SKILL_MAP[taskType] || [];
   for (const skillName of taskSkills) {
     matched.add(skillName);
   }
-  
+
   // 2. Match by keywords in instruction (more specific)
   for (const { keywords, skill } of KEYWORD_SKILL_MAP) {
     if (keywords.test(instruction)) {
       matched.add(skill);
     }
   }
-  
+
+  // 3. Load companion skills — if X is matched, also load X's companions
+  const companions = new Set();
+  for (const name of matched) {
+    const deps = COMPANION_SKILL_MAP[name];
+    if (deps) {
+      for (const dep of deps) companions.add(dep);
+    }
+  }
+  for (const dep of companions) {
+    matched.add(dep);
+  }
+
   // Look up full skill objects
   const results = [];
   for (const name of matched) {
     const skill = catalog.find(s => s.name === name);
     if (skill) results.push(skill);
   }
-  
+
   return results;
 }
 

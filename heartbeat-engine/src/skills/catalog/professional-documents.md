@@ -46,7 +46,7 @@ When a user asks for a document, report, handbook, SOP, proposal, or any profess
 - The script creates a real .docx Word document with proper formatting
 - Save the resulting .docx file using create_artifact
 - NEVER output a plain .md or .txt file for professional documents
-- Reference the docx-documents skill for the full API reference
+- Reference the docx skill for the full API reference
 
 ## Rule #2: BRAND KIT INTEGRATION
 If a Brand Kit is in your system prompt, use those colors for headers, accent borders, and table headers. If no Brand Kit, use professional navy + gold or the client's industry-appropriate colors.

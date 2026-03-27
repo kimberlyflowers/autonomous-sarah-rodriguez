@@ -18,8 +18,9 @@ import { getProgressText } from './progress-log.js';
 
 const logger = createLogger('think');
 
-// MULTI-TENANT: No hardcoded org ID — org is passed via context.agentProfile
-const DEFAULT_ORG_ID = 'a1000000-0000-0000-0000-000000000001'; // fallback only
+// MULTI-TENANT: Fallbacks are env-configurable, never hardcoded to a single tenant
+const DEFAULT_ORG_ID = process.env.DEFAULT_ORG_ID || 'a1000000-0000-0000-0000-000000000001';
+const FALLBACK_MODEL = process.env.DEFAULT_MODEL || 'gemini-2.5-flash';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // VALID ACTION TYPES — the ONLY strings act.js knows how to execute.
@@ -481,7 +482,7 @@ async function getModelNativePrompts(model, context) {
 // RESPONSE PARSER — handles both wrapped {decisions:[]} and raw [] formats
 // Works for all providers: Claude returns raw array, others may wrap it
 // ═══════════════════════════════════════════════════════════════════════════
-function parseDecisionResponse(responseText, provider) {
+function parseDecisionResponse(responseText, provider, agentId = 'unknown-agent') {
   try {
     // Strip markdown code blocks if present (Claude does this)
     const stripped = responseText
@@ -503,7 +504,7 @@ function parseDecisionResponse(responseText, provider) {
 
     return parsed.map(decision => {
       decision.timestamp = new Date().toISOString();
-      decision.agentId = process.env.AGENT_ID || 'bloomie-sarah-rodriguez';
+      decision.agentId = agentId;
 
       // Validate type
       if (!decision.type || !['act', 'reject', 'escalate'].includes(decision.type)) {
@@ -573,10 +574,10 @@ export async function think(context) {
   try {
     // MULTI-TENANT: Resolve model from the agent's org config, not a hardcoded org
     const orgId = context.agentProfile?.organizationId || context.agentProfile?.orgId || DEFAULT_ORG_ID;
-    let thinkModel = 'gemini-2.5-flash';
+    let thinkModel = FALLBACK_MODEL;
     try {
       const config = await getResolvedConfig(orgId);
-      thinkModel = config.model || 'gemini-2.5-flash';
+      thinkModel = config.model || FALLBACK_MODEL;
     } catch (cfgErr) {
       logger.warn('Could not load admin config for think, using default:', { orgId, error: cfgErr.message });
     }
@@ -603,7 +604,9 @@ export async function think(context) {
 
     const response = await callModel(thinkModel, callOptions);
 
-    const decisions = parseDecisionResponse(response.text, provider);
+    // MULTI-TENANT: pass agentId from context so decisions are tagged correctly
+    const agentId = context.agentProfile?.agentId || process.env.AGENT_ID || 'unknown-agent';
+    const decisions = parseDecisionResponse(response.text, provider, agentId);
 
     logger.info(`Model generated ${decisions.length} decisions`, {
       provider,
