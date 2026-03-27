@@ -4724,7 +4724,7 @@ NEVER skip steps 3 and 4 even if step 2 fails.
       .filter(b => b.type === "thinking")
       .map(b => b.thinking || b.text || "")
       .join("\n")
-      .slice(0, 800);
+      .slice(0, 4000);
     // 2. Capture regular text reasoning
     const _thinkingText = (response.content || [])
       .filter(b => b.type === "text")
