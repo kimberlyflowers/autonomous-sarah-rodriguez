@@ -1828,7 +1828,7 @@ function ArtifactPane({ art, c, onClose, onRequestChanges }) {
       const r = await fetch(`/api/files/artifacts/${art.fileId}/publish`, await withAuth({
         method: 'POST', headers: {'Content-Type':'application/json'},
         body: JSON.stringify({ slug: publishSlug.trim() })
-      });
+      }));
       const d = await r.json();
       if (d.success) {
         setPublishedUrl(window.location.origin + '/p/' + d.slug);
