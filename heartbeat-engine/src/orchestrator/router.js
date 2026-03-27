@@ -98,7 +98,7 @@ const TASK_PATTERNS = {
   coding:  /\b(code|script|html|css|javascript|python|automate|function|api|endpoint|webhook|deploy)\b/i,
   crm:     /\b(contact|lead|crm|ghl|pipeline|deal|appointment|calendar|invoice|workflow)\b/i,
   research:/\b(research|search|find|look.?up|competitor|analyze|summarize|compare|review)\b/i,
-  design:  /\b(flyer|graphic|image|design|poster|banner|logo|thumbnail|social.?media.?post)\b/i,
+  design:  /\b(flyer|graphic|image|design|poster|banner|logo|thumbnail|social.?media.?post|quote.?card|cover.?image|ad.?creative|promo.?image|carousel.?design|pinterest.?pin|youtube.?thumbnail)\b/i,
   data:    /\b(spreadsheet|csv|data|numbers|chart|graph|calculate|formula|excel)\b/i,
 };
 

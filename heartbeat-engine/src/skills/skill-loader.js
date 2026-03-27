@@ -101,7 +101,7 @@ const TASK_TO_SKILL_MAP = {
   crm:      ['ghl-crm'],
   scraping: ['lead-scraper'],
   refund:   ['refund-handler'],
-  design:   [],
+  design:   ['marketing-graphics'],
   research: [],
   data:     [],
   chat:     [],
@@ -117,6 +117,8 @@ const KEYWORD_SKILL_MAP = [
   { keywords: /\b(document|report|memo|letter|word doc|docx|proposal|quarterly|grant|sop)\b/i, skill: 'professional-documents' },
   { keywords: /\b(lead|leads|prospect|prospects|scrape|directory|contact list|find emails|build a list|financial advisor|NAPFA|CFP|FINRA|RIA|chamber of commerce|lead generation|lead scraping)\b/i, skill: 'lead-scraper' },
   { keywords: /\b(refund|money back|cancel|cancellation|complaint|dissatisfied|unhappy|not what I paid|doesn't work|doesn't work|want my money|speak to a manager|charged me|billing issue|overcharged|rip.?off|scam|waste of money)\b/i, skill: 'refund-handler' },
+  { keywords: /\b(graphic|thumbnail|youtube thumbnail|banner|cover image|cover photo|quote card|ad creative|promo image|social graphic|instagram graphic|carousel design|story graphic|header image|profile banner|pinterest pin|create a graphic|make a graphic|design a post|visual asset|marketing image)\b/i, skill: 'marketing-graphics' },
+  { keywords: /\b(flyer|poster|event flyer|promotional flyer|print material|concert flyer|event poster)\b/i, skill: 'flyer-generation' },
 ];
 
 /**
