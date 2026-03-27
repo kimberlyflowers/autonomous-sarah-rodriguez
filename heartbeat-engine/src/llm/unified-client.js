@@ -69,7 +69,7 @@ const FAILOVER_CHAIN = [
 ];
 
 // Errors that trigger failover (not user errors, provider errors)
-const FAILOVER_STATUS_CODES = [400, 401, 402, 403, 404, 429, 500, 502, 503, 504, 529];
+const FAILOVER_STATUS_CODES = [401, 402, 403, 429, 500, 502, 503, 504, 529]; // 400 removed — bad request is a client error, not provider outage
 
 // Error messages that should ALWAYS trigger failover (billing, auth, quota)
 const FAILOVER_ERROR_PATTERNS = [
@@ -262,6 +262,7 @@ export class UnifiedLLMClient {
     this._currentModel = process.env.LLM_MODEL || 'gemini-2.5-flash'; // cold-start fallback — overridden by bloom_admin_settings within 60s
     this._currentProvider = detectProvider(this._currentModel);
     this._failoverActive = false;
+    this._isFailingOver = false; // Guard against recursive failover
     this._originalProvider = null;
 
     logger.info('UnifiedLLMClient v2 initialized', {
@@ -325,7 +326,10 @@ export class UnifiedLLMClient {
         return await this._callOpenAICompatible({ messages, system, tools, maxTokens, temperature });
       }
     } catch (error) {
-      if (shouldFailover(error)) {
+      // Log full error for diagnosis
+      logger.error(`Provider ${provider} error details: status=${error.status} message=${(error.message || '').slice(0, 500)}`);
+      // Only failover if NOT already in a failover attempt (prevents infinite recursion)
+      if (shouldFailover(error) && !this._isFailingOver) {
         logger.warn(`Provider ${provider} failed (${error.status || error.message}), attempting failover...`);
         return await this._failoverChat({ messages, system, tools, maxTokens, temperature }, provider);
       }
@@ -336,42 +340,71 @@ export class UnifiedLLMClient {
   /**
    * Silent failover — try each provider in the chain until one works
    */
-  async _failoverChat(params, failedProvider) {
-    for (const fallback of FAILOVER_CHAIN) {
-      if (fallback.provider === failedProvider) continue;
-      if (!hasApiKey(fallback.provider)) continue;
-
-      try {
-        logger.info(`Failing over to ${fallback.provider} (${fallback.model})...`);
-
-        // Temporarily switch
-        const origModel = this._currentModel;
-        const origProvider = this._currentProvider;
-        this._currentModel = fallback.model;
-        this._currentProvider = fallback.provider;
-        this._failoverActive = true;
-        this._originalProvider = origProvider;
-
-        const result = await this.chat(params);
-        
-        logger.info(`Failover to ${fallback.provider} succeeded`);
-        
-        // Restore original after success (next call tries primary again)
-        this._currentModel = origModel;
-        this._currentProvider = origProvider;
-        this._failoverActive = false;
-        
-        return result;
-      } catch (err) {
-        logger.warn(`Failover to ${fallback.provider} also failed: ${err.message}`);
-        continue;
-      }
+async _failoverChat(params, failedProvider) {
+    // Guard: prevent recursive failover (chat() → _failoverChat() → chat() → _failoverChat())
+    if (this._isFailingOver) {
+      throw new Error(`Failover already in progress — refusing recursive failover from ${failedProvider}`);
     }
+    this._isFailingOver = true;
 
-    throw new Error(`All providers failed. Chain: ${FAILOVER_CHAIN.map(f => f.provider).join(' → ')}`);
+    const origModel = this._currentModel;
+    const origProvider = this._currentProvider;
+
+    try {
+      let attemptIndex = 0;
+      for (const fallback of FAILOVER_CHAIN) {
+        if (fallback.provider === failedProvider && fallback.model === origModel) continue;
+        if (!hasApiKey(fallback.provider)) continue;
+
+        try {
+          // Backoff: 500ms, 1s, 2s between attempts to prevent rate limit cascade
+          if (attemptIndex > 0) {
+            const delay = Math.min(500 * Math.pow(2, attemptIndex - 1), 4000);
+            logger.info(`Failover backoff: waiting ${delay}ms before next attempt...`);
+            await new Promise(r => setTimeout(r, delay));
+          }
+          attemptIndex++;
+
+          logger.info(`Failing over to ${fallback.provider} (${fallback.model})...`);
+
+          // Direct call — do NOT go through this.chat() to avoid recursion
+          this._currentModel = fallback.model;
+          this._currentProvider = fallback.provider;
+          this._failoverActive = true;
+          this._originalProvider = origProvider;
+
+          let result;
+          if (fallback.provider === 'anthropic') {
+            result = await this._callAnthropic(params);
+          } else {
+            result = await this._callOpenAICompatible(params);
+          }
+
+          logger.info(`Failover to ${fallback.provider} succeeded`);
+
+          // Restore original after success
+          this._currentModel = origModel;
+          this._currentProvider = origProvider;
+          this._failoverActive = false;
+
+          return result;
+        } catch (err) {
+          logger.warn(`Failover to ${fallback.provider}/${fallback.model} failed: ${(err.message || '').slice(0, 200)}`);
+          continue;
+        }
+      }
+
+      // Restore originals before throwing
+      this._currentModel = origModel;
+      this._currentProvider = origProvider;
+      this._failoverActive = false;
+      throw new Error(`All providers failed. Chain: ${FAILOVER_CHAIN.map(f => f.provider).join(' → ')}`);
+    } finally {
+      this._isFailingOver = false;
+    }
   }
 
-  formatToolResults(toolResults) {
+    formatToolResults(toolResults) {
     return this._currentProvider === 'anthropic'
       ? formatToolResultsAnthropic(toolResults)
       : formatToolResultsOpenAI(toolResults);
