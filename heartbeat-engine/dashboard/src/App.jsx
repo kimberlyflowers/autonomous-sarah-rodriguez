@@ -5050,7 +5050,7 @@ function App({ authUser }) {
                         }}>
                           <button onClick={(e)=>{
                             e.stopPropagation();
-                            (async()=>{await fetch(`/api/agent/tasks/${task.taskId}`, await withAuth({method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:!task.enabled})});loadActivity();})());
+                            (async()=>{await fetch(`/api/agent/tasks/${task.taskId}`, await withAuth({method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:!task.enabled})}));loadActivity();})());
                           }} style={{width:38,height:22,borderRadius:11,border:"none",background:task.enabled?c.gr:"#444",cursor:"pointer",position:"relative",flexShrink:0}}>
                             <div style={{width:16,height:16,borderRadius:"50%",background:"#fff",position:"absolute",top:3,left:task.enabled?19:3,transition:"left .2s",boxShadow:"0 1px 3px rgba(0,0,0,.3)"}}/>
                           </button>
