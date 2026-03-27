@@ -354,9 +354,8 @@ app.get('/ghl-diagnostics', async (req, res) => {
 // ===== TEMPORARY: Verify the fixed email template creation =====
 app.get('/verify-email-fix', async (req, res) => {
   try {
-    const { getToolExecutors } = await import('./tools/ghl-tools.js');
-    const executors = getToolExecutors();
-    const result = await executors.ghl_create_email_template({
+    const { ghlExecutors } = await import('./tools/ghl-tools.js');
+    const result = await ghlExecutors.ghl_create_email_template({
       name: 'BLOOM Verified Fix Test - ' + new Date().toISOString().slice(0,16),
       subject: '5 Signs Your Brand Needs a Digital Refresh',
       previewText: 'Is your online presence holding you back? Find out now.',
