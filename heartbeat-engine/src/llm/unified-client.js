@@ -722,14 +722,23 @@ async function _callModelDirect(model, provider, { system, messages, tools, maxT
 //   // Returns the correct model string based on tier + account age
 // ═══════════════════════════════════════════════════════════════════════════
 
+// MODEL_TIERS — legacy fallback ONLY (used when admin-config.js can't reach Supabase).
+// The real tier→model mapping lives in admin-config.js getResolvedConfig() which reads
+// from bloom_admin_settings in Supabase. This must stay in sync with the DB defaults.
 const MODEL_TIERS = {
   bloom: {
-    model: 'claude-sonnet-4-6',
-    description: 'BLOOM primary — Sonnet 4.6 (best quality, best honesty)',
+    model: process.env.DEFAULT_MODEL || 'gemini-2.5-flash',
+    description: 'BLOOM primary — uses global default model from admin settings',
   },
   premium: {
     model: 'gpt-4o',
     description: 'Client onboarding — GPT-4o (first 30 days)',
+    downgradeTo: 'standard',
+    downgradeAfterDays: 30,
+  },
+  trial: {
+    model: 'gpt-4o',
+    description: 'Trial tier — same as premium',
     downgradeTo: 'standard',
     downgradeAfterDays: 30,
   },

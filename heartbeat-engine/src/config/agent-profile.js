@@ -34,7 +34,7 @@ export async function loadAgentConfig(agentId = null) {
       agentId: row.id,
       name: row.name,
       role: row.role,
-      client: dbConfig.config?.orgName || 'BLOOM Ecosystem',
+      client: row.config?.orgName || 'BLOOM Ecosystem',
       currentAutonomyLevel: row.autonomy_level || 1,
       standingInstructions: row.standing_instructions,
       config: row.config || {},
