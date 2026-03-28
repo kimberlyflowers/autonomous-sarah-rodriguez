@@ -1175,7 +1175,7 @@ const _ALL_TOOLS = [
 
   {
     name: "ghl_create_email_template",
-    description: "Create an email template in the CRM (Marketing > Emails). Pass structured data — the handler auto-assembles branded HTML with hero image, callout box, gradient CTA button, and Bloomie CTA card, then saves it as a Code Editor template. The template appears in Marketing > Emails and can be used in a Campaign. Do NOT write raw HTML — use the structured fields. Always use this tool when the operator asks to create/draft an email, newsletter, or email campaign.",
+    description: "Create a NEW email template in the CRM (Marketing > Emails). Pass structured data — the handler auto-assembles branded HTML with hero image, callout box, gradient CTA button, and Bloomie CTA card, then saves it as a Code Editor template. IMPORTANT: Only use this for creating NEW templates. If the user asks to EDIT, UPDATE, FIX, or CHANGE an existing email template, use ghl_update_email_template instead — NEVER recreate a template just to change a link or text. Do NOT write raw HTML — use the structured fields.",
     input_schema: {
       type: "object",
       properties: {
