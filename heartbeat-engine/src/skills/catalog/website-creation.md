@@ -500,19 +500,48 @@ async function handleSubmit(e) {
 - **Get a Quote**: name, email, phone, service type, message → tags: ["quote-request"]
 - **Newsletter**: email only → tags: ["newsletter"]
 
+### Calendar / Booking Widgets (Schedule a Demo, Book a Call, etc.)
+When the user wants visitors to schedule a meeting, demo, or call:
+1. Call `ghl_list_calendars` to find the right calendar
+2. Use the calendar's `widgetSlug` to build the embed URL
+3. Embed via iframe: `<iframe src="https://api.leadconnectorhq.com/widget/booking/{widgetSlug}" style="width:100%;min-height:700px;border:none;" scrolling="no"></iframe>`
+4. This is a REAL GHL booking widget — visitors pick a time slot and book directly into the CRM calendar
+5. DO NOT create a fake/mock form that pretends to book — ALWAYS use the real GHL calendar iframe
+6. If no calendar exists, tell the user they need to create one in GHL first
+
+**Example:** If `ghl_list_calendars` returns `widgetSlug: "rpldemo"`, embed:
+```html
+<iframe src="https://api.leadconnectorhq.com/widget/booking/rpldemo" style="width:100%;min-height:700px;border:none;" scrolling="no" title="Schedule a Demo"></iframe>
+```
+
+### GHL Form Widgets (Embed CRM Forms)
+When the user asks to embed a CRM form (not a calendar):
+1. Call `ghl_list_forms` to find existing forms
+2. Embed via iframe: `<iframe src="https://api.leadconnectorhq.com/widget/form/{formId}" style="width:100%;min-height:600px;border:none;" scrolling="no"></iframe>`
+
 ### Checkout / Payment Forms
 1. Call `ghl_list_forms` to check for existing GHL order forms
 2. If found: embed via iframe → `<iframe src="https://api.leadconnectorhq.com/widget/form/{formId}" style="width:100%;min-height:600px;border:none;" scrolling="no"></iframe>`
 3. If not found: create lead-capture form tagged "checkout-lead" + "payment-pending"
 
+### IMPORTANT: Form Hosting Reality
+Websites created as HTML artifacts are hosted on Supabase storage — NOT on the Railway server.
+The `/api/forms/submit` endpoint only works on sites published to the Railway domain.
+For artifact websites, ALWAYS prefer embedding real GHL widgets (calendar iframe, form iframe) which work on ANY domain.
+If you must use a custom form on an artifact site, the form action must point to the full Railway URL:
+`https://autonomous-sarah-rodriguez-production.up.railway.app/api/forms/submit`
+
 ### Form Rules
-1. EVERY website = at least one CRM-connected form
-2. Always use `/api/forms/submit` — NEVER `mailto:`, `formspree.io`, or empty action
-3. Always include `data.source = document.title` so leads are traceable
-4. Show success message after submission (replace form with thank you)
-5. Style forms to match brand kit (colors, fonts, border-radius)
-6. Full-width inputs on mobile
-7. NEVER create forms that don't connect to the CRM
+1. EVERY website = at least one CRM-connected form or embedded GHL widget
+2. For artifact sites: prefer GHL iframe widgets (they work on any domain)
+3. For Railway-hosted sites: use `/api/forms/submit`
+4. For artifact sites with custom forms: use the full Railway URL as action
+5. Always include `data.source = document.title` so leads are traceable
+6. Show success message after submission (replace form with thank you)
+7. Style forms to match brand kit (colors, fonts, border-radius)
+8. Full-width inputs on mobile
+9. NEVER create forms that don't connect to the CRM
+10. NEVER create mock/fake booking forms — use real GHL calendar iframe
 
 ---
 
