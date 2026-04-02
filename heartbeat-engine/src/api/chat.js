@@ -2213,45 +2213,29 @@ After switching, confirm which model you're now running on. Your tools and capab
   },
   {
     name: "edit_artifact",
-    description: `Surgically edit an existing HTML artifact. This is the MANDATORY tool for modifying existing websites/pages.
+    description: `Edit an existing HTML artifact. This is the MANDATORY tool for modifying existing websites/pages.
 
-TWO MODES — choose the right one:
+THREE MODES — choose the right one:
 
 **MODE 1: CSS-TARGETED (PREFERRED for CSS changes)**
 Use cssSelector + cssProperty + cssValue. The server finds the CSS rule block and changes the property.
-You do NOT need to know the current value — just the selector and what you want to set.
 Example: { "cssSelector": ".cta-button", "cssProperty": "background-color", "cssValue": "#22C55E" }
-This will find the .cta-button { ... } block and set background-color to #22C55E, regardless of current value.
 
-**MODE 2: FIND-AND-REPLACE (for text changes, HTML structure changes)**
-Use find + replace. The server finds the exact string and replaces it.
-You MUST know the exact current text/HTML. Use get_session_files to read the file first.
+**MODE 2: FIND-AND-REPLACE (for small text/link changes)**
+Use find + replace in operations array. The server finds the exact string and replaces it.
+Keep find strings SHORT and unique. Use get_session_files to read the file first.
 
-WHEN TO USE:
-- Change a button color → CSS-TARGETED mode (cssSelector + cssProperty + cssValue)
-- Change any CSS property → CSS-TARGETED mode
-- Update text content → FIND-AND-REPLACE mode (find + replace)
-- Change a link → FIND-AND-REPLACE mode
-- Add a section → FIND-AND-REPLACE mode
-- ANY modification to an existing HTML artifact
+**MODE 3: FULL REWRITE (for major changes — new sections, restructuring, fixing broken pages)**
+Use fullRewrite with the complete replacement HTML. This replaces the ENTIRE file content.
+Use this when: adding/removing whole sections, restructuring the page, fixing broken HTML, or when find-and-replace keeps failing.
+Example: { "artifactName": "my-site.html", "fullRewrite": "<html>...entire new HTML...</html>", "operations": [] }
+This is the MOST RELIABLE mode for large changes. Use it instead of struggling with find-and-replace.
 
-HOW TO USE:
-1. Call get_session_files to see the artifact content and get the artifact name
-2. For CSS changes: identify the CSS selector and property to change → use CSS-TARGETED mode
-3. For text/HTML changes: read the exact strings from the content → use FIND-AND-REPLACE mode
-4. The server applies your changes and saves
-
-CSS-TARGETED MODE RULES:
-- cssSelector must match a CSS selector in a <style> block (e.g. ".cta-button", "#hero", "h1")
-- cssProperty is the CSS property name (e.g. "background-color", "color", "font-size")
-- cssValue is the new value (e.g. "#22C55E", "24px", "bold")
-- If the property exists, it's replaced. If it doesn't exist, it's added to the block.
-- You do NOT need to know the current value — this eliminates guessing.
-
-FIND-AND-REPLACE MODE RULES:
-- Each 'find' string must EXACTLY match text in the HTML
-- Keep find strings as SHORT as possible while still being unique
-- The server tries exact match first, then whitespace-flexible match as fallback
+WHEN TO USE WHICH:
+- Change a CSS color/size → MODE 1 (CSS-TARGETED)
+- Change a link or short text → MODE 2 (FIND-AND-REPLACE)
+- Add/remove a section, fix broken page, restructure → MODE 3 (FULL REWRITE)
+- If MODE 2 fails twice → switch to MODE 3 (FULL REWRITE)
 
 NEVER use create_artifact to update an existing file — ALWAYS use edit_artifact instead.`,
     input_schema: {
@@ -2259,9 +2243,10 @@ NEVER use create_artifact to update an existing file — ALWAYS use edit_artifac
       properties: {
         artifactName: { type: "string", description: "Filename of the artifact to edit (e.g. 'mountain-peak-coffee-landing.html'). Must match the name from get_session_files." },
         sessionId: { type: "string", description: "Session ID where the artifact lives. Use the current session ID." },
+        fullRewrite: { type: "string", description: "MODE 3: Complete replacement HTML. Replaces the ENTIRE file content. Use for major changes (new sections, restructuring) or when find-and-replace keeps failing. When using fullRewrite, operations can be an empty array []." },
         operations: {
           type: "array",
-          description: "Array of edit operations. Each operation can be EITHER css-targeted (cssSelector+cssProperty+cssValue) OR find-and-replace (find+replace).",
+          description: "Array of edit operations for MODE 1 (CSS) or MODE 2 (find/replace). Can be empty [] if using fullRewrite.",
           items: {
             type: "object",
             properties: {
@@ -2275,7 +2260,7 @@ NEVER use create_artifact to update an existing file — ALWAYS use edit_artifac
           }
         }
       },
-      required: ["artifactName", "sessionId", "operations"]
+      required: ["artifactName", "sessionId"]
     }
   },
   {
@@ -3196,10 +3181,10 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
 
     // edit_artifact — server-side find-and-replace on HTML artifacts (surgical editing)
     if (toolName === 'edit_artifact') {
-      const { artifactName, operations = [] } = toolInput;
+      const { artifactName, operations = [], fullRewrite } = toolInput;
       try {
         if (!artifactName) return { success: false, error: 'artifactName is required' };
-        if (!operations.length) return { success: false, error: 'At least one operation is required' };
+        if (!operations.length && !fullRewrite) return { success: false, error: 'Provide operations (find/replace or CSS edits) OR fullRewrite (complete replacement HTML)' };
 
         const { createClient } = await import('@supabase/supabase-js');
         const editSupabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
@@ -3235,7 +3220,34 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
         if (!arts || arts.length === 0) return { success: false, error: `Artifact "${artifactName}" not found. Check the filename.` };
 
         const artifact = arts[0];
-        if (!artifact.content) return { success: false, error: `Artifact "${artifactName}" has no content to edit.` };
+        if (!artifact.content && !fullRewrite) return { success: false, error: `Artifact "${artifactName}" has no content to edit.` };
+
+        // ── MODE 3: FULL REWRITE — replace entire content ──
+        // Use this when edit_artifact find/replace keeps failing due to string matching issues,
+        // or when restructuring large sections of a page.
+        if (fullRewrite && typeof fullRewrite === 'string' && fullRewrite.length > 0) {
+          let newContent = fullRewrite;
+          // Strip emojis from HTML
+          if (artifact.name?.endsWith('.html') || artifact.file_type === 'html') {
+            newContent = newContent.replace(/[\u{1F600}-\u{1F64F}|\u{1F300}-\u{1F5FF}|\u{1F680}-\u{1F6FF}|\u{1F1E0}-\u{1F1FF}|\u{2600}-\u{26FF}|\u{2700}-\u{27BF}|\u{FE00}-\u{FE0F}|\u{1F900}-\u{1F9FF}|\u{1FA00}-\u{1FA6F}|\u{1FA70}-\u{1FAFF}|\u{200D}|\u{20E3}|\u{E0020}-\u{E007F}]/gu, '');
+          }
+          const { error: updateErr } = await editSupabase
+            .from('artifacts')
+            .update({ content: newContent, updated_at: new Date().toISOString() })
+            .eq('id', artifact.id);
+          if (updateErr) return { success: false, error: `Failed to save: ${updateErr.message}` };
+          const fileTag = `<!-- file:${artifactName} -->`;
+          console.log(`[edit_artifact] ✅ FULL REWRITE of artifact ${artifact.id} ("${artifactName}") — ${newContent.length} chars`);
+          return {
+            success: true,
+            artifactId: artifact.id,
+            artifactName,
+            method: 'fullRewrite',
+            contentLength: newContent.length,
+            fileTag,
+            message: `✅ Full rewrite applied to "${artifactName}" (${newContent.length} chars). Include ${fileTag} in your response.`
+          };
+        }
 
         let html = artifact.content;
         const results = [];
@@ -3410,7 +3422,7 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
           fileTag,
           message: successCount > 0
             ? `✅ Applied ${successCount}/${operations.length} edit(s) to "${artifactName}". Include ${fileTag} in your response so the user sees the updated file card.`
-            : `❌ No edits were applied — all ${failCount} find strings were not found. Check that your find strings match the HTML exactly.`
+            : `❌ No edits were applied — all ${failCount} find strings were not found. TIP: If find-and-replace keeps failing, use fullRewrite mode instead — pass the complete updated HTML as the "fullRewrite" parameter with operations: []. This replaces the entire file and is more reliable for large changes.`
         };
       } catch (e) {
         return { success: false, error: `edit_artifact error: ${e.message}` };

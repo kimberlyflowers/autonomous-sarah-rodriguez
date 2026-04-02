@@ -568,10 +568,11 @@ Use `get_site_pages` to get correct slugs. Never hardcode or guess slugs.
 
 ### Editing Existing Pages
 1. Call `get_session_files` to retrieve existing HTML
-2. Use `edit_artifact` for surgical edits — NEVER recreate the entire page
-3. Each operation: find EXACT old string → replace with new string
-4. If edit affects navigation (adding/removing pages), update ALL pages
-5. NEVER change things the user didn't ask to change
+2. For small changes (text, links, CSS): use `edit_artifact` with find-and-replace or CSS-targeted mode
+3. For large changes (adding/removing sections, restructuring): use `edit_artifact` with `fullRewrite` mode — pass the complete updated HTML as the `fullRewrite` parameter. This replaces the entire file and is much more reliable than find-and-replace for major changes.
+4. If find-and-replace fails TWICE, immediately switch to `fullRewrite` mode — do NOT keep retrying find-and-replace.
+5. If edit affects navigation (adding/removing pages), update ALL pages
+6. NEVER change things the user didn't ask to change
 
 ---
 
