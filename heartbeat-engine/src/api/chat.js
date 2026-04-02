@@ -3379,7 +3379,7 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
           results.push({
             index: i,
             success: false,
-            error: `String not found in HTML (tried exact + whitespace-flexible match). The text may not exist in the file.`,
+            error: `String not found. STOP using find-and-replace. Use fullRewrite mode instead: call edit_artifact with fullRewrite parameter containing the complete updated HTML.`,
             find_preview: op.find.slice(0, 120),
             description: op.description || ''
           });
@@ -3422,7 +3422,7 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
           fileTag,
           message: successCount > 0
             ? `✅ Applied ${successCount}/${operations.length} edit(s) to "${artifactName}". Include ${fileTag} in your response so the user sees the updated file card.`
-            : `❌ No edits were applied — all ${failCount} find strings were not found. TIP: If find-and-replace keeps failing, use fullRewrite mode instead — pass the complete updated HTML as the "fullRewrite" parameter with operations: []. This replaces the entire file and is more reliable for large changes.`
+            : `❌ FIND-AND-REPLACE FAILED — all ${failCount} find strings were not found. DO NOT retry find-and-replace. Instead, you MUST use fullRewrite mode NOW. Call edit_artifact again with: {"artifactName": "${artifactName}", "sessionId": "${sid}", "fullRewrite": "<your complete updated HTML here>", "operations": []}. Read the current HTML from get_session_files, make your changes in the full HTML, then pass it as fullRewrite. This is MANDATORY when find-and-replace fails.`
         };
       } catch (e) {
         return { success: false, error: `edit_artifact error: ${e.message}` };
