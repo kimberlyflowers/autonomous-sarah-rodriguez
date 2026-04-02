@@ -3420,9 +3420,11 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
           failed: failCount,
           results,
           fileTag,
+          // When ALL operations fail, include the current HTML so the model can do a fullRewrite immediately
+          currentHTML: successCount === 0 ? html.slice(0, 60000) : undefined,
           message: successCount > 0
             ? `✅ Applied ${successCount}/${operations.length} edit(s) to "${artifactName}". Include ${fileTag} in your response so the user sees the updated file card.`
-            : `❌ FIND-AND-REPLACE FAILED — all ${failCount} find strings were not found. DO NOT retry find-and-replace. Instead, you MUST use fullRewrite mode NOW. Call edit_artifact again with: {"artifactName": "${artifactName}", "sessionId": "${sid}", "fullRewrite": "<your complete updated HTML here>", "operations": []}. Read the current HTML from get_session_files, make your changes in the full HTML, then pass it as fullRewrite. This is MANDATORY when find-and-replace fails.`
+            : `❌ FIND-AND-REPLACE FAILED. DO NOT retry find-and-replace — it will fail again. You MUST use fullRewrite mode NOW. The current HTML is included in this response as "currentHTML". Make your changes to it and call edit_artifact with: {"artifactName": "${artifactName}", "sessionId": "${sid}", "fullRewrite": "<the modified HTML>", "operations": []}. This is MANDATORY.`
         };
       } catch (e) {
         return { success: false, error: `edit_artifact error: ${e.message}` };
