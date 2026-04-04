@@ -2050,7 +2050,7 @@ function ArtifactPane({ art, c, onClose, onRequestChanges }) {
 
       {/* Footer actions */}
       <div style={{padding:'10px 14px',borderTop:'1px solid '+c.ln,background:c.cd,display:'flex',gap:6,flexShrink:0}}>
-        <button onClick={()=>onRequestChanges(art.name)} style={{flex:1,padding:'8px 0',borderRadius:8,border:'1px solid '+c.ln,background:c.cd,cursor:'pointer',fontSize:12,fontWeight:600,color:c.tx,fontFamily:'inherit'}}>Request Changes</button>
+        <button onClick={()=>onRequestChanges(art.name,art.fileId)} style={{flex:1,padding:'8px 0',borderRadius:8,border:'1px solid '+c.ln,background:c.cd,cursor:'pointer',fontSize:12,fontWeight:600,color:c.tx,fontFamily:'inherit'}}>Request Changes</button>
         {isHtml && art.fileId && (
           <button onClick={()=>{window.open(`/api/files/publish/${art.fileId}`,'_blank');}} style={{padding:'8px 12px',borderRadius:8,border:'1px solid '+c.ac,background:c.ac+'12',cursor:'pointer',fontSize:12,fontWeight:600,color:c.ac,fontFamily:'inherit'}}>↗ Full Screen</button>
         )}
@@ -3990,6 +3990,8 @@ function App({ authUser }) {
   const [files,setFiles]=useState([]);
   const [filesLoading,setFilesLoading]=useState(false);
   const [filesSearch,setFilesSearch]=useState('');
+  const [filesSort,setFilesSort]=useState('newest'); // 'newest','oldest','name'
+  const [filesTypeFilter,setFilesTypeFilter]=useState('all'); // 'all','html','image','markdown','code','document'
   const [filesRefresh,setFilesRefresh]=useState(0);
   const [previewFile,setPreviewFile]=useState(null); // {name, content, fileId}
 
@@ -4865,7 +4867,7 @@ function App({ authUser }) {
                                 art={activeArtifact}
                                 c={c}
                                 onClose={()=>setActiveArtifact(null)}
-                                onRequestChanges={(name)=>{setRightTab("browser");setTx("I want to make changes to "+name);}}
+                                onRequestChanges={(name,fileId)=>{setRightTab("browser");setTx(`Edit the file "${name}" (fileId: ${fileId||''}, sessionId: ${sid.current||''}). Use edit_artifact to modify this EXISTING file. Here is what I want changed: `);}}
                               />
                             ):(
                               sid.current ? (
@@ -5817,7 +5819,22 @@ function App({ authUser }) {
                   <h1 style={{fontSize:mob?20:24,fontWeight:700,color:c.tx,marginBottom:4}}>Files & Deliverables</h1>
                   <p style={{fontSize:13,color:c.so}}>{conferenceMode?'All content from your team':'All content '+aFN+' has created for you'}</p>
                 </div>
-                <input value={filesSearch||''} onChange={e=>setFilesSearch(e.target.value)} placeholder="Search files..." style={{padding:"8px 14px",borderRadius:10,border:"1.5px solid "+c.ln,fontSize:13,fontFamily:"inherit",background:c.inp,color:c.tx,width:mob?"100%":240}}/>
+                <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                  <input value={filesSearch||''} onChange={e=>setFilesSearch(e.target.value)} placeholder="Search files..." style={{padding:"8px 14px",borderRadius:10,border:"1.5px solid "+c.ln,fontSize:13,fontFamily:"inherit",background:c.inp,color:c.tx,width:mob?"100%":180}}/>
+                  <select value={filesTypeFilter} onChange={e=>setFilesTypeFilter(e.target.value)} style={{padding:"8px 10px",borderRadius:10,border:"1.5px solid "+c.ln,fontSize:12,fontFamily:"inherit",background:c.inp,color:c.tx,cursor:"pointer"}}>
+                    <option value="all">All Types</option>
+                    <option value="html">Websites</option>
+                    <option value="image">Images</option>
+                    <option value="markdown">Documents</option>
+                    <option value="code">Code</option>
+                    <option value="document">PDF/DOCX</option>
+                  </select>
+                  <select value={filesSort} onChange={e=>setFilesSort(e.target.value)} style={{padding:"8px 10px",borderRadius:10,border:"1.5px solid "+c.ln,fontSize:12,fontFamily:"inherit",background:c.inp,color:c.tx,cursor:"pointer"}}>
+                    <option value="newest">Newest First</option>
+                    <option value="oldest">Oldest First</option>
+                    <option value="name">Name A-Z</option>
+                  </select>
+                </div>
               </div>
               {filesLoading ? (
                 <div style={{textAlign:"center",padding:40,color:c.so}}>Loading files...</div>
@@ -5829,7 +5846,22 @@ function App({ authUser }) {
                 </div>
               ) : (
                 <div style={{display:"grid",gridTemplateColumns:mob?"1fr":"repeat(auto-fill, minmax(280px, 1fr))",gap:14}}>
-                  {files.filter(f=>!filesSearch||f.name?.toLowerCase().includes(filesSearch.toLowerCase())||f.description?.toLowerCase().includes(filesSearch.toLowerCase())).map((f)=>{
+                  {files.filter(f=>{
+                    if(filesSearch&&!f.name?.toLowerCase().includes(filesSearch.toLowerCase())&&!f.description?.toLowerCase().includes(filesSearch.toLowerCase())) return false;
+                    if(filesTypeFilter!=='all'){
+                      const ext=(f.name||'').split('.').pop()?.toLowerCase()||'';
+                      if(filesTypeFilter==='html'&&ext!=='html') return false;
+                      if(filesTypeFilter==='image'&&f.fileType!=='image') return false;
+                      if(filesTypeFilter==='markdown'&&ext!=='md') return false;
+                      if(filesTypeFilter==='code'&&!['js','py','css','jsx','ts','tsx'].includes(ext)) return false;
+                      if(filesTypeFilter==='document'&&!['pdf','docx','doc','xlsx','pptx'].includes(ext)) return false;
+                    }
+                    return true;
+                  }).sort((a,b)=>{
+                    if(filesSort==='oldest') return new Date(a.approvedAt||a.createdAt||0)-new Date(b.approvedAt||b.createdAt||0);
+                    if(filesSort==='name') return (a.name||'').localeCompare(b.name||'');
+                    return new Date(b.approvedAt||b.createdAt||0)-new Date(a.approvedAt||a.createdAt||0);
+                  }).map((f)=>{
                     const ext=(f.name||'').split('.').pop()?.toLowerCase()||'';
                     const icon=f.fileType==='image'?'🖼️':ext==='html'?'🌐':ext==='md'?'📝':ext==='js'||ext==='py'?'💻':ext==='pdf'?'📄':'📎';
                     const sizeStr=f.fileSize>1048576?`${(f.fileSize/1048576).toFixed(1)}MB`:f.fileSize>1024?`${(f.fileSize/1024).toFixed(1)}KB`:`${f.fileSize||0}B`;
@@ -5849,7 +5881,7 @@ function App({ authUser }) {
                               const pr=await fetch(`/api/files/preview/${f.fileId}`);
                               if(pr.headers.get('content-type')?.includes('json')){
                                 const pd=await pr.json();
-                                setPreviewFile({name:f.name,content:pd.content||'No content',fileId:f.fileId,fileType:f.fileType,slug:f.slug||null});
+                                setPreviewFile({name:f.name,content:pd.content||'No content',fileId:f.fileId,fileType:f.fileType,slug:f.slug||null,sessionId:f.sessionId||null});
                               } else {
                                 setPreviewFile({name:f.name,content:'Binary file — use Download button',fileId:f.fileId,fileType:f.fileType});
                               }
@@ -6867,8 +6899,10 @@ function App({ authUser }) {
                   )}
                   <button onClick={()=>{
                     const name=previewFile.name;
-                    const ask=`I want to make changes to "${name}". Here's the current content:\n\n\`\`\`\n${(editContent||previewFile.content||'').slice(0,2000)}\n\`\`\`\n\nPlease help me edit this.`;
-                    setPreviewFile(null);setEditMode(false);setPg('chat');setTx(ask);
+                    const fId=previewFile.fileId;
+                    const sessId=previewFile.sessionId||sid.current||'';
+                    const ask=`Edit the file "${name}" (fileId: ${fId}, sessionId: ${sessId}). Use edit_artifact or fullRewrite to modify this EXISTING file — do NOT create a new one. Here is what I want changed:`;
+                    setPreviewFile(null);setEditMode(false);setPg('chat');setTx(ask+' ');
                   }} style={{padding:"8px 14px",borderRadius:8,border:"1px solid "+c.ac,background:c.ac+"10",cursor:"pointer",fontSize:12,fontWeight:600,color:c.ac,fontFamily:"inherit"}}>
                     ✨ Ask Bloomie to Edit
                   </button>

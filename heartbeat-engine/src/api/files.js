@@ -195,6 +195,7 @@ router.get('/artifacts', async (req, res) => {
       storagePath: r.storage_path,
       content: (r.file_type === 'html' || r.file_type === 'markdown' || r.file_type === 'text' || r.file_type === 'code') ? (r.content || null) : null,
       createdAt: r.created_at,
+      approvedAt: r.created_at,  // alias for frontend date display/sorting
       slug: r.slug || null,
       published: r.published || false,
       bloomshieldRegistered: r.bloomshield_registered,
