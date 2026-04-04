@@ -2809,7 +2809,7 @@ async function executeTool(toolName, toolInput, sessionId = null, agentConfig = 
           .select('id, name, description, file_type, mime_type, storage_path, content, created_at')
           .eq('session_id', sid)
           .order('created_at', { ascending: false })
-          .limit(20);
+          .limit(200);
 
         if (fileType !== 'all') {
           query = query.eq('file_type', fileType);
