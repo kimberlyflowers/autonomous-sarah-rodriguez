@@ -156,7 +156,7 @@ async function queueBloomshield({ supabaseId, floralId, contentText, name, mimeT
 // ── LIST ARTIFACTS ───────────────────────────────────────────────────────────
 router.get('/artifacts', async (req, res) => {
   try {
-    const { status, limit = 50, sessionId, agentId } = req.query;
+    const { status, limit = 200, sessionId, agentId } = req.query;
 
     // ── Org-boundary: if agentId specified, verify ownership ──
     if (agentId) {
