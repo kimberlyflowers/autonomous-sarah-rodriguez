@@ -4020,8 +4020,8 @@ function App({ authUser }) {
     if(pg!=="artifacts") return;
     setFilesLoading(true);
     const url = conferenceMode
-      ? "/api/files/artifacts?limit=100"
-      : currentAgentId ? `/api/files/artifacts?limit=100&agentId=${currentAgentId}` : "/api/files/artifacts?limit=100";
+      ? "/api/files/artifacts?limit=500"
+      : currentAgentId ? `/api/files/artifacts?limit=500&agentId=${currentAgentId}` : "/api/files/artifacts?limit=500";
     // Send auth headers so server resolves correct org from JWT — critical for multi-tenant
     getAuthHeaders().then(headers => {
       fetch(url, { headers })
