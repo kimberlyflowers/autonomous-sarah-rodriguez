@@ -992,8 +992,9 @@ async function runScheduledTasks(agentConfig) {
     try {
       logger.info(`▶ Running task: ${task.name} — "${task.instruction.slice(0, 80)}"`);
       const { AgentExecutor } = await import('./agent/executor.js');
-      const executor = new AgentExecutor(agentConfig?.agentId || 'bloomie-sarah-rodriguez', agentConfig);
-      const result = await executor.executeTask(task.instruction, { trigger: 'scheduled', taskId: task.id, taskName: task.name, taskType: task.task_type });
+      // MULTI-TENANT: Use the task's own agent_id, not the hardcoded agentConfig
+      const executor = new AgentExecutor(task.agent_id || agentConfig?.agentId || 'bloomie-sarah-rodriguez', agentConfig);
+      const result = await executor.executeTask(task.instruction, { trigger: 'scheduled', taskId: task.id, taskName: task.name, taskType: task.task_type, orgId: task.organization_id });
       output = typeof result === 'string' ? result : result?.response || JSON.stringify(result);
 
       // Check inner result status — executor may return without throwing but still report failure

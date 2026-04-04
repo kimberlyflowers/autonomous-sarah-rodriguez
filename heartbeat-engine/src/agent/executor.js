@@ -85,13 +85,29 @@ export class AgentExecutor {
     this.executionId = uuidv4();
     this.currentTurn = 0;
 
+    // ═══ CRITICAL FIX: Reset context manager between task executions ═══
+    // The contextManager is a module-level singleton. Without this reset,
+    // stale conversation history from previous tasks pollutes the context,
+    // causing the LLM to generate text continuations instead of using tools.
+    // This was the root cause of "tasks say completed but nothing created."
+    this.contextManager.conversationMemory = [];
+    this.contextManager.workingContext = new Map();
+    this.toolExecutionHistory = [];
+    this.conversationHistory = [];
+    this.recentToolCalls = [];
+    this.currentPlan = null;
+    this.currentStep = 0;
+    logger.info('Context manager reset for fresh task execution');
+
     // Resolve model from admin config (respects Gemini setting in Supabase)
+    // MULTI-TENANT: Use the task's org ID if available, not a hardcoded org
     if (!this._modelOverride) {
       try {
-        const config = await getResolvedConfig('a1000000-0000-0000-0000-000000000001');
+        const orgId = context.orgId || 'a1000000-0000-0000-0000-000000000001';
+        const config = await getResolvedConfig(orgId);
         const resolvedModel = config.model || 'gemini-2.5-flash';
         this.modelFormatter = new ModelFormatter(resolvedModel);
-        logger.info('Executor using admin-configured model', { model: resolvedModel, reason: config.reason });
+        logger.info('Executor using admin-configured model', { model: resolvedModel, orgId, reason: config.reason });
       } catch (cfgErr) {
         logger.warn('Could not load admin config for executor, using default', { error: cfgErr.message });
       }
@@ -946,6 +962,15 @@ ${JSON.stringify(context, null, 2)}
 ## Standing Instructions:
 ${agentConfig.standingInstructions}
 ${skillContent}
+
+## ⚠️ CRITICAL: SCHEDULED TASK EXECUTION RULES
+When executing a scheduled task (not interactive chat):
+1. You MUST use the tools specified in the task instruction. If the instruction says to use ghl_create_blog_post, you MUST call that tool. If it says to use ghl_create_social_post, you MUST call that tool.
+2. NEVER just write text as your response and stop. Text-only output means NOTHING was actually created.
+3. Your text response alone does NOT create blog posts, does NOT schedule social media, does NOT save artifacts. You MUST call the actual tools.
+4. If a tool call fails, report the failure — do NOT pretend the task succeeded.
+5. A blog post is NOT created until ghl_create_blog_post returns success. Writing blog content as text is NOT the same as publishing it.
+
 Remember: Plan first. Execute one step. Verify it worked. Then move on.`;
   }
 
