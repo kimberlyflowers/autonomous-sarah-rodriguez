@@ -99,6 +99,18 @@ export class AgentExecutor {
     this.currentStep = 0;
     logger.info('Context manager reset for fresh task execution');
 
+    // ═══ TASK-TYPE DETECTION for tool filtering ═══
+    // Classify the task so formatToolsForClaude() can filter to relevant tools only.
+    // Gemini 2.5 Flash chokes on 99 tools and responds text-only; filtering to
+    // 10-20 relevant tools makes it actually call them.
+    this._currentTaskType = this._classifyTaskType(task, context);
+    this._isScheduledTask = context.trigger === 'scheduled';
+    logger.info('Task classified for tool filtering', {
+      taskType: this._currentTaskType,
+      isScheduled: this._isScheduledTask,
+      taskPreview: task.substring(0, 80)
+    });
+
     // Resolve model from admin config (respects Gemini setting in Supabase)
     // MULTI-TENANT: Use the task's org ID if available, not a hardcoded org
     if (!this._modelOverride) {
@@ -380,13 +392,20 @@ Use the available tools to complete this task. Work step by step and explain you
       input_schema: t.input_schema || t.parameters || {}
     }));
 
+    // ═══ FORCE TOOL USE for scheduled tasks on first turn ═══
+    // Gemini 2.5 Flash with mode:'AUTO' responds text-only instead of calling tools.
+    // Setting mode:'ANY' on the first turn forces it to call at least one tool.
+    // After the first tool call, switch back to AUTO so it can finish naturally.
+    const forceToolUse = this._isScheduledTask && this.currentTurn <= 1 && toolDefs.length > 0;
+
     // Use unified callModel — handles all providers + automatic failover
     const result = await callModel(model, {
       system: systemPrompt,
       messages: messages,
       tools: toolDefs,
       maxTokens: 4000,
-      temperature: 0.1
+      temperature: 0.1,
+      forceToolUse: forceToolUse
     });
 
     logger.info('LLM response received', {
@@ -711,72 +730,114 @@ Use the available tools to complete this task. Work step by step and explain you
 
   /**
    * Convert tool definitions to Claude API format
+   * When a taskType is provided, filters to only the tools relevant for that task
+   * to avoid overwhelming the model with 99 tools (Gemini stops calling tools when overloaded)
    */
-  formatToolsForClaude() {
+  formatToolsForClaude(taskType = null) {
+    // ═══ TASK-TYPE TOOL FILTERING ═══
+    // Gemini 2.5 Flash with 99 tools responds text-only instead of calling tools.
+    // Filtering to 10-20 relevant tools per task type fixes this.
+    const TASK_TOOL_MAP = {
+      blog: [
+        // Core blog creation
+        'ghl_create_blog_post', 'ghl_list_blog_posts',
+        // Content research
+        'web_search', 'web_fetch',
+        // Image for blog hero
+        'image_generate',
+        // Planning & logging
+        'bloom_todo_write', 'bloom_create_document', 'bloom_log_decision',
+        'bloom_log_observation', 'bloom_escalate_issue',
+        // Media upload for blog images
+        'ghl_upload_media', 'ghl_list_media',
+      ],
+      social: [
+        // Social posting
+        'ghl_create_social_post', 'ghl_list_social_posts',
+        // Image generation for social graphics
+        'image_generate', 'image_edit',
+        // Content research
+        'web_search', 'web_fetch',
+        // Planning & logging
+        'bloom_todo_write', 'bloom_create_document', 'bloom_log_decision',
+        'bloom_log_observation', 'bloom_escalate_issue',
+        // Media
+        'ghl_upload_media', 'ghl_list_media',
+      ],
+      email: [
+        // Email tools
+        'ghl_list_email_templates', 'ghl_create_email_template', 'ghl_update_email_template',
+        'ghl_list_campaigns',
+        // Gmail
+        'gmail_check_inbox', 'gmail_read_message', 'gmail_send_email',
+        // Contact lookup
+        'ghl_search_contacts', 'ghl_get_contact',
+        // Planning & logging
+        'bloom_todo_write', 'bloom_create_document', 'bloom_log_decision',
+        'bloom_log_observation', 'bloom_escalate_issue',
+      ],
+      followup: [
+        // CRM tools for follow-ups
+        'ghl_search_contacts', 'ghl_get_contact', 'ghl_update_contact',
+        'ghl_get_conversations', 'ghl_get_messages', 'ghl_send_message',
+        'ghl_create_note', 'ghl_get_notes',
+        'ghl_add_contact_tag', 'ghl_list_location_tags',
+        // Tasks
+        'ghl_create_task', 'ghl_list_tasks',
+        // Planning & logging
+        'bloom_todo_write', 'bloom_log_decision', 'bloom_log_observation',
+        'bloom_escalate_issue', 'bloom_create_document',
+      ],
+      research: [
+        // Web research
+        'web_search', 'web_fetch',
+        'browser_task', 'browser_screenshot',
+        // Scraping
+        ...Object.keys(scrapeToolDefinitions),
+        // Documents
+        'bloom_create_document', 'bloom_list_documents',
+        // Planning & logging
+        'bloom_todo_write', 'bloom_log_decision', 'bloom_log_observation',
+        'bloom_escalate_issue',
+      ],
+    };
+
+    // Determine task type from stored context if not explicitly provided
+    const effectiveTaskType = taskType || this._currentTaskType || null;
+
+    // Get the allowed tool names for this task type (null = all tools)
+    const allowedTools = effectiveTaskType && TASK_TOOL_MAP[effectiveTaskType]
+      ? new Set(TASK_TOOL_MAP[effectiveTaskType])
+      : null;
+
     const claudeTools = [];
+    const allToolSources = [
+      ghlToolDefinitions,
+      internalToolDefinitions,
+      browserToolDefinitions,
+      webSearchToolDefinitions,
+      imageToolDefinitions,
+      scrapeToolDefinitions,
+      gmailToolDefinitions,
+    ];
 
-    // Add GHL tools
-    for (const [toolName, toolDef] of Object.entries(ghlToolDefinitions)) {
-      claudeTools.push({
-        name: toolName,
-        description: toolDef.description,
-        input_schema: toolDef.parameters
-      });
+    for (const toolSource of allToolSources) {
+      for (const [toolName, toolDef] of Object.entries(toolSource)) {
+        // If filtering is active, only include allowed tools
+        if (allowedTools && !allowedTools.has(toolName)) continue;
+        claudeTools.push({
+          name: toolName,
+          description: toolDef.description,
+          input_schema: toolDef.parameters
+        });
+      }
     }
 
-    // Add comprehensive internal tools
-    for (const [toolName, toolDef] of Object.entries(internalToolDefinitions)) {
-      claudeTools.push({
-        name: toolName,
-        description: toolDef.description,
-        input_schema: toolDef.parameters
-      });
-    }
-
-    // Add browser automation tools
-    for (const [toolName, toolDef] of Object.entries(browserToolDefinitions)) {
-      claudeTools.push({
-        name: toolName,
-        description: toolDef.description,
-        input_schema: toolDef.parameters
-      });
-    }
-
-    // Add web search tools
-    for (const [toolName, toolDef] of Object.entries(webSearchToolDefinitions)) {
-      claudeTools.push({
-        name: toolName,
-        description: toolDef.description,
-        input_schema: toolDef.parameters
-      });
-    }
-
-    // Add image generation tools
-    for (const [toolName, toolDef] of Object.entries(imageToolDefinitions)) {
-      claudeTools.push({
-        name: toolName,
-        description: toolDef.description,
-        input_schema: toolDef.parameters
-      });
-    }
-
-    // Add lead scraping tools
-    for (const [toolName, toolDef] of Object.entries(scrapeToolDefinitions)) {
-      claudeTools.push({
-        name: toolName,
-        description: toolDef.description,
-        input_schema: toolDef.parameters
-      });
-    }
-
-    // Add Gmail tools
-    for (const [toolName, toolDef] of Object.entries(gmailToolDefinitions)) {
-      claudeTools.push({
-        name: toolName,
-        description: toolDef.description,
-        input_schema: toolDef.parameters
-      });
-    }
+    logger.info('Formatted tools for LLM', {
+      taskType: effectiveTaskType || 'all',
+      toolCount: claudeTools.length,
+      filtered: !!allowedTools
+    });
 
     return claudeTools;
   }
@@ -1010,6 +1071,26 @@ Remember: Plan first. Execute one step. Verify it worked. Then move on.`;
 
       this.modelFormatter.switchModel(recommendedModel);
     }
+  }
+
+  /**
+   * Classify task type for tool filtering
+   * Returns a category key that maps to TASK_TOOL_MAP in formatToolsForClaude()
+   */
+  _classifyTaskType(task, context = {}) {
+    const text = `${task} ${context.taskName || ''} ${context.taskType || ''}`.toLowerCase();
+
+    if (/blog|article|geo.?optimized|seo.?post|write.*post/.test(text)) return 'blog';
+    if (/social|instagram|facebook|linkedin|twitter|tiktok/.test(text)) return 'social';
+    if (/email|newsletter|campaign|drip|outreach/.test(text)) return 'email';
+    if (/follow.?up|nurture|check.?in|overdue|re.?engage/.test(text)) return 'followup';
+    if (/research|scrape|analyze|report|audit|competitor/.test(text)) return 'research';
+
+    // For chat or unclassifiable tasks, return null (all tools)
+    if (context.trigger === 'chat') return null;
+
+    // Default scheduled tasks to null too — only filter when we're confident
+    return null;
   }
 
   /**

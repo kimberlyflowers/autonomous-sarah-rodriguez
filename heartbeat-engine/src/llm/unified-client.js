@@ -753,6 +753,9 @@ async _failoverChat(params, failedProvider) {
           parameters: t.input_schema || t.parameters,
         }))
       }];
+      // Note: the executor primarily uses callModel() (OpenAI-compat path).
+      // If this native path is used, default to AUTO. Scheduled task forcing
+      // happens via the OpenAI-compat tool_choice='required' in _callModelDirect.
       body.toolConfig = { functionCallingConfig: { mode: 'AUTO' } };
     }
 
@@ -861,7 +864,7 @@ export function getLLMClient() {
 // Used by orchestrator/dispatch. Does NOT change default model.
 // ═══════════════════════════════════════════════════════════════════════════
 
-export async function callModel(model, { system, messages, tools = [], maxTokens = 4096, temperature = 0.3, responseFormat = null }) {
+export async function callModel(model, { system, messages, tools = [], maxTokens = 4096, temperature = 0.3, responseFormat = null, forceToolUse = false }) {
   const provider = detectProvider(model);
   const providerConfig = PROVIDERS[provider];
   const apiKey = process.env[providerConfig?.envKey];
@@ -870,10 +873,10 @@ export async function callModel(model, { system, messages, tools = [], maxTokens
     throw new Error(`Missing API key for ${model}: set ${providerConfig?.envKey}`);
   }
 
-  logger.info('callModel', { model, provider, msgCount: messages.length });
+  logger.info('callModel', { model, provider, msgCount: messages.length, forceToolUse });
 
   try {
-    return await _callModelDirect(model, provider, { system, messages, tools, maxTokens, temperature, responseFormat });
+    return await _callModelDirect(model, provider, { system, messages, tools, maxTokens, temperature, responseFormat, forceToolUse });
   } catch (error) {
     if (shouldFailover(error)) {
       logger.warn(`callModel: ${provider} failed, trying failover...`);
@@ -883,7 +886,7 @@ export async function callModel(model, { system, messages, tools = [], maxTokens
         if (!hasApiKey(fallback.provider)) continue;
         try {
           logger.info(`callModel failover: trying ${fallback.provider} (${fallback.model})`);
-          const result = await _callModelDirect(fallback.model, fallback.provider, { system, messages, tools, maxTokens, temperature, responseFormat });
+          const result = await _callModelDirect(fallback.model, fallback.provider, { system, messages, tools, maxTokens, temperature, responseFormat, forceToolUse });
           logger.info(`callModel failover to ${fallback.provider} succeeded`);
           return result;
         } catch (e) {
@@ -895,7 +898,7 @@ export async function callModel(model, { system, messages, tools = [], maxTokens
   }
 }
 
-async function _callModelDirect(model, provider, { system, messages, tools, maxTokens, temperature, responseFormat = null }) {
+async function _callModelDirect(model, provider, { system, messages, tools, maxTokens, temperature, responseFormat = null, forceToolUse = false }) {
   if (provider === 'anthropic') {
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const params = { model, max_tokens: maxTokens, temperature, messages };
@@ -925,7 +928,13 @@ async function _callModelDirect(model, provider, { system, messages, tools, maxT
       }
     }
     const body = { model, messages: openaiMessages, max_tokens: maxTokens, temperature };
-    if (tools?.length > 0) { body.tools = formatToolsOpenAI(tools); body.tool_choice = 'auto'; }
+    if (tools?.length > 0) {
+      body.tools = formatToolsOpenAI(tools);
+      // forceToolUse = true → tool_choice: 'required' forces the model to call at least one tool.
+      // This fixes Gemini 2.5 Flash responding text-only on scheduled tasks instead of using tools.
+      body.tool_choice = forceToolUse ? 'required' : 'auto';
+      if (forceToolUse) logger.info('Forcing tool use (tool_choice=required) for scheduled task');
+    }
     // Attach response_format for structured output (Gemini compat, OpenAI, DeepSeek)
     // Anthropic does not use this param — it is excluded via the provider branch above
     if (responseFormat) { body.response_format = responseFormat; }
