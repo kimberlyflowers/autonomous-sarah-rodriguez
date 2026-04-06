@@ -3819,6 +3819,25 @@ function App({ authUser }) {
   const [tgEnabled,setTgEnabled]=useState(false);
   const [tgLoading,setTgLoading]=useState(false);
   const [hlpO,setHlpO]=useState(false);
+  const [blmMsgs,setBlmMsgs]=useState([]);
+  const [blmInput,setBlmInput]=useState("");
+  const [blmLoading,setBlmLoading]=useState(false);
+  const [blmSid]=useState(()=>"dash-"+Date.now()+"-"+Math.random().toString(36).slice(2,6));
+  const blmEndRef=useRef(null);
+  const blmInputRef=useRef(null);
+  const sendBloomie=async()=>{
+    const msg=blmInput.trim(); if(!msg||blmLoading)return;
+    setBlmInput(""); setBlmMsgs(p=>[...p,{role:"user",text:msg}]); setBlmLoading(true);
+    try{
+      const r=await fetch("https://njfhzabmaxhfzekbzpzz.supabase.co/functions/v1/bloomie-chat",{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({mode:"support",message:msg,session_id:blmSid})
+      });
+      const d=await r.json();
+      setBlmMsgs(p=>[...p,{role:"assistant",text:d.reply||d.error||"No response"}]);
+    }catch(e){setBlmMsgs(p=>[...p,{role:"assistant",text:"Connection error"}]);}
+    setBlmLoading(false); setTimeout(()=>blmInputRef.current?.focus(),100);
+  };
   const [profileOpen,setProfileOpen]=useState(false);
   const [profileData,setProfileData]=useState(null);
   const [scheduledTasks,setScheduledTasks]=useState([]);
@@ -7099,31 +7118,41 @@ function App({ authUser }) {
       )}
       {hlpO&&(
         <div style={{position:"fixed",bottom:mob?0:24,right:mob?0:24,width:mob?"100%":380,height:mob?"85vh":520,borderRadius:mob?"20px 20px 0 0":20,background:c.cd,border:"1px solid "+c.ln,boxShadow:"0 12px 48px rgba(0,0,0,.25)",zIndex:95,display:"flex",flexDirection:"column",overflow:"hidden",animation:"pop .2s ease"}}>
-          <div style={{padding:"16px 20px",background:"linear-gradient(135deg,#F4A261,#E76F8B)",display:"flex",alignItems:"center",gap:12}}>
-            <Bloom sz={40}/>
+          {/* Header */}
+          <div style={{padding:"14px 16px",background:"linear-gradient(135deg,#F4A261,#E76F8B)",display:"flex",alignItems:"center",gap:10}}>
+            <Bloom sz={34}/>
             <div style={{flex:1}}>
-              <div style={{fontSize:16,fontWeight:700,color:"#fff"}}>Bloomie Help</div>
-              <div style={{fontSize:11,color:"rgba(255,255,255,.8)"}}>{currentAgent?.name||"AI Agent"}</div>
+              <div style={{fontSize:15,fontWeight:700,color:"#fff"}}>Bloomie</div>
+              <div style={{fontSize:11,color:"rgba(255,255,255,.8)"}}>Support Assistant</div>
             </div>
             <button onClick={()=>setHlpO(false)} style={{width:28,height:28,borderRadius:"50%",border:"1px solid rgba(255,255,255,.3)",background:"rgba(255,255,255,.15)",cursor:"pointer",color:"#fff",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
           </div>
-          <div style={{flex:1,overflowY:"auto",padding:16}}>
-            {[
-              {ic:"💬",t:`Chat with ${currentAgent?.name?.split(" ")[0]||"your Bloomie"}`,d:"Give them tasks directly"},
-              {ic:"📊",t:"Monitor tab",d:"Health, trust gate, tool performance"},
-              {ic:"⏰",t:"Automation",d:"Configure cron jobs & heartbeat"},
-              {ic:"🖥️",t:"Screen viewer",d:`Watch ${currentAgent?.name?.split(" ")[0]||"your Bloomie"} work in real time`},
-              {ic:"🔐",t:"Trust gate",d:"Autonomy level & daily limits"},
-              {ic:"⚙️",t:"Settings",d:"Customize your experience"},
-            ].map((item,i)=>(
-              <button key={i} style={{width:"100%",textAlign:"left",padding:"12px 14px",borderRadius:12,border:"1px solid "+c.ln,background:c.cd,marginBottom:6,cursor:"pointer",display:"flex",alignItems:"center",gap:12}} onMouseEnter={e=>e.currentTarget.style.background=c.hv} onMouseLeave={e=>e.currentTarget.style.background=c.cd}>
-                <span style={{fontSize:20,flexShrink:0}}>{item.ic}</span>
-                <div>
-                  <div style={{fontSize:13,fontWeight:600,color:c.tx}}>{item.t}</div>
-                  <div style={{fontSize:11,color:c.so,marginTop:1}}>{item.d}</div>
-                </div>
-              </button>
+          {/* Messages */}
+          <div style={{flex:1,overflowY:"auto",padding:12}} ref={()=>{setTimeout(()=>blmEndRef.current?.scrollIntoView({behavior:"smooth"}),50);}}>
+            {blmMsgs.length===0&&(
+              <div style={{textAlign:"center",padding:"32px 16px"}}>
+                <div style={{fontSize:14,fontWeight:600,color:c.tx,marginBottom:6}}>Hey! I'm Bloomie</div>
+                <div style={{fontSize:12,color:c.so,lineHeight:1.6}}>Ask me anything — troubleshoot issues, create tickets, or get help with your Bloomie employees.</div>
+              </div>
+            )}
+            {blmMsgs.map((m,i)=>(
+              <div key={i} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start",marginBottom:10}}>
+                <div style={{maxWidth:"82%",padding:"9px 13px",borderRadius:12,background:m.role==="user"?"linear-gradient(135deg,#F4A261,#E76F8B)":c.sf,color:m.role==="user"?"#fff":c.tx,border:m.role==="user"?"none":"1px solid "+c.ln,fontSize:13,lineHeight:1.55,whiteSpace:"pre-wrap"}}>{m.text}</div>
+              </div>
             ))}
+            {blmLoading&&(
+              <div style={{display:"flex",marginBottom:10}}>
+                <div style={{padding:"9px 13px",borderRadius:12,background:c.sf,border:"1px solid "+c.ln,fontSize:12,color:c.so}}>
+                  <span style={{animation:"pulse 1.2s ease infinite"}}>Thinking...</span>
+                </div>
+              </div>
+            )}
+            <div ref={blmEndRef}/>
+          </div>
+          {/* Input */}
+          <div style={{padding:"8px 12px",borderTop:"1px solid "+c.ln,display:"flex",gap:6,background:c.cd}}>
+            <input ref={blmInputRef} value={blmInput} onChange={e=>setBlmInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey)sendBloomie();}} placeholder="Ask Bloomie..." style={{flex:1,padding:"9px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,color:c.tx,fontSize:13,outline:"none"}}/>
+            <button onClick={sendBloomie} disabled={blmLoading||!blmInput.trim()} style={{padding:"9px 14px",borderRadius:8,border:"none",background:blmInput.trim()?"linear-gradient(135deg,#F4A261,#E76F8B)":c.ln,color:"#fff",fontSize:12,fontWeight:600,cursor:blmInput.trim()?"pointer":"default",opacity:blmLoading?.6:1}}>Send</button>
           </div>
         </div>
       )}
