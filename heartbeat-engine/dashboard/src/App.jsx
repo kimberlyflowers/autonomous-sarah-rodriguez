@@ -4,6 +4,7 @@ import remarkGfm from "remark-gfm";
 import { supabase } from "./supabase.js";
 import QRCode from 'qrcode';
 import PageEditor from "./PageEditor.jsx";
+import BloomieAdmin from "./components/BloomieAdmin.jsx";
 
 // Get auth headers for API calls
 async function getAuthHeaders() {
@@ -4167,9 +4168,18 @@ function App({ authUser }) {
       <line x1="12" y1="18" x2="12.01" y2="18"/>
     </svg>
   );
+  const BloomieIcon = ({active,sz=16}) => (
+    <svg width={sz} height={sz} viewBox="0 0 100 100" fill="none">
+      {[0,72,144,216,288].map((r,i)=>(
+        <ellipse key={i} cx="50" cy="38" rx="14" ry="20" fill={active?c.tx:c.so} opacity={i%2===0?0.9:0.7} transform={`rotate(${r} 50 50)`}/>
+      ))}
+      <circle cx="50" cy="50" r="10" fill={active?c.tx:c.so} opacity="0.5"/>
+    </svg>
+  );
 
   const navTabs=[
     {k:"chat",l:"Chat",icon:ChatIcon},
+    {k:"bloomie",l:"Bloomie",icon:BloomieIcon},
     {k:"monitor",l:"Status",icon:StatusIcon},
     {k:"docs",l:"Docs",icon:FilesIcon},
     {k:"activity",l:"Activity",icon:ActivityIcon},
@@ -4977,6 +4987,11 @@ function App({ authUser }) {
                 </>
               )}
             </div>
+          )}
+
+          {/* ══ BLOOMIE ADMIN ══ */}
+          {pg==="bloomie"&&(
+            <BloomieAdmin c={c} mob={mob}/>
           )}
 
           {/* ══ MONITOR — Sarah's functional cards, Jaden's visual style ══ */}
