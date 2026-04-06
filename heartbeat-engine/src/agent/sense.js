@@ -21,6 +21,7 @@ export async function sense(agentConfig, trigger = {}) {
     tasks: {},
     calendar: {},
     inboundReplies: [],
+    bloomieChats: { pending: 0, chats: [] },
     alerts: []
   };
 
@@ -40,6 +41,9 @@ export async function sense(agentConfig, trigger = {}) {
     // Check calendar for upcoming events
     environment.calendar = await senseCalendar(agentConfig);
 
+    // Check Bloomie chats for unanswered visitor messages
+    environment.bloomieChats = await senseBloomieChats();
+
     // Generate environment alerts
     environment.alerts = generateEnvironmentAlerts(environment);
 
@@ -49,6 +53,7 @@ export async function sense(agentConfig, trigger = {}) {
       taskItems: environment.tasks.pending?.length || 0,
       calendarItems: environment.calendar.upcoming?.length || 0,
       inboundReplies: environment.inboundReplies.length,
+      bloomieChats: environment.bloomieChats?.pending || 0,
       alerts: environment.alerts.length
     });
 
@@ -334,6 +339,17 @@ function generateEnvironmentAlerts(environment) {
     });
   }
 
+  // Unanswered Bloomie chats — visitors waiting for a response
+  if (environment.bloomieChats?.pending > 0) {
+    alerts.push({
+      type: 'BLOOMIE_CHATS_PENDING',
+      message: `${environment.bloomieChats.pending} Bloomie chat(s) with unanswered visitor messages`,
+      urgency: 'MEDIUM',
+      count: environment.bloomieChats.pending,
+      chats: environment.bloomieChats.chats
+    });
+  }
+
   // System errors
   const hasErrors = [
     environment.ghl.error,
@@ -364,6 +380,38 @@ async function senseInboundReplies(agentConfig) {
   } catch (error) {
     logger.error('Inbound reply sensing failed:', error.message);
     return [];
+  }
+}
+
+// Sense Bloomie chats — check for recent visitor conversations that may need attention
+async function senseBloomieChats() {
+  try {
+    logger.info('Checking Bloomie chats for unanswered messages...');
+    const sbUrl = process.env.SUPABASE_URL;
+    const sbKey = process.env.SUPABASE_SERVICE_KEY;
+    if (!sbUrl || !sbKey) return { pending: 0, chats: [] };
+
+    // Get chats updated in the last 30 minutes that might need follow-up
+    const since = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+    const res = await fetch(
+      `${sbUrl}/rest/v1/bloomie_chats?updated_at=gte.${since}&order=updated_at.desc&limit=20&select=session_id,mode,employee,messages,visitor_name,visitor_email,updated_at`,
+      { headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}` } }
+    );
+    if (!res.ok) { logger.warn('Bloomie chat check failed:', res.status); return { pending: 0, chats: [] }; }
+
+    const chats = await res.json();
+    // Find chats where the last message is from a user (unanswered)
+    const pending = chats.filter(ch => {
+      const msgs = typeof ch.messages === 'string' ? JSON.parse(ch.messages) : (ch.messages || []);
+      if (msgs.length === 0) return false;
+      return msgs[msgs.length - 1].role === 'user';
+    });
+
+    logger.info('Bloomie chat check complete', { total: chats.length, pending: pending.length });
+    return { pending: pending.length, chats: pending };
+  } catch (error) {
+    logger.error('Bloomie chat sensing failed:', error.message);
+    return { pending: 0, chats: [] };
   }
 }
 

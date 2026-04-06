@@ -1337,6 +1337,28 @@ export const ghlToolDefinitions = {
     parameters: { type: "object", properties: {}, required: [] },
     category: "courses",
     operation: "read"
+  },
+
+  // BLOOMIE → GHL SYNC — create/find contact from Bloomie chat visitor and send follow-up
+  bloomie_sync_to_ghl: {
+    name: "bloomie_sync_to_ghl",
+    description: "Sync a Bloomie website chat visitor to GHL. Finds or creates a contact by email/phone, then optionally sends a follow-up SMS or email. Use when a visitor in a Bloomie chat has provided their contact info and you want to add them to the CRM and/or follow up.",
+    parameters: {
+      type: "object",
+      properties: {
+        visitor_name: { type: "string", description: "Visitor's name from the chat" },
+        visitor_email: { type: "string", description: "Visitor's email address" },
+        visitor_phone: { type: "string", description: "Visitor's phone number" },
+        chat_summary: { type: "string", description: "Brief summary of what the visitor discussed" },
+        follow_up_message: { type: "string", description: "Optional follow-up message to send via SMS or email" },
+        follow_up_type: { type: "string", enum: ["SMS", "Email", "none"], description: "How to follow up. Default: none", default: "none" },
+        session_id: { type: "string", description: "Bloomie chat session_id for linking" },
+        tags: { type: "array", items: { type: "string" }, description: "Tags to add to the contact (e.g. 'bloomie-chat', 'sales-inquiry')" }
+      },
+      required: ["visitor_name"]
+    },
+    category: "conversations",
+    operation: "write"
   }
 };
 
@@ -2158,6 +2180,117 @@ export const ghlExecutors = {
   // GET /courses/?locationId=
   ghl_list_courses: async (params) => {
     return await callGHL('/courses/');
+  },
+
+  // BLOOMIE → GHL SYNC
+  bloomie_sync_to_ghl: async (params) => {
+    const { visitor_name, visitor_email, visitor_phone, chat_summary, follow_up_message, follow_up_type, session_id, tags } = params;
+    logger.info('bloomie_sync_to_ghl: syncing visitor to GHL', { visitor_name, visitor_email, visitor_phone });
+
+    let contact = null;
+    const locationId = await resolveLocationId(params._orgId);
+
+    // Step 1: Search for existing contact by email or phone
+    if (visitor_email) {
+      try {
+        const search = await callGHL('/contacts/', 'GET', null, { query: visitor_email, locationId }, params._orgId);
+        const contacts = search?.data?.contacts || search?.contacts || [];
+        if (contacts.length > 0) contact = contacts[0];
+      } catch (e) { logger.warn('bloomie_sync_to_ghl: contact search by email failed', e.message); }
+    }
+    if (!contact && visitor_phone) {
+      try {
+        const search = await callGHL('/contacts/', 'GET', null, { query: visitor_phone, locationId }, params._orgId);
+        const contacts = search?.data?.contacts || search?.contacts || [];
+        if (contacts.length > 0) contact = contacts[0];
+      } catch (e) { logger.warn('bloomie_sync_to_ghl: contact search by phone failed', e.message); }
+    }
+
+    // Step 2: Create contact if not found
+    if (!contact) {
+      try {
+        const nameParts = (visitor_name || 'Website Visitor').split(' ');
+        const newContact = {
+          firstName: nameParts[0],
+          lastName: nameParts.slice(1).join(' ') || '',
+          email: visitor_email || undefined,
+          phone: visitor_phone || undefined,
+          locationId,
+          source: 'Bloomie Chat',
+          tags: ['bloomie-chat', ...(tags || [])],
+          customFields: session_id ? [{ key: 'bloomie_session_id', value: session_id }] : undefined
+        };
+        const created = await callGHL('/contacts/', 'POST', newContact, {}, params._orgId);
+        contact = created?.data?.contact || created?.contact || created;
+        logger.info('bloomie_sync_to_ghl: contact created', { id: contact?.id, name: visitor_name });
+      } catch (e) {
+        logger.error('bloomie_sync_to_ghl: failed to create contact', e.message);
+        return { success: false, error: 'Failed to create GHL contact: ' + e.message };
+      }
+    } else {
+      // Update existing contact with tags
+      try {
+        const existingTags = contact.tags || [];
+        const newTags = [...new Set([...existingTags, 'bloomie-chat', ...(tags || [])])];
+        await callGHL(`/contacts/${contact.id}`, 'PUT', { tags: newTags }, {}, params._orgId);
+      } catch (e) { logger.warn('bloomie_sync_to_ghl: tag update failed', e.message); }
+    }
+
+    const contactId = contact?.id;
+    if (!contactId) return { success: false, error: 'No contact ID available' };
+
+    // Step 3: Add a note with chat summary
+    if (chat_summary) {
+      try {
+        await callGHL(`/contacts/${contactId}/notes`, 'POST', {
+          body: `Bloomie Chat Summary (${new Date().toLocaleString()}):\n\n${chat_summary}${session_id ? '\n\nSession: ' + session_id : ''}`
+        }, {}, params._orgId);
+      } catch (e) { logger.warn('bloomie_sync_to_ghl: note creation failed', e.message); }
+    }
+
+    // Step 4: Send follow-up if requested
+    let followUpResult = null;
+    if (follow_up_message && follow_up_type && follow_up_type !== 'none') {
+      try {
+        followUpResult = await callGHL('/conversations/messages', 'POST', {
+          type: follow_up_type,
+          contactId,
+          message: follow_up_message,
+          subject: follow_up_type === 'Email' ? 'Following up on your chat with Bloomie' : undefined
+        }, {}, params._orgId);
+        logger.info('bloomie_sync_to_ghl: follow-up sent', { type: follow_up_type, contactId });
+      } catch (e) {
+        logger.warn('bloomie_sync_to_ghl: follow-up send failed', e.message);
+        followUpResult = { error: e.message };
+      }
+    }
+
+    // Step 5: Update Bloomie chat record with GHL contact ID
+    if (session_id) {
+      try {
+        const sbUrl = process.env.SUPABASE_URL;
+        const sbKey = process.env.SUPABASE_SERVICE_KEY;
+        if (sbUrl && sbKey) {
+          await fetch(`${sbUrl}/rest/v1/bloomie_chats?session_id=eq.${session_id}`, {
+            method: 'PATCH',
+            headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              visitor_name: visitor_name || null,
+              visitor_email: visitor_email || null,
+              updated_at: new Date().toISOString()
+            })
+          });
+        }
+      } catch (e) { logger.warn('bloomie_sync_to_ghl: chat record update failed', e.message); }
+    }
+
+    return {
+      success: true,
+      contactId,
+      contactName: visitor_name,
+      isNew: !contact?.id || contact?.id === contactId,
+      followUp: followUpResult ? { sent: true, type: follow_up_type } : null
+    };
   }
 };
 

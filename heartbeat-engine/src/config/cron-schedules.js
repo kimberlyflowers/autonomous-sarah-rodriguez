@@ -3,11 +3,11 @@
 
 // Heartbeat frequency configurations
 export const cronSchedules = {
-  // Main operational heartbeat - every 10 minutes during business hours
+  // Main operational heartbeat - every 3 minutes for fast inbound response
   operational: {
-    cron: '*/10 * * * *', // Every 10 min, 24/7 — supports sub-hourly tasks like email monitoring
+    cron: '*/3 * * * *', // Every 3 min, 24/7 — fast inbound message checking (GHL, email, Bloomie chats)
     type: 'full_cycle',
-    description: 'Main heartbeat - checks scheduled tasks every 10 min, runs full cycle when tasks are due',
+    description: 'Main heartbeat - checks inbound messages every 3 min, runs full cycle when tasks are due',
     timezone: 'America/New_York',
     enabled: true
   },
