@@ -26,6 +26,7 @@ import skillsRoutes from './api/skills.js';
 import voiceRoutes from './api/voice.js';
 import desktopRoutes from './api/desktop.js';import mobileRoutes from './api/mobile.js';import projectsRoutes from './api/projects-supabase.js'; // Supabase-based projects
 import adminRoutes from './api/admin.js';
+import mcpRoutes from './api/mcp.js';
 import cookieParser from 'cookie-parser';
 
 import { createClient } from '@supabase/supabase-js';
@@ -744,6 +745,7 @@ app.get('/s/:slug', servePublishedPage);
 
 // Admin panel — BLOOM Command Center
 app.use('/admin', adminRoutes);
+app.use('/mcp', mcpRoutes); // BLOOM MCP Server — Cowork custom connector endpoint
 
 // Serve React static files
 app.use(express.static(path.join(__dirname, '../dashboard/dist')));

@@ -330,6 +330,35 @@ ONLY skip when:
     operation: "write"
   },
 
+  bloom_escalate: {
+    name: "bloom_escalate",
+    description: `File a tech support ticket to escalate a system issue to Cowork or Kimberly for fixing.
+Use this when you encounter: tool failures, broken integrations, unexpected errors, tasks that keep failing, or anything that needs a human or Cowork to intervene and fix.
+
+This writes a ticket to the BLOOM tech queue where Cowork can pick it up and resolve it.
+
+WHEN TO USE:
+- A tool keeps returning errors after 1-2 retries
+- An API integration is down (GHL, Supabase, email)
+- A scheduled task is consistently failing
+- You hit an error you can't resolve yourself
+- Something important is broken and Kimberly needs to know`,
+    parameters: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Short summary of the issue (e.g. 'GHL blog post API returning 401')" },
+        description: { type: "string", description: "Full description: what you were trying to do, what happened, what error you got" },
+        severity: { type: "string", enum: ["critical", "high", "medium", "low"], description: "critical=can't function, high=major feature broken, medium=can workaround, low=minor" },
+        category: { type: "string", enum: ["bug", "tool_failure", "integration", "performance", "config", "other"], description: "Type of issue" },
+        affected_task: { type: "string", description: "Name of the scheduled task or operation that was running" },
+        error_message: { type: "string", description: "Raw error text or message if available" }
+      },
+      required: ["title", "description", "severity", "category"]
+    },
+    category: "escalation",
+    operation: "write"
+  },
+
   bloom_log_observation: {
     name: "bloom_log_observation",
     description: "Log important observations from data analysis or system monitoring",
@@ -828,6 +857,56 @@ export const internalToolExecutors = {
       return {
         success: false,
         error: error.message
+      };
+    }
+  },
+
+  bloom_escalate: async (params) => {
+    try {
+      const { createClient } = await import('@supabase/supabase-js');
+      const supabase = createClient(
+        process.env.SUPABASE_URL,
+        process.env.SUPABASE_SERVICE_KEY,
+        { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } }
+      );
+
+      const { data, error } = await supabase
+        .from('tech_tickets')
+        .insert({
+          title: params.title,
+          description: params.description,
+          severity: params.severity,
+          category: params.category,
+          reported_by: params.reported_by || 'bloomie-sarah-rodriguez',
+          affected_task: params.affected_task || null,
+          error_message: params.error_message || null,
+          status: 'open'
+        })
+        .select('id, title, severity, status, created_at')
+        .single();
+
+      if (error) throw new Error(error.message);
+
+      logger.warn('Tech ticket escalated', {
+        ticketId: data.id,
+        title: params.title,
+        severity: params.severity,
+        category: params.category
+      });
+
+      return {
+        success: true,
+        ticket_id: data.id,
+        message: `Ticket filed (${params.severity}): "${params.title}" — Cowork has been notified and will investigate.`,
+        ticket: data
+      };
+
+    } catch (error) {
+      logger.error('Failed to file tech ticket:', error);
+      return {
+        success: false,
+        error: error.message,
+        message: 'Failed to file tech ticket — please notify Kimberly directly.'
       };
     }
   },
