@@ -17,7 +17,14 @@ async function getPool() {
     query: async (sql, params = []) => {
       // Use Supabase's postgres() raw query via the REST API
       // Supabase JS client doesn't expose raw SQL — use the pg-compatible REST endpoint
-      const { data, error } = await supabase.rpc('exec_sql', { sql_text: sql, sql_params: params }).catch(() => ({ data: null, error: { message: 'rpc not available' } }));
+      let data = null, error = { message: 'rpc not available' };
+      try {
+        const result = await supabase.rpc('exec_sql', { sql_text: sql, sql_params: params });
+        data = result.data;
+        error = result.error;
+      } catch (_rpcErr) {
+        // exec_sql RPC not available — fall through to supabaseQueryShim
+      }
       if (!error && data) return { rows: Array.isArray(data) ? data : [data] };
 
       // Fallback: parse simple queries and translate to Supabase client calls
