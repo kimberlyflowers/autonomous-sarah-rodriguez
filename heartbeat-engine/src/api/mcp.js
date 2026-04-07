@@ -315,9 +315,16 @@ Returns: Confirmation of status change`,
 const mcpServer = buildMcpServer();
 
 // ── Express route — POST /mcp ────────────────────────────────────────────────
-// Stateless: new transport per request as required by Streamable HTTP spec
+// Stateless: new transport per request as required by Streamable HTTP spec.
+// Force-set Accept header so the SDK doesn't reject Cowork's requests.
 router.post('/', authMiddleware, async (req, res) => {
   try {
+    // The MCP SDK requires Accept: application/json, text/event-stream.
+    // Cowork (and some other clients) don't always send this — patch it in.
+    if (!req.headers['accept'] || !req.headers['accept'].includes('text/event-stream')) {
+      req.headers['accept'] = 'application/json, text/event-stream';
+    }
+
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined, // stateless mode
       enableJsonResponse: true
