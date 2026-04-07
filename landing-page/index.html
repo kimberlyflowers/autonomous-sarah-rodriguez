@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Bloomie Staffing — Demo</title>
+  <meta name="description" content="See how Bloomie AI employees create websites, graphics, and documents. Request a demo today."/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@400;500;600;700&family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; padding: 0; font-family: 'Inter', sans-serif; background-color: var(--color-background); color: var(--color-dark); line-height: 1.6; }
+    img { max-width: 100%; height: auto; }
+    :root {
+      --color-primary: #F4A261;
+      --color-secondary: #E76F8B;
+      --color-dark: #2D3436;
+      --color-light: #FFFFFF;
+      --color-background: #F5F5F5;
+      --font-heading: 'Inter', sans-serif;
+      --font-body: 'Inter', sans-serif;
+    }
+    .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+    nav { position: fixed; top: 0; width: 100%; background-color: var(--color-dark); color: var(--color-light); padding: 15px 0; z-index: 1000; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+    nav .container { display: flex; justify-content: space-between; align-items: center; }
+    nav .logo { height: 40px; }
+    nav .nav-links a { color: var(--color-light); text-decoration: none; margin-left: 25px; font-weight: 700; transition: color 0.3s ease; }
+    nav .nav-links a:hover { color: var(--color-primary); }
+    .hero { position: relative; width: 100vw; margin-left: calc(50% - 50vw); height: 500px; display: flex; align-items: center; justify-content: center; text-align: center; color: var(--color-light); overflow: hidden; margin-top: 70px; }
+    .hero-bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: -1; }
+    .hero-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); z-index: -1; }
+    .hero-content { z-index: 1; max-width: 800px; padding: 20px; }
+    .hero h1 { font-family: var(--font-heading); font-size: clamp(2.5rem, 5vw, 4.5rem); margin-bottom: 15px; color: var(--color-light); }
+    .hero p { font-size: clamp(1rem, 1.5vw, 1.25rem); margin-bottom: 30px; }
+    .btn-primary { background-color: var(--color-secondary); color: var(--color-light); padding: 12px 25px; border-radius: 5px; text-decoration: none; font-weight: 700; transition: background-color 0.3s ease; }
+    .btn-primary:hover { background-color: rgb(212, 90, 116); }
+    section { padding: clamp(3rem, 8vw, 6rem) 0; text-align: center; }
+    section h2 { font-family: var(--font-heading); font-size: clamp(1.8rem, 3vw, 2.5rem); color: var(--color-dark); margin-bottom: 20px; }
+    .capabilities-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 30px; margin-top: 40px; }
+    .capability-item { background-color: var(--color-light); padding: 30px; border-radius: 8px; box-shadow: 0 5px 15px rgba(0,0,0,0.05); text-align: left; transition: transform 0.3s ease; }
+    .capability-item:hover { transform: translateY(-5px); }
+    .capability-item h3 { font-family: var(--font-heading); color: var(--color-primary); margin-top: 0; font-size: clamp(1.3rem, 2vw, 1.8rem); }
+    .capability-item p { font-size: clamp(1rem, 1.5vw, 1.15rem); color: var(--color-dark); }
+    .process-steps { display: flex; flex-direction: column; gap: 30px; margin-top: 40px; }
+    .step { display: flex; align-items: center; text-align: left; background-color: var(--color-light); padding: 25px; border-radius: 8px; box-shadow: 0 5px 15px rgba(0,0,0,0.05); }
+    .step-icon { font-size: 2.5rem; color: var(--color-secondary); margin-right: 20px; flex-shrink: 0; }
+    .step-content h3 { font-family: var(--font-heading); color: var(--color-dark); margin-top: 0; margin-bottom: 10px; font-size: clamp(1.3rem, 2vw, 1.8rem); }
+    .step-content p { font-size: clamp(1rem, 1.5vw, 1.15rem); color: var(--color-dark); }
+    .contact-form-section { background-color: var(--color-primary); color: var(--color-light); }
+    .contact-form-section h2 { color: var(--color-light); }
+    .contact-form-section p { max-width: 700px; margin: 0 auto 40px; font-size: clamp(1rem, 1.5vw, 1.15rem); }
+    .contact-form { background-color: var(--color-light); padding: 40px; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); max-width: 600px; margin: 0 auto; text-align: left; }
+    .contact-form input, .contact-form textarea { width: 100%; padding: 12px 10px; margin-bottom: 20px; border: 1px solid #ddd; border-radius: 5px; font-family: var(--font-body); font-size: 1rem; box-sizing: border-box; }
+    .contact-form textarea { min-height: 120px; resize: vertical; }
+    .contact-form button { background-color: var(--color-secondary); color: var(--color-light); padding: 15px 30px; border: none; border-radius: 5px; font-size: 1.1rem; font-weight: 700; cursor: pointer; transition: background-color 0.3s ease; width: 100%; }
+    .contact-form button:hover { background-color: rgb(212, 90, 116); }
+    footer { background-color: var(--color-dark); color: var(--color-light); padding: 40px 0; text-align: center; font-size: 0.9rem; }
+    footer .container { display: flex; flex-direction: column; align-items: center; gap: 20px; }
+    footer .footer-links a { color: var(--color-light); text-decoration: none; margin: 0 10px; transition: color 0.3s ease; }
+    footer .footer-links a:hover { color: var(--color-primary); }
+    .social-icons a { color: var(--color-light); font-size: 1.5rem; margin: 0 10px; transition: color 0.3s ease; }
+    .social-icons a:hover { color: var(--color-primary); }
+    #iac8y7, #iac8y7-2, #iac8y7-2-2 { color: black; width: 315px; height: 209px; }
+    #ipa2ph { font-size: 18.4px; }
+    #ikxsoj { float: none; margin-top: -50px; }
+    @media (max-width: 768px) {
+      nav .nav-links { display: none; flex-direction: column; width: 100%; background-color: var(--color-dark); position: absolute; top: 70px; left: 0; padding-bottom: 15px; }
+      nav .nav-links.active { display: flex; }
+      nav .nav-links a { margin: 10px 20px; text-align: center; }
+      .hamburger { display: block; cursor: pointer; font-size: 1.8rem; color: var(--color-light); }
+      .hero { height: 400px; margin-top: 60px; }
+      .hero h1 { font-size: 2.2rem; }
+      .hero p { font-size: 1rem; }
+      .capabilities-grid { grid-template-columns: 1fr; }
+      .step { flex-direction: column; text-align: center; }
+      .step-icon { margin-right: 0; margin-bottom: 15px; }
+    }
+    @media (max-width: 480px) {
+      .hero { height: 300px; }
+      .hero h1 { font-size: 1.8rem; }
+      .btn-primary { padding: 10px 20px; font-size: 0.9rem; }
+      section { padding: 40px 0; }
+      h2 { font-size: 1.8rem; }
+    }
+  </style>
+</head>
+<body>
+  <nav id="imskg">
+    <div class="container">
+      <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/assets/2026/03/bloom-img-1773961983765-78zm.png" alt="Bloomie Staffing Logo" class="logo"/>
+      <div id="navLinks" class="nav-links">
+        <a href="/">Home</a>
+        <a href="/">Demo</a>
+        <a href="#capabilities">Full-Time AI Employee</a>
+        <a href="#capabilities">Part-Time AI Employee</a>
+        <a href="#capabilities">Marketing Bloomie</a>
+        <a href="#demo-request" class="btn-primary">Send a Service Request</a>
+      </div>
+      <div class="hamburger"></div>
+    </div>
+  </nav>
+
+  <section class="hero">
+    <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/assets/2026/04/bloom-img-1775351180986-611k.png" alt="AI Employee Capabilities Demo" class="hero-bg"/>
+    <div class="hero-overlay"></div>
+    <div class="hero-content">
+      <h1>See Bloomie AI Employees in Action</h1>
+      <p>Experience the power of autonomous AI for your business. Watch our Bloomies create, design, and deliver.</p>
+      <a href="#demo-request" class="btn-primary">Request a Live Demo</a>
+    </div>
+  </section>
+
+  <section id="capabilities" class="container">
+    <h2>What Our AI Employees Can Do</h2>
+    <p>Bloomie AI employees are trained to handle a wide range of tasks, freeing up your time and resources.</p>
+    <div class="capabilities-grid">
+      <div class="capability-item">
+        <img id="iac8y7" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/assets/2026/04/bloom-img-1775245148485-coca.png"/>
+        <h3>Content Marketing</h3>
+        <h3 id="ikxsoj"><span>Sarah Rodriguez</span></h3>
+        <p>Create landing pages, promotional emails. Our AI generates stunning graphics that capture attention and drive engagement.</p>
+      </div>
+      <div class="capability-item">
+        <img id="iac8y7-2-2" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/assets/2026/04/bloom-img-1775072421366-lt1u.png"/>
+        <h3>Operations Employee</h3>
+        <p>Need social media visuals, ad creatives, or marketing banners? Our AI generates stunning graphics that capture attention and drive engagement.</p>
+      </div>
+      <div class="capability-item">
+        <img id="iac8y7-2" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/assets/2026/03/bloom-img-1774653297573-n0bh.png"/>
+        <h3>Generate a Document</h3>
+        <p>From detailed reports and proposals to SOPs and handbooks, our AI can produce polished, professional documents with speed and accuracy.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="process" class="container">
+    <h2>How Our Demo Process Works</h2>
+    <p>Getting a personalized demo of Bloomie AI is simple and straightforward.</p>
+    <div class="process-steps">
+      <div class="step">
+        <span class="step-icon">1.</span>
+        <div class="step-content">
+          <h3>Submit Your Request</h3>
+          <p>Fill out the service request form below, telling us what you'd like to see our AI employee demonstrate.</p>
+        </div>
+      </div>
+      <div class="step">
+        <span class="step-icon">2.</span>
+        <div class="step-content">
+          <h3>Personalized Demo</h3>
+          <p>We'll prepare a custom demonstration showcasing our AI's capabilities based on your specific needs and interests.</p>
+        </div>
+      </div>
+      <div class="step">
+        <span class="step-icon">3.</span>
+        <div class="step-content">
+          <h3>See the Results</h3>
+          <p>We'll present the completed work and discuss how a Bloomie AI employee can integrate into your business.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="demo-request" class="contact-form-section">
+    <div class="container">
+      <h2>Ready to See the Future of Work?</h2>
+      <p>Request a demo today and discover how Bloomie AI employees can transform your business operations.</p>
+      <form method="get" id="contact-form" class="contact-form">
+        <input type="text" name="name" placeholder="Your Name" required/>
+        <input type="email" name="email" placeholder="Your Email" required/>
+        <input type="tel" name="phone" placeholder="Phone (optional)"/>
+        <textarea name="message" placeholder="Tell us what you'd like to see in the demo (e.g., 'create a website for my event', 'design a graphic for social media', 'generate a report')." required></textarea>
+        <button type="submit">Send Service Request</button>
+      </form>
+    </div>
+  </section>
+
+  <footer>
+    <div class="container">
+      <p>&copy; 2026 Bloomie Staffing AI Agency. All rights reserved.</p>
+      <div class="footer-links">
+        <a href="/">Home</a>
+        <a href="/">Demo</a>
+        <a href="#capabilities">Full-Time AI Employee</a>
+        <a href="#capabilities">Part-Time AI Employee</a>
+        <a href="#capabilities">Marketing Bloomie</a>
+      </div>
+      <div class="social-icons"></div>
+    </div>
+  </footer>
+
+  <script>
+    document.querySelectorAll('button[data-href]').forEach(btn => {
+      const url = btn.getAttribute('data-href');
+      const target = btn.getAttribute('data-target') || '_self';
+      if (url) btn.addEventListener('click', () => window.open(url, target));
+    });
+  </script>
+</body>
+</html>
