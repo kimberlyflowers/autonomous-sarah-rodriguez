@@ -307,16 +307,21 @@ class GHLClient {
         completed = false
       } = taskData;
 
+      // GHL v2 API requires contactId in the URL path for tasks
+      if (!contactId) {
+        logger.warn('createTask skipped: no contactId provided (GHL tasks require a contact)', { title });
+        return { id: `local-${Date.now()}`, title, created: false, skipped: true, reason: 'no_contact_id' };
+      }
+
       const taskPayload = {
         title,
         body,
-        contactId,
         dueDate,
         assignedTo,
         completed
       };
 
-      const response = await this.client.post('/tasks/', taskPayload);
+      const response = await this.client.post(`/contacts/${contactId}/tasks`, taskPayload);
 
       logger.info('Task created successfully', {
         taskId: response.data.id,

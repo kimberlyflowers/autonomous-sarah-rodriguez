@@ -113,7 +113,7 @@ export async function logHandoff(cycleId, decision) {
       analysis:        decision.analysis || null,
       recommendation:  decision.recommendation || null,
       confidence:      decision.confidence || null,
-      urgency:         decision.urgency || 'MEDIUM'
+      urgency:         (decision.urgency || 'medium').toLowerCase()
     });
 
     if (error) logger.warn('logHandoff Supabase error:', { error: error.message });
