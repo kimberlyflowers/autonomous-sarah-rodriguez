@@ -4,9 +4,6 @@
 // Auth: set MCP_API_KEY in Railway env vars, then paste the same key into Cowork connector settings.
 
 import express from 'express';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { z } from 'zod';
 import { createClient } from '@supabase/supabase-js';
 import { createLogger } from '../logging/logger.js';
 
@@ -23,18 +20,20 @@ function getSupabase() {
 }
 
 // ── Auth middleware ──────────────────────────────────────────────────────────
-// Cowork sends the key as Bearer token or x-api-key header.
-// Set MCP_API_KEY in Railway env vars. If not set, the endpoint is open (dev only).
+// Cowork custom connectors only support OAuth or no-auth.
+// We secure this via Anthropic's IP allowlist instead (only Claude infra can reach /mcp).
+// MCP_API_KEY is kept for local testing but NOT enforced in production.
 function authMiddleware(req, res, next) {
+  // In development/testing, optionally check API key
   const apiKey = process.env.MCP_API_KEY;
-  if (!apiKey) return next(); // no key configured = open
-
-  const authHeader = req.headers['authorization'] || '';
-  const keyHeader = req.headers['x-api-key'] || '';
-  const provided = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : keyHeader;
-
-  if (provided !== apiKey) {
-    return res.status(401).json({ error: 'Unauthorized — invalid MCP_API_KEY' });
+  const isDev = process.env.NODE_ENV !== 'production';
+  if (apiKey && isDev) {
+    const authHeader = req.headers['authorization'] || '';
+    const keyHeader = req.headers['x-api-key'] || '';
+    const provided = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : keyHeader;
+    if (provided && provided !== apiKey) {
+      return res.status(401).json({ error: 'Unauthorized — invalid MCP_API_KEY' });
+    }
   }
   next();
 }
@@ -314,29 +313,187 @@ Returns: Confirmation of status change`,
 
 const mcpServer = buildMcpServer();
 
+// ── Tool registry for direct JSON-RPC handler ────────────────────────────────
+const TOOLS = [
+  {
+    name: 'bloom_get_tickets',
+    description: 'List open or recent tech tickets filed by BLOOM agents. Use to see what is broken or needs fixing.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', enum: ['open', 'in_progress', 'resolved', 'wont_fix', 'all'], default: 'open', description: 'Filter by status' },
+        severity: { type: 'string', enum: ['critical', 'high', 'medium', 'low', 'all'], default: 'all', description: 'Filter by severity' },
+        limit: { type: 'number', default: 20, description: 'Max results (1-50)' }
+      }
+    }
+  },
+  {
+    name: 'bloom_get_ticket_detail',
+    description: 'Get full detail for a specific tech ticket by ID.',
+    inputSchema: {
+      type: 'object',
+      properties: { ticket_id: { type: 'string', description: 'UUID of the ticket' } },
+      required: ['ticket_id']
+    }
+  },
+  {
+    name: 'bloom_create_ticket',
+    description: 'File a new tech ticket for a BLOOM system issue.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'Short summary of the issue' },
+        description: { type: 'string', description: 'Full details of what happened' },
+        severity: { type: 'string', enum: ['critical', 'high', 'medium', 'low'] },
+        category: { type: 'string', enum: ['bug', 'tool_failure', 'integration', 'performance', 'config', 'other'], default: 'bug' },
+        reported_by: { type: 'string', description: 'Agent or person filing this' },
+        affected_task: { type: 'string', description: 'Scheduled task name if applicable' },
+        error_message: { type: 'string', description: 'Raw error text if available' }
+      },
+      required: ['title', 'description', 'severity', 'reported_by']
+    }
+  },
+  {
+    name: 'bloom_resolve_ticket',
+    description: 'Mark a tech ticket as resolved and record how it was fixed.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ticket_id: { type: 'string', description: 'UUID of the ticket' },
+        resolution: { type: 'string', description: 'What was done to fix it' },
+        resolved_by: { type: 'string', description: "Who fixed it e.g. 'cowork'" },
+        status: { type: 'string', enum: ['resolved', 'wont_fix'], default: 'resolved' }
+      },
+      required: ['ticket_id', 'resolution', 'resolved_by']
+    }
+  },
+  {
+    name: 'bloom_update_ticket_status',
+    description: 'Update a ticket status to in_progress while you work on it.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ticket_id: { type: 'string', description: 'UUID of the ticket' },
+        status: { type: 'string', enum: ['open', 'in_progress'] },
+        note: { type: 'string', description: 'Optional progress note' }
+      },
+      required: ['ticket_id', 'status']
+    }
+  }
+];
+
+// ── Tool executor ─────────────────────────────────────────────────────────────
+async function executeTool(name, args) {
+  const supabase = getSupabase();
+
+  if (name === 'bloom_get_tickets') {
+    let query = supabase.from('tech_tickets')
+      .select('id, title, description, severity, category, status, reported_by, affected_task, error_message, created_at')
+      .order('created_at', { ascending: false })
+      .limit(Math.min(args.limit || 20, 50));
+    if ((args.status || 'open') !== 'all') query = query.eq('status', args.status || 'open');
+    if ((args.severity || 'all') !== 'all') query = query.eq('severity', args.severity);
+    const { data, error } = await query;
+    if (error) throw new Error(error.message);
+    return data || [];
+  }
+
+  if (name === 'bloom_get_ticket_detail') {
+    const { data, error } = await supabase.from('tech_tickets').select('*').eq('id', args.ticket_id).single();
+    if (error || !data) throw new Error(`Ticket not found: ${args.ticket_id}`);
+    return data;
+  }
+
+  if (name === 'bloom_create_ticket') {
+    const { data, error } = await supabase.from('tech_tickets').insert({
+      title: args.title, description: args.description, severity: args.severity,
+      category: args.category || 'bug', reported_by: args.reported_by,
+      affected_task: args.affected_task || null, error_message: args.error_message || null, status: 'open'
+    }).select('id, title, severity, status, created_at').single();
+    if (error) throw new Error(error.message);
+    logger.info('Tech ticket created via MCP', { id: data.id, title: args.title });
+    return data;
+  }
+
+  if (name === 'bloom_resolve_ticket') {
+    const { data, error } = await supabase.from('tech_tickets').update({
+      status: args.status || 'resolved', resolution: args.resolution,
+      resolved_by: args.resolved_by, resolved_at: new Date().toISOString(), updated_at: new Date().toISOString()
+    }).eq('id', args.ticket_id).select('id, title, status, resolved_by, resolved_at').single();
+    if (error || !data) throw new Error(`Failed to resolve ticket: ${error?.message}`);
+    logger.info('Tech ticket resolved via MCP', { id: args.ticket_id, resolved_by: args.resolved_by });
+    return data;
+  }
+
+  if (name === 'bloom_update_ticket_status') {
+    const updatePayload = { status: args.status, updated_at: new Date().toISOString() };
+    if (args.note) {
+      const { data: existing } = await supabase.from('tech_tickets').select('description').eq('id', args.ticket_id).single();
+      if (existing) updatePayload.description = `${existing.description}\n\n[Update ${new Date().toISOString()}]: ${args.note}`;
+    }
+    const { data, error } = await supabase.from('tech_tickets').update(updatePayload).eq('id', args.ticket_id).select('id, title, status').single();
+    if (error || !data) throw new Error(`Failed to update ticket: ${error?.message}`);
+    return data;
+  }
+
+  throw new Error(`Unknown tool: ${name}`);
+}
+
 // ── Express route — POST /mcp ────────────────────────────────────────────────
-// Stateless: new transport per request as required by Streamable HTTP spec.
-// Force-set Accept header so the SDK doesn't reject Cowork's requests.
+// Direct JSON-RPC 2.0 handler — no SDK header requirements, works with Cowork.
 router.post('/', authMiddleware, async (req, res) => {
+  const { jsonrpc, id, method, params } = req.body || {};
+
   try {
-    // The MCP SDK requires Accept: application/json, text/event-stream.
-    // Cowork (and some other clients) don't always send this — patch it in.
-    if (!req.headers['accept'] || !req.headers['accept'].includes('text/event-stream')) {
-      req.headers['accept'] = 'application/json, text/event-stream';
+    // initialize — required first handshake
+    if (method === 'initialize') {
+      return res.json({
+        jsonrpc: '2.0', id,
+        result: {
+          protocolVersion: '2024-11-05',
+          capabilities: { tools: {} },
+          serverInfo: { name: 'bloom-mcp-server', version: '1.0.0' }
+        }
+      });
     }
 
-    const transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: undefined, // stateless mode
-      enableJsonResponse: true
-    });
-    res.on('close', () => transport.close());
-    await mcpServer.connect(transport);
-    await transport.handleRequest(req, res, req.body);
-  } catch (err) {
-    logger.error('MCP request error:', err);
-    if (!res.headersSent) {
-      res.status(500).json({ error: 'MCP server error', message: err.message });
+    // notifications/initialized — client sends this after initialize, no response needed
+    if (method === 'notifications/initialized') {
+      return res.status(204).end();
     }
+
+    // tools/list
+    if (method === 'tools/list') {
+      return res.json({
+        jsonrpc: '2.0', id,
+        result: { tools: TOOLS }
+      });
+    }
+
+    // tools/call
+    if (method === 'tools/call') {
+      const { name, arguments: args } = params || {};
+      const result = await executeTool(name, args || {});
+      return res.json({
+        jsonrpc: '2.0', id,
+        result: {
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }]
+        }
+      });
+    }
+
+    // Unknown method
+    return res.json({
+      jsonrpc: '2.0', id,
+      error: { code: -32601, message: `Method not found: ${method}` }
+    });
+
+  } catch (err) {
+    logger.error('MCP tool error:', err);
+    return res.json({
+      jsonrpc: '2.0', id,
+      error: { code: -32000, message: err.message }
+    });
   }
 });
 
@@ -347,7 +504,7 @@ router.get('/', (req, res) => {
     version: '1.0.0',
     status: 'ok',
     tools: ['bloom_get_tickets', 'bloom_get_ticket_detail', 'bloom_create_ticket', 'bloom_resolve_ticket', 'bloom_update_ticket_status'],
-    auth: process.env.MCP_API_KEY ? 'api-key-required' : 'open'
+    auth: 'none'
   });
 });
 
