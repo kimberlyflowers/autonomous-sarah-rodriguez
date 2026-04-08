@@ -27,9 +27,9 @@ async function generateSpeech(text, agentConfig) {
 
     // Strip markdown, tool calls, and keep it under 5000 chars
     const clean = text
-      .replace(/[.*?]/g, '')
-      .replace(/**/g, '')
-      .replace(/*/g, '')
+      .replace(/\[.*?\]/g, '')
+      .replace(/\*\*/g, '')
+      .replace(/\*/g, '')
       .replace(/<[^>]+>/g, '')
       .trim()
       .slice(0, 4500);
