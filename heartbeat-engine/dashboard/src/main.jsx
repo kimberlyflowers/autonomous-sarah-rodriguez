@@ -21,8 +21,8 @@ function Root() {
 
   if (user === undefined) {
     return (
-      <div style={{ minHeight:'100vh', background: isMobileRoute ? '#0d0d0d' : '#f7f7f8', display:'flex', alignItems:'center', justifyContent:'center' }}>
-        <div style={{ width:32, height:32, border:'3px solid ' + (isMobileRoute ? '#2a2a2e' : '#e5e7eb'), borderTopColor: isMobileRoute ? '#F4A261' : '#7c5cbf', borderRadius:'50%', animation:'spin 0.8s linear infinite' }} />
+      <div style={{ minHeight:'100vh', background: '#FFFFFF', display:'flex', alignItems:'center', justifyContent:'center' }}>
+        <div style={{ width:32, height:32, border:'3px solid #E5E7EB', borderTopColor: isMobileRoute ? '#E8845A' : '#7c5cbf', borderRadius:'50%', animation:'spin 0.8s linear infinite' }} />
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     );

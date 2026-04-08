@@ -1,478 +1,581 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from './supabase.js';
 
-const themes = {
-  dark: { bg:'#0d0d0d', sf:'#1a1a1a', card:'#1e1e1e', border:'#2a2a2e', tx:'#f0f0f0', sub:'#999', muted:'#555', accent:'#F4A261', accent2:'#E76F8B', gradient:'linear-gradient(135deg,#F4A261,#E76F8B)', userBubble:'linear-gradient(135deg,#F4A261,#E76F8B)', agentBubble:'#1e1e1e', agentBorder:'#2a2a2e', input:'#1a1a1a', inputBorder:'#2a2a2e' },
-  light: { bg:'#f7f5f2', sf:'#ffffff', card:'#ffffff', border:'#e5e5e5', tx:'#111', sub:'#666', muted:'#aaa', accent:'#F4A261', accent2:'#E76F8B', gradient:'linear-gradient(135deg,#F4A261,#E76F8B)', userBubble:'linear-gradient(135deg,#F4A261,#E76F8B)', agentBubble:'#ffffff', agentBorder:'#e5e5e5', input:'#ffffff', inputBorder:'#e5e5e5' },
-};
+// ─── Design tokens ───────────────────────────────────────────────────────────
+const CORAL    = '#E8845A';
+const WHITE    = '#FFFFFF';
+const BG_SEC   = '#F5F5F5';
+const BORDER   = '#E5E7EB';
+const TEXT_PRI = '#111827';
+const TEXT_SEC = '#6B7280';
+const TEXT_MUT = '#9CA3AF';
+const GREEN    = '#22C55E';
 
 const API = window.location.origin;
+
 async function authHeaders() {
-  const { data:{session} } = await supabase.auth.getSession();
-  return session ? { 'Content-Type':'application/json', 'Authorization':`Bearer ${session.access_token}` } : { 'Content-Type':'application/json' };
-}
-function ini(name) { return (name||'').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase(); }
-function ts() { return new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}); }
-
-// ── ICONS ──
-const PlusIcon = ({color})=><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>;
-const SendIcon = ()=><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>;
-const ChevronDown = ({color})=><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round"><polyline points="6 9 12 15 18 9"/></svg>;
-const CameraIcon = ({color})=><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>;
-const ImageIcon = ({color})=><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>;
-const FileIcon = ({color})=><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>;
-
-function TypingDots({c}){ return(<div style={{display:'flex',gap:4,padding:'12px 16px',background:c.agentBubble,border:'1px solid '+c.agentBorder,borderRadius:'18px 18px 18px 4px',width:'fit-content'}}>{[0,1,2].map(i=><div key={i} style={{width:7,height:7,borderRadius:'50%',background:c.muted,animation:`typingBounce 1.2s ease-in-out ${i*0.15}s infinite`}}/>)}</div>); }
-
-// ── AVATAR COMPONENT ──
-function Avatar({src, name, size=36, radius=10, c}) {
-  if (src) return <img src={src} alt={name} style={{width:size,height:size,borderRadius:radius,objectFit:'cover',flexShrink:0}}/>;
-  return <div style={{width:size,height:size,borderRadius:radius,background:c?.gradient||'linear-gradient(135deg,#F4A261,#E76F8B)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:size*0.36,fontWeight:700,color:'#fff',flexShrink:0}}>{ini(name)}</div>;
+  const { data: { session } } = await supabase.auth.getSession();
+  return session
+    ? { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` }
+    : { 'Content-Type': 'application/json' };
 }
 
-// ── LOGIN ──
-function MobileLogin({ onLogin }) {
-  const [email,setEmail]=useState(''); const [pw,setPw]=useState(''); const [err,setErr]=useState(''); const [busy,setBusy]=useState(false);
-  const go = async(e)=>{ e.preventDefault(); if(!email||!pw){setErr('Enter email and password');return;} setErr('');setBusy(true);
-    const{error}=await supabase.auth.signInWithPassword({email,password:pw}); if(error){setErr(error.message);setBusy(false);return;} onLogin(); };
+function ts() {
+  return new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+function ini(name) {
+  return (name || '').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+}
+
+// ─── URL param helper ─────────────────────────────────────────────────────────
+function getAgentParam() {
+  return new URLSearchParams(window.location.search).get('agent');
+}
+
+// ─── Icons ────────────────────────────────────────────────────────────────────
+const ChevronLeftIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={TEXT_PRI} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="15 18 9 12 15 6" />
+  </svg>
+);
+
+const SendIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={WHITE} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="22" y1="2" x2="11" y2="13" />
+    <polygon points="22 2 15 22 11 13 2 9 22 2" />
+  </svg>
+);
+
+const ChatIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+  </svg>
+);
+
+const FolderIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+  </svg>
+);
+
+// ─── Avatar ───────────────────────────────────────────────────────────────────
+function Avatar({ src, name, size = 36, radius = 10 }) {
+  if (src) {
+    return (
+      <img src={src} alt={name} style={{ width: size, height: size, borderRadius: radius, objectFit: 'cover', flexShrink: 0 }} />
+    );
+  }
   return (
-    <div style={{position:'fixed',inset:0,background:'#0d0d0d',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:24,paddingTop:'max(24px,env(safe-area-inset-top))',fontFamily:"'DM Sans',system-ui,sans-serif"}}>
-      <style>{`html{padding:0 !important;min-height:100vh !important;background:#0d0d0d !important;overflow:hidden !important;}body{margin:0;overflow:hidden;background:#0d0d0d;}`}</style>
-      <div style={{width:56,height:56,borderRadius:14,background:'linear-gradient(135deg,#F4A261,#E76F8B)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:22,fontWeight:800,color:'#fff',marginBottom:16}}>B</div>
-      <div style={{fontSize:20,fontWeight:700,color:'#f0f0f0',marginBottom:4}}>BLOOM</div>
-      <div style={{fontSize:13,color:'#666',marginBottom:32}}>Sign in to chat with your Bloomie</div>
-      <form onSubmit={go} style={{width:'100%',maxWidth:320,display:'flex',flexDirection:'column',gap:10}}>
-        <input value={email} onChange={e=>setEmail(e.target.value)} type="email" placeholder="Email" autoComplete="email" style={{padding:'14px 16px',borderRadius:12,border:'1px solid #2a2a2e',background:'#1a1a1a',color:'#f0f0f0',fontSize:15,fontFamily:'inherit',outline:'none'}}/>
-        <input value={pw} onChange={e=>setPw(e.target.value)} type="password" placeholder="Password" autoComplete="current-password" style={{padding:'14px 16px',borderRadius:12,border:'1px solid #2a2a2e',background:'#1a1a1a',color:'#f0f0f0',fontSize:15,fontFamily:'inherit',outline:'none'}}/>
-        <button type="submit" disabled={busy} style={{padding:14,borderRadius:12,border:'none',background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',fontSize:15,fontWeight:700,fontFamily:'inherit',cursor:busy?'wait':'pointer',opacity:busy?0.6:1}}>{busy?'Signing in...':'Sign In'}</button>
-        {err&&<div style={{fontSize:13,color:'#ef4444',textAlign:'center',marginTop:4}}>{err}</div>}
+    <div style={{
+      width: size, height: size, borderRadius: radius, flexShrink: 0,
+      background: `linear-gradient(135deg, ${CORAL}, #E76F8B)`,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontSize: size * 0.36, fontWeight: 700, color: WHITE,
+    }}>
+      {ini(name)}
+    </div>
+  );
+}
+
+// ─── Typing indicator ─────────────────────────────────────────────────────────
+function TypingDots() {
+  return (
+    <div style={{
+      display: 'flex', gap: 4, padding: '12px 16px',
+      background: WHITE, border: `1px solid ${BORDER}`,
+      borderRadius: '18px 18px 18px 4px', width: 'fit-content',
+    }}>
+      {[0, 1, 2].map(i => (
+        <div key={i} style={{
+          width: 7, height: 7, borderRadius: '50%', background: TEXT_MUT,
+          animation: `typingBounce 1.2s ease-in-out ${i * 0.15}s infinite`,
+        }} />
+      ))}
+    </div>
+  );
+}
+
+// ─── Presence Area ────────────────────────────────────────────────────────────
+// Phase 2 will add Ken Burns + Gemini images.
+// State: 'active' | 'idle' | 'speaking'
+function PresenceArea({ agent, presenceState, onSpeakingStart, onSpeakingEnd }) {
+  const stateLabel = { active: 'Active', idle: 'Idle', speaking: 'Speaking…' };
+  const stateColor = { active: GREEN, idle: TEXT_MUT, speaking: CORAL };
+
+  return (
+    <div style={{
+      width: '100%', aspectRatio: '16/9', background: BG_SEC,
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+      position: 'relative', flexShrink: 0, overflow: 'hidden',
+    }}>
+      {/* Phase 2 hook: Ken Burns container */}
+      <div style={{ position: 'absolute', inset: 0, opacity: 0.04 }}>
+        {/* Phase 2: background imagery goes here */}
+      </div>
+
+      <Avatar src={agent?.avatar_url} name={agent?.name || 'B'} size={64} radius={20} />
+      <div style={{ fontSize: 16, fontWeight: 700, color: TEXT_PRI, marginTop: 12 }}>
+        {agent?.name || 'Loading…'}
+      </div>
+      <div style={{ fontSize: 12, color: TEXT_SEC, marginTop: 2 }}>
+        {agent?.job_title || agent?.role || ''}
+      </div>
+
+      {/* State badge */}
+      <div style={{
+        marginTop: 10, display: 'flex', alignItems: 'center', gap: 5,
+        padding: '4px 10px', borderRadius: 20, background: WHITE,
+        border: `1px solid ${BORDER}`,
+      }}>
+        <span style={{ width: 7, height: 7, borderRadius: '50%', background: stateColor[presenceState] || stateColor.idle, display: 'block' }} />
+        <span style={{ fontSize: 11, fontWeight: 600, color: stateColor[presenceState] || TEXT_SEC }}>
+          {stateLabel[presenceState] || 'Idle'}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ─── Login ────────────────────────────────────────────────────────────────────
+function MobileLogin({ onLogin }) {
+  const [email, setEmail] = useState('');
+  const [pw, setPw] = useState('');
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const go = async (e) => {
+    e.preventDefault();
+    if (!email || !pw) { setErr('Enter email and password'); return; }
+    setErr(''); setBusy(true);
+    const { error } = await supabase.auth.signInWithPassword({ email, password: pw });
+    if (error) { setErr(error.message); setBusy(false); return; }
+    onLogin();
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: WHITE,
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+      padding: 24, paddingTop: 'max(24px, env(safe-area-inset-top))',
+      fontFamily: "'DM Sans', system-ui, sans-serif",
+    }}>
+      <style>{`html { background: ${WHITE} !important; } body { background: ${WHITE}; }`}</style>
+      <div style={{
+        width: 56, height: 56, borderRadius: 14, marginBottom: 16,
+        background: `linear-gradient(135deg, ${CORAL}, #E76F8B)`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 22, fontWeight: 800, color: WHITE,
+      }}>B</div>
+      <div style={{ fontSize: 20, fontWeight: 700, color: TEXT_PRI, marginBottom: 4 }}>BLOOM</div>
+      <div style={{ fontSize: 13, color: TEXT_SEC, marginBottom: 32 }}>Sign in to chat with your Bloomie</div>
+      <form onSubmit={go} style={{ width: '100%', maxWidth: 320, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <input
+          value={email} onChange={e => setEmail(e.target.value)}
+          type="email" placeholder="Email" autoComplete="email"
+          style={{ padding: '14px 16px', borderRadius: 12, border: `1px solid ${BORDER}`, background: BG_SEC, color: TEXT_PRI, fontSize: 15, fontFamily: 'inherit', outline: 'none' }}
+        />
+        <input
+          value={pw} onChange={e => setPw(e.target.value)}
+          type="password" placeholder="Password" autoComplete="current-password"
+          style={{ padding: '14px 16px', borderRadius: 12, border: `1px solid ${BORDER}`, background: BG_SEC, color: TEXT_PRI, fontSize: 15, fontFamily: 'inherit', outline: 'none' }}
+        />
+        <button type="submit" disabled={busy} style={{
+          padding: 14, borderRadius: 12, border: 'none',
+          background: `linear-gradient(135deg, ${CORAL}, #E76F8B)`,
+          color: WHITE, fontSize: 15, fontWeight: 700, fontFamily: 'inherit',
+          cursor: busy ? 'wait' : 'pointer', opacity: busy ? 0.6 : 1,
+        }}>
+          {busy ? 'Signing in…' : 'Sign In'}
+        </button>
+        {err && <div style={{ fontSize: 13, color: '#EF4444', textAlign: 'center', marginTop: 4 }}>{err}</div>}
       </form>
     </div>
   );
 }
 
-// ══════════════════════════════════════════════════════════════════════════
+// ─── Assets placeholder ───────────────────────────────────────────────────────
+function AssetsTab() {
+  return (
+    <div style={{
+      flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
+      justifyContent: 'center', gap: 8, padding: '0 32px', color: TEXT_MUT,
+    }}>
+      <FolderIcon />
+      <div style={{ fontSize: 14, fontWeight: 600, color: TEXT_SEC }}>Assets — Phase 3</div>
+      <div style={{ fontSize: 12, textAlign: 'center', lineHeight: 1.5 }}>
+        Files and deliverables from {'\u00a0'}Sarah will appear here.
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // MAIN MOBILE APP
-// ══════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════════
 export default function MobileApp({ user: authUser }) {
-  const [dark,setDark]=useState(()=>localStorage.getItem('bloom-mobile-theme')!=='light');
-  const c = dark ? themes.dark : themes.light;
-  const [tab,setTab]=useState('text');
-  const [user,setUser]=useState(authUser||null);
-  const [allAgents,setAllAgents]=useState([]);
-  const [agent,setAgent]=useState(null);
-  const [messages,setMessages]=useState([]);
-  const [input,setInput]=useState('');
-  const [sending,setSending]=useState(false);
-  const [loading,setLoading]=useState(true);
-  const [showPicker,setShowPicker]=useState(false);
-  const [showAttach,setShowAttach]=useState(false);
-  const [initError,setInitError]=useState(null);
-  const chatEndRef=useRef(null);
-  const sessionRef=useRef(null);
-  const inputRef=useRef(null);
-  const fileRef=useRef(null);
-  const cameraRef=useRef(null);
+  const [user, setUser] = useState(authUser || null);
+  const [allAgents, setAllAgents] = useState([]);
+  const [agent, setAgent] = useState(null);
+  const [orgId, setOrgId] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState('');
+  const [sending, setSending] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [initError, setInitError] = useState(null);
+  const [tab, setTab] = useState('chat'); // 'chat' | 'assets'
+  const [presenceState, setPresenceState] = useState('idle'); // 'active' | 'idle' | 'speaking'
 
-  // Group chat state
-  const [groupMsgs,setGroupMsgs]=useState([]);
-  const [groupInput,setGroupInput]=useState('');
-  const [groupSending,setGroupSending]=useState(false);
-  const groupEndRef=useRef(null);
-  const groupSessionRef=useRef('group-'+Date.now());
+  const chatEndRef = useRef(null);
+  const sessionRef = useRef(null);
+  const inputRef = useRef(null);
 
-  const toggleTheme=()=>{const n=!dark;setDark(n);localStorage.setItem('bloom-mobile-theme',n?'dark':'light');};
+  // ── Phase 2 presence hooks (stubbed) ─────────────────────────────────────
+  const onSpeakingStart = useCallback(() => setPresenceState('speaking'), []);
+  const onSpeakingEnd   = useCallback(() => setPresenceState('active'),   []);
 
-  // ── Auth ──
-  useEffect(()=>{
-    if(user)return;
-    supabase.auth.getSession().then(({data:{session}})=>{if(session?.user)setUser(session.user);});
-    const{data:{subscription}}=supabase.auth.onAuthStateChange((_e,s)=>{setUser(s?.user??null);});
-    return ()=>subscription.unsubscribe();
-  },[]);
+  // ── Auth ──────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (user) return;
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) setUser(session.user);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => {
+      setUser(s?.user ?? null);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
 
-  // ── INIT: Load everything from server (bypasses RLS) ──
-  useEffect(()=>{
-    if(!user)return;
-    (async()=>{
+  // ── Init: load agents + messages ──────────────────────────────────────────
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
       try {
         const h = await authHeaders();
-        const res = await fetch(API+'/api/mobile/init', { headers: h });
-        if (!res.ok) { setInitError('Failed to load: '+res.status); setLoading(false); return; }
+        const res = await fetch(API + '/api/mobile/init', { headers: h });
+        if (!res.ok) { setInitError('Failed to load: ' + res.status); setLoading(false); return; }
         const data = await res.json();
-        console.log('[Mobile] Init loaded:', data.agents?.length, 'agents, org:', data.org?.name);
+
+        if (data.org?.id) setOrgId(data.org.id);
 
         if (data.agents?.length) {
           setAllAgents(data.agents);
-          // Set active agent
-          const assigned = data.agents.find(a => a.id === data.assignedAgentId);
-          const active = assigned || data.agents[0];
+
+          // Resolve ?agent= URL param
+          const param = getAgentParam()?.toLowerCase();
+          let active = data.agents.find(a => data.assignedAgentId === a.id);
+          if (param) {
+            active =
+              data.agents.find(a => a.id === param) ||
+              data.agents.find(a => a.name.split(' ')[0].toLowerCase() === param) ||
+              data.agents.find(a => a.name.toLowerCase().includes(param)) ||
+              active ||
+              data.agents[0];
+          } else {
+            active = active || data.agents[0];
+          }
+
           setAgent(active);
-          // Unique session per mobile visit — won't collide with dashboard sessions
-          // Messages still sync to dashboard because they're stored by agent_id in the messages table
+          setPresenceState('active');
           sessionRef.current = 'mobile-' + active.id.slice(0, 8) + '-' + Date.now().toString(36);
-          // Load messages for active agent
+
           const agentMsgs = data.messages?.[active.id] || [];
           setMessages(agentMsgs.map(m => ({
-            id: m.id, isUser: m.role === 'user', text: m.content,
+            id: m.id,
+            isUser: m.role === 'user',
+            text: m.content,
+            type: 'text',
             time: new Date(m.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
           })));
         }
-      } catch(e) { console.error('[Mobile] Init error:', e); setInitError(e.message); }
+      } catch (e) {
+        console.error('[BloomiePWA] Init error:', e);
+        setInitError(e.message);
+      }
       setLoading(false);
     })();
-  },[user]);
+  }, [user]);
 
-  // ── Switch agent ──
-  const switchAgent = async (a) => {
-    setAgent(a); setShowPicker(false); setMessages([]); setSending(false);
-    sessionRef.current = 'mobile-' + a.id.slice(0, 8) + '-' + Date.now().toString(36);
+  // ── Auto-scroll ───────────────────────────────────────────────────────────
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, sending]);
+
+  // ── Send message ──────────────────────────────────────────────────────────
+  const sendMessage = useCallback(async () => {
+    const text = input.trim();
+    if (!text || sending) return;
+    setInput('');
+    setSending(true);
+    setPresenceState('speaking');
+    setMessages(p => [...p, { id: 'u-' + Date.now(), isUser: true, text, type: 'text', time: ts() }]);
+
     try {
       const h = await authHeaders();
-      const res = await fetch(API+'/api/mobile/messages/'+a.id, { headers: h });
-      const data = await res.json();
-      setMessages((data.messages||[]).map(m => ({
-        id: m.id, isUser: m.role === 'user', text: m.content,
-        time: new Date(m.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
-      })));
-    } catch(e) { console.error('Load messages failed:', e); }
+      const body = {
+        message: text,
+        sessionId: sessionRef.current,
+        agentId: agent?.id,
+      };
+      if (orgId) body.organizationId = orgId;
+
+      const r = await fetch(API + '/api/chat/message', { method: 'POST', headers: h, body: JSON.stringify(body) });
+      const d = await r.json();
+      const raw = d.response || d.message || 'Done.';
+
+      // Strip session context noise
+      const clean = raw
+        .replace(/\s*\[Session context[\s\S]*$/, '')
+        .trim();
+
+      setMessages(p => [...p, { id: 'a-' + Date.now(), isUser: false, text: clean, type: 'text', time: ts() }]);
+    } catch {
+      setMessages(p => [...p, { id: 'e-' + Date.now(), isUser: false, text: 'Something went wrong. Try again.', type: 'text', time: ts() }]);
+    }
+
+    setSending(false);
+    setPresenceState('active');
+    inputRef.current?.focus();
+  }, [input, sending, agent, orgId]);
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   };
 
-  useEffect(()=>{chatEndRef.current?.scrollIntoView({behavior:'smooth'});},[messages,sending]);
-  useEffect(()=>{groupEndRef.current?.scrollIntoView({behavior:'smooth'});},[groupMsgs,groupSending]);
+  // ── Sign out ──────────────────────────────────────────────────────────────
+  const handleSignOut = async () => { await supabase.auth.signOut(); setUser(null); };
 
-  // ── Send text ──
-  const sendMessage=useCallback(async()=>{
-    const text=input.trim(); if(!text||sending)return;
-    setInput('');setSending(true);
-    setMessages(p=>[...p,{id:'u-'+Date.now(),isUser:true,text,time:ts()}]);
-    try{
-      const h=await authHeaders();
-      const r=await fetch(API+'/api/chat/message',{method:'POST',headers:h,body:JSON.stringify({message:text,sessionId:sessionRef.current,agentId:agent?.id})});
-      const d=await r.json();
-      const rt=(d.response||d.message||'Done.').replace(/\s*\[Session context[\s\S]*$/,'').replace(/\s*\[Tool:.*?\]\s*/g,'').trim();
-      setMessages(p=>[...p,{id:'a-'+Date.now(),isUser:false,text:rt,time:ts()}]);
-    }catch(e){setMessages(p=>[...p,{id:'e-'+Date.now(),isUser:false,text:'Something went wrong. Try again.',time:ts()}]);}
-    setSending(false);inputRef.current?.focus();
-  },[input,sending,agent]);
+  // ── Render: unauthenticated ───────────────────────────────────────────────
+  if (!user) {
+    return (
+      <MobileLogin onLogin={() => supabase.auth.getSession().then(({ data: { session } }) => setUser(session?.user))} />
+    );
+  }
 
-  // ── Send files ──
-  const sendFiles=useCallback(async(files,text='')=>{
-    if(!files.length)return; setSending(true);setShowAttach(false);
-    const encoded=await Promise.all(files.map(f=>new Promise((res,rej)=>{
-      const r=new FileReader();r.onload=()=>res({name:f.name,type:f.type,data:r.result.split(',')[1]});r.onerror=rej;r.readAsDataURL(f);
-    })));
-    setMessages(p=>[...p,{id:'u-'+Date.now(),isUser:true,text:text||(files.length===1?files[0].name:`${files.length} files`),time:ts()}]);
-    try{
-      const h=await authHeaders();
-      const r=await fetch(API+'/api/chat/upload',{method:'POST',headers:h,body:JSON.stringify({message:text||'',sessionId:sessionRef.current,agentId:agent?.id,files:encoded})});
-      const d=await r.json();
-      const rt=(d.response||d.message||'Got it.').replace(/\s*\[Session context[\s\S]*$/,'').replace(/\s*\[Tool:.*?\]\s*/g,'').trim();
-      setMessages(p=>[...p,{id:'a-'+Date.now(),isUser:false,text:rt,time:ts()}]);
-    }catch(e){setMessages(p=>[...p,{id:'e-'+Date.now(),isUser:false,text:'Upload failed.',time:ts()}]);}
-    setSending(false);
-  },[agent]);
+  const agentName = agent?.name || 'Bloomie';
+  const agentRole = agent?.job_title || agent?.role || 'AI Employee';
+  const isOnline   = presenceState !== 'idle';
 
-  const handleFile=(e)=>{const f=Array.from(e.target.files||[]);if(f.length)sendFiles(f,input.trim());e.target.value='';};
-
-  // ── Group chat send (SEQUENTIAL + AUTO-CONTINUATION for agent-to-agent conversations) ──
-  const sendGroupMessage=useCallback(async()=>{
-    const text=groupInput.trim(); if(!text||groupSending||!allAgents.length)return;
-    setGroupInput('');setGroupSending(true);
-    setGroupMsgs(p=>[...p,{id:'gu-'+Date.now(),from:'user',text,time:ts()}]);
-
-    // Save user message ONCE to a dedicated -user sub-session (master record)
-    try{
-      const h=await authHeaders();
-      await fetch(API+'/api/chat/conference/user-message',{method:'POST',headers:h,body:JSON.stringify({text,sessionId:groupSessionRef.current+'-user'})});
-    }catch(e){console.error('Failed to save group user message:',e);}
-
-    // Helper: detect which agents are addressed in a message
-    const detectMentions = (msg, excludeAgent) => {
-      const lower = msg.toLowerCase();
-      return allAgents.filter(a => {
-        if (excludeAgent && a.id === excludeAgent.id) return false;
-        const first = a.name.split(' ')[0].toLowerCase();
-        const full = a.name.toLowerCase();
-        return lower.includes(first) || lower.includes(full);
-      });
-    };
-
-    // Helper: send a message to one agent and get response
-    const sendToAgent = async (a, thread) => {
-      const contextMsg = `[You are ${a.name} in a group chat with the client and ${allAgents.length-1} other Bloomie(s): ${allAgents.filter(x=>x.id!==a.id).map(x=>x.name).join(', ')}. Here is the conversation so far:\n${thread}\n\nRespond naturally as ${a.name}. If another team member asked you a question or made a point, engage with them directly — you can talk to each other without waiting for the client. Keep it conversational and collaborative. If the message has nothing to do with you, stay silent.]`;
-      try {
-        const h = await authHeaders();
-        const r = await fetch(API+'/api/chat/message',{method:'POST',headers:h,
-          body:JSON.stringify({message:contextMsg,sessionId:groupSessionRef.current+'-'+a.id.slice(0,8),agentId:a.id,skipUserSave:true})});
-        const d = await r.json();
-        let rt = (d.response||d.message||'').replace(/\s*\[Session context[\s\S]*$/,'').replace(/\s*\[Tool:.*?\]\s*/g,'').trim();
-        rt = rt.replace(/^\[You are[\s\S]*?conversational\.\]\s*/,'').trim();
-        if (rt && !rt.match(/^(\*stays silent\*|\*silent\*|\.\.\.|\*no response\*)/i)) return rt;
-      } catch(e) { console.error('Group send to '+a.name+' failed:',e); }
-      return null;
-    };
-
-    // Smart routing: detect which agent(s) are being addressed
-    const addressed = detectMentions(text, null);
-    const respondingAgents = addressed.length > 0 ? addressed : allAgents;
-
-    // Build thread context from recent messages
-    const recentThread = [...groupMsgs.slice(-30), {from:'user',text}];
-    let runningThread = recentThread.map(m =>
-      m.from==='user' ? `Client: ${m.text}` : `${m.fromAgent}: ${m.text}`
-    ).join('\n');
-
-    // Phase 1: Initial agent responses (to the user's message)
-    let lastResponders = [];
-    for (const a of respondingAgents) {
-      const rt = await sendToAgent(a, runningThread);
-      if (rt) {
-        const msg = {id:'ga-'+a.id.slice(0,8)+'-'+Date.now(),from:'agent',fromAgent:a.name,agentId:a.id,avatar:a.avatar_url,text:rt,time:ts()};
-        setGroupMsgs(p=>[...p,msg]);
-        runningThread += `\n${a.name}: ${rt}`;
-        lastResponders.push({agent:a, text:rt});
-      }
-    }
-
-    // Phase 2: Auto-continuation — if an agent addressed another agent, trigger them to respond
-    // Max 8 rounds to prevent infinite loops
-    for (let round = 0; round < 8; round++) {
-      if (lastResponders.length === 0) break;
-
-      // Check all responses from last round for mentions of other agents
-      let nextResponders = new Map(); // agentId -> agent (deduplicate)
-      for (const {agent: responder, text: respText} of lastResponders) {
-        const mentioned = detectMentions(respText, responder);
-        for (const m of mentioned) {
-          if (!nextResponders.has(m.id)) nextResponders.set(m.id, m);
-        }
-      }
-
-      if (nextResponders.size === 0) break; // No one was addressed — conversation done
-
-      // Send to each mentioned agent
-      lastResponders = [];
-      for (const [, a] of nextResponders) {
-        const rt = await sendToAgent(a, runningThread);
-        if (rt) {
-          const msg = {id:'ga-'+a.id.slice(0,8)+'-'+Date.now()+'-r'+round,from:'agent',fromAgent:a.name,agentId:a.id,avatar:a.avatar_url,text:rt,time:ts()};
-          setGroupMsgs(p=>[...p,msg]);
-          runningThread += `\n${a.name}: ${rt}`;
-          lastResponders.push({agent:a, text:rt});
-        }
-      }
-    }
-
-    setGroupSending(false);
-  },[groupInput,groupSending,allAgents,groupMsgs]);
-
-  const handleSignOut=async()=>{await supabase.auth.signOut();setUser(null);};
-
-  if(!user) return <MobileLogin onLogin={()=>supabase.auth.getSession().then(({data:{session}})=>setUser(session?.user))}/>;
-
-  const agentName = agent?.name || 'Loading...';
-  const agentRole = agent?.job_title || agent?.role || '';
-
+  // ── Render: main screen ───────────────────────────────────────────────────
   return (
-    <div style={{position:'fixed',inset:0,background:c.bg,display:'flex',flexDirection:'column',fontFamily:"'DM Sans',system-ui,sans-serif",overflow:'hidden',
-      paddingTop:'env(safe-area-inset-top)',paddingLeft:'env(safe-area-inset-left)',paddingRight:'env(safe-area-inset-right)'}}>
+    <div style={{
+      position: 'fixed', inset: 0, background: WHITE,
+      display: 'flex', flexDirection: 'column',
+      fontFamily: "'DM Sans', system-ui, sans-serif",
+      overflow: 'hidden',
+      paddingTop: 'env(safe-area-inset-top)',
+      paddingLeft: 'env(safe-area-inset-left)',
+      paddingRight: 'env(safe-area-inset-right)',
+    }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
-        *{margin:0;padding:0;box-sizing:border-box;}
-        html{padding:0 !important;min-height:100vh !important;background:${c.bg} !important;overflow:hidden !important;}
-        body{margin:0;padding:0;overflow:hidden;height:100vh;background:${c.bg};overscroll-behavior-y:contain;-webkit-overflow-scrolling:touch;}
-        #root{height:100vh;overflow:hidden;}
-        @keyframes typingBounce{0%,60%,100%{transform:translateY(0);}30%{transform:translateY(-4px);}}
-        input:focus,textarea:focus{outline:none;}::-webkit-scrollbar{width:0;}
-        button{-webkit-user-select:none;user-select:none;}
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html { padding: 0 !important; min-height: 100vh !important; background: ${WHITE} !important; overflow: hidden !important; }
+        body { margin: 0; padding: 0; overflow: hidden; height: 100vh; background: ${WHITE}; overscroll-behavior-y: contain; -webkit-overflow-scrolling: touch; }
+        #root { height: 100vh; overflow: hidden; }
+        @keyframes typingBounce { 0%, 60%, 100% { transform: translateY(0); } 30% { transform: translateY(-4px); } }
+        input:focus, textarea:focus { outline: none; }
+        ::-webkit-scrollbar { width: 0; }
+        button { -webkit-user-select: none; user-select: none; }
+        textarea { overflow-y: auto; }
       `}</style>
 
-      {/* ═══ HEADER ═══ */}
-      <div style={{padding:'12px 16px',display:'flex',alignItems:'center',gap:10,borderBottom:'1px solid '+c.border,background:c.sf,flexShrink:0,position:'relative'}}>
-        <div onClick={()=>allAgents.length>1&&setShowPicker(!showPicker)} style={{cursor:allAgents.length>1?'pointer':'default',position:'relative'}}>
-          <Avatar src={agent?.avatar_url} name={agentName} size={38} radius={10} c={c}/>
-          {allAgents.length>1&&<div style={{position:'absolute',bottom:-2,right:-2,width:14,height:14,borderRadius:7,background:c.sf,border:'1px solid '+c.border,display:'flex',alignItems:'center',justifyContent:'center'}}><ChevronDown color={c.accent}/></div>}
-        </div>
-        <div style={{flex:1,minWidth:0}} onClick={()=>allAgents.length>1&&setShowPicker(!showPicker)}>
-          <div style={{fontSize:15,fontWeight:700,color:c.tx,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',display:'flex',alignItems:'center',gap:4}}>
-            {agentName}
-            {allAgents.length>1&&<ChevronDown color={c.muted}/>}
-          </div>
-          <div style={{fontSize:11,color:c.sub}}>{agentRole}</div>
-        </div>
-        <div style={{display:'flex',alignItems:'center',gap:4}}>
-          <span style={{width:6,height:6,borderRadius:'50%',background:'#34a853'}}/>
-          <span style={{fontSize:10,color:'#34a853',fontWeight:600}}>Online</span>
-        </div>
-        <button onClick={toggleTheme} style={{width:28,height:28,borderRadius:7,border:'1px solid '+c.border,background:c.card,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:12}}>{dark?'\u2600\uFE0F':'\uD83C\uDF19'}</button>
-        <button onClick={handleSignOut} style={{fontSize:10,color:c.muted,background:'none',border:'none',cursor:'pointer',fontFamily:'inherit'}}>Sign out</button>
+      {/* ═══ HEADER (48px) ════════════════════════════════════════════════════ */}
+      <div style={{
+        height: 48, display: 'flex', alignItems: 'center', paddingLeft: 8, paddingRight: 16,
+        background: WHITE, borderBottom: `1px solid ${BORDER}`, flexShrink: 0, position: 'relative',
+      }}>
+        {/* Back arrow */}
+        <button
+          onClick={() => window.history.back()}
+          style={{ width: 40, height: 40, border: 'none', background: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+          aria-label="Back"
+        >
+          <ChevronLeftIcon />
+        </button>
 
-        {/* Agent picker dropdown */}
-        {showPicker&&allAgents.length>1&&(
-          <div style={{position:'absolute',top:'100%',left:8,right:8,zIndex:100,background:c.sf,border:'1px solid '+c.border,borderRadius:12,boxShadow:'0 8px 30px rgba(0,0,0,0.3)',overflow:'hidden',marginTop:4}}>
-            {allAgents.map(a=>(
-              <button key={a.id} onClick={()=>switchAgent(a)}
-                style={{width:'100%',padding:'12px 14px',display:'flex',alignItems:'center',gap:10,background:a.id===agent?.id?c.card:'transparent',border:'none',borderBottom:'1px solid '+c.border,cursor:'pointer',fontFamily:'inherit',textAlign:'left'}}>
-                <Avatar src={a.avatar_url} name={a.name} size={32} radius={8} c={c}/>
-                <div style={{flex:1}}>
-                  <div style={{fontSize:13,fontWeight:600,color:c.tx}}>{a.name}</div>
-                  <div style={{fontSize:11,color:c.sub}}>{a.job_title||a.role||'AI Employee'}</div>
-                </div>
-                {a.id===agent?.id&&<div style={{width:8,height:8,borderRadius:4,background:c.accent}}/>}
-              </button>
-            ))}
-          </div>
-        )}
+        {/* Centered name + role */}
+        <div style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', textAlign: 'center', pointerEvents: 'none' }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: TEXT_PRI, lineHeight: 1.2 }}>{agentName}</div>
+          <div style={{ fontSize: 10, color: TEXT_SEC, lineHeight: 1.2 }}>{agentRole}</div>
+        </div>
+
+        {/* Status dot + label */}
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5 }}>
+          <span style={{ width: 7, height: 7, borderRadius: '50%', background: isOnline ? GREEN : TEXT_MUT, display: 'block' }} />
+          <span style={{ fontSize: 11, fontWeight: 600, color: isOnline ? GREEN : TEXT_MUT }}>
+            {isOnline ? 'Active' : 'Idle'}
+          </span>
+        </div>
       </div>
 
-      {/* ═══ TABS ═══ */}
-      <div style={{display:'flex',borderBottom:'1px solid '+c.border,background:c.sf,flexShrink:0}}>
-        {['Text','Call','Conference'].map(t=>{const a=tab===t.toLowerCase();
-          return <button key={t} onClick={()=>{setTab(t.toLowerCase());setShowPicker(false);setShowAttach(false);}}
-            style={{flex:1,padding:'10px 0',background:'none',border:'none',borderBottom:'2px solid '+(a?c.accent:'transparent'),color:a?c.accent:c.muted,fontSize:13,fontWeight:600,cursor:'pointer',fontFamily:'inherit'}}>{t}</button>;
+      {/* ═══ 16:9 PRESENCE AREA ══════════════════════════════════════════════ */}
+      <PresenceArea
+        agent={agent}
+        presenceState={presenceState}
+        onSpeakingStart={onSpeakingStart}
+        onSpeakingEnd={onSpeakingEnd}
+      />
+
+      {/* ═══ TAB TOGGLE ══════════════════════════════════════════════════════ */}
+      <div style={{ display: 'flex', background: WHITE, borderBottom: `1px solid ${BORDER}`, flexShrink: 0 }}>
+        {[
+          { key: 'chat',   label: '💬 Chat'   },
+          { key: 'assets', label: '📁 Assets' },
+        ].map(({ key, label }) => {
+          const active = tab === key;
+          return (
+            <button key={key} onClick={() => setTab(key)} style={{
+              flex: 1, height: 40, border: 'none', background: 'none', cursor: 'pointer',
+              fontFamily: 'inherit', fontSize: 13, fontWeight: 600,
+              color: active ? CORAL : TEXT_MUT,
+              borderBottom: `2px solid ${active ? CORAL : 'transparent'}`,
+            }}>
+              {label}
+            </button>
+          );
         })}
       </div>
 
-      {/* ═══ TEXT TAB ═══ */}
-      {tab==='text'?(<>
-        <div onClick={()=>{setShowAttach(false);setShowPicker(false);}} style={{flex:1,overflowY:'auto',padding:'14px 12px 8px',display:'flex',flexDirection:'column',gap:6}}>
-          {loading?(<div style={{textAlign:'center',color:c.muted,fontSize:13,marginTop:40}}>Loading...</div>)
-           :initError?(<div style={{textAlign:'center',color:'#ef4444',fontSize:13,marginTop:40}}>{initError}</div>)
-           :messages.length===0?(
-            <div style={{textAlign:'center',marginTop:60,padding:'0 20px'}}>
-              <Avatar src={agent?.avatar_url} name={agentName} size={48} radius={14} c={c}/>
-              <div style={{fontSize:15,fontWeight:600,color:c.tx,marginBottom:4,marginTop:12}}>Chat with {agentName.split(' ')[0]}</div>
-              <div style={{fontSize:13,color:c.sub,lineHeight:1.5}}>Send a message to get started.</div>
-            </div>)
-           :messages.map(msg=>(
-            <div key={msg.id} style={{display:'flex',justifyContent:msg.isUser?'flex-end':'flex-start',padding:'2px 0'}}>
-              {!msg.isUser&&<Avatar src={agent?.avatar_url} name={agentName} size={26} radius={7} c={c}/>}
-              <div style={{maxWidth:'78%',marginLeft:msg.isUser?0:6}}>
-                <div style={{padding:'10px 14px',borderRadius:msg.isUser?'18px 18px 4px 18px':'18px 18px 18px 4px',background:msg.isUser?c.userBubble:c.agentBubble,border:msg.isUser?'none':'1px solid '+c.agentBorder,color:msg.isUser?'#fff':c.tx,fontSize:14,lineHeight:1.5,whiteSpace:'pre-wrap',wordBreak:'break-word'}}>
-                  {msg.text}
-                  <div style={{fontSize:10,color:msg.isUser?'rgba(255,255,255,0.6)':c.muted,marginTop:4,textAlign:msg.isUser?'right':'left'}}>{msg.time}</div>
+      {/* ═══ TAB CONTENT ═════════════════════════════════════════════════════ */}
+      {tab === 'assets' ? (
+        <AssetsTab />
+      ) : (
+        <>
+          {/* Chat thread */}
+          <div
+            style={{
+              flex: 1, overflowY: 'auto', padding: '14px 12px 8px',
+              display: 'flex', flexDirection: 'column', gap: 6,
+              background: WHITE,
+            }}
+          >
+            {loading ? (
+              <div style={{ textAlign: 'center', color: TEXT_MUT, fontSize: 13, marginTop: 40 }}>Loading…</div>
+            ) : initError ? (
+              <div style={{ textAlign: 'center', color: '#EF4444', fontSize: 13, marginTop: 40 }}>{initError}</div>
+            ) : messages.length === 0 ? (
+              <div style={{ textAlign: 'center', marginTop: 40, padding: '0 24px' }}>
+                <Avatar src={agent?.avatar_url} name={agentName} size={52} radius={16} />
+                <div style={{ fontSize: 15, fontWeight: 600, color: TEXT_PRI, marginTop: 12, marginBottom: 4 }}>
+                  Chat with {agentName.split(' ')[0]}
+                </div>
+                <div style={{ fontSize: 13, color: TEXT_SEC, lineHeight: 1.5 }}>
+                  Send a message to get started.
                 </div>
               </div>
-            </div>))}
-          {sending&&<div style={{display:'flex',alignItems:'flex-start',gap:6,padding:'2px 0'}}><Avatar src={agent?.avatar_url} name={agentName} size={26} radius={7} c={c}/><TypingDots c={c}/></div>}
-          <div ref={chatEndRef}/>
-        </div>
+            ) : (
+              messages.map(msg => {
+                // Tool activity bubble
+                if (msg.type === 'tool') {
+                  return (
+                    <div key={msg.id} style={{ display: 'flex', padding: '2px 0 2px 32px' }}>
+                      <div style={{
+                        padding: '8px 12px', borderRadius: 10,
+                        background: BG_SEC, border: `1px solid ${BORDER}`,
+                        fontFamily: 'monospace', fontSize: 11, color: TEXT_SEC,
+                        lineHeight: 1.4, maxWidth: '85%',
+                      }}>
+                        {msg.text}
+                      </div>
+                    </div>
+                  );
+                }
 
-        {/* INPUT BAR */}
-        <div style={{borderTop:'1px solid '+c.border,background:c.sf,flexShrink:0,position:'relative'}}>
-          {showAttach&&(
-            <div style={{position:'absolute',bottom:'100%',left:8,background:c.sf,border:'1px solid '+c.border,borderRadius:12,boxShadow:'0 -4px 20px rgba(0,0,0,0.2)',overflow:'hidden',marginBottom:4,minWidth:180}}>
-              {[{icon:<ImageIcon color={c.tx}/>,label:'Photo & Video',accept:'image/*,video/*'},{icon:<CameraIcon color={c.tx}/>,label:'Take Photo',capture:true},{icon:<FileIcon color={c.tx}/>,label:'Document',accept:'*/*'}].map((item,i)=>(
-                <button key={i} onClick={()=>{item.capture?cameraRef.current?.click():(()=>{if(fileRef.current){fileRef.current.accept=item.accept;fileRef.current.click();}})();setShowAttach(false);}}
-                  style={{width:'100%',padding:'12px 14px',display:'flex',alignItems:'center',gap:10,background:'transparent',border:'none',borderBottom:i<2?'1px solid '+c.border:'none',cursor:'pointer',fontFamily:'inherit'}}>
-                  {item.icon}<span style={{fontSize:14,fontWeight:500,color:c.tx}}>{item.label}</span>
-                </button>))}
-            </div>
-          )}
-          <input ref={fileRef} type="file" multiple style={{display:'none'}} onChange={handleFile}/>
-          <input ref={cameraRef} type="file" accept="image/*" capture="environment" style={{display:'none'}} onChange={handleFile}/>
-          <div style={{padding:'6px 8px',paddingBottom:'max(6px,env(safe-area-inset-bottom))'}}>
-            <div style={{display:'flex',alignItems:'flex-end',border:'1px solid '+c.inputBorder,borderRadius:24,background:c.input,padding:'4px 4px 4px 6px'}}>
-              <button onClick={()=>{setShowAttach(!showAttach);setShowPicker(false);}} style={{width:30,height:30,borderRadius:15,border:'none',background:showAttach?c.accent+'20':'transparent',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexShrink:0}}>
-                <PlusIcon color={showAttach?c.accent:c.muted}/>
-              </button>
-              <textarea ref={inputRef} value={input} onChange={e=>setInput(e.target.value)}
-                onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();}}}
-                placeholder={'Message '+agentName.split(' ')[0]+'...'} rows={1}
-                style={{flex:1,padding:'5px 6px',border:'none',background:'transparent',color:c.tx,fontSize:15,fontFamily:'inherit',resize:'none',maxHeight:100,lineHeight:1.4,outline:'none'}}/>
-              <button onClick={sendMessage} disabled={!input.trim()||sending}
-                style={{width:30,height:30,borderRadius:15,border:'none',background:(!input.trim()||sending)?'transparent':c.gradient,display:'flex',alignItems:'center',justifyContent:'center',cursor:(!input.trim()||sending)?'default':'pointer',flexShrink:0}}>
-                <SendIcon/>
-              </button>
-            </div>
-          </div>
-        </div>
-
-      {/* ═══ CONFERENCE TAB ═══ */}
-      </>):tab==='conference'?(<>
-        {/* Participants bar */}
-        <div style={{padding:'8px 12px',borderBottom:'1px solid '+c.border,background:c.sf,display:'flex',alignItems:'center',gap:6,flexShrink:0,overflowX:'auto'}}>
-          <span style={{fontSize:11,color:c.muted,fontWeight:600,flexShrink:0}}>Team:</span>
-          {allAgents.map(a=>(
-            <div key={a.id} style={{display:'flex',alignItems:'center',gap:4,padding:'3px 8px 3px 3px',borderRadius:16,background:c.card,border:'1px solid '+c.border,flexShrink:0}}>
-              <Avatar src={a.avatar_url} name={a.name} size={20} radius={6} c={c}/>
-              <span style={{fontSize:11,fontWeight:600,color:c.tx,whiteSpace:'nowrap'}}>{a.name.split(' ')[0]}</span>
-            </div>
-          ))}
-          <div style={{padding:'4px 10px',borderRadius:16,background:c.accent+'15',border:'1px solid '+c.accent+'30',flexShrink:0}}>
-            <span style={{fontSize:11,fontWeight:600,color:c.accent}}>You</span>
-          </div>
-        </div>
-
-        {/* Group thread */}
-        <div onClick={()=>setShowAttach(false)} style={{flex:1,overflowY:'auto',padding:'12px 12px 8px',display:'flex',flexDirection:'column',gap:8}}>
-          {groupMsgs.length===0?(
-            <div style={{textAlign:'center',marginTop:40,padding:'0 24px'}}>
-              <div style={{display:'flex',justifyContent:'center',gap:4,marginBottom:12}}>
-                {allAgents.slice(0,4).map(a=><Avatar key={a.id} src={a.avatar_url} name={a.name} size={32} radius={8} c={c}/>)}
-              </div>
-              <div style={{fontSize:15,fontWeight:600,color:c.tx,marginBottom:4}}>Team Chat</div>
-              <div style={{fontSize:13,color:c.sub,lineHeight:1.6}}>
-                {allAgents.length>0
-                  ?`Message all ${allAgents.length} Bloomie${allAgents.length>1?'s':''} at once. They'll see each other's replies.`
-                  :'No agents loaded yet.'}
-              </div>
-            </div>
-          ):groupMsgs.map(msg=>(
-            <div key={msg.id}>
-              {msg.from==='user'?(
-                <div style={{display:'flex',justifyContent:'flex-end',padding:'2px 0'}}>
-                  <div style={{maxWidth:'80%',padding:'10px 14px',borderRadius:'18px 18px 4px 18px',background:c.userBubble,color:'#fff',fontSize:14,lineHeight:1.5,whiteSpace:'pre-wrap',wordBreak:'break-word'}}>
-                    {msg.text}
-                    <div style={{fontSize:10,color:'rgba(255,255,255,0.6)',marginTop:4,textAlign:'right'}}>{msg.time}</div>
-                  </div>
-                </div>
-              ):(
-                <div style={{display:'flex',gap:8,alignItems:'flex-start',padding:'2px 0'}}>
-                  <Avatar src={msg.avatar} name={msg.fromAgent} size={28} radius={8} c={c}/>
-                  <div style={{maxWidth:'75%'}}>
-                    <div style={{fontSize:11,fontWeight:700,color:c.accent,marginBottom:2}}>{msg.fromAgent}</div>
-                    <div style={{padding:'10px 14px',borderRadius:'4px 18px 18px 18px',background:c.agentBubble,border:'1px solid '+c.agentBorder,color:c.tx,fontSize:14,lineHeight:1.5,whiteSpace:'pre-wrap',wordBreak:'break-word'}}>
-                      {msg.text}
-                      <div style={{fontSize:10,color:c.muted,marginTop:4}}>{msg.time}</div>
+                // Standard message bubble
+                return (
+                  <div key={msg.id} style={{ display: 'flex', justifyContent: msg.isUser ? 'flex-end' : 'flex-start', padding: '2px 0' }}>
+                    {!msg.isUser && (
+                      <div style={{ marginRight: 6, flexShrink: 0, alignSelf: 'flex-end' }}>
+                        <Avatar src={agent?.avatar_url} name={agentName} size={26} radius={7} />
+                      </div>
+                    )}
+                    <div style={{ maxWidth: '78%' }}>
+                      <div style={{
+                        padding: '10px 14px',
+                        borderRadius: msg.isUser ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
+                        background: msg.isUser ? CORAL : WHITE,
+                        border: msg.isUser ? 'none' : `1px solid ${BORDER}`,
+                        color: msg.isUser ? WHITE : TEXT_PRI,
+                        fontSize: 14, lineHeight: 1.5,
+                        whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                      }}>
+                        {msg.text}
+                        <div style={{
+                          fontSize: 10,
+                          color: msg.isUser ? 'rgba(255,255,255,0.65)' : TEXT_MUT,
+                          marginTop: 4,
+                          textAlign: msg.isUser ? 'right' : 'left',
+                        }}>
+                          {msg.time}
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
-            </div>
-          ))}
-          {groupSending&&(
-            <div style={{display:'flex',gap:8,alignItems:'flex-start',padding:'2px 0'}}>
-              <div style={{width:28,height:28,borderRadius:8,background:c.card,border:'1px solid '+c.border,display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,flexShrink:0}}>...</div>
-              <div><div style={{fontSize:11,fontWeight:600,color:c.muted,marginBottom:2}}>Team is typing</div><TypingDots c={c}/></div>
-            </div>
-          )}
-          <div ref={groupEndRef}/>
-        </div>
+                );
+              })
+            )}
 
-        {/* Group input */}
-        <div style={{padding:'6px 8px',paddingBottom:'max(6px,env(safe-area-inset-bottom))',borderTop:'1px solid '+c.border,background:c.sf,flexShrink:0}}>
-          <div style={{display:'flex',alignItems:'flex-end',border:'1px solid '+c.inputBorder,borderRadius:24,background:c.input,padding:'4px 4px 4px 12px'}}>
-            <textarea value={groupInput} onChange={e=>setGroupInput(e.target.value)}
-              onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendGroupMessage();}}}
-              placeholder="Message the team..." rows={1}
-              style={{flex:1,padding:'5px 6px',border:'none',background:'transparent',color:c.tx,fontSize:15,fontFamily:'inherit',resize:'none',maxHeight:100,lineHeight:1.4,outline:'none'}}/>
-            <button onClick={sendGroupMessage} disabled={!groupInput.trim()||groupSending}
-              style={{width:30,height:30,borderRadius:15,border:'none',background:(!groupInput.trim()||groupSending)?'transparent':c.gradient,display:'flex',alignItems:'center',justifyContent:'center',cursor:(!groupInput.trim()||groupSending)?'default':'pointer',flexShrink:0}}>
-              <SendIcon/>
-            </button>
+            {/* Typing indicator */}
+            {sending && (
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, padding: '2px 0' }}>
+                <Avatar src={agent?.avatar_url} name={agentName} size={26} radius={7} />
+                <TypingDots />
+              </div>
+            )}
+            <div ref={chatEndRef} />
           </div>
-        </div>
 
-      {/* ═══ CALL TAB ═══ */}
-      </>):(
-        <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:40,textAlign:'center'}}>
-          <div style={{width:64,height:64,borderRadius:16,background:c.card,border:'1px solid '+c.border,display:'flex',alignItems:'center',justifyContent:'center',fontSize:28,marginBottom:16}}>{'\uD83D\uDCDE'}</div>
-          <div style={{fontSize:16,fontWeight:700,color:c.tx,marginBottom:6}}>Voice Calls</div>
-          <div style={{fontSize:13,color:c.sub,lineHeight:1.5,maxWidth:260}}>Call your Bloomie directly. Coming soon.</div>
-          <div style={{marginTop:20,padding:'8px 20px',borderRadius:20,background:c.card,border:'1px solid '+c.border,fontSize:12,fontWeight:600,color:c.accent}}>Coming Soon</div>
-        </div>
+          {/* ═══ STICKY INPUT BAR ════════════════════════════════════════════ */}
+          <div style={{
+            borderTop: `1px solid ${BORDER}`, background: WHITE, flexShrink: 0,
+          }}>
+            <div style={{
+              padding: '8px 12px',
+              paddingBottom: 'max(8px, env(safe-area-inset-bottom))',
+            }}>
+              <div style={{
+                display: 'flex', alignItems: 'flex-end', gap: 8,
+                border: `1px solid ${BORDER}`, borderRadius: 24,
+                background: BG_SEC, padding: '6px 6px 6px 14px',
+              }}>
+                <textarea
+                  ref={inputRef}
+                  value={input}
+                  onChange={e => {
+                    setInput(e.target.value);
+                    // Auto-resize: reset then expand up to 4 lines (~96px)
+                    e.target.style.height = 'auto';
+                    e.target.style.height = Math.min(e.target.scrollHeight, 96) + 'px';
+                  }}
+                  onKeyDown={handleKeyDown}
+                  placeholder={`Message ${agentName.split(' ')[0]}…`}
+                  rows={1}
+                  style={{
+                    flex: 1, border: 'none', background: 'transparent',
+                    color: TEXT_PRI, fontSize: 15, fontFamily: 'inherit',
+                    resize: 'none', lineHeight: 1.4, maxHeight: 96,
+                    padding: '2px 0', outline: 'none',
+                  }}
+                />
+                <button
+                  onClick={sendMessage}
+                  disabled={!input.trim() || sending}
+                  aria-label="Send"
+                  style={{
+                    width: 36, height: 36, borderRadius: 18, border: 'none', flexShrink: 0,
+                    background: (!input.trim() || sending) ? TEXT_MUT : CORAL,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    cursor: (!input.trim() || sending) ? 'default' : 'pointer',
+                    transition: 'background 0.15s',
+                  }}
+                >
+                  <SendIcon />
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

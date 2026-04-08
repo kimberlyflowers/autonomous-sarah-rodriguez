@@ -56,9 +56,9 @@ function mk(d) {
         gr:"#34A853",gf:"#1a2b1a",tx:"#d4d4d4",so:"#a0a0a0",fa:"#5c5c5c",
         ln:"#353535",bl:"#5B8FF9",pu:"#A78BFA",inp:"#212121",hv:"#2f2f2f",
         gradient:"linear-gradient(135deg,#F4A261,#E76F8B)",err:"#ea4335",warn:"#FBBC04" }
-    : { bg:"#F7F8FA",sf:"#EDEEF2",cd:"#FFFFFF",ac:"#F4A261",a2:"#E76F8B",
+    : { bg:"#FFFFFF",sf:"#F5F5F5",cd:"#FFFFFF",ac:"#F4A261",a2:"#E76F8B",
         gr:"#34A853",gf:"#F0FAF0",tx:"#111827",so:"#6B7280",fa:"#D1D5DB",
-        ln:"#E5E7EB",bl:"#3B6FD4",pu:"#7C3AED",inp:"#F4F5F7",hv:"#F0F1F3",
+        ln:"#E5E7EB",bl:"#3B6FD4",pu:"#7C3AED",inp:"#FFFFFF",hv:"#F5F5F5",
         gradient:"linear-gradient(135deg,#F4A261,#E76F8B)",err:"#ea4335",warn:"#FBBC04" };
 }
 
