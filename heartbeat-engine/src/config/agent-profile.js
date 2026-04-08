@@ -24,7 +24,7 @@ export async function loadAgentConfig(agentId = null) {
     const supabase = await getSupabase();
     const { data: row, error } = await supabase
       .from('agents')
-      .select('id, name, role, autonomy_level, standing_instructions, config, created_at, updated_at')
+      .select('id, name, role, autonomy_level, standing_instructions, config, voice_id, elevenlabs_model, voice_stability, voice_similarity, created_at, updated_at')
       .eq('id', id)
       .single();
 
@@ -38,6 +38,10 @@ export async function loadAgentConfig(agentId = null) {
       currentAutonomyLevel: row.autonomy_level || 1,
       standingInstructions: row.standing_instructions,
       config: row.config || {},
+      voiceId: row.voice_id || null,
+      elevenlabsModel: row.elevenlabs_model || 'eleven_multilingual_v2',
+      voiceStability: row.voice_stability ?? 0.5,
+      voiceSimilarity: row.voice_similarity ?? 0.75,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };

@@ -19,6 +19,56 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 
+// ── ElevenLabs TTS ────────────────────────────────────────────────────────────
+async function generateSpeech(text, agentConfig) {
+  try {
+    const voiceId = agentConfig?.voiceId;
+    if (!voiceId || !process.env.ELEVENLABS_API_KEY) return null;
+
+    // Strip markdown, tool calls, and keep it under 5000 chars
+    const clean = text
+      .replace(/[.*?]/g, '')
+      .replace(/**/g, '')
+      .replace(/*/g, '')
+      .replace(/<[^>]+>/g, '')
+      .trim()
+      .slice(0, 4500);
+    if (!clean) return null;
+
+    const model = agentConfig.elevenlabsModel || 'eleven_multilingual_v2';
+    const stability = agentConfig.voiceStability ?? 0.5;
+    const similarity = agentConfig.voiceSimilarity ?? 0.75;
+
+    const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+      method: 'POST',
+      headers: {
+        'xi-api-key': process.env.ELEVENLABS_API_KEY,
+        'Content-Type': 'application/json',
+        'Accept': 'audio/mpeg'
+      },
+      body: JSON.stringify({
+        text: clean,
+        model_id: model,
+        voice_settings: { stability, similarity_boost: similarity }
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      logger.warn('ElevenLabs TTS error', { status: res.status, err: err.slice(0, 200) });
+      return null;
+    }
+
+    const buf = await res.arrayBuffer();
+    const b64 = Buffer.from(buf).toString('base64');
+    return `data:audio/mpeg;base64,${b64}`;
+  } catch (e) {
+    logger.warn('TTS generation failed', { error: e.message });
+    return null;
+  }
+}
+
+
 const router = express.Router();
 const logger = createLogger('chat-api');
 // Default Anthropic client (platform key) — agents with their own key get a per-request client
@@ -5750,7 +5800,10 @@ router.post('/message', async (req, res) => {
       generateSessionTitle(sessionId, message, cleanResponse).catch(() => {});
     }
 
-    return res.json({ response: cleanResponse, sessionId, agentId: agentConfig.agentId, skillsUsed: skillsUsedThisTurn });
+    // Generate TTS audio if agent has a voice configured and client wants audio
+    const wantsAudio = req.body?.audio !== false; // default true, client can opt-out
+    const audioData = wantsAudio ? await generateSpeech(cleanResponse, agentConfig) : null;
+    return res.json({ response: cleanResponse, sessionId, agentId: agentConfig.agentId, skillsUsed: skillsUsedThisTurn, audio: audioData });
   } catch (error) {
     logger.error('Chat error', { error: error.message, stack: error.stack?.split('\n').slice(0, 5).join('\n') });
 
