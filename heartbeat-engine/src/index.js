@@ -747,9 +747,18 @@ app.get('/s/:slug', servePublishedPage);
 app.use('/admin', adminRoutes);
 app.use('/mcp', mcpRoutes); // BLOOM MCP Server — Cowork custom connector endpoint
 
-// ── Landing page — bloomiestaffing.com serves the marketing page ────────────
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, '../landing-page.html'));
+// ── Landing page — serve bloomie-staffing-demo from Supabase artifacts ───────
+app.get('/', async (req, res) => {
+  try {
+    const { createClient } = await import('@supabase/supabase-js');
+    const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { auth: { persistSession: false } });
+    const { data, error } = await sb.from('artifacts').select('content').eq('id', '2286ea0d-e045-449a-b6e0-7f7904bc7ce8').single();
+    if (error || !data) throw new Error('Not found');
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(data.content);
+  } catch (err) {
+    res.status(500).send('Site temporarily unavailable');
+  }
 });
 
 // ── Dashboard — /app serves the React dashboard ─────────────────────────────
