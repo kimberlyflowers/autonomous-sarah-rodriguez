@@ -761,6 +761,19 @@ app.get('/', async (req, res) => {
   }
 });
 
+
+// ── /blog clean URL — serves blog index from Supabase ────────────────────────
+app.get('/blog', async (req, res) => {
+  try {
+    const { createClient } = await import('@supabase/supabase-js');
+    const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { auth: { persistSession: false } });
+    const { data, error } = await sb.from('artifacts').select('content').eq('slug', 'blog').eq('published', true).single();
+    if (error || !data) return res.redirect('/p/blog');
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(data.content);
+  } catch (err) { res.redirect('/p/blog'); }
+});
+
 // ── Dashboard — /app serves the React dashboard ─────────────────────────────
 app.use('/app', express.static(path.join(__dirname, '../dashboard/dist')));
 app.get('/app/*', (req, res) => {
