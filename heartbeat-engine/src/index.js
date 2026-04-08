@@ -749,7 +749,7 @@ app.use('/mcp', mcpRoutes); // BLOOM MCP Server — Cowork custom connector endp
 
 // ── Landing page — bloomiestaffing.com serves the marketing page ────────────
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, '../../landing-page/index.html'));
+  res.sendFile(path.resolve(__dirname, '../../landing-page/index.html'));
 });
 
 // ── Dashboard — /app serves the React dashboard ─────────────────────────────
