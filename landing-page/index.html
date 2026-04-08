@@ -121,51 +121,52 @@
 .chat-overlay.active { display:block; }
 @media(max-width:500px){ .chat-panel{width:100%;right:-100%;} }
 
-/* Bloomie speaking glow pulse */
-@keyframes bloomie-speak-pulse {
-  0%   { box-shadow: 0 0 0 0 rgba(244,162,97,0.0), 0 0 0 0 rgba(231,111,139,0.0); }
-  25%  { box-shadow: 0 0 0 8px rgba(244,162,97,0.35), 0 0 0 16px rgba(231,111,139,0.15); }
-  50%  { box-shadow: 0 0 0 14px rgba(244,162,97,0.2), 0 0 0 28px rgba(231,111,139,0.08); }
-  75%  { box-shadow: 0 0 0 10px rgba(244,162,97,0.12), 0 0 0 22px rgba(231,111,139,0.04); }
-  100% { box-shadow: 0 0 0 0 rgba(244,162,97,0.0), 0 0 0 0 rgba(231,111,139,0.0); }
-}
-@keyframes bloomie-speak-wave {
-  0%   { transform: scale(1); opacity: 0.8; }
-  50%  { transform: scale(1.06); opacity: 1; }
-  100% { transform: scale(1); opacity: 0.8; }
-}
-.bloomie-speaking {
-  animation: bloomie-speak-pulse 1.1s ease-in-out infinite, bloomie-speak-wave 1.1s ease-in-out infinite;
+/* ── PRICING SECTION ── */
+.pricing { padding: 5rem 2rem; background: #fafafa; }
+.pricing h2 { text-align: center; font-size: 2.5rem; margin-bottom: 0.5rem; color: var(--dark); }
+.pricing-subtitle { text-align: center; color: #666; font-size: 1.1rem; margin-bottom: 3.5rem; }
+.pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 2rem; max-width: 900px; margin: 0 auto 2rem; }
+.pricing-card { background: var(--white); border-radius: 16px; padding: 2.5rem 2rem; box-shadow: 0 4px 20px rgba(0,0,0,0.07); border: 2px solid transparent; transition: all 0.3s; text-align: center; position: relative; }
+.pricing-card:hover { transform: translateY(-6px); box-shadow: 0 12px 32px rgba(244,162,97,0.18); border-color: var(--primary); }
+.pricing-card.popular { border-color: var(--primary); box-shadow: 0 8px 32px rgba(244,162,97,0.22); }
+.pricing-badge { position: absolute; top: -14px; left: 50%; transform: translateX(-50%); background: linear-gradient(135deg, #F4A261, #E76F8B); color: white; font-size: 0.75rem; font-weight: 700; padding: 0.3rem 1rem; border-radius: 20px; white-space: nowrap; letter-spacing: 0.04em; }
+.pricing-card h3 { font-size: 1.2rem; color: var(--dark); margin-bottom: 0.4rem; font-weight: 700; }
+.pricing-card .price { font-size: 3rem; font-weight: 800; color: var(--dark); line-height: 1; margin: 1rem 0 0.25rem; }
+.pricing-card .price sup { font-size: 1.4rem; font-weight: 700; vertical-align: top; margin-top: 0.5rem; display: inline-block; }
+.pricing-card .price-period { font-size: 0.9rem; color: #888; margin-bottom: 1.5rem; }
+.pricing-card .was-price { font-size: 0.85rem; color: #bbb; text-decoration: line-through; margin-bottom: 0.25rem; }
+.pricing-features { list-style: none; text-align: left; margin-bottom: 2rem; }
+.pricing-features li { padding: 0.4rem 0; font-size: 0.9rem; color: #555; display: flex; align-items: flex-start; gap: 0.5rem; line-height: 1.5; }
+.pricing-features li:before { content: ""; display: inline-block; width: 14px; height: 14px; flex-shrink: 0; margin-top: 2px; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23F4A261' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E") no-repeat center; background-size: contain; }
+.pricing-cta { width: 100%; padding: 0.85rem; border-radius: 8px; font-weight: 700; font-size: 1rem; cursor: pointer; border: none; background: linear-gradient(135deg, #F4A261, #E76F8B); color: white; transition: all 0.3s; text-decoration: none; display: block; }
+.pricing-cta:hover { background: linear-gradient(135deg, #E76F8B, #F4A261); transform: translateY(-2px); box-shadow: 0 6px 16px rgba(231,111,139,0.3); }
+.pricing-cta.outline { background: transparent; border: 2px solid var(--primary); color: var(--primary); }
+.pricing-cta.outline:hover { background: var(--primary); color: white; }
+
+/* ── TEAM UPSELL ── */
+.team-upsell { max-width: 900px; margin: 0 auto; background: linear-gradient(135deg, var(--dark) 0%, #1a1a1a 100%); border-radius: 20px; padding: 3rem 2.5rem; color: white; text-align: center; position: relative; overflow: hidden; }
+.team-upsell::before { content: ''; position: absolute; top: -60px; right: -60px; width: 200px; height: 200px; background: radial-gradient(circle, rgba(244,162,97,0.2) 0%, transparent 70%); border-radius: 50%; }
+.team-upsell::after { content: ''; position: absolute; bottom: -40px; left: -40px; width: 150px; height: 150px; background: radial-gradient(circle, rgba(231,111,139,0.2) 0%, transparent 70%); border-radius: 50%; }
+.team-upsell-badge { display: inline-block; background: linear-gradient(135deg, #F4A261, #E76F8B); color: white; font-size: 0.8rem; font-weight: 700; padding: 0.35rem 1.1rem; border-radius: 20px; margin-bottom: 1.25rem; letter-spacing: 0.05em; }
+.team-upsell h3 { font-size: 2rem; font-weight: 800; margin-bottom: 0.5rem; line-height: 1.2; }
+.team-upsell .upsell-sub { font-size: 1.05rem; opacity: 0.75; margin-bottom: 2rem; max-width: 520px; margin-left: auto; margin-right: auto; }
+.team-upsell-options { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 2rem; max-width: 560px; margin-left: auto; margin-right: auto; }
+.upsell-option { background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 1.5rem 1.25rem; }
+.upsell-option .upsell-label { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.6; margin-bottom: 0.4rem; }
+.upsell-option .upsell-price { font-size: 2rem; font-weight: 800; color: #F4A261; line-height: 1; }
+.upsell-option .upsell-price sup { font-size: 1rem; vertical-align: top; margin-top: 0.4rem; display: inline-block; }
+.upsell-option .upsell-period { font-size: 0.8rem; opacity: 0.6; margin: 0.25rem 0 0.5rem; }
+.upsell-option .upsell-desc { font-size: 0.82rem; opacity: 0.75; line-height: 1.5; }
+.upsell-savings { display: inline-block; background: rgba(244,162,97,0.2); border: 1px solid rgba(244,162,97,0.4); color: #F4A261; font-size: 0.85rem; font-weight: 600; padding: 0.4rem 1.2rem; border-radius: 20px; margin-bottom: 1.5rem; }
+.team-upsell .pricing-cta { max-width: 320px; margin: 0 auto; font-size: 1.05rem; padding: 1rem; }
+@media(max-width:768px) {
+  .pricing { padding: 3rem 1.25rem; }
+  .pricing h2 { font-size: 1.75rem; }
+  .team-upsell { padding: 2.5rem 1.5rem; }
+  .team-upsell h3 { font-size: 1.5rem; }
+  .team-upsell-options { grid-template-columns: 1fr 1fr; gap: 0.75rem; }
 }
 
-/* Interview avatar — large centered layout */
-#interviewAvatarWrap {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  margin-bottom: 1rem;
-}
-#interviewAvatar {
-  width: 96px !important;
-  height: 96px !important;
-  border-radius: 50%;
-  object-fit: cover;
-  object-position: top;
-  border: 3px solid #F4A261;
-  transition: box-shadow 0.3s ease;
-}
-#interviewNameLarge {
-  font-weight: 700;
-  color: #2D3436;
-  font-size: 1.05rem;
-  margin-top: 0.6rem;
-}
-#interviewRoleLarge {
-  font-size: 0.82rem;
-  color: #F4A261;
-  font-weight: 600;
-  margin-top: 0.15rem;
-}
 </style>
 </head>
 <body>
@@ -177,7 +178,7 @@
         <ul>
             <li><a href="#roles">Our Roles</a></li>
             <li><a href="/p/bloomie-staffing-meet-the-team">Meet the Team</a></li>
-            <li><a href="/p/blog">Blog</a></li><li><a href="#benefits">Why Bloomie</a></li>
+            <li><a href="/p/blog">Blog</a></li><li><a href="#pricing">Pricing</a></li><li><a href="#benefits">Why Bloomie</a></li>
             <li><button class="cta-button" data-action="open-booking">Start Your 30-Day Onboarding</button></li>
         </ul>
     </nav>
@@ -212,7 +213,7 @@
                     <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/assets/2026/03/bloom-img-1773960788647-89gl.png" alt="Marketing Manager">
                     <div class="role-card-content">
                         <h3>Marketing Manager</h3>
-                        <p style="font-size: 0.85rem; color: var(--primary); font-weight: 600; margin-bottom: 0.5rem;">Marcus</p>
+                        <p style="font-size: 0.85rem; color: var(--primary); font-weight: 600; margin-bottom: 0.25rem;">Marcus</p><p style="font-size: 0.8rem; color: #888; margin-bottom: 0.5rem; font-weight: 500;">From <strong style='color:var(--dark)'>$597/mo</strong> part-time · <strong style='color:var(--dark)'>$997/mo</strong> full-time</p>
                         <p>Handle your marketing operations with expertise in campaign strategy, content creation, and performance analysis.</p>
                         <ul class="role-features">
                             <li>Campaign planning &amp; execution</li>
@@ -232,7 +233,7 @@
                     <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/assets/2026/03/bloom-img-1773961760770-90ug.png" alt="Customer Service Agent">
                     <div class="role-card-content">
                         <h3>Customer Service Support Agent</h3>
-                        <p style="font-size: 0.85rem; color: var(--primary); font-weight: 600; margin-bottom: 0.5rem;">Emma</p>
+                        <p style="font-size: 0.85rem; color: var(--primary); font-weight: 600; margin-bottom: 0.25rem;">Emma</p><p style="font-size: 0.8rem; color: #888; margin-bottom: 0.5rem; font-weight: 500;">From <strong style='color:var(--dark)'>$597/mo</strong> part-time · <strong style='color:var(--dark)'>$997/mo</strong> full-time</p>
                         <p>Provide 24/7 customer support with professionalism, efficiency, and genuine care for your clients.</p>
                         <ul class="role-features">
                             <li>24/7 availability</li>
@@ -252,7 +253,7 @@
                     <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/assets/2026/03/bloom-img-1773960802490-ab82.png" alt="Operations Agent">
                     <div class="role-card-content">
                         <h3>Business Operations Agent</h3>
-                        <p style="font-size: 0.85rem; color: var(--primary); font-weight: 600; margin-bottom: 0.5rem;">Alex</p>
+                        <p style="font-size: 0.85rem; color: var(--primary); font-weight: 600; margin-bottom: 0.25rem;">Alex</p><p style="font-size: 0.8rem; color: #888; margin-bottom: 0.5rem; font-weight: 500;">From <strong style='color:var(--dark)'>$597/mo</strong> part-time · <strong style='color:var(--dark)'>$997/mo</strong> full-time</p>
                         <p>Streamline your operations with intelligent task management, scheduling, and process optimization.</p>
                         <ul class="role-features">
                             <li>Process automation</li>
@@ -267,6 +268,74 @@
                     <a href="/p/bloomie-staffing-checkout?employee=alex" class="btn-hire">Hire Alex</a>
                 </div>
             </div>
+        </div>
+    </section>
+
+    <section class="pricing" id="pricing">
+        <h2>Simple, Transparent Pricing</h2>
+        <p class="pricing-subtitle">Start with one Bloomie. Scale to a full team when you're ready.</p>
+
+        <div class="pricing-grid">
+            <!-- Part-Time -->
+            <div class="pricing-card">
+                <h3>Part-Time Bloomie</h3>
+                <div class="was-price">Starting at $797/mo</div>
+                <div class="price"><sup>$</sup>597</div>
+                <div class="price-period">per month</div>
+                <ul class="pricing-features">
+                    <li>20 hrs/week dedicated support</li>
+                    <li>1 specialized AI employee</li>
+                    <li>Full tool & CRM integration</li>
+                    <li>Weekly performance reports</li>
+                    <li>30-day onboarding included</li>
+                </ul>
+                <a href="/p/bloomie-staffing-checkout?plan=part-time" class="pricing-cta outline">Get Started</a>
+            </div>
+
+            <!-- Full-Time -->
+            <div class="pricing-card popular">
+                <div class="pricing-badge">⭐ Most Popular</div>
+                <h3>Full-Time Bloomie</h3>
+                <div class="was-price">Was $1,497/mo</div>
+                <div class="price"><sup>$</sup>997</div>
+                <div class="price-period">per month</div>
+                <ul class="pricing-features">
+                    <li>40 hrs/week dedicated support</li>
+                    <li>1 specialized AI employee</li>
+                    <li>Full tool & CRM integration</li>
+                    <li>Priority response & support</li>
+                    <li>Weekly performance reports</li>
+                    <li>30-day onboarding included</li>
+                    <li>Dedicated account manager</li>
+                </ul>
+                <a href="/p/bloomie-staffing-checkout?plan=full-time" class="pricing-cta">Hire Full-Time</a>
+            </div>
+        </div>
+
+        <!-- TEAM UPSELL -->
+        <div class="team-upsell">
+            <div class="team-upsell-badge">🔥 BEST VALUE — TEAM PLANS</div>
+            <h3>Why Hire One When You Can Get Three?</h3>
+            <p class="upsell-sub">Add $300/mo to your plan and triple your workforce. One Bloomie for marketing, one for operations, one for support — running in parallel, every single day.</p>
+
+            <div class="team-upsell-options">
+                <div class="upsell-option">
+                    <div class="upsell-label">Part-Time Team</div>
+                    <div class="upsell-price"><sup>$</sup>997</div>
+                    <div class="upsell-period">per month</div>
+                    <div class="upsell-desc">3 part-time Bloomies — marketing, ops & support working simultaneously</div>
+                </div>
+                <div class="upsell-option">
+                    <div class="upsell-label">Full-Time Team</div>
+                    <div class="upsell-price"><sup>$</sup>1,297</div>
+                    <div class="upsell-period">per month</div>
+                    <div class="upsell-desc">3 full-time Bloomies — maximum output, full coverage across your business</div>
+                </div>
+            </div>
+
+            <div class="upsell-savings">💰 Save up to $1,694/mo vs hiring individually</div>
+
+            <a href="/p/bloomie-staffing-checkout?plan=team-fulltime" class="pricing-cta">Get the Full Team for $1,297/mo →</a>
         </div>
     </section>
 
@@ -346,22 +415,12 @@
 </div>
 
 <div id="hirestep2" style="display:none;">
-  <!-- Back button row -->
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
-    <button id="backToStep1" style="background:none;border:none;color:#aaa;font-size:0.85rem;cursor:pointer;">&#8592; Back</button>
-    <span style="font-size:0.75rem;color:#ccc;">Live Interview</span>
+  <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1.25rem;padding-bottom:1rem;border-bottom:1px solid #f0f0f0;">
+    <img id="interviewAvatar" src="" style="width:44px;height:44px;border-radius:50%;object-fit:cover;object-position:top;border:2px solid #F4A261;">
+    <div><div id="interviewName" style="font-weight:700;color:#2D3436;font-size:0.95rem;"></div><div id="interviewRole" style="font-size:0.8rem;color:#F4A261;font-weight:600;"></div></div>
+    <button id="backToStep1" style="margin-left:auto;background:none;border:none;color:#aaa;font-size:0.85rem;cursor:pointer;">&#8592; Back</button>
   </div>
-  <!-- Large centered avatar with speaking glow -->
-  <div id="interviewAvatarWrap">
-    <img id="interviewAvatar" src="" style="width:96px;height:96px;border-radius:50%;object-fit:cover;object-position:top;border:3px solid #F4A261;">
-    <div id="interviewNameLarge"></div>
-    <div id="interviewRoleLarge"></div>
-    <!-- hidden legacy elements for JS compatibility -->
-    <span id="interviewName" style="display:none;"></span>
-    <span id="interviewRole" style="display:none;"></span>
-  </div>
-  <!-- Chat messages below avatar -->
-  <div id="interviewMsgs" style="height:220px;overflow-y:auto;padding:0.5rem 0;display:flex;flex-direction:column;gap:0.6rem;margin-top:0.75rem;"></div>
+  <div id="interviewMsgs" style="height:260px;overflow-y:auto;padding:0.5rem 0;display:flex;flex-direction:column;gap:0.6rem;"></div>
   <div style="display:flex;gap:0.5rem;margin-top:1rem;border-top:1px solid #f0f0f0;padding-top:1rem;">
     <input type="text" id="interviewInput" placeholder="Ask them anything..." style="flex:1;padding:0.7rem 1rem;border:2px solid #e0e0e0;border-radius:8px;font-size:0.9rem;font-family:Inter,sans-serif;outline:none;">
     <button id="interviewSendBtn" style="background:linear-gradient(135deg,#F4A261,#E76F8B);color:#fff;border:none;border-radius:8px;padding:0.7rem 1.1rem;cursor:pointer;font-weight:600;font-family:Inter,sans-serif;">Send</button>
@@ -393,15 +452,12 @@
 (function(){
   var CHAT_API='https://njfhzabmaxhfzekbzpzz.supabase.co/functions/v1/bloomie-chat';
   var cur=null;
-  function addMsg(text,type){var m=document.getElementById('interviewMsgs');if(!m)return;var d=document.createElement('div');d.style.cssText='padding:0.65rem 1rem;border-radius:12px;font-size:0.88rem;line-height:1.6;max-width:85%;word-wrap:break-word;'+(type==='user'?'background:linear-gradient(135deg,#F4A261,#E76F8B);color:#fff;align-self:flex-end;border-bottom-right-radius:4px;':type==='typing'?'background:#f5f5f5;color:#999;align-self:flex-start;':'background:#f5f5f5;color:#2D3436;align-self:flex-start;border-bottom-left-radius:4px;');d.textContent=type==='typing'?'....':text;if(type==='typing')d.id='typingDot';m.appendChild(d);m.scrollTop=m.scrollHeight;
-  /* Speaking glow: pulse avatar when agent speaks */
-  if(type==='agent'){var av=document.getElementById('interviewAvatar');if(av){av.classList.add('bloomie-speaking');clearTimeout(av._speakTimer);av._speakTimer=setTimeout(function(){av.classList.remove('bloomie-speaking');},2800);}}
-}
+  function addMsg(text,type){var m=document.getElementById('interviewMsgs');if(!m)return;var d=document.createElement('div');d.style.cssText='padding:0.65rem 1rem;border-radius:12px;font-size:0.88rem;line-height:1.6;max-width:85%;word-wrap:break-word;'+(type==='user'?'background:linear-gradient(135deg,#F4A261,#E76F8B);color:#fff;align-self:flex-end;border-bottom-right-radius:4px;':type==='typing'?'background:#f5f5f5;color:#999;align-self:flex-start;':'background:#f5f5f5;color:#2D3436;align-self:flex-start;border-bottom-left-radius:4px;');d.textContent=type==='typing'?'....':text;if(type==='typing')d.id='typingDot';m.appendChild(d);m.scrollTop=m.scrollHeight;}
   function rmTyping(){var t=document.getElementById('typingDot');if(t)t.remove();}
   function sendMsg(){var i=document.getElementById('interviewInput'),msg=i?i.value.trim():'';if(!msg||!cur)return;addMsg(msg,'user');i.value='';addMsg('','typing');fetch(CHAT_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({employee:cur,message:msg})}).then(function(r){return r.json();}).then(function(d){rmTyping();addMsg(d.reply||d.response||'Ask me anything!','agent');}).catch(function(){rmTyping();addMsg('Let me try again!','agent');});}
   document.addEventListener('click',function(e){
     var pb=e.target.closest('.bloomie-pick-btn');
-    if(pb){cur=pb.getAttribute('data-bloomie');var av=document.getElementById('interviewAvatar');av.src=pb.getAttribute('data-bavatar');document.getElementById('interviewName').textContent=pb.getAttribute('data-bname');document.getElementById('interviewRole').textContent=pb.getAttribute('data-role');var nl=document.getElementById('interviewNameLarge');if(nl)nl.textContent=pb.getAttribute('data-bname');var rl=document.getElementById('interviewRoleLarge');if(rl)rl.textContent=pb.getAttribute('data-role');document.getElementById('interviewMsgs').innerHTML='';document.getElementById('hirestep1').style.display='none';document.getElementById('hirestep2').style.display='block';addMsg('','typing');fetch(CHAT_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({employee:cur,message:'hello, I am considering hiring you'})}).then(function(r){return r.json();}).then(function(d){rmTyping();addMsg(d.reply||d.response||'Hi! Ask me anything about what I can do for you.','agent');}).catch(function(){rmTyping();addMsg('Hi! I am ready for my interview.','agent');});return;}
+    if(pb){cur=pb.getAttribute('data-bloomie');document.getElementById('interviewAvatar').src=pb.getAttribute('data-bavatar');document.getElementById('interviewName').textContent=pb.getAttribute('data-bname');document.getElementById('interviewRole').textContent=pb.getAttribute('data-role');document.getElementById('interviewMsgs').innerHTML='';document.getElementById('hirestep1').style.display='none';document.getElementById('hirestep2').style.display='block';addMsg('','typing');fetch(CHAT_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({employee:cur,message:'hello, I am considering hiring you'})}).then(function(r){return r.json();}).then(function(d){rmTyping();addMsg(d.reply||d.response||'Hi! Ask me anything about what I can do for you.','agent');}).catch(function(){rmTyping();addMsg('Hi! I am ready for my interview.','agent');});return;}
     var t=e.target.closest('[data-action]');if(!t)return;
     var a=t.getAttribute('data-action');
     if(a==='open-booking'){var m=document.getElementById('bookingModal');if(m){m.classList.add('active');document.getElementById('hirestep1').style.display='block';['hirestep2','hirestep3','hirestep4'].forEach(function(id){var el=document.getElementById(id);if(el)el.style.display='none';});}}
