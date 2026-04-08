@@ -780,15 +780,12 @@ app.get('/app/*', (req, res) => {
   res.sendFile(path.join(__dirname, '../dashboard/dist/index.html'));
 });
 
-// Serve React static assets (JS/CSS chunks) at root for backward compatibility
-app.use(express.static(path.join(__dirname, '../dashboard/dist')));
-
-// Catch-all handler for React Router (must be last)
+// Catch-all: API 404 only — dashboard is at /app
 app.get('*', (req, res) => {
-  if (!req.path.startsWith('/api/')) {
-    res.sendFile(path.join(__dirname, '../dashboard/dist/index.html'));
-  } else {
+  if (req.path.startsWith('/api/')) {
     res.status(404).json({ error: 'API endpoint not found' });
+  } else {
+    res.status(404).send('Page not found');
   }
 });
 
