@@ -747,12 +747,22 @@ app.get('/s/:slug', servePublishedPage);
 app.use('/admin', adminRoutes);
 app.use('/mcp', mcpRoutes); // BLOOM MCP Server — Cowork custom connector endpoint
 
-// Serve React static files
+// ── Landing page — bloomiestaffing.com serves the marketing page ────────────
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, '../../landing-page/index.html'));
+});
+
+// ── Dashboard — /app serves the React dashboard ─────────────────────────────
+app.use('/app', express.static(path.join(__dirname, '../dashboard/dist')));
+app.get('/app/*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../dashboard/dist/index.html'));
+});
+
+// Serve React static assets (JS/CSS chunks) at root for backward compatibility
 app.use(express.static(path.join(__dirname, '../dashboard/dist')));
 
 // Catch-all handler for React Router (must be last)
 app.get('*', (req, res) => {
-  // Only serve index.html for non-API routes
   if (!req.path.startsWith('/api/')) {
     res.sendFile(path.join(__dirname, '../dashboard/dist/index.html'));
   } else {
