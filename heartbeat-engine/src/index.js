@@ -582,6 +582,68 @@ app.post('/webhook/ghl-inbound', async (req, res) => {
   }
 });
 
+
+// ── BLOOM TECH-TICKET WEBHOOK (Supabase → Cowork) ─────────────────────────
+// Fires on every INSERT into tech_tickets via pg_net trigger.
+// Validates shared secret, logs the ticket, and writes to action_log.
+app.post('/webhook/ticket', async (req, res) => {
+  try {
+    const secret = req.headers['x-bloom-webhook-secret'];
+    if (secret !== process.env.BLOOM_WEBHOOK_SECRET) {
+      logger.warn('🎫 Ticket webhook: unauthorized request (bad secret)');
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const ticket = req.body.record;
+    if (!ticket || !ticket.id) {
+      logger.warn('🎫 Ticket webhook: missing or invalid record in payload');
+      return res.status(400).json({ error: 'Invalid payload — missing record' });
+    }
+
+    logger.info('🎫 New tech ticket received via webhook', {
+      ticketId:    ticket.id,
+      title:       ticket.title,
+      severity:    ticket.severity,
+      category:    ticket.category,
+      status:      ticket.status,
+      reportedBy:  ticket.reported_by,
+    });
+
+    // Write to action_log so the autonomous loop has an auditable trail
+    try {
+      const { createClient } = await import('@supabase/supabase-js');
+      const supa = createClient(
+        process.env.SUPABASE_URL,
+        process.env.SUPABASE_SERVICE_KEY,
+        { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } }
+      );
+
+      await supa.from('action_log').insert({
+        action_type: 'ticket_webhook_received',
+        source:      'supabase_trigger',
+        details:     {
+          ticket_id:   ticket.id,
+          title:       ticket.title,
+          severity:    ticket.severity,
+          category:    ticket.category,
+          reported_by: ticket.reported_by,
+        },
+        created_at: new Date().toISOString(),
+      });
+
+      logger.info('🎫 Ticket logged to action_log', { ticketId: ticket.id });
+    } catch (logErr) {
+      // Non-fatal — the ticket was still received; just log the failure
+      logger.warn('🎫 Failed to write to action_log (non-fatal)', { error: logErr.message });
+    }
+
+    return res.json({ received: true, ticketId: ticket.id });
+
+  } catch (error) {
+    logger.error('🎫 Ticket webhook failed:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
 // Dashboard API routes
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/files', filesRoutes);
