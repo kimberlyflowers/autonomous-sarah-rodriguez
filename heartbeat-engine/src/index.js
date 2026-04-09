@@ -809,21 +809,6 @@ app.get('/s/:slug', servePublishedPage);
 app.use('/admin', adminRoutes);
 app.use('/mcp', mcpRoutes); // BLOOM MCP Server — Cowork custom connector endpoint
 
-// ── Landing page — serve bloomie-staffing-demo from Supabase artifacts ───────
-app.get('/', async (req, res) => {
-  try {
-    const { createClient } = await import('@supabase/supabase-js');
-    const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { auth: { persistSession: false } });
-    const { data, error } = await sb.from('artifacts').select('content').eq('id', '2286ea0d-e045-449a-b6e0-7f7904bc7ce8').single();
-    if (error || !data) throw new Error('Not found');
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.send(data.content);
-  } catch (err) {
-    res.status(500).send('Site temporarily unavailable');
-  }
-});
-
-
 // ── /blog clean URL — serves blog index from Supabase ────────────────────────
 app.get('/blog', async (req, res) => {
   try {
@@ -836,18 +821,34 @@ app.get('/blog', async (req, res) => {
   } catch (err) { res.redirect('/p/blog'); }
 });
 
-// ── Dashboard — /app serves the React dashboard ─────────────────────────────
+// ── /app path — backward compat: always serves React dashboard ──────────────
 app.use('/app', express.static(path.join(__dirname, '../dashboard/dist')));
 app.get('/app/*', (req, res) => {
   res.sendFile(path.join(__dirname, '../dashboard/dist/index.html'));
 });
 
-// Catch-all: API 404 only — dashboard is at /app
+// ── Host-based routing ────────────────────────────────────────────────────────
+// app.bloomiestaffing.com  →  React dashboard  (dashboard/dist/)
+// bloomiestaffing.com      →  Landing page     (landing-page/)
+const dashboardDist = path.join(__dirname, '../dashboard/dist');
+const landingPageDir = path.join(__dirname, '../../landing-page');
+
+app.use((req, res, next) => {
+  if (req.hostname && req.hostname.startsWith('app.')) {
+    express.static(dashboardDist)(req, res, next);
+  } else {
+    express.static(landingPageDir)(req, res, next);
+  }
+});
+
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api/')) {
-    res.status(404).json({ error: 'API endpoint not found' });
+    return res.status(404).json({ error: 'API endpoint not found' });
+  }
+  if (req.hostname && req.hostname.startsWith('app.')) {
+    res.sendFile(path.join(dashboardDist, 'index.html'));
   } else {
-    res.status(404).send('Page not found');
+    res.sendFile(path.join(landingPageDir, 'index.html'));
   }
 });
 
