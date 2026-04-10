@@ -32,6 +32,7 @@ import askClaudeRoutes from './api/ask-claude.js'; // Quality Gate + general Cla
 import conferenceRoutes from './api/conference.js';
 import adminRoutes from './api/admin.js';
 import mcpRoutes from './api/mcp.js';
+import commsMcpRoutes from './api/comms-mcp.js';
 import cookieParser from 'cookie-parser';
 
 import { createClient } from '@supabase/supabase-js';
@@ -1125,7 +1126,8 @@ app.get('/s/:slug', servePublishedPage);
 
 // Admin panel — BLOOM Command Center
 app.use('/admin', adminRoutes);
-app.use('/mcp', mcpRoutes); // BLOOM MCP Server — Cowork custom connector endpoint
+app.use('/mcp', mcpRoutes);       // BLOOM MCP Server — Cowork custom connector (ticket tools)
+app.use('/comms-mcp', commsMcpRoutes); // BLOOM Comms MCP — communication tools (chat, conference, operator)
 
 // ── /blog clean URL — serves blog index from Supabase ────────────────────────
 app.get('/blog', async (req, res) => {
