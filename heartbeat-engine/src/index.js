@@ -33,6 +33,7 @@ import conferenceRoutes from './api/conference.js';
 import adminRoutes from './api/admin.js';
 import mcpRoutes from './api/mcp.js';
 import commsMcpRoutes from './api/comms-mcp.js';
+import opsMcpRoutes from './api/ops-mcp.js';
 import cookieParser from 'cookie-parser';
 
 import { createClient } from '@supabase/supabase-js';
@@ -1128,6 +1129,7 @@ app.get('/s/:slug', servePublishedPage);
 app.use('/admin', adminRoutes);
 app.use('/mcp', mcpRoutes);       // BLOOM MCP Server — Cowork custom connector (ticket tools)
 app.use('/comms-mcp', commsMcpRoutes); // BLOOM Comms MCP — communication tools (chat, conference, operator)
+app.use('/ops-mcp', opsMcpRoutes);    // BLOOM Ops MCP — Railway, GitHub, and BLOOM health tools
 
 // ── /blog clean URL — serves blog index from Supabase ────────────────────────
 app.get('/blog', async (req, res) => {
