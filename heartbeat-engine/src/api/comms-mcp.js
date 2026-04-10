@@ -236,12 +236,17 @@ async function executeTool(name, args) {
 
     let query = supabase
       .from('sessions')
-      .select('id, agent_id, status, title, updated_at, created_at')
+      .select('id, agent_id, title, last_message_at, message_count, updated_at, created_at')
       .eq('org_id', org_id)
-      .order('updated_at', { ascending: false })
+      .order('last_message_at', { ascending: false })
       .limit(Math.min(Math.max(1, parseInt(limit) || 20), 50));
 
-    if (status !== 'all') query = query.eq('status', status);
+    // sessions has no status column — use recency of last_message_at as a proxy
+    if (status !== 'all') {
+      // 'active' = last message within 30 days
+      const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      query = query.gte('last_message_at', cutoff);
+    }
     if (agent_id) query = query.eq('agent_id', agent_id);
 
     const { data, error } = await query;
@@ -254,29 +259,34 @@ async function executeTool(name, args) {
   if (name === 'bloom_get_agent_status') {
     const { agent_id, org_id } = args;
 
-    const { data, error } = await supabase
-      .from('agents')
-      .select('id, name, role, status, last_heartbeat_at, current_task, autonomy_level, organization_id')
-      .eq('id', agent_id)
-      .single();
+    const AGENT_SELECT = 'id, name, slug, role, status, autonomy_level, organization_id';
 
-    if (error || !data) throw new Error(`Agent not found: ${agent_id}`);
+    // Try exact UUID match first, then slug, then name (to support partial IDs and slugs)
+    let data = null;
+
+    const byId = await supabase.from('agents').select(AGENT_SELECT).eq('id', agent_id).maybeSingle();
+    if (byId.data) {
+      data = byId.data;
+    } else {
+      const bySlug = await supabase.from('agents').select(AGENT_SELECT).eq('slug', agent_id).maybeSingle();
+      if (bySlug.data) {
+        data = bySlug.data;
+      } else {
+        const byName = await supabase.from('agents').select(AGENT_SELECT).ilike('name', agent_id).maybeSingle();
+        if (byName.data) data = byName.data;
+      }
+    }
+
+    if (!data) throw new Error(`Agent not found: ${agent_id}`);
     if (data.organization_id !== org_id) throw new Error('Forbidden: org_id mismatch');
-
-    // Compute time since last heartbeat
-    const heartbeatAge = data.last_heartbeat_at
-      ? Math.round((Date.now() - new Date(data.last_heartbeat_at).getTime()) / 60000)
-      : null;
 
     return {
       agent_id: data.id,
       name: data.name,
+      slug: data.slug,
       role: data.role,
       status: data.status || 'unknown',
-      current_task: data.current_task || null,
-      autonomy_level: data.autonomy_level,
-      last_heartbeat_at: data.last_heartbeat_at,
-      heartbeat_age_minutes: heartbeatAge
+      autonomy_level: data.autonomy_level
     };
   }
 
