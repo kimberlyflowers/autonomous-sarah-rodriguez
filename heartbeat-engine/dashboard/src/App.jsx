@@ -4056,6 +4056,10 @@ function App({ authUser }) {
   const btm=useRef(null);
   const fRef=useRef(null);
   const [pendingFiles,setPendingFiles]=useState([]);
+  const chatScrollRef=useRef(null);
+  const [showScrollDown,setShowScrollDown]=useState(false);
+  const handleChatScroll=()=>{const el=chatScrollRef.current;if(!el)return;setShowScrollDown(el.scrollHeight-el.scrollTop-el.clientHeight>120);};
+  const scrollToLatest=()=>{btm.current?.scrollIntoView({behavior:"smooth"});setShowScrollDown(false);};
   const sbOpen=sbO==="full"||sbO==="mini";
 
   const agent={nm:currentAgent?.name||"AI Agent",role:currentAgent?.role||"AI Employee",img:agentImgUrl||currentAgent?.avatar_url||null,grad:"linear-gradient(135deg,#F4A261,#E76F8B)"};
@@ -4736,8 +4740,8 @@ function App({ authUser }) {
                 </div>
               ):(
                 <>
-                  <div style={{flex:1,minHeight:0,display:"flex",minWidth:0}}>
-                    <div style={{flex:1,minWidth:0,overflowY:"auto",overflowX:"hidden",background:c.bg,padding:mob?"14px 12px":"18px 24px",transition:"padding .25s ease"}}>
+                  <div style={{flex:1,minHeight:0,display:"flex",minWidth:0,position:"relative"}}>
+                    <div ref={chatScrollRef} onScroll={handleChatScroll} style={{flex:1,minWidth:0,overflowY:"auto",overflowX:"hidden",background:c.bg,padding:mob?"14px 12px":"18px 24px",transition:"padding .25s ease"}}>
                       {messages.map((m)=>{
                         const cards=m.b?parseMessageCards(m.t):[];
                         const displayText=m.b?cleanMessageText(m.t):m.t;
@@ -4860,6 +4864,11 @@ function App({ authUser }) {
                       {showThinking && <ThinkingPanel c={c} sessionId={sid.current} isOpen={showThinking} onClose={()=>setShowThinking(false)}/>}
                       <div ref={btm}/>
                     </div>
+                    {showScrollDown&&(
+                      <button onClick={scrollToLatest} title="Scroll to latest" style={{position:"absolute",bottom:mob?72:80,right:mob?16:(scrM!=="hidden"?500:16),zIndex:10,width:36,height:36,borderRadius:18,background:c.cd,border:"1px solid "+c.ln,boxShadow:"0 2px 8px rgba(0,0,0,0.18)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",transition:"opacity .2s"}}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={c.so} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                      </button>
+                    )}
                     {!mob&&scrM!=="hidden"&&(
                       <ResizablePanel c={c} defaultWidth={480} minWidth={280} maxWidth={800}>
                         <div style={{display:"flex",flexDirection:"column",height:"100%"}}>

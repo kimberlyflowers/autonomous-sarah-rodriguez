@@ -1149,7 +1149,7 @@ app.get('/app/*', (req, res) => {
 // app.bloomiestaffing.com  →  React dashboard  (dashboard/dist/)
 // bloomiestaffing.com      →  Landing page     (landing-page/)
 const dashboardDist = path.join(__dirname, '../dashboard/dist');
-const landingPageDir = path.join(__dirname, '../../landing-page');
+const landingPageDir = path.join(__dirname, '../landing-page');
 
 app.use((req, res, next) => {
   if (req.hostname && req.hostname.startsWith('app.')) {

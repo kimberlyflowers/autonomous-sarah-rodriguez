@@ -59,6 +59,9 @@ WORKDIR /app
 # Copy skills catalog
 COPY skills/ ./skills/
 
+# Copy landing page (bloomiestaffing.com)
+COPY landing-page/ ./landing-page/
+
 # Build React dashboard (cache bust: 2026-03-15)
 WORKDIR /app/dashboard
 RUN npm install
