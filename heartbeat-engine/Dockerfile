@@ -40,6 +40,7 @@ RUN npm ci --only=production
 COPY src/ ./src/
 COPY database/ ./database/
 COPY dashboard/ ./dashboard/
+COPY landing-page/ ./landing-page/
 
 # Copy and build the Bloomie Scraper MCP server
 COPY bloomie-scraper-mcp-server/ ./bloomie-scraper-mcp-server/

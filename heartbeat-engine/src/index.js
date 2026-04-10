@@ -15,6 +15,7 @@ import { cronSchedules } from './config/cron-schedules.js';
 import { testDatabaseConnection } from './database/auto-setup.js';
 import { testLettaConnection } from './memory/letta-client.js';
 import { ensureDatabaseExists } from './database/auto-setup.js';
+import { ensureSupabaseSchema } from './database/supabase-setup.js';
 import dashboardRoutes from './api/dashboard.js';
 import filesRoutes from './api/files.js';
 import agentRoutes from './api/agent.js';
@@ -24,12 +25,19 @@ import executeRoutes from './api/execute.js';
 import browserRoutes from './api/browser.js';
 import skillsRoutes from './api/skills.js';
 import voiceRoutes from './api/voice.js';
+<<<<<<< HEAD
 import desktopRoutes from './api/desktop.js';import mobileRoutes from './api/mobile.js';import projectsRoutes from './api/projects-supabase.js'; // Supabase-based projects
 import adminRoutes from './api/admin.js';
 import mcpRoutes from './api/mcp.js';
 import cookieParser from 'cookie-parser';
 
 import { createClient } from '@supabase/supabase-js';
+=======
+import desktopRoutes from './api/desktop.js';
+import projectsRoutes from './api/projects-supabase.js'; // Supabase-based projects
+import askClaudeRoutes from './api/ask-claude.js'; // Quality Gate + general Claude endpoint
+import conferenceRoutes from './api/conference.js';
+>>>>>>> 3c4a55d (feat: BLOOM Website Plugin — template system, site routes, lead capture)
 
 // Get the current directory for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -653,6 +661,9 @@ app.use('/api/projects', projectsRoutes);
 // Chat API routes
 app.use('/api/chat', chatRoutes);
 
+// Quality Gate + general Claude endpoint
+app.use('/api/ask-claude', askClaudeRoutes);
+
 // Events API routes (SSE)
 app.use('/api/events', eventRoutes);
 
@@ -662,7 +673,320 @@ app.use('/api/browser', browserRoutes);
 app.use('/api/skills', skillsRoutes);
 app.use('/api/voice', voiceRoutes);
 
+<<<<<<< HEAD
 app.use('/api/desktop', desktopRoutes);app.use('/api/mobile', mobileRoutes);// ── PUBLIC SITES — clean URLs for published pages (/p/summer-camp) ──────────
+=======
+app.use('/api/desktop', desktopRoutes);
+
+// Conference API routes (PM Mode)
+app.use('/api/conference', conferenceRoutes);
+
+// ═══════════════════════════════════════════════════════════════
+// OPERATOR CHANNEL — admin-only message endpoint
+// POST /api/operator/message
+// Body: { org_id, content, role? }
+// ═══════════════════════════════════════════════════════════════
+app.post('/api/operator/message', async (req, res) => {
+  try {
+    // Auth: extract user from JWT and verify admin role
+    const authHeader = req.headers['authorization'];
+    if (!authHeader?.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    const token = authHeader.slice(7);
+    const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
+    const userId = payload.sub;
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+    });
+
+    // Verify admin role — silently reject non-admins
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('role, organization_id')
+      .eq('id', userId)
+      .single();
+
+    if (!profile || profile.role !== 'admin') {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const { org_id, content, role = 'operator' } = req.body;
+    if (!org_id || !content) {
+      return res.status(400).json({ error: 'org_id and content are required' });
+    }
+    // Hard limit: org must match caller's org
+    if (profile.organization_id && profile.organization_id !== org_id) {
+      return res.status(403).json({ error: 'Forbidden: org_id mismatch' });
+    }
+    if (!['operator', 'claude'].includes(role)) {
+      return res.status(400).json({ error: 'role must be operator or claude' });
+    }
+
+    const { data, error } = await supabase
+      .from('operator_channel')
+      .insert({ org_id, content, role, metadata: { source: 'operator-console', user_id: userId } })
+      .select('id, created_at')
+      .single();
+
+    if (error) throw new Error(error.message);
+
+    return res.json({ success: true, id: data.id, created_at: data.created_at });
+  } catch (err) {
+    logger.error('Operator message failed:', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// INTERNAL BROADCAST — bloom-comms-mcp posts here to inject into sessions
+// POST /internal/broadcast-message
+// Protected by BLOOM_INTERNAL_WEBHOOK_SECRET header
+// ═══════════════════════════════════════════════════════════════
+app.post('/internal/broadcast-message', async (req, res) => {
+  try {
+    const secret = process.env.BLOOM_INTERNAL_WEBHOOK_SECRET;
+    const provided = req.headers['x-bloom-secret'];
+    if (!secret || !provided || provided !== secret) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { conversation_id, org_id, content, sender_label, sender_type } = req.body;
+    if (!conversation_id || !org_id || !content) {
+      return res.status(400).json({ error: 'conversation_id, org_id, and content are required' });
+    }
+
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+    });
+
+    const { data, error } = await supabase
+      .from('messages')
+      .insert({
+        session_id: conversation_id,
+        org_id,
+        role: 'system',
+        content,
+        metadata: { sender_label, sender_type, source: 'bloom-comms-mcp-broadcast' }
+      })
+      .select('id, created_at')
+      .single();
+
+    if (error) throw new Error(error.message);
+
+    // Also push SSE notification so dashboard refreshes live
+    const { broadcastToClients } = await import('./api/events.js');
+    broadcastToClients?.('new_message', { session_id: conversation_id, org_id });
+
+    logger.info(`📡 Broadcast message posted to session ${conversation_id}`);
+    return res.json({ success: true, id: data.id });
+  } catch (err) {
+    logger.error('Broadcast message failed:', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// BLOOM WEBSITE PLUGIN — Client Site Hosting
+// GET /p/:orgSlug         → serve home page from site_pages (slug='home')
+// GET /p/:orgSlug/:pageSlug → serve any page from site_pages
+// Custom domain: if hostname matches client_sites.custom_domain, serve that site
+// ═══════════════════════════════════════════════════════════════
+
+/** Look up site + page from client_sites/site_pages and render HTML */
+async function serveClientSitePage(orgSlug, pageSlug, res) {
+  try {
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+    });
+
+    // Look up the client site by org_slug
+    const { data: site, error: siteErr } = await supabase
+      .from('client_sites')
+      .select('id, org_slug, site_name, template_id, theme_color, custom_domain, published')
+      .eq('org_slug', orgSlug)
+      .maybeSingle();
+
+    if (siteErr || !site || !site.published) {
+      return res.status(404).send(site404Html());
+    }
+
+    // Look up the page
+    const { data: page, error: pageErr } = await supabase
+      .from('site_pages')
+      .select('slug, title, content_html, content_data, template_id')
+      .eq('site_id', site.id)
+      .eq('slug', pageSlug || 'home')
+      .maybeSingle();
+
+    if (pageErr || !page) {
+      return res.status(404).send(site404Html());
+    }
+
+    // If raw HTML is stored, serve it directly
+    if (page.content_html) {
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      return res.send(page.content_html);
+    }
+
+    // Otherwise render via template engine
+    const templateId = page.template_id || site.template_id || '01';
+    const { getTemplate } = await import('./templates/templates-registry.js');
+    const tmpl = getTemplate(templateId);
+
+    if (!tmpl) {
+      return res.status(500).send('<html><body>Template not found.</body></html>');
+    }
+
+    const contentData = {
+      ...(page.content_data || {}),
+      orgSlug,
+      themeColor: site.theme_color || undefined,
+      siteName: site.site_name,
+    };
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    return res.send(tmpl.render(contentData));
+  } catch (e) {
+    logger.error('serveClientSitePage error:', e);
+    return res.status(500).send('<html><body>Server error.</body></html>');
+  }
+}
+
+function site404Html() {
+  return `<html><body style="font-family:system-ui;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#1a1a1a;color:#fff;margin:0"><div style="text-align:center"><h1 style="font-size:48px;margin:0">404</h1><p style="color:#888;margin-top:8px">This site or page doesn't exist.</p></div></body></html>`;
+}
+
+// Custom domain middleware — must be registered before /p/ routes
+app.use(async (req, res, next) => {
+  const hostname = req.hostname;
+  // Skip localhost, railway domains, and the engine's own domain
+  if (!hostname || hostname === 'localhost' || hostname.endsWith('.railway.app') || hostname.endsWith('.up.railway.app')) {
+    return next();
+  }
+  try {
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+    });
+    const { data: site } = await supabase
+      .from('client_sites')
+      .select('org_slug, published')
+      .eq('custom_domain', hostname)
+      .eq('published', true)
+      .maybeSingle();
+
+    if (site?.org_slug) {
+      // Route to the appropriate page within this custom domain site
+      const pageSlug = req.path === '/' ? 'home' : req.path.replace(/^\//, '');
+      return serveClientSitePage(site.org_slug, pageSlug, res);
+    }
+  } catch (e) {
+    // Non-fatal — fall through to normal routing
+    logger.warn('Custom domain lookup failed:', e.message);
+  }
+  return next();
+});
+
+// BLOOM client site routes — two-segment must come before single-segment
+app.get('/p/:orgSlug/:pageSlug', (req, res) => {
+  return serveClientSitePage(req.params.orgSlug, req.params.pageSlug, res);
+});
+
+app.get('/p/:orgSlug', (req, res) => {
+  return serveClientSitePage(req.params.orgSlug, 'home', res);
+});
+
+// ── LEAD CAPTURE — accept form submissions from BLOOM-hosted sites ────────────
+app.post('/api/capture-lead', async (req, res) => {
+  try {
+    const { orgSlug, name, email, phone, message, ...extra } = req.body || {};
+
+    if (!email) {
+      return res.status(400).json({ success: false, error: 'email is required' });
+    }
+
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+    });
+
+    // Look up location ID for the org (or fall back to master BLOOM GHL location)
+    const MASTER_GHL_LOCATION = process.env.GHL_LOCATION_ID || 'IPYKFgl2MzArbYnm4ZMh';
+    let locationId = MASTER_GHL_LOCATION;
+
+    if (orgSlug) {
+      const { data: site } = await supabase
+        .from('client_sites')
+        .select('ghl_location_id')
+        .eq('org_slug', orgSlug)
+        .maybeSingle();
+      if (site?.ghl_location_id) locationId = site.ghl_location_id;
+    }
+
+    // Create contact in GHL
+    let ghlContactId = null;
+    const ghlApiKey = process.env.GHL_API_KEY;
+    if (ghlApiKey) {
+      try {
+        const ghlRes = await fetch('https://services.leadconnectorhq.com/contacts/', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${ghlApiKey}`,
+            'Version': '2021-07-28',
+          },
+          body: JSON.stringify({
+            locationId,
+            firstName: name ? name.split(' ')[0] : undefined,
+            lastName: name ? name.split(' ').slice(1).join(' ') : undefined,
+            email,
+            phone: phone || undefined,
+            customField: message ? [{ key: 'message', field_value: message }] : undefined,
+            tags: ['bloom-website-lead', orgSlug].filter(Boolean),
+            source: `BLOOM Website Plugin — ${orgSlug || 'unknown'}`,
+          }),
+        });
+        const ghlData = await ghlRes.json();
+        ghlContactId = ghlData?.contact?.id || null;
+        logger.info('GHL contact created', { ghlContactId, orgSlug, email });
+      } catch (ghlErr) {
+        logger.warn('GHL contact creation failed (non-fatal):', ghlErr.message);
+      }
+    }
+
+    // Log lead in bloomie_leads table (create if not exists handled by Supabase RLS / auto-schema)
+    try {
+      await supabase.from('bloomie_leads').insert({
+        org_slug: orgSlug || null,
+        name: name || null,
+        email,
+        phone: phone || null,
+        message: message || null,
+        ghl_contact_id: ghlContactId,
+        ghl_location_id: locationId,
+        source: 'website-plugin',
+        metadata: Object.keys(extra).length ? extra : null,
+      });
+    } catch (dbErr) {
+      // Non-fatal — we already created the GHL contact
+      logger.warn('bloomie_leads insert failed (non-fatal):', dbErr.message);
+    }
+
+    return res.json({ success: true, message: 'Lead captured successfully' });
+  } catch (err) {
+    logger.error('capture-lead failed:', err);
+    return res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// ── PUBLIC SITES — clean URLs for published pages (/p/summer-camp) ──────────
+>>>>>>> 3c4a55d (feat: BLOOM Website Plugin — template system, site routes, lead capture)
 const servePublishedPage = async (req, res) => {
   try {
     const { createClient } = await import('@supabase/supabase-js');
@@ -875,6 +1199,11 @@ async function startHeartbeatEngine() {
       logger.warn('⚠️  Database auto-setup had issues - will retry on next startup');
     }
 
+    // Ensure Supabase Quality Gate schema (bloom_review_queue + status extension)
+    await ensureSupabaseSchema().catch(e => {
+      logger.warn('Supabase schema setup skipped (non-fatal):', e.message);
+    });
+
     // Test connections (non-blocking)
     logger.info('🔧 Testing connections...');
     const dbOk = dbSetupOk && await testDatabaseConnection().catch(() => false);
@@ -1033,6 +1362,81 @@ function setupCronSchedules(agentConfig) {
   logger.info('✅ All cron schedules configured');
 }
 
+// ── Quality Gate constants ─────────────────────────────────────────────────
+// Deliverable types that ALWAYS go through review regardless of confidence score
+const ALWAYS_REVIEW_TYPES = new Set([
+  'website', 'landing_page', 'document', 'financial_report',
+  'legal_content', 'client_proposal',
+]);
+
+// Confidence threshold below which optional types also get reviewed
+const REVIEW_CONFIDENCE_THRESHOLD = 0.85;
+
+// ── Quality Gate review helper ─────────────────────────────────────────────
+async function runQualityGateReview(supabase, taskRunId, orgId, agentId, deliverableType, deliverableContent, deliverableUrl) {
+  const port = process.env.PORT || 3000;
+
+  const res = await fetch(`http://localhost:${port}/api/ask-claude`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      review_mode: true,
+      deliverable_type: deliverableType,
+      deliverable_content: deliverableContent,
+      deliverable_url: deliverableUrl || null,
+      agent_id: agentId,
+    }),
+  });
+
+  if (!res.ok) throw new Error(`Review API returned ${res.status}`);
+  const review = await res.json();
+
+  // Write to bloom_review_queue
+  const { data: queueRow, error: queueErr } = await supabase
+    .from('bloom_review_queue')
+    .insert({
+      task_run_id: taskRunId,
+      organization_id: orgId,
+      agent_id: agentId,
+      deliverable_type: deliverableType,
+      deliverable_url: deliverableUrl || null,
+      deliverable_content: deliverableContent?.slice(0, 50000), // safety cap
+      checklist_json: review.checklist_results || {},
+      confidence_score: review.confidence || 0.5,
+      review_status: review.status === 'APPROVED' ? 'approved' : 'needs_revision',
+      claude_feedback: review.feedback || null,
+      reviewed_at: new Date().toISOString(),
+    })
+    .select('id')
+    .single();
+
+  if (queueErr) logger.warn('Could not write to bloom_review_queue:', queueErr.message);
+
+  return { review, queueRowId: queueRow?.id };
+}
+
+// ── File a bloomie ticket on escalation ───────────────────────────────────
+async function escalateToBloomieTicket(supabase, taskRunId, taskName, agentId, orgId, feedback) {
+  try {
+    const { error } = await supabase.from('bloomie_tickets').insert({
+      task_run_id: taskRunId,
+      organization_id: orgId,
+      agent_id: agentId,
+      title: `Quality Gate: "${taskName}" failed after 3 revisions`,
+      description: `The Quality Gate rejected this deliverable 3 times and it requires human review.\n\nLast feedback:\n${feedback}`,
+      status: 'open',
+      priority: 'high',
+      source: 'quality_gate',
+      created_at: new Date().toISOString(),
+    });
+    if (error) throw error;
+    logger.warn(`🎫 Bloomie ticket filed for task: ${taskName}`);
+  } catch (e) {
+    // bloomie_tickets table may not exist yet; log and continue
+    logger.warn(`Could not file bloomie ticket (non-fatal): ${e.message}`);
+  }
+}
+
 // ── Scheduled Task Runner ──────────────────────────────────────────────────
 async function runScheduledTasks(agentConfig) {
   const { createClient } = await import('@supabase/supabase-js');
@@ -1080,9 +1484,11 @@ async function runScheduledTasks(agentConfig) {
       continue;
     }
 
-    // Execute the task through Sarah's agent executor
+    // Execute the task through the agent executor
     let output = '';
     let success = false;
+    let taskRunId = null;
+
     try {
       logger.info(`▶ Running task: ${task.name} — "${task.instruction.slice(0, 80)}"`);
       const { AgentExecutor } = await import('./agent/executor.js');
@@ -1090,6 +1496,7 @@ async function runScheduledTasks(agentConfig) {
       const executor = new AgentExecutor(task.agent_id || agentConfig?.agentId || 'bloomie-sarah-rodriguez', agentConfig);
       const result = await executor.executeTask(task.instruction, { trigger: 'scheduled', taskId: task.id, taskName: task.name, taskType: task.task_type, orgId: task.organization_id });
       output = typeof result === 'string' ? result : result?.response || JSON.stringify(result);
+<<<<<<< HEAD
 
       // Check inner result status — executor may return without throwing but still report failure
       const innerStatus = (typeof result === 'object') ? (result?.status || result?.error) : null;
@@ -1100,29 +1507,133 @@ async function runScheduledTasks(agentConfig) {
         success = true;
         logger.info(`✅ Task complete: ${task.name}`);
       }
+=======
+      success = true;
+      logger.info(`✅ Task execution complete: ${task.name}`);
+>>>>>>> 3c4a55d (feat: BLOOM Website Plugin — template system, site routes, lead capture)
     } catch (e) {
       output = `Task failed: ${e.message}`;
       logger.error(`❌ Task failed: ${task.name}`, e.message);
     }
 
-    // Write result to task_runs
+    // Write initial task_run record
     try {
-      await supabase.from('task_runs').insert({
+      const { data: runRow, error: runErr } = await supabase.from('task_runs').insert({
         scheduled_task_id: task.id,
         agent_id: task.agent_id,
         organization_id: task.organization_id,
+<<<<<<< HEAD
         task_id: task.task_id,
         task_name: task.name,
         task_type: task.task_type,
         instruction: task.instruction,
         status: success ? 'completed' : 'failed',
         result: success ? output : null,
+=======
+        status: success ? 'pending_review' : 'failed',
+        output: success ? output : null,
+>>>>>>> 3c4a55d (feat: BLOOM Website Plugin — template system, site routes, lead capture)
         error: success ? null : output,
         started_at: startedAt,
         completed_at: new Date().toISOString()
-      });
+      }).select('id').single();
+
+      if (!runErr && runRow) taskRunId = runRow.id;
     } catch (e) {
       logger.warn('Could not write task_run record:', e.message);
+    }
+
+    // ── Quality Gate Review Pipeline ────────────────────────────────────
+    if (!success || !taskRunId) continue; // nothing to review on failure
+
+    const deliverableType = task.deliverable_type || task.task_type || 'document';
+    const needsReview = ALWAYS_REVIEW_TYPES.has(deliverableType)
+      || (task.confidence_score == null || task.confidence_score < REVIEW_CONFIDENCE_THRESHOLD);
+
+    if (!needsReview) {
+      // Low-stakes task, confidence is high — mark delivered directly
+      await supabase.from('task_runs').update({ status: 'delivered' }).eq('id', taskRunId);
+      logger.info(`📦 Task delivered (no review needed): ${task.name}`);
+      continue;
+    }
+
+    logger.info(`🔍 Quality Gate: reviewing ${deliverableType} for task "${task.name}"`);
+
+    let approved = false;
+    let lastFeedback = '';
+
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const { review } = await runQualityGateReview(
+          supabase, taskRunId,
+          task.organization_id, task.agent_id,
+          deliverableType, output, null
+        );
+
+        lastFeedback = review.feedback || '';
+
+        if (review.status === 'APPROVED') {
+          approved = true;
+          logger.info(`✅ Quality Gate APPROVED on attempt ${attempt}: ${task.name}`);
+          break;
+        }
+
+        logger.warn(`⚠️  Quality Gate NEEDS_REVISION (attempt ${attempt}/3): ${task.name}`, {
+          feedback: review.feedback?.slice(0, 120),
+        });
+
+        if (attempt < 3) {
+          // Re-run the task with revision instructions appended
+          const revisionInstruction = `${task.instruction}\n\n` +
+            `[REVISION REQUIRED — previous attempt was rejected by the Quality Gate]\n` +
+            `Feedback: ${review.feedback}\n` +
+            (review.revision_instructions ? `Instructions: ${review.revision_instructions}` : '');
+
+          try {
+            const { AgentExecutor } = await import('./agent/executor.js');
+            const executor = new AgentExecutor(agentConfig);
+            const revised = await executor.execute(revisionInstruction, [], `scheduled_task_${task.id}_rev${attempt}`);
+            output = typeof revised === 'string' ? revised : revised?.response || JSON.stringify(revised);
+
+            // Increment revision_count in the latest review queue row
+            await supabase.from('bloom_review_queue')
+              .update({ revision_count: attempt })
+              .eq('task_run_id', taskRunId)
+              .order('created_at', { ascending: false })
+              .limit(1);
+
+          } catch (revErr) {
+            logger.error(`Revision attempt ${attempt} failed:`, revErr.message);
+            break;
+          }
+        }
+      } catch (reviewErr) {
+        logger.error(`Quality Gate review attempt ${attempt} errored:`, reviewErr.message);
+        break;
+      }
+    }
+
+    // Update task_run with final status
+    const finalStatus = approved ? 'approved' : 'needs_revision';
+    await supabase.from('task_runs')
+      .update({ status: finalStatus })
+      .eq('id', taskRunId)
+      .catch(e => logger.warn('Could not update task_run status:', e.message));
+
+    if (approved) {
+      // Mark as delivered
+      await supabase.from('task_runs')
+        .update({ status: 'delivered' })
+        .eq('id', taskRunId)
+        .catch(e => logger.warn('Could not mark task_run delivered:', e.message));
+      logger.info(`📦 Task approved and delivered: ${task.name}`);
+    } else {
+      // Escalate after 3 failed revisions
+      logger.error(`🚨 Escalating after 3 failed revisions: ${task.name}`);
+      await escalateToBloomieTicket(
+        supabase, taskRunId, task.name,
+        task.agent_id, task.organization_id, lastFeedback
+      );
     }
   }
 }
