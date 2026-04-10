@@ -25,19 +25,16 @@ import executeRoutes from './api/execute.js';
 import browserRoutes from './api/browser.js';
 import skillsRoutes from './api/skills.js';
 import voiceRoutes from './api/voice.js';
-<<<<<<< HEAD
-import desktopRoutes from './api/desktop.js';import mobileRoutes from './api/mobile.js';import projectsRoutes from './api/projects-supabase.js'; // Supabase-based projects
+import desktopRoutes from './api/desktop.js';
+import mobileRoutes from './api/mobile.js';
+import projectsRoutes from './api/projects-supabase.js'; // Supabase-based projects
+import askClaudeRoutes from './api/ask-claude.js'; // Quality Gate + general Claude endpoint
+import conferenceRoutes from './api/conference.js';
 import adminRoutes from './api/admin.js';
 import mcpRoutes from './api/mcp.js';
 import cookieParser from 'cookie-parser';
 
 import { createClient } from '@supabase/supabase-js';
-=======
-import desktopRoutes from './api/desktop.js';
-import projectsRoutes from './api/projects-supabase.js'; // Supabase-based projects
-import askClaudeRoutes from './api/ask-claude.js'; // Quality Gate + general Claude endpoint
-import conferenceRoutes from './api/conference.js';
->>>>>>> 3c4a55d (feat: BLOOM Website Plugin — template system, site routes, lead capture)
 
 // Get the current directory for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -673,10 +670,8 @@ app.use('/api/browser', browserRoutes);
 app.use('/api/skills', skillsRoutes);
 app.use('/api/voice', voiceRoutes);
 
-<<<<<<< HEAD
-app.use('/api/desktop', desktopRoutes);app.use('/api/mobile', mobileRoutes);// ── PUBLIC SITES — clean URLs for published pages (/p/summer-camp) ──────────
-=======
 app.use('/api/desktop', desktopRoutes);
+app.use('/api/mobile', mobileRoutes);
 
 // Conference API routes (PM Mode)
 app.use('/api/conference', conferenceRoutes);
@@ -986,7 +981,6 @@ app.post('/api/capture-lead', async (req, res) => {
 });
 
 // ── PUBLIC SITES — clean URLs for published pages (/p/summer-camp) ──────────
->>>>>>> 3c4a55d (feat: BLOOM Website Plugin — template system, site routes, lead capture)
 const servePublishedPage = async (req, res) => {
   try {
     const { createClient } = await import('@supabase/supabase-js');
@@ -1496,7 +1490,6 @@ async function runScheduledTasks(agentConfig) {
       const executor = new AgentExecutor(task.agent_id || agentConfig?.agentId || 'bloomie-sarah-rodriguez', agentConfig);
       const result = await executor.executeTask(task.instruction, { trigger: 'scheduled', taskId: task.id, taskName: task.name, taskType: task.task_type, orgId: task.organization_id });
       output = typeof result === 'string' ? result : result?.response || JSON.stringify(result);
-<<<<<<< HEAD
 
       // Check inner result status — executor may return without throwing but still report failure
       const innerStatus = (typeof result === 'object') ? (result?.status || result?.error) : null;
@@ -1507,10 +1500,6 @@ async function runScheduledTasks(agentConfig) {
         success = true;
         logger.info(`✅ Task complete: ${task.name}`);
       }
-=======
-      success = true;
-      logger.info(`✅ Task execution complete: ${task.name}`);
->>>>>>> 3c4a55d (feat: BLOOM Website Plugin — template system, site routes, lead capture)
     } catch (e) {
       output = `Task failed: ${e.message}`;
       logger.error(`❌ Task failed: ${task.name}`, e.message);
@@ -1522,17 +1511,12 @@ async function runScheduledTasks(agentConfig) {
         scheduled_task_id: task.id,
         agent_id: task.agent_id,
         organization_id: task.organization_id,
-<<<<<<< HEAD
         task_id: task.task_id,
         task_name: task.name,
         task_type: task.task_type,
         instruction: task.instruction,
         status: success ? 'completed' : 'failed',
         result: success ? output : null,
-=======
-        status: success ? 'pending_review' : 'failed',
-        output: success ? output : null,
->>>>>>> 3c4a55d (feat: BLOOM Website Plugin — template system, site routes, lead capture)
         error: success ? null : output,
         started_at: startedAt,
         completed_at: new Date().toISOString()
