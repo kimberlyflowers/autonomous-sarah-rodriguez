@@ -57,8 +57,8 @@ const PLATFORMS = {
       'https://www.googleapis.com/auth/drive.readonly',
     ],
     extraParams: { access_type: 'offline', prompt: 'consent' },
-    envClientId: 'GOOGLE_CLIENT_ID',
-    envClientSecret: 'GOOGLE_CLIENT_SECRET',
+    envClientId: 'GOOGLE_OAUTH_CLIENT_ID',
+    envClientSecret: 'GOOGLE_OAUTH_CLIENT_SECRET',
     connectorSlugs: ['gmail', 'google-calendar', 'google-drive'],
   },
 };
