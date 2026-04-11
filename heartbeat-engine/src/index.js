@@ -34,6 +34,7 @@ import adminRoutes from './api/admin.js';
 import mcpRoutes from './api/mcp.js';
 import commsMcpRoutes from './api/comms-mcp.js';
 import opsMcpRoutes from './api/ops-mcp.js';
+import integrationRoutes from './api/integrations.js';
 import cookieParser from 'cookie-parser';
 
 import { createClient } from '@supabase/supabase-js';
@@ -677,6 +678,9 @@ app.use('/api/mobile', mobileRoutes);
 
 // Conference API routes (PM Mode)
 app.use('/api/conference', conferenceRoutes);
+
+// OAuth connector routes — authorize, callback, disconnect, status, list
+app.use('/api/integrations', integrationRoutes);
 
 // ═══════════════════════════════════════════════════════════════
 // OPERATOR CHANNEL — admin-only message endpoint

@@ -523,6 +523,17 @@ const CONNECTORS = {
   // MEETINGS / COMMS
   // ══════════════════════════════════════════════════════
 
+  'zoom': {
+    name: 'Zoom',
+    authUrl: 'https://zoom.us/oauth/authorize',
+    tokenUrl: 'https://zoom.us/oauth/token',
+    scopes: ['cloud_recording:read', 'recording:read', 'meeting:read', 'user:read'],
+    extraParams: {},
+    tokenAuthMethod: 'basic',
+    envClientId: 'ZOOM_CLIENT_ID',
+    envClientSecret: 'ZOOM_CLIENT_SECRET',
+  },
+
   'fireflies': {
     name: 'Fireflies',
     authType: 'api_key',

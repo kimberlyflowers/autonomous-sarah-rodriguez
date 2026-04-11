@@ -3456,6 +3456,227 @@ function QRCanvas({url, size=160}) {
   return <canvas ref={canvasRef} style={{borderRadius:8,display:'block'}}/>;
 }
 
+// ══════════════════════════════════════════════════════════════
+// CONNECTORS PAGE — OAuth integrations settings
+// Shows all connectors from DB with Connect / Disconnect buttons.
+// Social connectors (Facebook, Instagram, LinkedIn, TikTok) shown
+// as "Coming Soon" (blocked until GHL $297 upgrade).
+// ══════════════════════════════════════════════════════════════
+function ConnectorsPage({c, mob}) {
+  const [connectors, setConnectors] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [disconnecting, setDisconnecting] = useState(null);
+  const [toast, setToast] = useState(null);
+
+  // Category display order + labels
+  const CATEGORY_ORDER = ['communication','productivity','social','crm','storage','design','payment','analytics','other'];
+  const CATEGORY_LABELS = {
+    communication:'Communication', productivity:'Productivity', social:'Social Media',
+    crm:'CRM & Marketing', storage:'Storage & Files', design:'Design',
+    payment:'Payments', analytics:'Analytics', other:'Other',
+  };
+
+  // Which slugs belong to the same OAuth platform (for Connect button routing)
+  const SLUG_TO_PLATFORM = {
+    zoom:'zoom',
+    gmail:'google','google-calendar':'google','google-drive':'google',
+  };
+
+  const showToast = (msg, type='success') => {
+    setToast({msg,type});
+    setTimeout(()=>setToast(null), 4000);
+  };
+
+  const loadConnectors = async () => {
+    setLoading(true);
+    try {
+      const r = await fetch('/api/integrations/list');
+      const d = await r.json();
+      setConnectors(d.connectors || []);
+    } catch(e) {
+      showToast('Failed to load connectors', 'error');
+    }
+    setLoading(false);
+  };
+
+  useEffect(()=>{ loadConnectors(); },[]);
+
+  // Check for OAuth success/error params on page load
+  useEffect(()=>{
+    const params = new URLSearchParams(window.location.search);
+    const success = params.get('oauth_success');
+    const error = params.get('oauth_error');
+    if (success) {
+      showToast(`Connected ${success} successfully`, 'success');
+      // Clean up URL
+      const url = new URL(window.location.href);
+      url.searchParams.delete('oauth_success');
+      url.searchParams.delete('connected');
+      window.history.replaceState({}, '', url.toString());
+      loadConnectors();
+    }
+    if (error) {
+      showToast(`Connection failed: ${decodeURIComponent(error)}`, 'error');
+      const url = new URL(window.location.href);
+      url.searchParams.delete('oauth_error');
+      url.searchParams.delete('platform');
+      window.history.replaceState({}, '', url.toString());
+    }
+  },[]);
+
+  const handleConnect = (slug) => {
+    const platform = SLUG_TO_PLATFORM[slug] || slug;
+    window.location.href = `/api/integrations/${platform}/authorize`;
+  };
+
+  const handleDisconnect = async (slug) => {
+    const platform = SLUG_TO_PLATFORM[slug] || slug;
+    setDisconnecting(platform);
+    try {
+      const r = await fetch(`/api/integrations/${platform}/disconnect`, { method:'POST' });
+      if (r.ok) {
+        showToast(`Disconnected ${platform}`, 'success');
+        loadConnectors();
+      } else {
+        showToast('Disconnect failed', 'error');
+      }
+    } catch(e) {
+      showToast('Disconnect failed', 'error');
+    }
+    setDisconnecting(null);
+  };
+
+  // Group connectors by category
+  const grouped = {};
+  (connectors||[]).forEach(cn => {
+    const cat = cn.category || 'other';
+    if (!grouped[cat]) grouped[cat] = [];
+    grouped[cat].push(cn);
+  });
+
+  const categories = CATEGORY_ORDER.filter(cat => grouped[cat]?.length > 0);
+
+  // Connector logo placeholder (initials)
+  const ConnectorLogo = ({name, slug}) => {
+    const COLORS = {
+      zoom:'#2D8CFF', gmail:'#EA4335', 'google-calendar':'#4285F4',
+      'google-drive':'#0F9D58', facebook:'#1877F2', instagram:'#E4405F',
+      linkedin:'#0A66C2', tiktok:'#010101',
+    };
+    const bg = COLORS[slug] || c.ac;
+    const ini = name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+    return (
+      <div style={{width:40,height:40,borderRadius:10,background:bg,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+        <span style={{fontSize:13,fontWeight:700,color:'#fff'}}>{ini}</span>
+      </div>
+    );
+  };
+
+  return (
+    <div style={{padding:mob?'16px 12px 60px':'28px 32px 60px',maxWidth:900,margin:'0 auto'}}>
+
+      {/* Toast */}
+      {toast&&(
+        <div style={{position:'fixed',bottom:24,left:'50%',transform:'translateX(-50%)',zIndex:9999,padding:'12px 20px',borderRadius:12,background:toast.type==='success'?'linear-gradient(135deg,#F4A261,#E76F8B)':'#ea4335',color:'#fff',fontSize:13,fontWeight:600,boxShadow:'0 4px 20px rgba(0,0,0,0.3)',display:'flex',alignItems:'center',gap:10,whiteSpace:'nowrap'}}>
+          {toast.type==='success'
+            ?<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+            :<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>}
+          {toast.msg}
+        </div>
+      )}
+
+      {/* Header */}
+      <div style={{marginBottom:28}}>
+        <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:6}}>
+          <div style={{width:40,height:40,borderRadius:10,background:'linear-gradient(135deg,#F4A261,#E76F8B)',display:'flex',alignItems:'center',justifyContent:'center'}}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+            </svg>
+          </div>
+          <div>
+            <h1 style={{fontSize:mob?20:24,fontWeight:700,color:c.tx,margin:0}}>Connectors</h1>
+            <p style={{fontSize:13,color:c.so,margin:0}}>Connect your tools so Bloomie can work across your stack</p>
+          </div>
+        </div>
+      </div>
+
+      {loading ? (
+        <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:200,color:c.so,fontSize:14}}>
+          Loading connectors...
+        </div>
+      ) : (
+        categories.map(cat => (
+          <div key={cat} style={{marginBottom:32}}>
+            <div style={{fontSize:11,fontWeight:700,color:c.so,textTransform:'uppercase',letterSpacing:'0.8px',marginBottom:12}}>
+              {CATEGORY_LABELS[cat] || cat}
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'1fr 1fr',gap:12}}>
+              {grouped[cat].map(cn => {
+                const platform = SLUG_TO_PLATFORM[cn.slug] || cn.slug;
+                const isDisconnecting = disconnecting === platform;
+
+                return (
+                  <div key={cn.id} style={{background:c.cd,borderRadius:14,border:'1px solid '+c.ln,padding:'16px 18px',display:'flex',alignItems:'center',gap:14,opacity:cn.comingSoon?0.6:1}}>
+                    <ConnectorLogo name={cn.name} slug={cn.slug}/>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:2}}>
+                        <span style={{fontSize:14,fontWeight:600,color:c.tx}}>{cn.name}</span>
+                        {cn.comingSoon&&(
+                          <span style={{fontSize:10,fontWeight:700,padding:'2px 7px',borderRadius:6,background:c.sf,color:c.so,letterSpacing:'0.4px',textTransform:'uppercase'}}>Soon</span>
+                        )}
+                        {cn.connected&&!cn.comingSoon&&(
+                          <span style={{fontSize:10,fontWeight:700,padding:'2px 7px',borderRadius:6,background:'#1a2b1a',color:'#34A853',letterSpacing:'0.4px',textTransform:'uppercase'}}>Active</span>
+                        )}
+                      </div>
+                      {cn.connected&&cn.externalAccount&&(
+                        <div style={{fontSize:11,color:c.so,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{cn.externalAccount}</div>
+                      )}
+                      {cn.connected&&!cn.externalAccount&&(
+                        <div style={{fontSize:11,color:c.gr||'#34A853'}}>Connected</div>
+                      )}
+                      {!cn.connected&&!cn.comingSoon&&(
+                        <div style={{fontSize:11,color:c.so}}>Not connected</div>
+                      )}
+                      {cn.comingSoon&&(
+                        <div style={{fontSize:11,color:c.so}}>Requires GHL upgrade</div>
+                      )}
+                    </div>
+                    {!cn.comingSoon&&(
+                      cn.connected ? (
+                        <button
+                          onClick={()=>handleDisconnect(cn.slug)}
+                          disabled={isDisconnecting}
+                          style={{padding:'7px 14px',borderRadius:8,border:'1px solid #ea4335',background:'transparent',color:'#ea4335',fontSize:12,fontWeight:600,cursor:isDisconnecting?'wait':'pointer',fontFamily:'inherit',flexShrink:0,opacity:isDisconnecting?0.5:1,whiteSpace:'nowrap'}}
+                        >
+                          {isDisconnecting?'...':'Disconnect'}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={()=>handleConnect(cn.slug)}
+                          style={{padding:'7px 14px',borderRadius:8,border:'none',background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',fontSize:12,fontWeight:600,cursor:'pointer',fontFamily:'inherit',flexShrink:0,whiteSpace:'nowrap'}}
+                        >
+                          Connect
+                        </button>
+                      )
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))
+      )}
+
+      {!loading && connectors.length === 0 && (
+        <div style={{textAlign:'center',padding:60,color:c.so,fontSize:14}}>
+          No connectors found. Check your database setup.
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AppWithErrorBoundary({ user: authUser }) {
   return <ErrorBoundary><App authUser={authUser} /></ErrorBoundary>;
 }
@@ -4568,6 +4789,7 @@ function App({ authUser }) {
                           {ic:"🏢",l:"Business Profile",fn:()=>{setPg("business");setUmO(false);}},
                           {ic:"💳",l:"Billing",fn:()=>{setPg("billing");setUmO(false);}},
                           {ic:"🧠",l:"Skills",fn:()=>{setPg("skills");setUmO(false);}},
+                          {ic:"🔗",l:"Connectors",fn:()=>{setPg("connectors");setUmO(false);}},
                           {ic:"⚙️",l:"Settings",fn:()=>{setPg("settings");setUmO(false);}},
                           {ic:"🔧",l:"Developer Mode",fn:()=>setUmO(false)},
                           {ic:dark?"☀️":"🌙",l:dark?"Light Mode":"Dark Mode",fn:()=>{setDark(!dark);setUmO(false);}},
@@ -6544,6 +6766,7 @@ function App({ authUser }) {
           {pg==="billing"&&(<BillingPage c={c} mob={mob} aFN={aFN}/>)}
           {pg==="business"&&(<BusinessProfilePage c={c} mob={mob} userImg={userImg} setUserImg={setUserImg} meInitial={meInitial} aFN={aFN} chatLightbox={chatLightbox} setChatLightbox={setChatLightbox}/>)}
           {pg==="skills"&&(<SkillsPage c={c} mob={mob} aFN={aFN}/>)}
+          {pg==="connectors"&&(<ConnectorsPage c={c} mob={mob}/>)}
           {pg==="dispatch"&&(<DispatchPage c={c} mob={mob} currentAgent={currentAgent} agentImgUrl={agentImgUrl}/>)}
           {pg==="mobile"&&(
             <div style={{padding:mob?"20px 16px 60px":"32px 40px 60px",maxWidth:680,margin:"0 auto"}}>
