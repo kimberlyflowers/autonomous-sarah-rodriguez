@@ -527,14 +527,7 @@ const CONNECTORS = {
     name: 'Zoom',
     authUrl: 'https://zoom.us/oauth/authorize',
     tokenUrl: 'https://zoom.us/oauth/token',
-    scopes: [
-      'meeting:read:list_meetings',
-      'meeting:read:list_upcoming_meetings',
-      'cloud_recording:read:list_user_recordings',
-      'cloud_recording:read:recording',
-      'cloud_recording:read:meeting_transcript',
-      'user:read:user'
-    ],
+    scopes: [], // empty = Zoom grants all scopes configured on the Marketplace app (729 scopes across all categories)
     extraParams: {},
     tokenAuthMethod: 'basic',
     envClientId: 'ZOOM_CLIENT_ID',
@@ -691,14 +684,21 @@ function getAuthUrl(slug, redirectUri, state) {
     throw new Error(`Missing env var: ${connector.envClientId}`);
   }
 
-  const params = new URLSearchParams({
+  const baseParams = {
     [clientIdKey]: clientId,
     redirect_uri: redirectUri,
     response_type: 'code',
-    scope: connector.scopes.join(' '),
     state,
     ...connector.extraParams,
-  });
+  };
+
+  // Only add scope param if there are scopes to request;
+  // empty array means the provider grants all app-configured scopes
+  if (connector.scopes.length > 0) {
+    baseParams.scope = connector.scopes.join(' ');
+  }
+
+  const params = new URLSearchParams(baseParams);
 
   return `${connector.authUrl}?${params.toString()}`;
 }
