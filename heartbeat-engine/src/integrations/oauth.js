@@ -527,7 +527,14 @@ const CONNECTORS = {
     name: 'Zoom',
     authUrl: 'https://zoom.us/oauth/authorize',
     tokenUrl: 'https://zoom.us/oauth/token',
-    scopes: ['cloud_recording:read', 'recording:read', 'meeting:read', 'user:read'],
+    scopes: [
+      'meeting:read:list_meetings',
+      'meeting:read:list_upcoming_meetings',
+      'cloud_recording:read:list_user_recordings',
+      'cloud_recording:read:recording',
+      'cloud_recording:read:meeting_transcript',
+      'user:read:user'
+    ],
     extraParams: {},
     tokenAuthMethod: 'basic',
     envClientId: 'ZOOM_CLIENT_ID',
