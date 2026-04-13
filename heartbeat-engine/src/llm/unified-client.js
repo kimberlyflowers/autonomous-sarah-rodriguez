@@ -1,12 +1,13 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // BLOOM Unified LLM Client v2 — with Silent Failover Chain
 //
-// Supports: Anthropic (Claude), OpenAI (GPT), DeepSeek, Google (Gemini)
-// Failover: Primary → next provider → next (silent, user NEVER sees downtime)
+// Supports: Anthropic (Claude), OpenAI (GPT), DeepSeek, Google (Gemini), Ollama (FREE local)
+// Failover: Primary → next provider → next → Ollama (silent, user NEVER sees downtime)
 //
 // Architecture:
 // - All providers normalize to Anthropic-style content blocks
-// - Gemini uses OpenAI-compatible endpoint (no new code path)
+// - Gemini uses native API for thinking support
+// - Ollama uses OpenAI-compatible endpoint (no API key, no billing — always available)
 // - callModel() for one-shot specialist calls
 // - Failover chain auto-activates on ANY provider error:
 //   billing/credits, auth, rate limits, 4xx/5xx, timeouts, network failures
@@ -17,8 +18,7 @@ import { createLogger } from '../logging/logger.js';
 
 const logger = createLogger('llm-client');
 
-// ── Provider Registry ──────────────────────────────────────────────────────
-
+// ── Provider Registry ────────────────────────────────────────────────────────
 const PROVIDERS = {
   anthropic: {
     name: 'Anthropic',
@@ -47,77 +47,96 @@ const PROVIDERS = {
   },
   gemini: {
     name: 'Google Gemini',
-    // Gemini uses OpenAI-compatible endpoint
     models: ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-3-flash-preview'],
     envKey: 'GEMINI_API_KEY',
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
   },
+  ollama: {
+    name: 'Ollama (Local)',
+    // Models available via Ollama — lightweight ones suitable for Railway deployment
+    // The actual available models depend on what's pulled on the Ollama service.
+    // These are the recommended defaults for BLOOM fallback use.
+    models: ['llama3.2', 'llama3.2:3b', 'llama3.2:1b', 'mistral', 'gemma2:2b', 'phi3:mini', 'qwen2.5:3b'],
+    envKey: 'OLLAMA_URL', // No API key — this is the service URL (e.g., http://bloom-ollama.railway.internal:11434)
+    baseUrl: null,         // Derived from OLLAMA_URL at runtime
+  },
 };
 
-// ── Failover Chain ─────────────────────────────────────────────────────────
+// ── Failover Chain ───────────────────────────────────────────────────────────
 // When a provider fails, silently try the next one.
-// User never sees "Claude is down" — Sarah just keeps working.
+// User never sees "Claude is down" — Bloomie just keeps working.
 // Order defined in bloom_admin_settings.failover_chain — this is the code-level safety net only.
 // The chain skips whatever the current primary model is.
-
-// Failover order: Gemini first (always has credits), then OpenAI, then Anthropic last
-// This matches bloom_admin_settings.failover_chain in Supabase
+// Failover order: Gemini first (always has credits), then OpenAI, then Anthropic, then Ollama LAST
+// Ollama is the FREE backstop — no billing, no rate limits, no API keys. Always available.
 const FAILOVER_CHAIN = [
   { provider: 'gemini',    model: 'gemini-2.5-flash' },
   { provider: 'openai',    model: 'gpt-4o' },
   { provider: 'openai',    model: 'gpt-4o-mini' },
   { provider: 'anthropic', model: 'claude-sonnet-4-6' },
   { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
+  // ── FREE FALLBACK — Ollama (self-hosted on Railway) ──
+  // No billing, no rate limits, no API keys. Bloomie NEVER goes dark.
+  { provider: 'ollama',    model: 'llama3.2' },
 ];
 
 // Errors that trigger failover (not user errors, provider errors)
-const FAILOVER_STATUS_CODES = [401, 402, 403, 429, 500, 502, 503, 504, 529]; // 400 removed — bad request is a client error, not provider outage
+const FAILOVER_STATUS_CODES = [401, 402, 403, 429, 500, 502, 503, 504, 529];
+// 400 removed — bad request is a client error, not provider outage
 
 // Error messages that should ALWAYS trigger failover (billing, auth, quota)
 const FAILOVER_ERROR_PATTERNS = [
-  'credit balance',         // Anthropic: credits depleted
-  'billing',                // Generic billing issues
-  'quota exceeded',         // Google/OpenAI quota
-  'insufficient_quota',     // OpenAI: out of credits
-  'rate limit',             // Rate limiting
-  'overloaded',             // Anthropic: overloaded
-  'api key',                // Invalid/revoked API key
-  'authentication',         // Auth failures
-  'unauthorized',           // 401-style errors
-  'not_found_error',        // Wrong model string
-  'model_not_found',        // OpenAI: model doesn't exist or no access
-  'does not exist',         // OpenAI: model not available
-  'timeout',                // Connection timeouts
-  'econnrefused',           // Provider down
-  'fetch failed',           // Network error
-  '503', '529',             // Status codes in text form
+  'credit balance', // Anthropic: credits depleted
+  'billing', // Generic billing issues
+  'quota exceeded', // Google/OpenAI quota
+  'insufficient_quota', // OpenAI: out of credits
+  'rate limit', // Rate limiting
+  'overloaded', // Anthropic: overloaded
+  'api key', // Invalid/revoked API key
+  'authentication', // Auth failures
+  'unauthorized', // 401-style errors
+  'not_found_error', // Wrong model string
+  'model_not_found', // OpenAI: model doesn't exist or no access
+  'does not exist', // OpenAI: model not available
+  'timeout', // Connection timeouts
+  'econnrefused', // Provider down
+  'fetch failed', // Network error
+  '503', '529', // Status codes in text form
 ];
 
 function shouldFailover(error) {
   const status = error?.status || error?.error?.status;
   if (FAILOVER_STATUS_CODES.includes(status)) return true;
+
   const msg = (error?.message || '').toLowerCase();
   return FAILOVER_ERROR_PATTERNS.some(pattern => msg.includes(pattern));
 }
 
-// ── Token Pricing (per 1M tokens, USD) ────────────────────────────────────
-
+// ── Token Pricing (per 1M tokens, USD) ──────────────────────────────────────
 const PRICING = {
-  'claude-haiku-4-5-20251001':   { input: 1.00,  output: 5.00  },
-  'claude-sonnet-4-6':  { input: 3.00,  output: 15.00 },
-  'claude-sonnet-4-5-20250929':  { input: 3.00,  output: 15.00 },
-  'claude-sonnet-4-20250514':    { input: 3.00,  output: 15.00 },
-  'claude-opus-4-6':    { input: 5.00,  output: 25.00 },
-  'claude-opus-4-5-20250414':    { input: 5.00,  output: 25.00 },
-  'gpt-4o':                      { input: 2.50,  output: 10.00 },
-  'gpt-4o-mini':                 { input: 0.15,  output: 0.60  },
-  'gpt-4-turbo':                 { input: 10.00, output: 30.00 },
-  'o3-mini':                     { input: 1.10,  output: 4.40  },
-  'deepseek-chat':               { input: 0.27,  output: 1.10  },
-  'deepseek-reasoner':           { input: 0.55,  output: 2.19  },
-  'gemini-2.5-flash':            { input: 0.15,  output: 0.60  },
-  'gemini-2.0-flash':            { input: 0.10,  output: 0.40  },
-  'gemini-3-flash-preview':      { input: 0.15,  output: 0.60  },
+  'claude-haiku-4-5-20251001': { input: 1.00, output: 5.00 },
+  'claude-sonnet-4-6': { input: 3.00, output: 15.00 },
+  'claude-sonnet-4-5-20250929': { input: 3.00, output: 15.00 },
+  'claude-sonnet-4-20250514': { input: 3.00, output: 15.00 },
+  'claude-opus-4-6': { input: 5.00, output: 25.00 },
+  'claude-opus-4-5-20250414': { input: 5.00, output: 25.00 },
+  'gpt-4o': { input: 2.50, output: 10.00 },
+  'gpt-4o-mini': { input: 0.15, output: 0.60 },
+  'gpt-4-turbo': { input: 10.00, output: 30.00 },
+  'o3-mini': { input: 1.10, output: 4.40 },
+  'deepseek-chat': { input: 0.27, output: 1.10 },
+  'deepseek-reasoner': { input: 0.55, output: 2.19 },
+  'gemini-2.5-flash': { input: 0.15, output: 0.60 },
+  'gemini-2.0-flash': { input: 0.10, output: 0.40 },
+  'gemini-3-flash-preview': { input: 0.15, output: 0.60 },
+  // ── Ollama models — FREE (self-hosted, no per-token cost) ──
+  'llama3.2':     { input: 0, output: 0 },
+  'llama3.2:3b':  { input: 0, output: 0 },
+  'llama3.2:1b':  { input: 0, output: 0 },
+  'mistral':      { input: 0, output: 0 },
+  'gemma2:2b':    { input: 0, output: 0 },
+  'phi3:mini':    { input: 0, output: 0 },
+  'qwen2.5:3b':   { input: 0, output: 0 },
 };
 
 export function calculateCost(model, usage) {
@@ -127,8 +146,7 @@ export function calculateCost(model, usage) {
   return Math.round(cost * 100 * 10000) / 10000; // cents, 4 decimals
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────────
-
+// ── Helpers ──────────────────────────────────────────────────────────────────
 export function detectProvider(model) {
   for (const [key, prov] of Object.entries(PROVIDERS)) {
     if (prov.models.includes(model)) return key;
@@ -137,15 +155,22 @@ export function detectProvider(model) {
   if (model.startsWith('gpt') || model.startsWith('o1') || model.startsWith('o3')) return 'openai';
   if (model.startsWith('deepseek')) return 'deepseek';
   if (model.startsWith('gemini')) return 'gemini';
+  // Ollama model detection — common open-source model prefixes
+  if (model.startsWith('llama') || model.startsWith('mistral') ||
+      model.startsWith('gemma') || model.startsWith('phi') ||
+      model.startsWith('qwen') || model.startsWith('codellama') ||
+      model.startsWith('vicuna') || model.startsWith('neural-chat')) return 'ollama';
   return 'anthropic';
 }
 
 function hasApiKey(provider) {
+  // Ollama doesn't need an API key — it needs OLLAMA_URL to be set
+  // The envKey for Ollama is 'OLLAMA_URL', so this check works as-is:
+  // if OLLAMA_URL is set, Ollama is "configured"
   return !!process.env[PROVIDERS[provider]?.envKey];
 }
 
-// ── Format converters ──────────────────────────────────────────────────────
-
+// ── Format converters ────────────────────────────────────────────────────────
 function formatToolsAnthropic(tools) {
   return tools.map(t => ({
     name: t.name,
@@ -169,7 +194,10 @@ function parseAnthropicResponse(response) {
   return {
     content: response.content || [],
     stopReason: response.stop_reason === 'tool_use' ? 'tool_use' : 'end_turn',
-    usage: { inputTokens: response.usage?.input_tokens || 0, outputTokens: response.usage?.output_tokens || 0 },
+    usage: {
+      inputTokens: response.usage?.input_tokens || 0,
+      outputTokens: response.usage?.output_tokens || 0
+    },
     model: response.model,
     raw: response,
   };
@@ -182,7 +210,7 @@ function parseOpenAIResponse(response, providerHint) {
   const content = [];
   const msg = choice.message;
 
-  // ── Model-agnostic reasoning capture ──────────────────────────────────
+  // ── Model-agnostic reasoning capture ────────────────────────────────
   // Log all non-standard fields so we can discover where each provider puts reasoning
   const standardFields = new Set(['role', 'content', 'tool_calls', 'refusal', 'function_call']);
   const extraFields = Object.keys(msg).filter(k => !standardFields.has(k));
@@ -202,6 +230,7 @@ function parseOpenAIResponse(response, providerHint) {
   if (msg.reasoning_content) {
     content.push({ type: 'thinking', thinking: msg.reasoning_content });
   }
+
   // 2. Gemini (OpenAI-compat): may use "thought", "thoughts", or nested in parts
   if (msg.thought && typeof msg.thought === 'string') {
     content.push({ type: 'thinking', thinking: msg.thought });
@@ -209,10 +238,12 @@ function parseOpenAIResponse(response, providerHint) {
   if (msg.thoughts && typeof msg.thoughts === 'string') {
     content.push({ type: 'thinking', thinking: msg.thoughts });
   }
+
   // 3. OpenAI o-series: reasoning or reasoning_content
   if (msg.reasoning) {
     content.push({ type: 'thinking', thinking: typeof msg.reasoning === 'string' ? msg.reasoning : JSON.stringify(msg.reasoning) });
   }
+
   // 4. Generic fallback: some providers use "thinking" directly
   if (msg.thinking && typeof msg.thinking === 'string') {
     content.push({ type: 'thinking', thinking: msg.thinking });
@@ -229,6 +260,7 @@ function parseOpenAIResponse(response, providerHint) {
           console.warn('[unified-client] Skipping tool call with missing function name:', JSON.stringify(tc).substring(0, 200));
           continue;
         }
+
         // Parse arguments — handle both string and object formats
         let args = {};
         if (tc.function.arguments) {
@@ -236,8 +268,10 @@ function parseOpenAIResponse(response, providerHint) {
             ? JSON.parse(tc.function.arguments)
             : tc.function.arguments;
         }
-        // Generate a fallback ID if Gemini doesn't provide one
+
+        // Generate a fallback ID if provider doesn't provide one
         const toolId = tc.id || `tool_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
         content.push({
           type: 'tool_use',
           id: toolId,
@@ -246,8 +280,7 @@ function parseOpenAIResponse(response, providerHint) {
         });
         validToolCalls++;
       } catch (parseErr) {
-        console.error(`[unified-client] Failed to parse tool call "${tc.function?.name}":`, parseErr.message,
-          'Raw arguments:', String(tc.function?.arguments || '').substring(0, 300));
+        console.error(`[unified-client] Failed to parse tool call "${tc.function?.name}":`, parseErr.message, 'Raw arguments:', String(tc.function?.arguments || '').substring(0, 300));
         // Don't push broken tool calls — they cause empty result blocks downstream
       }
     }
@@ -256,7 +289,10 @@ function parseOpenAIResponse(response, providerHint) {
   return {
     content,
     stopReason: validToolCalls > 0 ? 'tool_use' : 'end_turn',
-    usage: { inputTokens: response.usage?.prompt_tokens || 0, outputTokens: response.usage?.completion_tokens || 0 },
+    usage: {
+      inputTokens: response.usage?.prompt_tokens || 0,
+      outputTokens: response.usage?.completion_tokens || 0
+    },
     model: response.model,
     raw: response,
   };
@@ -284,9 +320,14 @@ function formatToolResultsOpenAI(toolResults) {
 function formatAssistantMessageOpenAI(content) {
   const textParts = content.filter(b => b.type === 'text').map(b => b.text).join('\n');
   const toolCalls = content.filter(b => b.type === 'tool_use').map(b => ({
-    id: b.id, type: 'function',
-    function: { name: b.name, arguments: JSON.stringify(b.input) },
+    id: b.id,
+    type: 'function',
+    function: {
+      name: b.name,
+      arguments: JSON.stringify(b.input)
+    },
   }));
+
   const msg = { role: 'assistant', content: textParts || null };
   if (toolCalls.length > 0) msg.tool_calls = toolCalls;
   return msg;
@@ -305,11 +346,38 @@ export class UnifiedLLMClient {
     this._isFailingOver = false; // Guard against recursive failover
     this._originalProvider = null;
 
+    // Log Ollama availability on startup
+    const ollamaUrl = process.env.OLLAMA_URL;
+    if (ollamaUrl) {
+      logger.info('Ollama FREE fallback configured', { url: ollamaUrl });
+      // Async health check — don't block startup
+      this._checkOllamaHealth(ollamaUrl).catch(() => {});
+    }
+
     logger.info('UnifiedLLMClient v2 initialized', {
       model: this._currentModel,
       provider: this._currentProvider,
-      failoverChain: FAILOVER_CHAIN.filter(f => hasApiKey(f.provider)).map(f => f.provider).join(' → '),
+      ollamaConfigured: !!ollamaUrl,
+      failoverChain: FAILOVER_CHAIN.filter(f => hasApiKey(f.provider)).map(f => `${f.provider}(${f.model})`).join(' → '),
     });
+  }
+
+  /**
+   * Non-blocking Ollama health check on startup
+   */
+  async _checkOllamaHealth(url) {
+    try {
+      const resp = await fetch(`${url.replace(/\/+$/, '')}/api/tags`, { signal: AbortSignal.timeout(5000) });
+      if (resp.ok) {
+        const data = await resp.json();
+        const models = (data.models || []).map(m => m.name);
+        logger.info('Ollama health check PASSED', { availableModels: models });
+      } else {
+        logger.warn('Ollama health check returned non-OK', { status: resp.status });
+      }
+    } catch (err) {
+      logger.warn('Ollama health check failed (service may still be starting)', { error: err.message });
+    }
   }
 
   get model() { return this._currentModel; }
@@ -334,7 +402,13 @@ export class UnifiedLLMClient {
     for (const [key, prov] of Object.entries(PROVIDERS)) {
       if (hasApiKey(key)) {
         for (const model of prov.models) {
-          available.push({ model, provider: key, providerName: prov.name, active: model === this._currentModel });
+          available.push({
+            model,
+            provider: key,
+            providerName: prov.name,
+            active: model === this._currentModel,
+            free: key === 'ollama', // Flag free models for dashboard display
+          });
         }
       }
     }
@@ -351,14 +425,13 @@ export class UnifiedLLMClient {
       configured: hasApiKey(key),
       active: key === this._currentProvider,
       failoverPosition: FAILOVER_CHAIN.findIndex(f => f.provider === key),
+      free: key === 'ollama',
     }));
   }
 
-  // ── Main chat with silent failover ────────────────────────────────────
-
+  // ── Main chat with silent failover ──────────────────────────────────
   async chat({ messages, system, tools = [], maxTokens = 1024, temperature = 0.1 }) {
     const provider = this._currentProvider;
-
     try {
       if (provider === 'anthropic') {
         return await this._callAnthropic({ messages, system, tools, maxTokens, temperature });
@@ -366,11 +439,13 @@ export class UnifiedLLMClient {
         // Use native Gemini API for thinking/thoughts support
         return await this._callGeminiNative({ messages, system, tools, maxTokens, temperature });
       } else {
+        // OpenAI, DeepSeek, and Ollama all use OpenAI-compatible endpoint
         return await this._callOpenAICompatible({ messages, system, tools, maxTokens, temperature });
       }
     } catch (error) {
       // Log full error for diagnosis
       logger.error(`Provider ${provider} error details: status=${error.status} message=${(error.message || '').slice(0, 500)}`);
+
       // Only failover if NOT already in a failover attempt (prevents infinite recursion)
       if (shouldFailover(error) && !this._isFailingOver) {
         logger.warn(`Provider ${provider} failed (${error.status || error.message}), attempting failover...`);
@@ -427,13 +502,13 @@ export class UnifiedLLMClient {
   /**
    * Silent failover — try each provider in the chain until one works
    */
-async _failoverChat(params, failedProvider) {
+  async _failoverChat(params, failedProvider) {
     // Guard: prevent recursive failover (chat() → _failoverChat() → chat() → _failoverChat())
     if (this._isFailingOver) {
       throw new Error(`Failover already in progress — refusing recursive failover from ${failedProvider}`);
     }
-    this._isFailingOver = true;
 
+    this._isFailingOver = true;
     const origModel = this._currentModel;
     const origProvider = this._currentProvider;
 
@@ -452,8 +527,8 @@ async _failoverChat(params, failedProvider) {
           }
           attemptIndex++;
 
-          logger.info(`Failing over to ${fallback.provider} (${fallback.model})...`);
-
+          const isFree = fallback.provider === 'ollama';
+          logger.info(`Failing over to ${fallback.provider} (${fallback.model})${isFree ? ' [FREE]' : ''}...`);
           // Direct call — do NOT go through this.chat() to avoid recursion
           this._currentModel = fallback.model;
           this._currentProvider = fallback.provider;
@@ -466,16 +541,15 @@ async _failoverChat(params, failedProvider) {
           } else if (fallback.provider === 'gemini') {
             result = await this._callGeminiNative(params);
           } else {
+            // OpenAI, DeepSeek, and Ollama all use OpenAI-compatible endpoint
             result = await this._callOpenAICompatible(params);
           }
 
-          logger.info(`Failover to ${fallback.provider} succeeded`);
-
+          logger.info(`Failover to ${fallback.provider} succeeded${isFree ? ' (FREE — $0 cost)' : ''}`);
           // Restore original after success
           this._currentModel = origModel;
           this._currentProvider = origProvider;
           this._failoverActive = false;
-
           return result;
         } catch (err) {
           logger.warn(`Failover to ${fallback.provider}/${fallback.model} failed: ${(err.message || '').slice(0, 200)}`);
@@ -487,13 +561,13 @@ async _failoverChat(params, failedProvider) {
       this._currentModel = origModel;
       this._currentProvider = origProvider;
       this._failoverActive = false;
-      throw new Error(`All providers failed. Chain: ${FAILOVER_CHAIN.map(f => f.provider).join(' → ')}`);
+      throw new Error(`All providers failed (including Ollama free fallback). Chain: ${FAILOVER_CHAIN.map(f => f.provider).join(' → ')}`);
     } finally {
       this._isFailingOver = false;
     }
   }
 
-    formatToolResults(toolResults) {
+  formatToolResults(toolResults) {
     return this._currentProvider === 'anthropic'
       ? formatToolResultsAnthropic(toolResults)
       : formatToolResultsOpenAI(toolResults);
@@ -505,8 +579,7 @@ async _failoverChat(params, failedProvider) {
       : formatAssistantMessageOpenAI(content);
   }
 
-  // ── Anthropic ────────────────────────────────────────────────────────
-
+  // ── Anthropic ──────────────────────────────────────────────────────
   _getAnthropicClient() {
     if (!this._anthropicClient) {
       this._anthropicClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -516,12 +589,17 @@ async _failoverChat(params, failedProvider) {
 
   async _callAnthropic({ messages, system, tools, maxTokens, temperature }) {
     const client = this._getAnthropicClient();
-    const params = { model: this._currentModel, max_tokens: maxTokens, temperature, messages };
+    const params = {
+      model: this._currentModel,
+      max_tokens: maxTokens,
+      temperature,
+      messages
+    };
 
     if (system) params.system = system;
     if (tools?.length > 0) params.tools = formatToolsAnthropic(tools);
 
-    // ── Extended thinking ─────────────────────────────────────────────────
+    // ── Extended thinking ───────────────────────────────────────────────
     // Claude 4.6 models: use "adaptive" (recommended, "enabled" is deprecated)
     // Claude 4.5/4.x models: use "enabled" with budget_tokens
     // Docs: https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking
@@ -534,6 +612,7 @@ async _failoverChat(params, failedProvider) {
     if (useAdaptive || useBudget) {
       // Build thinking params — never toggle mid-turn (causes 400 with tool use)
       const thinkingParams = { ...params };
+
       if (useAdaptive) {
         // 4.6 models: adaptive thinking (no budget_tokens needed)
         thinkingParams.thinking = { type: 'adaptive' };
@@ -541,6 +620,7 @@ async _failoverChat(params, failedProvider) {
         // 4.5/4.x models: enabled with explicit budget
         thinkingParams.thinking = { type: 'enabled', budget_tokens: 10000 };
       }
+
       // Ensure max_tokens is large enough for thinking + response
       if (thinkingParams.max_tokens < 16000) thinkingParams.max_tokens = 16000;
 
@@ -561,9 +641,11 @@ async _failoverChat(params, failedProvider) {
         // If so, we CANNOT disable thinking — it causes 400 "toggling mid-turn".
         // In that case, let the error propagate so the outer failover handles it.
         const hasPriorThinking = messages.some(m =>
-          m.role === 'assistant' && Array.isArray(m.content) &&
+          m.role === 'assistant' &&
+          Array.isArray(m.content) &&
           m.content.some(b => b.type === 'thinking')
         );
+
         if (hasPriorThinking) {
           logger.warn('Cannot disable thinking mid-turn (prior thinking blocks exist), propagating error');
           throw thinkErr;
@@ -579,12 +661,14 @@ async _failoverChat(params, failedProvider) {
     return parseAnthropicResponse(response);
   }
 
-  // ── OpenAI-compatible (OpenAI, DeepSeek, Gemini) ─────────────────────
-
+  // ── OpenAI-compatible (OpenAI, DeepSeek, Gemini OpenAI-compat, Ollama) ──
   async _callOpenAICompatible({ messages, system, tools, maxTokens, temperature }) {
     const provider = PROVIDERS[this._currentProvider];
+    const isOllama = this._currentProvider === 'ollama';
+
+    // Ollama doesn't need an API key — just OLLAMA_URL
     const apiKey = process.env[provider.envKey];
-    if (!apiKey) throw new Error(`Missing API key: ${provider.envKey}`);
+    if (!apiKey && !isOllama) throw new Error(`Missing API key: ${provider.envKey}`);
 
     const openaiMessages = [];
     if (system) openaiMessages.push({ role: 'system', content: system });
@@ -608,13 +692,31 @@ async _failoverChat(params, failedProvider) {
       }
     }
 
-    const body = { model: this._currentModel, messages: openaiMessages, max_tokens: maxTokens, temperature };
-    if (tools?.length > 0) { body.tools = formatToolsOpenAI(tools); body.tool_choice = 'auto'; }
+    const body = {
+      model: this._currentModel,
+      messages: openaiMessages,
+      max_tokens: maxTokens,
+      temperature
+    };
 
-    // ── Enable thinking/reasoning for non-Gemini providers ──
+    // Ollama: smaller models may struggle with many tools — limit if needed
+    if (tools?.length > 0) {
+      if (isOllama && tools.length > 15) {
+        // Ollama models with <7B params can't reliably handle 60+ tools.
+        // Send only the most essential tools as fallback.
+        logger.info('Ollama fallback: limiting tools to 15 most essential (from ' + tools.length + ')');
+        body.tools = formatToolsOpenAI(tools.slice(0, 15));
+      } else {
+        body.tools = formatToolsOpenAI(tools);
+      }
+      body.tool_choice = 'auto';
+    }
+
+    // ── Enable thinking/reasoning for non-Gemini, non-Ollama providers ──
     // Gemini now uses native API (_callGeminiNative) and won't reach this code.
     // DeepSeek R1: reasoning_content is automatic (no param needed)
     // OpenAI o-series: reasoning_effort controls reasoning depth
+    // Ollama: no thinking params needed
     const providerName = this._currentProvider;
     const thinkingBody = { ...body }; // Clone for thinking attempt
     let useThinkingFallback = false;
@@ -624,17 +726,29 @@ async _failoverChat(params, failedProvider) {
       thinkingBody.reasoning_effort = 'low';
       useThinkingFallback = true;
     }
+
     // DeepSeek R1 automatically returns reasoning_content — no extra params needed
 
-    const baseUrl = provider.baseUrl.replace(/\/+$/, '');
+    // ── Build URL and headers ──
+    // Ollama: URL from OLLAMA_URL env var, no Authorization header
+    // Others: static baseUrl from PROVIDERS config, Bearer token auth
+    const baseUrl = isOllama
+      ? (process.env.OLLAMA_URL || 'http://localhost:11434').replace(/\/+$/, '') + '/v1'
+      : provider.baseUrl.replace(/\/+$/, '');
     const url = `${baseUrl}/chat/completions`;
+
+    const headers = { 'Content-Type': 'application/json' };
+    if (!isOllama) {
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    }
 
     const doFetch = async (reqBody) => {
       const resp = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        headers,
         body: JSON.stringify(reqBody),
       });
+
       if (!resp.ok) {
         const errText = await resp.text();
         const error = new Error(`${provider.name} API error ${resp.status}: ${errText}`);
@@ -649,13 +763,12 @@ async _failoverChat(params, failedProvider) {
     if (useThinkingFallback) {
       try {
         data = await doFetch(thinkingBody);
-        logger.info('OpenAI-compatible call succeeded WITH thinking params', {
-          provider: providerName, model: this._currentModel
-        });
+        logger.info('OpenAI-compatible call succeeded WITH thinking params', { provider: providerName, model: this._currentModel });
       } catch (thinkErr) {
         if (thinkErr.status === 400) {
           logger.warn('Thinking params rejected, retrying without', {
-            provider: providerName, model: this._currentModel,
+            provider: providerName,
+            model: this._currentModel,
             error: (thinkErr.message || '').slice(0, 300)
           });
           data = await doFetch(body); // Retry with original body (no thinking params)
@@ -670,8 +783,7 @@ async _failoverChat(params, failedProvider) {
     return parseOpenAIResponse(data, providerName);
   }
 
-  // ── Gemini Native API (for thinking/thought support) ──────────────────
-
+  // ── Gemini Native API (for thinking/thought support) ────────────────
   async _callGeminiNative({ messages, system, tools, maxTokens, temperature }) {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) throw new Error('Missing API key: GEMINI_API_KEY');
@@ -704,7 +816,10 @@ async _failoverChat(params, failedProvider) {
               const prev = messages[i];
               if (prev.role === 'assistant' && Array.isArray(prev.content)) {
                 const match = prev.content.find(b => b.type === 'tool_use' && b.id === r.tool_use_id);
-                if (match) { funcName = match.name; break; }
+                if (match) {
+                  funcName = match.name;
+                  break;
+                }
               }
             }
             const resultContent = typeof r.content === 'string' ? r.content : JSON.stringify(r.content);
@@ -753,13 +868,18 @@ async _failoverChat(params, failedProvider) {
           parameters: t.input_schema || t.parameters,
         }))
       }];
+
       // Note: the executor primarily uses callModel() (OpenAI-compat path).
       // If this native path is used, default to AUTO. Scheduled task forcing
       // happens via the OpenAI-compat tool_choice='required' in _callModelDirect.
       body.toolConfig = { functionCallingConfig: { mode: 'AUTO' } };
     }
 
-    logger.info('Gemini native API call', { model: this._currentModel, contentsCount: contents.length, hasTools: !!tools?.length });
+    logger.info('Gemini native API call', {
+      model: this._currentModel,
+      contentsCount: contents.length,
+      hasTools: !!tools?.length
+    });
 
     const response = await fetch(url, {
       method: 'POST',
@@ -808,6 +928,7 @@ async _failoverChat(params, failedProvider) {
 
     const hasToolUse = content.some(b => b.type === 'tool_use');
     const thinkingBlocks = content.filter(b => b.type === 'thinking');
+
     if (thinkingBlocks.length > 0) {
       logger.info('Gemini native: REAL thinking captured', {
         thinkingBlocks: thinkingBlocks.length,
@@ -828,7 +949,7 @@ async _failoverChat(params, failedProvider) {
   }
 }
 
-// ── Per-Org Model Preferences ──────────────────────────────────────────────
+// ── Per-Org Model Preferences ────────────────────────────────────────────────
 // In-memory map: orgId → { model, updatedAt }
 // Dashboard /models/switch writes here; chat reads here.
 // This is per-process — if you scale to multiple processes, move to Redis or Supabase.
@@ -852,8 +973,9 @@ export function clearOrgModelPreference(orgId) {
   _orgModelPrefs.delete(orgId);
 }
 
-// ── Singleton ──────────────────────────────────────────────────────────────
+// ── Singleton ────────────────────────────────────────────────────────────────
 let _instance = null;
+
 export function getLLMClient() {
   if (!_instance) _instance = new UnifiedLLMClient();
   return _instance;
@@ -869,11 +991,12 @@ export async function callModel(model, { system, messages, tools = [], maxTokens
   const providerConfig = PROVIDERS[provider];
   const apiKey = process.env[providerConfig?.envKey];
 
-  if (!apiKey) {
+  // Ollama doesn't need an API key — just OLLAMA_URL
+  if (!apiKey && provider !== 'ollama') {
     throw new Error(`Missing API key for ${model}: set ${providerConfig?.envKey}`);
   }
 
-  logger.info('callModel', { model, provider, msgCount: messages.length, forceToolUse });
+  logger.info('callModel', { model, provider, msgCount: messages.length, forceToolUse, free: provider === 'ollama' });
 
   try {
     return await _callModelDirect(model, provider, { system, messages, tools, maxTokens, temperature, responseFormat, forceToolUse });
@@ -884,8 +1007,9 @@ export async function callModel(model, { system, messages, tools = [], maxTokens
       for (const fallback of FAILOVER_CHAIN) {
         if (fallback.provider === provider) continue;
         if (!hasApiKey(fallback.provider)) continue;
+
         try {
-          logger.info(`callModel failover: trying ${fallback.provider} (${fallback.model})`);
+          logger.info(`callModel failover: trying ${fallback.provider} (${fallback.model})${fallback.provider === 'ollama' ? ' [FREE]' : ''}`);
           const result = await _callModelDirect(fallback.model, fallback.provider, { system, messages, tools, maxTokens, temperature, responseFormat, forceToolUse });
           logger.info(`callModel failover to ${fallback.provider} succeeded`);
           return result;
@@ -901,22 +1025,38 @@ export async function callModel(model, { system, messages, tools = [], maxTokens
 async function _callModelDirect(model, provider, { system, messages, tools, maxTokens, temperature, responseFormat = null, forceToolUse = false }) {
   if (provider === 'anthropic') {
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const params = { model, max_tokens: maxTokens, temperature, messages };
+    const params = {
+      model,
+      max_tokens: maxTokens,
+      temperature,
+      messages
+    };
+
     if (system) params.system = system;
     if (tools?.length > 0) params.tools = formatToolsAnthropic(tools);
+
     const response = await client.messages.create(params);
     const parsed = parseAnthropicResponse(response);
+
     return {
       ...parsed,
       text: parsed.content.filter(b => b.type === 'text').map(b => b.text).join('\n'),
-      usage: { inputTokens: response.usage?.input_tokens || 0, outputTokens: response.usage?.output_tokens || 0 },
-      model, provider,
+      usage: {
+        inputTokens: response.usage?.input_tokens || 0,
+        outputTokens: response.usage?.output_tokens || 0
+      },
+      model,
+      provider,
     };
   } else {
+    // OpenAI, DeepSeek, Gemini (OpenAI-compat), and Ollama
     const providerConfig = PROVIDERS[provider];
+    const isOllama = provider === 'ollama';
     const apiKey = process.env[providerConfig.envKey];
+
     const openaiMessages = [];
     if (system) openaiMessages.push({ role: 'system', content: system });
+
     for (const msg of messages) {
       if (typeof msg.content === 'string') {
         openaiMessages.push(msg);
@@ -927,37 +1067,68 @@ async function _callModelDirect(model, provider, { system, messages, tools, maxT
         openaiMessages.push({ role: msg.role, content: JSON.stringify(msg.content) });
       }
     }
-    const body = { model, messages: openaiMessages, max_tokens: maxTokens, temperature };
+
+    const body = {
+      model,
+      messages: openaiMessages,
+      max_tokens: maxTokens,
+      temperature
+    };
+
     if (tools?.length > 0) {
-      body.tools = formatToolsOpenAI(tools);
+      // Ollama: limit tools for smaller models
+      if (isOllama && tools.length > 15) {
+        logger.info('Ollama callModel: limiting tools to 15 (from ' + tools.length + ')');
+        body.tools = formatToolsOpenAI(tools.slice(0, 15));
+      } else {
+        body.tools = formatToolsOpenAI(tools);
+      }
       // forceToolUse = true → tool_choice: 'required' forces the model to call at least one tool.
-      // This fixes Gemini 2.5 Flash responding text-only on scheduled tasks instead of using tools.
       body.tool_choice = forceToolUse ? 'required' : 'auto';
       if (forceToolUse) logger.info('Forcing tool use (tool_choice=required) for scheduled task');
     }
+
     // Attach response_format for structured output (Gemini compat, OpenAI, DeepSeek)
-    // Anthropic does not use this param — it is excluded via the provider branch above
-    if (responseFormat) { body.response_format = responseFormat; }
-    
-    const baseUrl = providerConfig.baseUrl.replace(/\/+$/, '');
+    // Ollama may not support all response_format options — skip for safety
+    if (responseFormat && !isOllama) {
+      body.response_format = responseFormat;
+    }
+
+    // ── Build URL and headers ──
+    const baseUrl = isOllama
+      ? (process.env.OLLAMA_URL || 'http://localhost:11434').replace(/\/+$/, '') + '/v1'
+      : providerConfig.baseUrl.replace(/\/+$/, '');
+
+    const headers = { 'Content-Type': 'application/json' };
+    if (!isOllama) {
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    }
+
     const response = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      headers,
       body: JSON.stringify(body),
     });
+
     if (!response.ok) {
       const errText = await response.text();
       const error = new Error(`${providerConfig.name} API error ${response.status}: ${errText}`);
       error.status = response.status;
       throw error;
     }
+
     const data = await response.json();
     const parsed = parseOpenAIResponse(data, provider);
+
     return {
       ...parsed,
       text: parsed.content.filter(b => b.type === 'text').map(b => b.text).join('\n'),
-      usage: { inputTokens: data.usage?.prompt_tokens || 0, outputTokens: data.usage?.completion_tokens || 0 },
-      model, provider,
+      usage: {
+        inputTokens: data.usage?.prompt_tokens || 0,
+        outputTokens: data.usage?.completion_tokens || 0
+      },
+      model,
+      provider,
     };
   }
 }
@@ -966,15 +1137,19 @@ async function _callModelDirect(model, provider, { system, messages, tools, maxT
 // Model Tier Manager — per-org model assignment with time-based switching
 //
 // Tiers:
-//   "bloom"    → Sonnet 4.6 (primary instance, best quality)
-//   "premium"  → GPT-4o (first 30 days for new clients)
-//   "standard" → Gemini 2.5 Flash (after 30 days, cost-optimized)
-//   "custom"   → Any model string (per-org override)
+// "bloom" → Sonnet 4.6 (primary instance, best quality)
+// "premium" → GPT-4o (first 30 days for new clients)
+// "standard" → Gemini 2.5 Flash (after 30 days, cost-optimized)
+// "budget" → GPT-4o-mini (minimum viable)
+// "free" → Ollama llama3.2 (zero cost fallback)
+// "custom" → Any model string (per-org override)
 //
 // Usage:
-//   const model = resolveModelForOrg(orgConfig);
-//   // orgConfig = { tier: "premium", createdAt: "2025-12-01", customModel: null }
-//   // Returns the correct model string based on tier + account age
+// const model = resolveModelForOrg(orgConfig);
+//
+// orgConfig = { tier: "premium", createdAt: "2025-12-01", customModel: null }
+//
+// Returns the correct model string based on tier + account age
 // ═══════════════════════════════════════════════════════════════════════════
 
 // MODEL_TIERS — legacy fallback ONLY (used when admin-config.js can't reach Supabase).
@@ -1005,6 +1180,10 @@ const MODEL_TIERS = {
     model: 'gpt-4o-mini',
     description: 'Budget tier — GPT-4o-mini (minimum viable)',
   },
+  free: {
+    model: 'llama3.2',
+    description: 'Free tier — Ollama Llama 3.2 (zero cost, self-hosted)',
+  },
   custom: {
     model: null, // uses org.customModel
     description: 'Custom model override',
@@ -1019,7 +1198,7 @@ export function getModelTiers() {
  * Resolve the correct model for an organization based on tier + account age.
  *
  * @param {Object} orgConfig - Organization configuration
- * @param {string} orgConfig.modelTier - Tier name: "bloom", "premium", "standard", "budget", "custom"
+ * @param {string} orgConfig.modelTier - Tier name: "bloom", "premium", "standard", "budget", "free", "custom"
  * @param {string} orgConfig.createdAt - ISO date string when the org was created
  * @param {string} [orgConfig.customModel] - Full model string for "custom" tier
  * @param {string} [orgConfig.modelOverride] - Temporary override (e.g., operator switched via tool)
@@ -1040,13 +1219,21 @@ export function resolveModelForOrg(orgConfig = {}) {
 
   if (!tier) {
     logger.warn(`Unknown model tier: ${tierName}, falling back to bloom`);
-    return { model: MODEL_TIERS.bloom.model, tier: 'bloom', reason: `Unknown tier "${tierName}", using bloom default` };
+    return {
+      model: MODEL_TIERS.bloom.model,
+      tier: 'bloom',
+      reason: `Unknown tier "${tierName}", using bloom default`
+    };
   }
 
   // Custom tier — use the org's specified model
   if (tierName === 'custom') {
     const customModel = orgConfig.customModel || MODEL_TIERS.bloom.model;
-    return { model: customModel, tier: 'custom', reason: `Custom model: ${customModel}` };
+    return {
+      model: customModel,
+      tier: 'custom',
+      reason: `Custom model: ${customModel}`
+    };
   }
 
   // Check for time-based downgrade (e.g., premium → standard after 30 days)
@@ -1058,7 +1245,10 @@ export function resolveModelForOrg(orgConfig = {}) {
     if (daysSinceCreation > tier.downgradeAfterDays) {
       const downgradeTier = MODEL_TIERS[tier.downgradeTo];
       logger.info(`Org auto-downgraded: ${tierName} → ${tier.downgradeTo} (${daysSinceCreation} days old, threshold: ${tier.downgradeAfterDays})`, {
-        orgCreatedAt: orgConfig.createdAt, daysSinceCreation, fromTier: tierName, toTier: tier.downgradeTo
+        orgCreatedAt: orgConfig.createdAt,
+        daysSinceCreation,
+        fromTier: tierName,
+        toTier: tier.downgradeTo
       });
       return {
         model: downgradeTier.model,
@@ -1075,7 +1265,11 @@ export function resolveModelForOrg(orgConfig = {}) {
     };
   }
 
-  return { model: tier.model, tier: tierName, reason: tier.description };
+  return {
+    model: tier.model,
+    tier: tierName,
+    reason: tier.description
+  };
 }
 
 export default UnifiedLLMClient;
