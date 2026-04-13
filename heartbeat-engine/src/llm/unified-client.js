@@ -75,6 +75,8 @@ const FAILOVER_CHAIN = [
   { provider: 'openai',    model: 'gpt-4o-mini' },
   { provider: 'anthropic', model: 'claude-sonnet-4-6' },
   { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
+  // ── DeepSeek — ultra-cheap reasoning fallback ──
+  { provider: 'deepseek',  model: 'deepseek-chat' },
   // ── FREE FALLBACK — Ollama (self-hosted on Railway) ──
   // No billing, no rate limits, no API keys. Bloomie NEVER goes dark.
   { provider: 'ollama',    model: 'llama3.2' },
