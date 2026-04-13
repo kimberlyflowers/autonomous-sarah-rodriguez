@@ -1,9 +1,7 @@
 #!/bin/bash
 # BLOOM Ollama Startup Script
-# 1. Starts Ollama server in background
-# 2. Waits for it to be ready
-# 3. Pulls the default model (llama3.2)
-# 4. Keeps server running
+# Model is pre-baked into the image during docker build.
+# This script just starts Ollama and waits for it to be ready.
 
 set -e
 
@@ -14,9 +12,9 @@ echo "Starting Ollama server..."
 ollama serve &
 SERVER_PID=$!
 
-# Wait for server to be ready (up to 60 seconds)
+# Wait for server to be ready (up to 30 seconds)
 echo "Waiting for Ollama server to start..."
-MAX_RETRIES=60
+MAX_RETRIES=30
 RETRY_COUNT=0
 while ! curl -sf http://localhost:11434/api/tags > /dev/null 2>&1; do
   RETRY_COUNT=$((RETRY_COUNT + 1))
@@ -28,19 +26,14 @@ while ! curl -sf http://localhost:11434/api/tags > /dev/null 2>&1; do
 done
 echo "Ollama server is ready!"
 
-# Pull the default model
-MODEL="${OLLAMA_MODEL:-llama3.2}"
-echo "Pulling model: ${MODEL}..."
-ollama pull "${MODEL}"
-echo "Model ${MODEL} pulled successfully!"
-
-# Optionally pull a second model
+# Pull any additional model if requested (already have llama3.2 baked in)
 if [ -n "${OLLAMA_MODEL_2}" ]; then
   echo "Pulling secondary model: ${OLLAMA_MODEL_2}..."
   ollama pull "${OLLAMA_MODEL_2}"
   echo "Secondary model ${OLLAMA_MODEL_2} pulled!"
 fi
 
+MODEL="${OLLAMA_MODEL:-llama3.2}"
 echo "BLOOM Ollama Service is READY"
 echo "Model: ${MODEL}"
 echo "Endpoint: http://0.0.0.0:11434"
