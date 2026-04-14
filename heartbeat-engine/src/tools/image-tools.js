@@ -19,6 +19,14 @@ const logger = createLogger('image-tools');
 function getOpenAIKey() { return (process.env.OPENAI_API_KEY || "").trim(); }
 function getGeminiKey() { return (process.env.GEMINI_API_KEY || "").trim(); }
 
+// RunPod via Supabase edge function
+function getSupabaseServiceKey() { return (process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim(); }
+function getRunPodMediaUrl() {
+  const supabaseUrl = (process.env.SUPABASE_URL || "").trim();
+  if (!supabaseUrl) return null;
+  return `${supabaseUrl.replace(/\/$/, "")}/functions/v1/runpod-media`;
+}
+
 // ── PROMPT UPSAMPLING ─────────────────────────────────────────────────────
 // Like ChatGPT's internal prompt rewriter — transforms short/vague prompts
 // into rich, detailed scene descriptions that produce professional images.
@@ -160,8 +168,8 @@ export const imageToolDefinitions = {
         },
         engine: {
           type: "string",
-          enum: ["auto", "gpt", "gemini"],
-          description: "Which image engine to use. 'auto' picks the best one (default). 'gpt' forces GPT Image 1.5. 'gemini' forces Nano Banana / Imagen for text-heavy work.",
+          enum: ["auto", "runpod", "gpt", "gemini"],
+          description: "Which image engine to use. 'auto' picks the best one — RunPod FLUX Dev is primary (default). 'runpod' forces RunPod FLUX Dev. 'gpt' forces GPT Image 1.5. 'gemini' forces Nano Banana / Imagen.",
           default: "auto"
         },
         reference_image_url: {
@@ -320,17 +328,35 @@ export const imageToolExecutors = {
         if (hasReferenceImage && getGeminiKey()) {
           useEngine = 'gemini';
           logger.info('Auto-routing to Gemini for character consistency (reference image provided)');
+        } else if (getRunPodMediaUrl()) {
+          useEngine = 'runpod';
+          logger.info('Auto-routing to RunPod FLUX Dev (primary image engine)');
         } else if (getOpenAIKey()) {
           useEngine = 'gpt';
         } else if (getGeminiKey()) {
           useEngine = 'gemini';
         } else {
-          return { success: false, error: 'No image generation API key configured. Set OPENAI_API_KEY or GEMINI_API_KEY.' };
+          return { success: false, error: 'No image generation API key configured. Set RUNPOD_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY.' };
         }
       }
     }
 
-    if (useEngine === 'gpt') {
+    if (useEngine === 'runpod') {
+      try {
+        const result = await generateWithRunPod(prompt, size);
+        if (result.success) return result;
+        // RunPod failed — fall back to GPT then Gemini
+        logger.warn('RunPod image failed, trying GPT fallback', { error: result.error });
+        if (getOpenAIKey()) return await generateWithGPTImage(prompt, size, quality, background);
+        if (getGeminiKey()) return await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
+        return result;
+      } catch(e) {
+        logger.error('RunPod image threw error', { error: e.message });
+        if (getOpenAIKey()) return await generateWithGPTImage(prompt, size, quality, background);
+        if (getGeminiKey()) return await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
+        throw e;
+      }
+    } else if (useEngine === 'gpt') {
       try {
         // If reference image provided with GPT, use edit endpoint (generation doesn't support references)
         if (hasReferenceImage) {
@@ -462,6 +488,90 @@ export const imageToolExecutors = {
     }
   }
 };
+
+// ── RUNPOD FLUX DEV (via Supabase edge function) ─────────────────────────
+
+async function generateWithRunPod(prompt, size) {
+  try {
+    const mediaUrl = getRunPodMediaUrl();
+    const serviceKey = getSupabaseServiceKey();
+    if (!mediaUrl || !serviceKey) {
+      return { success: false, error: 'RunPod not configured (missing SUPABASE_URL or SUPABASE_SERVICE_KEY)', engine: 'runpod' };
+    }
+
+    // Map size string to width/height
+    let width = 1024, height = 1024;
+    if (size === '1024x1536') { width = 1024; height = 1536; }
+    else if (size === '1536x1024') { width = 1536; height = 1024; }
+
+    logger.info('Generating image with RunPod FLUX Dev', { size, width, height });
+
+    const response = await fetch(mediaUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${serviceKey}`
+      },
+      body: JSON.stringify({
+        action: 'generate_image',
+        prompt,
+        width,
+        height
+      }),
+      signal: AbortSignal.timeout(120000) // 2 min timeout for cold starts
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`RunPod edge function error ${response.status}: ${errText.slice(0, 300)}`);
+    }
+
+    const data = await response.json();
+
+    if (!data.success) {
+      throw new Error(data.error || 'RunPod generation failed');
+    }
+
+    const imageUrl = data.image_url || null;
+    const filename = `bloom-runpod-${Date.now()}.png`;
+    const filepath = `/tmp/${filename}`;
+
+    // If we got base64 from the raw output, save it
+    let imageBase64 = null;
+    if (data.raw?.output) {
+      const rawOutput = data.raw.output;
+      if (typeof rawOutput === 'string' && rawOutput.startsWith('data:image')) {
+        imageBase64 = rawOutput.split(',')[1];
+      } else if (typeof rawOutput === 'string' && rawOutput.length > 1000) {
+        // Might be raw base64
+        imageBase64 = rawOutput;
+      }
+      if (imageBase64) {
+        fs.writeFileSync(filepath, Buffer.from(imageBase64, 'base64'));
+      }
+    }
+
+    const result = {
+      success: true,
+      engine: 'runpod-flux-dev',
+      image_url: imageUrl,
+      image_base64: imageBase64,
+      filepath: imageBase64 ? filepath : null,
+      filename: imageBase64 ? filename : null,
+      size,
+      cost: data.cost || 0.02,
+      artifact_id: data.artifact_id || null,
+      message: `Image generated with RunPod FLUX Dev ($0.02) — ${size}`,
+    };
+
+    logger.info('RunPod image generated', { filename, size, cost: result.cost, artifact_id: result.artifact_id });
+    return result;
+
+  } catch (error) {
+    logger.error('RunPod FLUX Dev generation failed:', { error: error.message });
+    return { success: false, error: error.message, engine: 'runpod-flux-dev' };
+  }
+}
 
 // ── GPT IMAGE 1.5 (OpenAI) ──────────────────────────────────────────────
 
