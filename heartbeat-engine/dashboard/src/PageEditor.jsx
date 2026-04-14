@@ -6,14 +6,24 @@ import gjsBlocksBasic from 'grapesjs-blocks-basic';
 import gjsPresetWebpage from 'grapesjs-preset-webpage';
 import gjsPluginForms from 'grapesjs-plugin-forms';
 
+// ─── CSS injected into canvas iframe so selected/hovered elements are obvious ─
+const CANVAS_HIGHLIGHT_CSS = `
+  .gjs-hovered {
+    outline: 2px dashed rgba(244,162,97,0.7) !important;
+    outline-offset: 1px !important;
+  }
+  .gjs-selected {
+    outline: 2px solid #F4A261 !important;
+    outline-offset: 1px !important;
+  }
+`;
+
 export default function PageEditor({ editor: editorData, onClose, onSaved }) {
-  const gjsRef  = useRef(null);
+  const gjsRef    = useRef(null);
   const [saving,  setSaving]  = useState(false);
   const [saveMsg, setSaveMsg] = useState(null);
   const [aiAssets, setAiAssets] = useState([]);
-  const [assetSearch, setAssetSearch] = useState('');
 
-  // Load AI image library on mount
   useEffect(() => {
     fetch('/api/files/images?limit=200')
       .then(r => r.json())
@@ -21,104 +31,96 @@ export default function PageEditor({ editor: editorData, onClose, onSaved }) {
       .catch(() => {});
   }, []);
 
-  // Refresh search results
-  const refreshAssets = (search = '') => {
-    const url = search ? `/api/files/images?limit=200&search=${encodeURIComponent(search)}` : '/api/files/images?limit=200';
-    fetch(url).then(r => r.json()).then(d => {
-      if (d.assets && gjsRef.current) {
-        gjsRef.current.AssetManager.clear();
-        gjsRef.current.AssetManager.add(d.assets.map(a => ({ src: a.src, name: a.name, category: a.category })));
-      }
-    }).catch(() => {});
-  };
-
   const onEditor = (editor) => {
     gjsRef.current = editor;
 
-    // ── Load existing HTML ───────────────────────────────────────────
     if (editorData.content) {
       editor.setComponents(editorData.content);
     }
 
-    // ── Seed Asset Manager with AI image library ─────────────────────
     if (aiAssets.length) {
-      editor.AssetManager.add(aiAssets.map(a => ({ src: a.src, name: a.name, category: 'AI Generated' })));
+      editor.AssetManager.add(
+        aiAssets.map(a => ({ src: a.src, name: a.name, category: 'AI Generated' }))
+      );
     }
 
-    // ── Refresh library when asset manager opens ──────────────────────
     editor.on('asset:open', () => {
       fetch('/api/files/images?limit=200')
         .then(r => r.json())
         .then(d => {
           if (d.assets) {
             editor.AssetManager.clear();
-            editor.AssetManager.add(d.assets.map(a => ({ src: a.src, name: a.name, category: 'AI Generated' })));
+            editor.AssetManager.add(
+              d.assets.map(a => ({ src: a.src, name: a.name, category: 'AI Generated' }))
+            );
           }
         })
         .catch(() => {});
     });
 
-    // ── Append href/target traits to button type after editor loads ────
-    // grapesjs-plugin-forms already owns 'button' type with Text+Type.
-    // addType() is ignored because forms plugin registers first.
-    // Correct approach: get the existing type and push new traits onto it.
     editor.on('load', () => {
+      // FIX 1: Inject highlight CSS into canvas iframe
+      try {
+        const doc = editor.Canvas.getDocument();
+        if (doc) {
+          const s = doc.createElement('style');
+          s.textContent = CANVAS_HIGHLIGHT_CSS;
+          doc.head.appendChild(s);
+        }
+      } catch (e) { console.warn('canvas highlight inject:', e); }
+
+      // FIX 2: Button href/target traits
       try {
         const btnType = editor.Components.getType('button');
         if (btnType) {
-          const proto = btnType.model.prototype;
+          const proto    = btnType.model.prototype;
           const existing = (proto.defaults && proto.defaults.traits) || [];
-          const alreadyHasHref = existing.some(t => (t.name || t) === 'data-href');
-          if (!alreadyHasHref) {
+          if (!existing.some(t => (t.name || t) === 'data-href')) {
             proto.defaults = {
               ...proto.defaults,
               traits: [
                 ...existing,
-                {
-                  type: 'text',
-                  name: 'data-href',
-                  label: 'Link URL',
-                  placeholder: 'https://example.com or #section',
-                },
-                {
-                  type: 'select',
-                  name: 'data-target',
-                  label: 'Open in',
-                  options: [
-                    { id: '',       label: 'Same window' },
-                    { id: '_blank', label: 'New tab' },
-                  ],
-                },
+                { type: 'text',   name: 'data-href',   label: 'Link URL', placeholder: 'https://...' },
+                { type: 'select', name: 'data-target', label: 'Open in',
+                  options: [{ id: '', label: 'Same window' }, { id: '_blank', label: 'New tab' }] },
               ],
             };
           }
         }
-      } catch(e) { console.warn('button trait extend failed:', e); }
+      } catch (e) { console.warn('button trait extend:', e); }
     });
 
-    // ── On selection: auto-select parent <a> if clicked child; switch panel ─
+    // FIX 3: Auto-switch right panel on selection
     editor.on('component:selected', (component) => {
-      // Bubble up to parent <a> if clicked a child element inside one
       try {
         const tag = (component.get('tagName') || '').toLowerCase();
-        if (['span', 'i', 'strong', 'em'].includes(tag)) {
+        // Bubble inline child elements up to parent link/button
+        if (['span', 'i', 'strong', 'em', 'svg', 'path'].includes(tag)) {
           const parent = component.parent();
-          if (parent && (parent.get('tagName') || '').toLowerCase() === 'a') {
-            editor.select(parent);
-            return;
+          if (parent) {
+            const pt = (parent.get('tagName') || '').toLowerCase();
+            if (pt === 'a' || pt === 'button') {
+              editor.select(parent);
+              return;
+            }
           }
         }
-      } catch (e) { /* ignore */ }
+        // Show Traits for links/buttons, Styles for everything else
+        const isLinkOrBtn = tag === 'a' || tag === 'button' || component.get('type') === 'link';
+        const btnId = isLinkOrBtn ? 'open-tm' : 'open-sm';
+        const btn = editor.Panels.getButton('views', btnId);
+        if (btn) btn.set('active', true);
+      } catch (e) { /* non-critical */ }
+    });
 
-      // Switch to Traits (gear) for <a> and <button>, Styles for everything else
-      try {
-        const tag = (component.get('tagName') || '').toLowerCase();
-        const showTraits = tag === 'a' || tag === 'button' || component.get('type') === 'link';
-        const panelBtn = showTraits
-          ? editor.Panels.getButton('views', 'open-tm')
-          : editor.Panels.getButton('views', 'open-sm');
-        if (panelBtn) panelBtn.set('active', true);
-      } catch (e) { /* ignore */ }
+    // FIX 4: Delete key removes selected element
+    editor.on('canvas:keydown', (e) => {
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        const active = editor.Canvas.getDocument()?.activeElement;
+        if (active && ['INPUT','TEXTAREA'].includes(active.tagName)) return;
+        const selected = editor.getSelected();
+        if (selected) selected.remove();
+      }
     });
   };
 
@@ -131,7 +133,6 @@ export default function PageEditor({ editor: editorData, onClose, onSaved }) {
       const html     = editor.getHtml();
       const css      = editor.getCss();
       const fullHtml = buildFullHtml(html, css, editorData.name);
-
       const r = await fetch(`/api/files/artifacts/${editorData.fileId}/apply-raw`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -182,6 +183,13 @@ export default function PageEditor({ editor: editorData, onClose, onSaved }) {
           }}>{editorData.name}</span>
         </div>
 
+        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', display: 'flex', gap: 16 }}>
+          <span>🎨 Style panel = click any element</span>
+          <span>⚙️ Traits panel = links &amp; buttons</span>
+          <span>📑 Layers = element tree</span>
+          <span>Del = remove element</span>
+        </span>
+
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {saveMsg && (
             <span style={{
@@ -201,7 +209,7 @@ export default function PageEditor({ editor: editorData, onClose, onSaved }) {
         </div>
       </div>
 
-      {/* ── GrapesJS Default UI ── */}
+      {/* ── GrapesJS Editor ── */}
       <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
         <GjsEditor
           grapesjs={grapesjs}
@@ -211,13 +219,24 @@ export default function PageEditor({ editor: editorData, onClose, onSaved }) {
             storageManager: false,
             undoManager: { trackSelection: false },
             assetManager: {
-              // Upload new images directly to BLOOM
-              upload: '/api/files/images/upload',
-              uploadName: 'file',
-              // Pre-populate with AI library (refreshed on open via event above)
-              assets: aiAssets.map(a => ({ src: a.src, name: a.name, category: 'AI Generated' })),
-              // Show asset categories
+              upload:       '/api/files/images/upload',
+              uploadName:   'file',
+              assets:       aiAssets.map(a => ({ src: a.src, name: a.name, category: 'AI Generated' })),
               showUrlInput: true,
+            },
+            // FIX: Explicit panel config with emoji labels + Layer panel button
+            panels: {
+              defaults: [
+                {
+                  id: 'views',
+                  buttons: [
+                    { id: 'open-sm',     label: '🎨 Style',  command: 'open-sm',     active: true,  togglable: false, attributes: { title: 'Style Manager — edit colors, fonts, spacing' } },
+                    { id: 'open-tm',     label: '⚙️ Traits', command: 'open-tm',     active: false, togglable: false, attributes: { title: 'Element Traits — edit links, attributes' } },
+                    { id: 'open-layers', label: '📑 Layers', command: 'open-layers', active: false, togglable: false, attributes: { title: 'Layer Tree — see all elements' } },
+                    { id: 'open-blocks', label: '🧩 Blocks', command: 'open-blocks', active: false, togglable: false, attributes: { title: 'Add Blocks — drag new elements' } },
+                  ],
+                },
+              ],
             },
             plugins: [gjsPresetWebpage, gjsBlocksBasic, gjsPluginForms],
             pluginsOpts: {
@@ -240,6 +259,68 @@ export default function PageEditor({ editor: editorData, onClose, onSaved }) {
           }}
         />
       </div>
+
+      {/* ── BLOOM dark theme for GrapesJS shell ── */}
+      <style>{`
+        .gjs-one-bg   { background: #16213e !important; }
+        .gjs-two-bg   { background: #1a1a2e !important; }
+        .gjs-three-bg { background: #0f3460 !important; }
+        .gjs-four-bg  { background: #0a0a1a !important; }
+        .gjs-pn-panel, .gjs-sm-sector, .gjs-trt-trait, .gjs-clm-tag { color: #e2e8f0 !important; }
+
+        /* Layer panel — selected row highlight */
+        .gjs-layer.gjs-selected > .gjs-layer-title { background: rgba(244,162,97,0.2) !important; }
+        .gjs-layer-title:hover { background: rgba(255,255,255,0.06) !important; }
+        .gjs-layer-vis { color: #F4A261 !important; }
+
+        /* Style manager inputs */
+        .gjs-sm-field input, .gjs-sm-field select,
+        .gjs-trt-trait input, .gjs-trt-trait select {
+          background: rgba(255,255,255,0.07) !important;
+          color: #e2e8f0 !important;
+          border-color: rgba(255,255,255,0.12) !important;
+          border-radius: 6px !important;
+        }
+        .gjs-sm-sector-title {
+          background: rgba(244,162,97,0.1) !important;
+          border-left: 3px solid #F4A261 !important;
+          font-weight: 700 !important;
+          letter-spacing: 0.5px !important;
+        }
+
+        /* Block manager */
+        .gjs-block {
+          background: rgba(255,255,255,0.05) !important;
+          border-color: rgba(255,255,255,0.1) !important;
+          color: #e2e8f0 !important;
+          border-radius: 8px !important;
+          transition: all 0.15s !important;
+        }
+        .gjs-block:hover {
+          background: rgba(244,162,97,0.15) !important;
+          border-color: #F4A261 !important;
+          transform: translateY(-1px) !important;
+        }
+
+        /* Canvas toolbar (bold/italic mini-bar) */
+        .gjs-toolbar { background: #F4A261 !important; border-radius: 6px !important; box-shadow: 0 2px 8px rgba(0,0,0,0.4) !important; }
+        .gjs-toolbar-item:hover { background: rgba(0,0,0,0.15) !important; }
+
+        /* Canvas background */
+        .gjs-cv-canvas { background: #e8e8e8 !important; }
+
+        /* Panel tab buttons */
+        .gjs-pn-views-container { border-left: 1px solid rgba(255,255,255,0.08) !important; }
+        .gjs-pn-btn { font-size: 11px !important; padding: 6px 8px !important; }
+        .gjs-pn-btn.gjs-pn-active {
+          color: #F4A261 !important;
+          border-bottom: 2px solid #F4A261 !important;
+          background: rgba(244,162,97,0.1) !important;
+        }
+
+        /* Resize handle */
+        .gjs-resizer-h { border-color: #F4A261 !important; }
+      `}</style>
     </div>
   );
 }
@@ -264,9 +345,8 @@ function buildFullHtml(body, css, title) {
 <body>
   ${body || ''}
   <script>
-    // Convert data-href buttons to real navigating buttons
     document.querySelectorAll('button[data-href]').forEach(btn => {
-      const url = btn.getAttribute('data-href');
+      const url    = btn.getAttribute('data-href');
       const target = btn.getAttribute('data-target') || '_self';
       if (url) btn.addEventListener('click', () => window.open(url, target));
     });
