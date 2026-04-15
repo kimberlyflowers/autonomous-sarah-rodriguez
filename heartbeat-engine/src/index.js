@@ -1107,6 +1107,45 @@ app.post('/api/forms/submit', async (req, res) => {
       }
     }
 
+    // Write to form_submissions table
+    try {
+      const { createClient } = await import('@supabase/supabase-js');
+      const _sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
+        auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+      });
+      const orgSlug = req.body.orgSlug || req.body.org_slug || 'unknown';
+      await _sb.from('form_submissions').insert({
+        org_id:         orgSlug,
+        form_id:        req.body.formId || null,
+        form_name:      req.body.formName || req.body.form_name || 'contact',
+        page_slug:      req.body.pageSlug || req.body.page_slug || null,
+        email:          email || null,
+        phone:          req.body.phone || null,
+        first_name:     fName || null,
+        last_name:      lName || null,
+        fields:         { ...req.body },
+        ghl_contact_id: contactId || null,
+        source_url:     req.headers.referer || null,
+        ip_address:     req.ip || null,
+      });
+
+      // Get count for response
+      const { count } = await _sb
+        .from('form_submissions')
+        .select('*', { count: 'exact', head: true })
+        .eq('org_id', orgSlug)
+        .eq('form_name', req.body.formName || 'contact');
+
+      return res.json({
+        success: true,
+        contactId,
+        submissionCount: count || 0,
+        message: "Thank you! We'll be in touch soon."
+      });
+    } catch (sbErr) {
+      logger.warn('form_submission DB write failed (non-fatal):', sbErr.message);
+    }
+
     res.json({ success: true, contactId, message: 'Thank you! We\'ll be in touch soon.' });
   } catch (err) {
     // GHL returns 400 if contact already exists — try to update instead
@@ -1123,6 +1162,141 @@ app.options('/api/forms/submit', (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.sendStatus(204);
+});
+
+
+// ── Payments: Stripe checkout session ─────────────────────────────────────────
+app.post('/api/payments/create-checkout', async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  try {
+    const { orgSlug, productName, amount, currency = 'usd', successUrl, cancelUrl, quantity = 1, metadata = {} } = req.body;
+    if (!amount || !productName) return res.status(400).json({ success: false, error: 'amount and productName are required' });
+
+    const stripeKey = process.env.STRIPE_SECRET_KEY;
+    if (!stripeKey) return res.status(500).json({ success: false, error: 'Stripe not configured. Add STRIPE_SECRET_KEY to Railway env vars.' });
+
+    const { default: Stripe } = await import('stripe');
+    const stripe = new Stripe(stripeKey);
+    const origin = req.headers.origin || process.env.APP_URL || 'https://autonomous-sarah-rodriguez-production.up.railway.app';
+
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items: [{ price_data: { currency, product_data: { name: productName }, unit_amount: Math.round(amount * 100) }, quantity }],
+      mode: 'payment',
+      success_url: successUrl || `${origin}/payment-success?session_id={CHECKOUT_SESSION_ID}&org=${orgSlug}`,
+      cancel_url:  cancelUrl  || `${origin}/payment-cancelled?org=${orgSlug}`,
+      metadata: { orgSlug, ...metadata },
+    });
+
+    // Record pending payment
+    try {
+      const { createClient } = await import('@supabase/supabase-js');
+      const _sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { auth: { persistSession: false } });
+      await _sb.from('payment_events').insert({
+        org_id: orgSlug || 'unknown', provider: 'stripe',
+        checkout_session_id: session.id,
+        amount: Math.round(amount * 100), currency,
+        status: 'pending', product_name: productName, quantity, metadata,
+      });
+    } catch (sbErr) { logger.warn('payment_events insert failed (non-fatal):', sbErr.message); }
+
+    logger.info('Stripe checkout session created', { sessionId: session.id, orgSlug, productName, amount });
+    res.json({ success: true, checkoutUrl: session.url, sessionId: session.id });
+  } catch (err) {
+    logger.error('create-checkout failed:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.options('/api/payments/create-checkout', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.sendStatus(204);
+});
+
+// ── Payments: Stripe webhook ──────────────────────────────────────────────────
+app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  const sig = req.headers['stripe-signature'];
+  let event;
+  try {
+    const { default: Stripe } = await import('stripe');
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+    event = process.env.STRIPE_WEBHOOK_SECRET
+      ? stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET)
+      : JSON.parse(req.body.toString());
+  } catch (err) {
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  try {
+    const { createClient } = await import('@supabase/supabase-js');
+    const _sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { auth: { persistSession: false } });
+
+    if (event.type === 'checkout.session.completed') {
+      const s = event.data.object;
+      await _sb.from('payment_events').update({
+        status: 'completed',
+        payer_email: s.customer_details?.email || null,
+        payer_name:  s.customer_details?.name  || null,
+        webhook_raw: s,
+        updated_at: new Date().toISOString(),
+      }).eq('checkout_session_id', s.id);
+      logger.info('Payment completed', { sessionId: s.id, email: s.customer_details?.email });
+    }
+
+    if (event.type === 'checkout.session.expired') {
+      await _sb.from('payment_events')
+        .update({ status: 'expired', updated_at: new Date().toISOString() })
+        .eq('checkout_session_id', event.data.object.id);
+    }
+  } catch (dbErr) { logger.warn('Webhook DB update failed:', dbErr.message); }
+
+  res.json({ received: true });
+});
+
+// ── Analytics: Site metrics ───────────────────────────────────────────────────
+app.get('/api/analytics/site/:orgSlug', async (req, res) => {
+  try {
+    const { orgSlug } = req.params;
+    const { createClient } = await import('@supabase/supabase-js');
+    const _sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { auth: { persistSession: false } });
+
+    const { data: submissions } = await _sb.from('form_submissions')
+      .select('id, form_name, page_slug, email, first_name, last_name, created_at')
+      .eq('org_id', orgSlug).order('created_at', { ascending: false }).limit(100);
+
+    const { data: payments } = await _sb.from('payment_events')
+      .select('id, product_name, amount, currency, status, payer_email, created_at')
+      .eq('org_id', orgSlug).order('created_at', { ascending: false }).limit(100);
+
+    const formCounts = {};
+    (submissions || []).forEach(s => { formCounts[s.form_name] = (formCounts[s.form_name] || 0) + 1; });
+    const completed = (payments || []).filter(p => p.status === 'completed');
+    const revenueCents = completed.reduce((sum, p) => sum + (p.amount || 0), 0);
+
+    res.json({
+      success: true, orgSlug,
+      forms: { total: (submissions||[]).length, byForm: formCounts, recent: (submissions||[]).slice(0,20) },
+      payments: {
+        total: (payments||[]).length, completed: completed.length,
+        revenueCents, revenueFormatted: `$${(revenueCents/100).toFixed(2)}`,
+        recent: (payments||[]).slice(0,20),
+      },
+    });
+  } catch (err) {
+    logger.error('analytics/site failed:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+app.options('/api/analytics/site/:orgSlug', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.sendStatus(204);
 });
 

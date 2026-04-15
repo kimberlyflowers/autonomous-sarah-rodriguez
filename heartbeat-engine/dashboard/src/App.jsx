@@ -3503,6 +3503,97 @@ function PwChangePanel({c}) {
   );
 }
 
+function SiteAnalyticsPanel({ c, fileId, orgSlug, onClose }) {
+  const [data, setData] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  const [tab, setTab] = React.useState('forms');
+
+  React.useEffect(() => {
+    fetch(`/api/analytics/site/${orgSlug}`)
+      .then(r => r.json())
+      .then(d => { setData(d); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, [orgSlug]);
+
+  const metricCard = (label, value, accent) => (
+    <div style={{padding:'16px 20px',borderRadius:12,background:c.bg,border:`1px solid ${c.ln}`,flex:1,minWidth:120}}>
+      <div style={{fontSize:11,color:c.so,fontWeight:600,marginBottom:4}}>{label}</div>
+      <div style={{fontSize:24,fontWeight:800,color:accent||c.fg}}>{value}</div>
+    </div>
+  );
+
+  return (
+    <div style={{position:'fixed',inset:0,zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',background:'rgba(0,0,0,.45)'}}>
+      <div style={{background:c.bg,borderRadius:16,width:'90%',maxWidth:720,maxHeight:'85vh',overflow:'auto',padding:28,position:'relative',border:`1px solid ${c.ln}`}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
+          <h3 style={{fontSize:18,fontWeight:800,color:c.fg,margin:0}}>Site Analytics</h3>
+          <button onClick={onClose} style={{background:'none',border:'none',fontSize:22,cursor:'pointer',color:c.so,padding:4}}>✕</button>
+        </div>
+        {loading ? <div style={{textAlign:'center',padding:40,color:c.so}}>Loading analytics...</div> : !data?.success ? <div style={{textAlign:'center',padding:40,color:c.so}}>No data available yet.</div> : <>
+          <div style={{display:'flex',gap:12,marginBottom:20,flexWrap:'wrap'}}>
+            {metricCard('Form Submissions', data.forms?.total || 0, '#F4A261')}
+            {metricCard('Payments', data.payments?.completed || 0, '#E76F8B')}
+            {metricCard('Revenue', data.payments?.revenueFormatted || '$0.00', '#34A853')}
+          </div>
+          <div style={{display:'flex',gap:8,marginBottom:16}}>
+            {['forms','payments'].map(t => (
+              <button key={t} onClick={() => setTab(t)} style={{padding:'8px 20px',borderRadius:8,border:`1px solid ${tab===t?c.ac:c.ln}`,background:tab===t?c.ac:'transparent',color:tab===t?'#fff':c.so,fontWeight:700,fontSize:12,cursor:'pointer',fontFamily:'inherit',textTransform:'capitalize'}}>{t === 'forms' ? 'Form Submissions' : 'Payments'}</button>
+            ))}
+          </div>
+          {tab === 'forms' ? (
+            <div style={{fontSize:12}}>
+              {data.forms?.byForm && Object.keys(data.forms.byForm).length > 0 && (
+                <div style={{marginBottom:12,display:'flex',gap:8,flexWrap:'wrap'}}>
+                  {Object.entries(data.forms.byForm).map(([k,v]) => (
+                    <span key={k} style={{padding:'4px 10px',borderRadius:6,background:c.ln,fontSize:11,fontWeight:600}}>{k}: {v}</span>
+                  ))}
+                </div>
+              )}
+              <table style={{width:'100%',borderCollapse:'collapse'}}>
+                <thead><tr style={{borderBottom:`1px solid ${c.ln}`}}>
+                  <th style={{textAlign:'left',padding:'8px 6px',color:c.so,fontWeight:600}}>Name</th>
+                  <th style={{textAlign:'left',padding:'8px 6px',color:c.so,fontWeight:600}}>Email</th>
+                  <th style={{textAlign:'left',padding:'8px 6px',color:c.so,fontWeight:600}}>Form</th>
+                  <th style={{textAlign:'left',padding:'8px 6px',color:c.so,fontWeight:600}}>Date</th>
+                </tr></thead>
+                <tbody>{(data.forms?.recent||[]).map((s,i) => (
+                  <tr key={i} style={{borderBottom:`1px solid ${c.ln}`}}>
+                    <td style={{padding:'8px 6px',color:c.fg}}>{s.first_name||''} {s.last_name||''}</td>
+                    <td style={{padding:'8px 6px',color:c.so}}>{s.email||'—'}</td>
+                    <td style={{padding:'8px 6px',color:c.so}}>{s.form_name||'contact'}</td>
+                    <td style={{padding:'8px 6px',color:c.so}}>{s.created_at ? new Date(s.created_at).toLocaleDateString() : '—'}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+              {(!data.forms?.recent||data.forms.recent.length===0) && <p style={{textAlign:'center',color:c.so,padding:20}}>No submissions yet.</p>}
+            </div>
+          ) : (
+            <div style={{fontSize:12}}>
+              <table style={{width:'100%',borderCollapse:'collapse'}}>
+                <thead><tr style={{borderBottom:`1px solid ${c.ln}`}}>
+                  <th style={{textAlign:'left',padding:'8px 6px',color:c.so,fontWeight:600}}>Product</th>
+                  <th style={{textAlign:'left',padding:'8px 6px',color:c.so,fontWeight:600}}>Amount</th>
+                  <th style={{textAlign:'left',padding:'8px 6px',color:c.so,fontWeight:600}}>Status</th>
+                  <th style={{textAlign:'left',padding:'8px 6px',color:c.so,fontWeight:600}}>Date</th>
+                </tr></thead>
+                <tbody>{(data.payments?.recent||[]).map((p,i) => (
+                  <tr key={i} style={{borderBottom:`1px solid ${c.ln}`}}>
+                    <td style={{padding:'8px 6px',color:c.fg}}>{p.product_name||'—'}</td>
+                    <td style={{padding:'8px 6px',color:c.fg,fontWeight:700}}>${((p.amount||0)/100).toFixed(2)}</td>
+                    <td style={{padding:'8px 6px'}}><span style={{padding:'2px 8px',borderRadius:4,fontSize:10,fontWeight:700,background:p.status==='completed'?'#dcfce7':'#fef9c3',color:p.status==='completed'?'#16a34a':'#a16207'}}>{p.status}</span></td>
+                    <td style={{padding:'8px 6px',color:c.so}}>{p.created_at ? new Date(p.created_at).toLocaleDateString() : '—'}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+              {(!data.payments?.recent||data.payments.recent.length===0) && <p style={{textAlign:'center',color:c.so,padding:20}}>No payments yet.</p>}
+            </div>
+          )}
+        </>}
+      </div>
+    </div>
+  );
+}
+
 function App({ authUser }) {
   const W=useW();
   const mob=W<768;
@@ -4018,6 +4109,7 @@ function App({ authUser }) {
   // Clear files immediately when switching agents (prevents stale data flash)
   useEffect(()=>{ setFiles([]); setFilesRefresh(r=>r+1); },[currentAgentId]);
   const [pageEditor,setPageEditor]=useState(null); // {fileId, name, content} — GrapesJS editor
+  const [analyticsPanel,setAnalyticsPanel]=useState(null);
   const [editMode,setEditMode]=useState(false);
   const [editContent,setEditContent]=useState('');
   const [editSaving,setEditSaving]=useState(false);
@@ -6014,6 +6106,7 @@ function App({ authUser }) {
                                   setTimeout(()=>setOauthToast(null),5000);
                                 }}} style={{flex:1,padding:'7px 0',borderRadius:8,border:'none',background:'linear-gradient(135deg,#F4A261,#E76F8B)',cursor:'pointer',fontSize:11,fontWeight:700,color:'#fff',fontFamily:'inherit'}}>Edit Page</button>
                               {f.slug?<a href={`/p/${f.slug}`} target="_blank" rel="noopener noreferrer" style={{flex:1,padding:'7px 0',borderRadius:8,border:'1px solid '+c.gr,background:c.gr+'12',fontSize:11,fontWeight:700,color:c.gr,textDecoration:'none',textAlign:'center',display:'block'}}>↗ Live</a>:<button onClick={async(e)=>{e.stopPropagation();const slug=prompt('URL slug:\nyoursite.com/p/___',f.name?.replace(/\.[^.]+$/,'').toLowerCase().replace(/[^a-z0-9]+/g,'-'));if(!slug)return;const r=await fetch(`/api/files/artifacts/${f.fileId}/publish`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({slug})});const d=await r.json();if(d.success){setFiles(p=>p.map(x=>x.fileId===f.fileId?{...x,slug:d.slug,published:true}:x));window.open(`/p/${d.slug}`,'_blank');}else{setOauthToast({type:'error',msg:d.error||'Publish failed'});setTimeout(()=>setOauthToast(null),4000);}}} style={{flex:1,padding:'7px 0',borderRadius:8,border:'1px solid '+c.ac,background:c.ac+'12',cursor:'pointer',fontSize:11,fontWeight:700,color:c.ac,fontFamily:'inherit'}}>Publish</button>}
+                              {f.slug&&<button onClick={(e)=>{e.stopPropagation();setAnalyticsPanel({fileId:f.fileId,slug:f.slug});}} style={{flex:1,padding:'7px 0',borderRadius:8,border:'1px solid '+c.ac,background:c.ac+'12',cursor:'pointer',fontSize:11,fontWeight:700,color:c.ac,fontFamily:'inherit'}}>Analytics</button>}
                               <a href={`/api/files/download/${f.fileId}`} download style={{padding:'7px 10px',borderRadius:8,border:'1px solid '+c.ln,background:c.cd,fontSize:13,color:c.so,textDecoration:'none',display:'flex',alignItems:'center'}}>↓</a>
                             </div>
                           )}
@@ -7173,6 +7266,14 @@ function App({ authUser }) {
           onSaved={(fileId,html)=>{
             setFiles(prev=>prev.map(x=>x.fileId===fileId?{...x,content:html}:x));
           }}
+        />
+      )}
+      {analyticsPanel&&(
+        <SiteAnalyticsPanel
+          c={c}
+          fileId={analyticsPanel.fileId}
+          orgSlug={analyticsPanel.slug}
+          onClose={()=>setAnalyticsPanel(null)}
         />
       )}
 
