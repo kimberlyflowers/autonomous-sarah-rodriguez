@@ -198,39 +198,109 @@ function buildFooter(d) {
 }
 
 // ─── Shared lead capture form ──────────────────────────────────────────────────
-function buildLeadForm(d, orgSlug, heading = 'Get In Touch', subheading = '') {
-  const endpoint = `/api/capture-lead`;
+function buildLeadForm(d, orgSlug, heading = 'Get In Touch', subheading = '', formName = 'contact') {
   return `
 <section class="section" id="contact" style="background:var(--primary);color:#fff">
   <div class="container text-center">
     <h2 style="font-size:clamp(1.5rem,3vw,2.2rem);font-weight:800;margin-bottom:12px">${escHtml(heading)}</h2>
-    ${subheading ? `<p style="margin-bottom:32px;opacity:.85">${escHtml(subheading)}</p>` : ''}
-    <form class="form" id="lead-form" onsubmit="submitLead(event,'${escHtml(orgSlug)}')">
-      <input type="text" name="name" placeholder="Your Name" required>
-      <input type="email" name="email" placeholder="Email Address" required>
-      <input type="tel" name="phone" placeholder="Phone Number">
-      <textarea name="message" placeholder="How can we help you?"></textarea>
+    ${subheading ? `<p style="margin-bottom:24px;opacity:.85">${escHtml(subheading)}</p>` : ''}
+    <div id="bloom-sub-count-${formName}" style="font-size:.85rem;opacity:.7;margin-bottom:20px"></div>
+    <form class="form" id="bloom-form-${formName}" onsubmit="bloomSubmitForm(event,'${escHtml(orgSlug)}','${escHtml(formName)}')">
+      <input type="text"  name="name"    placeholder="Your Name"     required>
+      <input type="email" name="email"   placeholder="Email Address" required>
+      <input type="tel"   name="phone"   placeholder="Phone Number">
+      <textarea           name="message" placeholder="How can we help you?"></textarea>
       <button type="submit" class="btn btn-secondary" style="color:#fff;border-color:#fff">Send Message</button>
-      <p id="form-msg" style="font-size:.9rem;min-height:20px"></p>
+      <p id="bloom-form-msg-${formName}" style="font-size:.9rem;min-height:20px;margin-top:8px"></p>
     </form>
   </div>
 </section>
 <script>
-async function submitLead(e, slug){
+if(!window.bloomSubmitForm){
+async function bloomSubmitForm(e,slug,formName){
   e.preventDefault();
-  var msg = document.getElementById('form-msg');
-  var form = e.target;
-  msg.textContent = 'Sending...';
-  try {
-    var data = Object.fromEntries(new FormData(form).entries());
-    data.orgSlug = slug;
-    var res = await fetch('/api/capture-lead',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
-    if(res.ok){ msg.textContent = 'Message sent! We\\'ll be in touch soon.'; form.reset(); }
-    else { msg.textContent = 'Something went wrong. Please try again.'; }
-  } catch(err){ msg.textContent = 'Network error. Please try again.'; }
+  var msgEl=document.getElementById('bloom-form-msg-'+formName);
+  var form=e.target;
+  if(msgEl){msgEl.textContent='Sending...';msgEl.style.color='rgba(255,255,255,0.8)';}
+  try{
+    var data=Object.fromEntries(new FormData(form).entries());
+    data.orgSlug=slug;data.formName=formName;
+    data.pageSlug=window.location.pathname.split('/').filter(Boolean).pop()||'home';
+    var res=await fetch('/api/forms/submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+    var json=await res.json();
+    if(json.success){
+      if(msgEl){msgEl.textContent=json.message||"Thank you! We'll be in touch soon.";msgEl.style.color='#4ade80';}
+      form.reset();
+      if(json.submissionCount>1){var c=document.getElementById('bloom-sub-count-'+formName);if(c)c.textContent=json.submissionCount+' people have reached out';}
+    }else{if(msgEl){msgEl.textContent=json.error||'Something went wrong.';msgEl.style.color='#f87171';}}
+  }catch(err){if(msgEl){msgEl.textContent='Network error. Please try again.';msgEl.style.color='#f87171';}}
+}
+
+function buildPaymentButton(d, orgSlug, productName, amount, currency='usd', label='Enroll Now', btnClass='btn-primary') {
+  const btnId = 'bloom-pay-'+productName.replace(/[^a-z0-9]/gi,'-').toLowerCase().slice(0,20)+'-'+Math.random().toString(36).slice(2,6);
+  return `<button id="${escHtml(btnId)}" class="btn ${escHtml(btnClass)}" onclick="bloomCheckout('${escHtml(orgSlug)}','${escHtml(productName)}',${Number(amount)},'${escHtml(currency)}','${escHtml(btnId)}')">${escHtml(label)}</button>
+<script>
+if(!window.bloomCheckout){
+async function bloomCheckout(orgSlug,productName,amount,currency,btnId){
+  var btn=document.getElementById(btnId);
+  if(btn){btn.disabled=true;btn.textContent='Redirecting...';}
+  try{
+    var res=await fetch('/api/payments/create-checkout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orgSlug,productName,amount,currency,quantity:1})});
+    var json=await res.json();
+    if(json.success&&json.checkoutUrl){window.location.href=json.checkoutUrl;}
+    else{alert(json.error||'Payment setup failed.');if(btn){btn.disabled=false;btn.textContent='${escHtml(label)}';}}
+  }catch(err){alert('Network error.');if(btn){btn.disabled=false;btn.textContent='${escHtml(label)}';}}
+}
+window.bloomCheckout=bloomCheckout;
 }
 </script>`;
 }
+
+function buildPricingSection(d, orgSlug, heading='Choose Your Plan') {
+  const tiers = d.pricingTiers || [
+    { name:'Basic',    price:0,   label:'Free',  features:['Feature one','Feature two'], cta:'Get Started', free:true },
+    { name:'Standard', price:97,  label:'$97',   features:['Everything in Basic','Feature three','Feature four'], cta:'Enroll Now', featured:true },
+    { name:'Premium',  price:197, label:'$197',  features:['Everything in Standard','Priority support','1-on-1 session'], cta:'Go Premium' },
+  ];
+  return `
+<section class="section" id="pricing">
+  <div class="container">
+    <h2 class="text-center" style="font-size:clamp(1.5rem,3vw,2rem);font-weight:800;margin-bottom:${d.pricingSubheading?'12px':'40px'}">${escHtml(heading)}</h2>
+    ${d.pricingSubheading?`<p class="text-center" style="color:#666;margin-bottom:40px">${escHtml(d.pricingSubheading)}</p>`:''}
+    <div class="pricing-grid">
+      ${tiers.map(t=>`
+        <div style="padding:32px 24px;border-radius:16px;border:${t.featured?'2px solid var(--primary)':'1px solid #e5e7eb'};background:#fff;text-align:center;position:relative">
+          ${t.featured?`<div style="position:absolute;top:-14px;left:50%;transform:translateX(-50%);background:var(--primary);color:#fff;padding:4px 16px;border-radius:20px;font-size:.8rem;font-weight:700;white-space:nowrap">Most Popular</div>`:''}
+          <h3 style="font-size:1.2rem;font-weight:700;margin-bottom:8px">${escHtml(t.name)}</h3>
+          <div style="font-size:2.5rem;font-weight:800;color:var(--primary);margin-bottom:4px">${escHtml(t.label)}</div>
+          ${t.period?`<div style="font-size:.85rem;color:#888;margin-bottom:20px">${escHtml(t.period)}</div>`:'<div style="margin-bottom:20px"></div>'}
+          <ul style="list-style:none;padding:0;margin:0 0 28px;text-align:left">
+            ${(t.features||[]).map(f=>`<li style="padding:6px 0;border-bottom:1px solid #f0f0f0;font-size:.9rem;display:flex;align-items:center;gap:8px"><span style="color:var(--primary);font-weight:700">&#10003;</span>${escHtml(f)}</li>`).join('')}
+          </ul>
+          ${t.free
+            ?`<a href="#contact" class="btn btn-secondary" style="display:block;text-align:center">${escHtml(t.cta||'Get Started')}</a>`
+            :buildPaymentButton(d, orgSlug, `${t.name} — ${escHtml(d.businessName||'BLOOM')}`, t.price, 'usd', `${t.cta||'Enroll Now'} — ${t.label}`, t.featured?'btn-primary':'btn-secondary')
+          }
+        </div>`).join('')}
+    </div>
+  </div>
+</section>`;
+}
+
+function buildSubmissionCounter(orgSlug, formName='contact', label='people have already signed up') {
+  const id = 'bloom-counter-'+formName;
+  return `<div style="text-align:center;margin:8px 0"><span id="${id}" style="font-size:.9rem;color:rgba(255,255,255,0.7)"></span></div>
+<script>
+(async()=>{try{var r=await fetch('/api/analytics/site/${escHtml(orgSlug)}');var j=await r.json();var c=j?.forms?.byForm?.['${escHtml(formName)}']||0;if(c>0){var el=document.getElementById('${id}');if(el)el.textContent=c+' ${escHtml(label)}';}}catch{}})();
+</script>`;
+}
+
+window.bloomSubmitForm=bloomSubmitForm;
+}
+(async()=>{try{var r=await fetch('/api/analytics/site/${escHtml(orgSlug)}');var j=await r.json();var cnt=j?.forms?.byForm?.['${escHtml(formName)}']||0;if(cnt>0){var el=document.getElementById('bloom-sub-count-${formName}');if(el)el.textContent=cnt+' people have already reached out';}}catch{}})();
+</script>`;
+}
+
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // TEMPLATE DEFINITIONS
@@ -286,7 +356,8 @@ ${d.stats ? `<section class="section-sm" style="background:#f8faff"><div class="
 ${d.testimonials ? `<section class="section" id="testimonials"><div class="container"><h2 class="text-center" style="font-size:1.8rem;font-weight:800;margin-bottom:32px">What Clients Say</h2>
   ${d.testimonials.map(t=>`<div class="testimonial"><p>"${escHtml(t.quote)}"</p><div class="testimonial-author">— ${escHtml(t.author)}</div></div>`).join('')}
 </div></section>` : ''}
-${buildLeadForm(d, d.orgSlug || '', 'Request a Free Quote', d.contactSubheading || '')}
+${d.pricingTiers ? buildPricingSection(d, d.orgSlug||'', d.pricingHeading||'Our Pricing') : ''}
+${buildLeadForm(d, d.orgSlug || '', 'Request a Free Quote', d.contactSubheading || '', 'contact')}
 ${buildFooter(d)}`
     });
   }
@@ -407,7 +478,7 @@ ${buildFooter(d)}`
 // ── 04 School / Nonprofit ──────────────────────────────────────────────────────
 export const template04 = {
   id: '04',
-  name: 'School / Nonprofit',
+  name: 'School / Education',
   sections: ['hero','mission','programs','team','donate','contact'],
   render(d) {
     const nav = buildNav(d, [
@@ -454,7 +525,9 @@ ${nav}
     <a href="${d.donateUrl || '#contact'}" class="btn" style="background:#fff;color:var(--primary);font-weight:700;font-size:1.1rem">Donate Now</a>
   </div>
 </section>
-${buildLeadForm(d, d.orgSlug || '', 'Get Involved', 'Contact us to learn more or volunteer.')}
+${d.pricingTiers||d.tuitionTiers ? buildPricingSection({...d, pricingTiers: d.tuitionTiers||d.pricingTiers}, d.orgSlug||'', d.tuitionHeading||'Tuition & Programs') : ''}
+${buildSubmissionCounter(d.orgSlug||'', 'enrollment', 'families have applied this semester')}
+${buildLeadForm(d, d.orgSlug||'', 'Apply for Enrollment', d.enrollmentSubheading||'Fill out the form and we will be in touch within 24 hours.', 'enrollment')}
 ${buildFooter(d)}`
     });
   }
@@ -800,7 +873,9 @@ ${d.speakers ? `<section class="section" id="speakers"><div class="container">
   <h2 class="text-center" style="font-size:1.8rem;font-weight:800;margin-bottom:32px">Featured Speakers</h2>
   <div class="cards">${d.speakers.map(s=>`<div class="card text-center"><h3>${escHtml(s.name)}</h3><p style="color:var(--primary);font-weight:600">${escHtml(s.title||'')}</p></div>`).join('')}</div>
 </div></section>` : ''}
-${buildLeadForm(d, d.orgSlug || '', 'Register for the Event', 'Secure your spot today — space is limited.')}
+${buildPricingSection({...d, pricingTiers: d.ticketTiers||d.pricingTiers}, d.orgSlug||'', d.ticketHeading||'Event Tickets')}
+${buildSubmissionCounter(d.orgSlug||'', 'registration', 'people registered')}
+${buildLeadForm(d, d.orgSlug||'', d.registrationHeading||'Register Now', d.registrationSubheading||'', 'registration')}
 ${buildFooter(d)}`
     });
   }
@@ -890,7 +965,9 @@ ${nav}
     <h2 class="text-center" style="font-size:1.8rem;font-weight:800;margin-bottom:32px">Featured Products</h2>
     <div class="cards">
       ${(d.products || [{name:'Product One',price:'$29',desc:'Best seller.'},{name:'Product Two',price:'$49',desc:'Customer favorite.'},{name:'Product Three',price:'$39',desc:'New arrival.'}]).map(p=>
-        `<div class="card text-center"><h3>${escHtml(p.name)}</h3><p style="font-size:1.3rem;font-weight:800;color:var(--primary);margin:8px 0">${escHtml(p.price)}</p><p style="color:#555;margin-bottom:16px">${escHtml(p.desc)}</p><a href="${d.shopUrl||'#'}" class="btn btn-primary" style="width:100%">Shop Now</a></div>`
+        `<div class="card text-center"><h3>${escHtml(p.name)}</h3><p style="font-size:1.3rem;font-weight:800;color:var(--primary);margin:8px 0">${escHtml(p.price)}</p><p style="color:#555;margin-bottom:16px">${escHtml(p.desc)}</p>${(p.price && p.buyable !== false)
+  ? buildPaymentButton(d, d.orgSlug||'', p.name, parseFloat((p.price||'0').replace(/[^0-9.]/g,'')), 'usd', 'Buy Now — '+p.price)
+  : `<a href="#contact" class="btn btn-primary">Learn More</a>`}</div>`
       ).join('')}
     </div>
   </div>
@@ -1210,7 +1287,9 @@ ${d.tiers ? `<section class="section" id="tiers" style="background:#f8faff"><div
     </div>`).join('')}
   </div>
 </div></section>` : ''}
-${buildLeadForm(d, d.orgSlug || '', 'Ready to Join?', 'Fill out the form and we\'ll get you started right away.')}
+${buildPricingSection(d, d.orgSlug||'', d.membershipHeading||'Membership Plans')}
+${buildSubmissionCounter(d.orgSlug||'', 'membership', 'members have joined')}
+${buildLeadForm(d, d.orgSlug||'', 'Join the Community', d.joinSubheading||'', 'membership')}
 ${buildFooter(d)}`
     });
   }
