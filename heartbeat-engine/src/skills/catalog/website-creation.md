@@ -9,6 +9,57 @@ description: Build professional, conversion-optimized websites and landing pages
 
 ---
 
+## MANDATORY PARALLEL BUILD PROTOCOL — RUNS AFTER PRE-BUILD GATE
+
+Once you have all 8 required pieces of information, follow this EXACT build order. Do not deviate.
+
+### STEP 1 — OUTPUT SHARED CONTEXT (no tools, just output JSON)
+Before calling any tool, output your shared context block. This ensures every page is consistent:
+```json
+{
+  "site_name": "Business Name",
+  "nav_pages": ["Home", "About", "Services", "Contact"],
+  "nav_links": { "Home": "{slug}", "About": "{slug}-about", "Services": "{slug}-services", "Contact": "{slug}-contact" },
+  "primary_color": "#hex",
+  "secondary_color": "#hex",
+  "accent_color": "#hex",
+  "dark_color": "#hex",
+  "light_color": "#hex",
+  "font_heading": "Font Name",
+  "font_body": "Font Name",
+  "tone": "describe the voice/tone",
+  "cta_text": "Primary CTA label",
+  "cta_anchor": "#contact"
+}
+```
+Every page you build pulls CSS variables and nav links from this shared context. Never hardcode colors or nav links independently per page.
+
+### STEP 2 — GENERATE ALL IMAGES IN PARALLEL (one tool call)
+Call `generate_images_parallel` ONCE with every image needed across ALL pages simultaneously. Never call `image_generate` individually during a website build — it is sequential and slow.
+
+Pass every image at once:
+- hero image
+- about/team image
+- service feature images
+- any background or section images
+
+Wait for `generate_images_parallel` to return the full `imageMap` before writing any HTML. The imageMap contains all real CDN URLs keyed by your ID strings.
+
+### STEP 3 — CREATE PAGES (using shared context + imageMap URLs)
+Now write each page. Every page MUST:
+- Import the shared CSS variables (colors, fonts) — never hardcode per-page
+- Use the **identical nav** from shared context nav_links — never vary nav between pages
+- Use the **identical footer** — copy/paste the same footer block
+- Use real image URLs from imageMap — never placeholder URLs
+- Connect forms to `/api/forms/submit`
+
+For multi-page sites: call `get_site_pages` BEFORE writing nav links to get confirmed slugs.
+
+### STEP 4 — VERIFY
+After creating all pages, call `get_site_pages` to confirm slugs. Fix any broken nav links with `edit_artifact`.
+
+---
+
 ## MANDATORY PRE-BUILD GATE — NO EXCEPTIONS
 
 **You MUST collect all required information via bloom_clarify BEFORE writing any code, generating images, or calling create_artifact. This is a hard rule with zero exceptions.**
