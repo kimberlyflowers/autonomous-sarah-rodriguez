@@ -88,6 +88,117 @@ export default function PageEditor({ editor: editorData, onClose, onSaved }) {
           }
         }
       } catch (e) { console.warn('button trait extend:', e); }
+
+      // ── BLOOM Custom Blocks ────────────────────────────────────────────
+      const bm = editor.BlockManager;
+
+      bm.add('bloom-lead-form', {
+        label: 'Lead Form',
+        category: 'BLOOM',
+        attributes: { class: 'fa fa-wpforms' },
+        content: `<section style="background:#2563eb;color:#fff;padding:60px 20px;text-align:center">
+  <h2 style="font-size:1.8rem;font-weight:800;margin-bottom:12px">Get In Touch</h2>
+  <div id="bloom-sub-count-contact" style="font-size:.85rem;opacity:.7;margin-bottom:20px"></div>
+  <form id="bloom-form-contact" onsubmit="bloomSubmitForm(event,'ORG_SLUG','contact')" style="max-width:480px;margin:0 auto;display:flex;flex-direction:column;gap:12px">
+    <input type="text" name="name" placeholder="Your Name" required style="padding:12px;border:none;border-radius:8px;font-size:1rem">
+    <input type="email" name="email" placeholder="Email Address" required style="padding:12px;border:none;border-radius:8px;font-size:1rem">
+    <input type="tel" name="phone" placeholder="Phone Number" style="padding:12px;border:none;border-radius:8px;font-size:1rem">
+    <textarea name="message" placeholder="How can we help you?" style="padding:12px;border:none;border-radius:8px;font-size:1rem;min-height:80px"></textarea>
+    <button type="submit" style="padding:14px;background:#fff;color:#2563eb;border:none;border-radius:8px;font-size:1rem;font-weight:700;cursor:pointer">Send Message</button>
+    <p id="bloom-form-msg-contact" style="font-size:.9rem;min-height:20px;margin-top:4px"></p>
+  </form>
+  <script>if(!window.bloomSubmitForm){async function bloomSubmitForm(e,slug,fn){e.preventDefault();var m=document.getElementById('bloom-form-msg-'+fn);var f=e.target;if(m)m.textContent='Sending...';try{var d=Object.fromEntries(new FormData(f).entries());d.orgSlug=slug;d.formName=fn;var r=await fetch('/api/forms/submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});var j=await r.json();if(j.success){if(m){m.textContent=j.message||'Thank you!';m.style.color='#4ade80';}f.reset();}else{if(m){m.textContent=j.error||'Error';m.style.color='#f87171';}}}catch(err){if(m){m.textContent='Network error.';m.style.color='#f87171';}}};window.bloomSubmitForm=bloomSubmitForm;}</script>
+</section>`,
+      });
+
+      bm.add('bloom-registration-form', {
+        label: 'Registration Form',
+        category: 'BLOOM',
+        attributes: { class: 'fa fa-ticket' },
+        content: `<section style="background:#7c3aed;color:#fff;padding:60px 20px;text-align:center">
+  <h2 style="font-size:1.8rem;font-weight:800;margin-bottom:12px">Register Now</h2>
+  <form id="bloom-form-registration" onsubmit="bloomSubmitForm(event,'ORG_SLUG','registration')" style="max-width:480px;margin:0 auto;display:flex;flex-direction:column;gap:12px">
+    <input type="text" name="name" placeholder="Full Name" required style="padding:12px;border:none;border-radius:8px;font-size:1rem">
+    <input type="email" name="email" placeholder="Email Address" required style="padding:12px;border:none;border-radius:8px;font-size:1rem">
+    <input type="tel" name="phone" placeholder="Phone Number" style="padding:12px;border:none;border-radius:8px;font-size:1rem">
+    <select name="ticketType" style="padding:12px;border:none;border-radius:8px;font-size:1rem;background:#fff;color:#333">
+      <option value="">Select Ticket Type</option>
+      <option value="general">General Admission</option>
+      <option value="vip">VIP</option>
+      <option value="student">Student</option>
+    </select>
+    <button type="submit" style="padding:14px;background:#fff;color:#7c3aed;border:none;border-radius:8px;font-size:1rem;font-weight:700;cursor:pointer">Register</button>
+    <p id="bloom-form-msg-registration" style="font-size:.9rem;min-height:20px;margin-top:4px"></p>
+  </form>
+  <script>if(!window.bloomSubmitForm){async function bloomSubmitForm(e,slug,fn){e.preventDefault();var m=document.getElementById('bloom-form-msg-'+fn);var f=e.target;if(m)m.textContent='Sending...';try{var d=Object.fromEntries(new FormData(f).entries());d.orgSlug=slug;d.formName=fn;var r=await fetch('/api/forms/submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});var j=await r.json();if(j.success){if(m){m.textContent=j.message||'Thank you!';m.style.color='#4ade80';}f.reset();}else{if(m){m.textContent=j.error||'Error';m.style.color='#f87171';}}}catch(err){if(m){m.textContent='Network error.';m.style.color='#f87171';}}};window.bloomSubmitForm=bloomSubmitForm;}</script>
+</section>`,
+      });
+
+      bm.add('bloom-pay-button', {
+        label: 'Pay Button',
+        category: 'BLOOM',
+        attributes: { class: 'fa fa-credit-card' },
+        content: `<div style="text-align:center;padding:20px">
+  <button id="bloom-pay-btn" onclick="bloomCheckout('ORG_SLUG','Product Name',97,'usd','bloom-pay-btn')" style="padding:14px 32px;background:#2563eb;color:#fff;border:none;border-radius:8px;font-size:1.1rem;font-weight:700;cursor:pointer">Pay Now — $97</button>
+  <script>if(!window.bloomCheckout){async function bloomCheckout(org,prod,amt,cur,bid){var b=document.getElementById(bid);if(b){b.disabled=true;b.textContent='Redirecting...';}try{var r=await fetch('/api/payments/create-checkout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orgSlug:org,productName:prod,amount:amt,currency:cur,quantity:1})});var j=await r.json();if(j.success&&j.checkoutUrl){window.location.href=j.checkoutUrl;}else{alert(j.error||'Payment failed.');if(b){b.disabled=false;b.textContent='Pay Now';}}}catch(err){alert('Network error.');if(b){b.disabled=false;b.textContent='Pay Now';}}};window.bloomCheckout=bloomCheckout;}</script>
+</div>`,
+      });
+
+      bm.add('bloom-pricing-table', {
+        label: 'Pricing Table',
+        category: 'BLOOM',
+        attributes: { class: 'fa fa-table' },
+        content: `<section style="padding:60px 20px">
+  <h2 style="text-align:center;font-size:1.8rem;font-weight:800;margin-bottom:40px">Choose Your Plan</h2>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:24px;max-width:960px;margin:0 auto">
+    <div style="padding:32px 24px;border:1px solid #e5e7eb;border-radius:16px;text-align:center;background:#fff">
+      <h3 style="font-weight:700;margin-bottom:8px">Basic</h3>
+      <div style="font-size:2.5rem;font-weight:800;color:#2563eb;margin-bottom:20px">Free</div>
+      <ul style="list-style:none;padding:0;text-align:left;margin-bottom:28px"><li style="padding:6px 0;border-bottom:1px solid #f0f0f0">Feature one</li><li style="padding:6px 0;border-bottom:1px solid #f0f0f0">Feature two</li></ul>
+      <a href="#contact" style="display:block;padding:12px;background:#f3f4f6;color:#333;border-radius:8px;text-decoration:none;font-weight:700">Get Started</a>
+    </div>
+    <div style="padding:32px 24px;border:2px solid #2563eb;border-radius:16px;text-align:center;background:#fff;position:relative">
+      <div style="position:absolute;top:-14px;left:50%;transform:translateX(-50%);background:#2563eb;color:#fff;padding:4px 16px;border-radius:20px;font-size:.8rem;font-weight:700">Most Popular</div>
+      <h3 style="font-weight:700;margin-bottom:8px">Standard</h3>
+      <div style="font-size:2.5rem;font-weight:800;color:#2563eb;margin-bottom:20px">$97</div>
+      <ul style="list-style:none;padding:0;text-align:left;margin-bottom:28px"><li style="padding:6px 0;border-bottom:1px solid #f0f0f0">Everything in Basic</li><li style="padding:6px 0;border-bottom:1px solid #f0f0f0">Feature three</li><li style="padding:6px 0;border-bottom:1px solid #f0f0f0">Feature four</li></ul>
+      <button onclick="bloomCheckout('ORG_SLUG','Standard',97,'usd','bloom-pay-std')" id="bloom-pay-std" style="width:100%;padding:12px;background:#2563eb;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer">Enroll Now — $97</button>
+    </div>
+    <div style="padding:32px 24px;border:1px solid #e5e7eb;border-radius:16px;text-align:center;background:#fff">
+      <h3 style="font-weight:700;margin-bottom:8px">Premium</h3>
+      <div style="font-size:2.5rem;font-weight:800;color:#2563eb;margin-bottom:20px">$197</div>
+      <ul style="list-style:none;padding:0;text-align:left;margin-bottom:28px"><li style="padding:6px 0;border-bottom:1px solid #f0f0f0">Everything in Standard</li><li style="padding:6px 0;border-bottom:1px solid #f0f0f0">Priority support</li><li style="padding:6px 0;border-bottom:1px solid #f0f0f0">1-on-1 session</li></ul>
+      <button onclick="bloomCheckout('ORG_SLUG','Premium',197,'usd','bloom-pay-prem')" id="bloom-pay-prem" style="width:100%;padding:12px;background:#f3f4f6;color:#333;border:none;border-radius:8px;font-weight:700;cursor:pointer">Go Premium — $197</button>
+    </div>
+  </div>
+  <script>if(!window.bloomCheckout){async function bloomCheckout(org,prod,amt,cur,bid){var b=document.getElementById(bid);if(b){b.disabled=true;b.textContent='Redirecting...';}try{var r=await fetch('/api/payments/create-checkout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orgSlug:org,productName:prod,amount:amt,currency:cur,quantity:1})});var j=await r.json();if(j.success&&j.checkoutUrl){window.location.href=j.checkoutUrl;}else{alert(j.error||'Payment failed.');if(b){b.disabled=false;}}}catch(err){alert('Network error.');if(b){b.disabled=false;}}};window.bloomCheckout=bloomCheckout;}</script>
+</section>`,
+      });
+
+      bm.add('bloom-sub-counter', {
+        label: 'Submission Counter',
+        category: 'BLOOM',
+        attributes: { class: 'fa fa-bar-chart' },
+        content: `<div style="text-align:center;padding:12px">
+  <span id="bloom-counter-contact" style="font-size:.95rem;color:#666"></span>
+  <script>(async()=>{try{var r=await fetch('/api/analytics/site/ORG_SLUG');var j=await r.json();var c=j?.forms?.byForm?.['contact']||0;if(c>0){var el=document.getElementById('bloom-counter-contact');if(el)el.textContent=c+' people have already signed up';}}catch{}})();</script>
+</div>`,
+      });
+
+      bm.add('bloom-success', {
+        label: 'Success Page',
+        category: 'BLOOM',
+        attributes: { class: 'fa fa-check-circle' },
+        content: `<section id="bloom-success" style="display:none;padding:80px 20px;text-align:center;min-height:60vh;background:#f0fdf4">
+  <div style="max-width:600px;margin:0 auto">
+    <div style="font-size:4rem;margin-bottom:16px">✅</div>
+    <h2 style="font-size:2rem;font-weight:800;color:#16a34a;margin-bottom:12px">Thank You!</h2>
+    <p style="font-size:1.1rem;color:#555;margin-bottom:32px">Your payment was successful. We'll send you a confirmation email shortly.</p>
+    <a href="/" style="display:inline-block;padding:14px 32px;background:#16a34a;color:#fff;border-radius:8px;text-decoration:none;font-weight:700">Back to Home</a>
+  </div>
+  <script>if(window.location.search.includes('success')||window.location.search.includes('session_id')){document.getElementById('bloom-success').style.display='block';}</script>
+</section>`,
+      });
     });
 
     // FIX 3: Auto-switch right panel on selection
