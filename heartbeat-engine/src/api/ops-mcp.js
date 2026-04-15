@@ -575,43 +575,84 @@ async function executeTool(name, args) {
   }
 
   // ── bloom_get_agent_status ─────────────────────────────────────────────────
+  // Fixed: /api/agent/status never existed — now calls /api/agent/list + /api/agent/tasks/runs
   if (name === 'bloom_get_agent_status') {
-    const id = args.agentId || process.env.BLOOM_AGENT_ID || 'default';
+    const agentId = args.agentId || process.env.BLOOM_AGENT_ID || null;
+    const orgId = process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001';
+    const serviceKey = process.env.SUPABASE_SERVICE_KEY || '';
+    const headers = { 'x-organization-id': orgId, 'x-service-key': serviceKey };
     try {
-      const res = await fetch(`${BLOOM_APP_URL}/api/agent/status?agentId=${id}`, {
-        signal: AbortSignal.timeout(10000),
+      // /api/agent/list — exists, returns all agents for the org
+      const listRes = await fetch(`${BLOOM_APP_URL}/api/agent/list`, {
+        headers, signal: AbortSignal.timeout(10000),
       });
-      if (!res.ok) {
-        return {
-          content: [{ type: 'text', text: `Agent status check failed — HTTP ${res.status}: ${await res.text()}` }],
-        };
+      if (!listRes.ok) {
+        return { content: [{ type: 'text', text: `Agent list failed — HTTP ${listRes.status}: ${await listRes.text()}` }] };
       }
-      const data = await res.json();
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+      const listData = await listRes.json();
+      const agents = listData.agents || [];
+      const target = agentId
+        ? agents.find(a => a.id === agentId || (a.name || '').toLowerCase().includes(agentId.toLowerCase()))
+        : agents[0];
+
+      // /api/agent/tasks/runs — exists, returns recent task executions with status + result
+      const runsUrl = `${BLOOM_APP_URL}/api/agent/tasks/runs${agentId ? '?agentId=' + agentId : ''}`;
+      const runsRes = await fetch(runsUrl, { headers, signal: AbortSignal.timeout(10000) });
+      const runsData = runsRes.ok ? await runsRes.json() : { runs: [] };
+      const recentRuns = (runsData.runs || []).slice(0, 5).map(r => ({
+        taskName: r.taskName,
+        status: r.status,
+        time: r.time,
+        duration: r.duration,
+        result: r.result ? String(r.result).substring(0, 200) : null,
+      }));
+
+      return {
+        content: [{ type: 'text', text: JSON.stringify({
+          agent: target || null,
+          allAgents: agents.map(a => ({ id: a.id, name: a.name, role: a.role, autonomy_level: a.autonomy_level })),
+          recentTaskRuns: recentRuns,
+        }, null, 2) }],
+      };
     } catch (err) {
       return { content: [{ type: 'text', text: `Agent status check failed: ${err.message}` }] };
     }
   }
 
   // ── bloom_tail_logs ────────────────────────────────────────────────────────
+  // Fixed: /api/dashboard/logs never existed — now calls /api/agent/tasks/runs
+  // which returns real task execution records with status, result, timestamps
   if (name === 'bloom_tail_logs') {
     const { lines = 50, filter } = args;
+    const orgId = process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001';
+    const serviceKey = process.env.SUPABASE_SERVICE_KEY || '';
+    const headers = { 'x-organization-id': orgId, 'x-service-key': serviceKey };
     try {
-      const url = new URL(`${BLOOM_APP_URL}/api/dashboard/logs`);
-      url.searchParams.set('limit', String(lines));
-      if (filter) url.searchParams.set('filter', filter);
-
-      const res = await fetch(url.toString(), { signal: AbortSignal.timeout(15000) });
-      if (!res.ok) {
-        return {
-          content: [{ type: 'text', text: `Log fetch failed — HTTP ${res.status}: ${await res.text()}` }],
-        };
+      // /api/agent/tasks/runs — exists, returns task execution log with status + results
+      const runsRes = await fetch(`${BLOOM_APP_URL}/api/agent/tasks/runs`, {
+        headers, signal: AbortSignal.timeout(15000),
+      });
+      if (!runsRes.ok) {
+        return { content: [{ type: 'text', text: `Log fetch failed — HTTP ${runsRes.status}: ${await runsRes.text()}` }] };
       }
-      const data = await res.json();
-      const logText = Array.isArray(data)
-        ? data.map(l => `[${l.level || 'info'}] ${l.timestamp || ''} ${l.message || JSON.stringify(l)}`).join('\n')
-        : JSON.stringify(data, null, 2);
-      return { content: [{ type: 'text', text: logText || 'No logs found.' }] };
+      const runsData = await runsRes.json();
+      let runs = runsData.runs || [];
+
+      // Apply filter if provided
+      if (filter) {
+        const f = filter.toLowerCase();
+        runs = runs.filter(r =>
+          (r.taskName || '').toLowerCase().includes(f) ||
+          (r.status || '').toLowerCase().includes(f) ||
+          (r.result || '').toLowerCase().includes(f)
+        );
+      }
+
+      const logLines = runs.slice(0, lines).map(r =>
+        `[${(r.status || 'unknown').toUpperCase()}] ${r.time || r.startedAt || ''} | ${r.taskName || 'Unknown Task'} | ${r.duration || ''} | ${r.result ? String(r.result).substring(0, 150) : 'no result'}`
+      ).join('\n');
+
+      return { content: [{ type: 'text', text: logLines || 'No task runs found.' }] };
     } catch (err) {
       return { content: [{ type: 'text', text: `Log fetch failed: ${err.message}` }] };
     }
