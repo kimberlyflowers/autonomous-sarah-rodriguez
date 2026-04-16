@@ -1321,3 +1321,51 @@ export function getTemplate(idOrName) {
 export function listTemplates() {
   return Object.values(TEMPLATES).map(({ id, name, sections }) => ({ id, name, sections }));
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DESIGN STYLE INTEGRATION
+// Import and re-export design styles so templates + styles are available together
+// ═══════════════════════════════════════════════════════════════════════════════
+import { DESIGN_STYLES, getStyle, listStyles, getStyleCSS, buildFontLink, buildStyleVars } from './design-styles.js';
+export { DESIGN_STYLES, getStyle, listStyles, getStyleCSS, buildFontLink, buildStyleVars };
+
+/**
+ * Render a template with a design style applied.
+ * @param {string} templateId - Template ID ('01'-'20') or name
+ * @param {object} contentData - Content data for the template
+ * @param {string} styleId - Design style ID (e.g. 'clean-precision', 'dark-luxe')
+ * @returns {string} Full HTML with style applied
+ */
+export function renderStyledTemplate(templateId, contentData, styleId) {
+  const template = getTemplate(templateId);
+  if (!template) return null;
+
+  const style = styleId ? getStyle(styleId) : null;
+  if (!style) return template.render(contentData);
+
+  // Apply style colors as the template theme color
+  const styledData = {
+    ...contentData,
+    themeColor: contentData.themeColor || style.colors.primary,
+  };
+
+  // Render the base template HTML
+  let html = template.render(styledData);
+
+  // Inject the design style: Google Fonts + CSS variables + extra CSS
+  const fontLink = buildFontLink(style);
+  const styleBlock = `
+${fontLink}
+<style>
+/* ── Design Style: ${style.name} ── */
+:root{${buildStyleVars(style)}}
+body{font-family:${style.fonts.body}}
+h1,h2,h3,h4,h5,h6{font-family:${style.fonts.heading}}
+${style.extraCss || ''}
+</style>`;
+
+  // Insert style block right before </head>
+  html = html.replace('</head>', `${styleBlock}\n</head>`);
+
+  return html;
+}

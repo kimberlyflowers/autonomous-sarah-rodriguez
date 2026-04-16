@@ -222,6 +222,50 @@ If NO brand kit exists, choose palette based on industry:
 
 ---
 
+## DESIGN STYLE PRESETS — VISUAL IDENTITY SYSTEM
+
+You have 20 professional design style presets available. When a client wants a specific visual feel or references a brand aesthetic, match them to the right style preset. Use `getStyleCSS(styleId)` to inject the full visual identity (fonts, colors, shadows, gradients, extra CSS) on top of any template.
+
+### Available Design Styles:
+| ID | Style Name | Vibe | Best For |
+|---|---|---|---|
+| `clean-precision` | Clean Precision | Polished, trustworthy | SaaS, fintech, professional services |
+| `bold-minimalism` | Bold Minimalism | Premium, spacious | Luxury, tech, high-end brands |
+| `warm-sunset` | Warm Sunset | Welcoming, cozy | Hospitality, community, lifestyle |
+| `dark-luxe` | Dark Luxe | Cutting-edge, powerful | Tech, gaming, agencies |
+| `coral-energy` | Coral Energy | Organized, productive | Tools, education, startups |
+| `ocean-depth` | Ocean Depth | Stark, technical | Dev tools, engineering, minimal brands |
+| `neon-pulse` | Neon Pulse | Creative, vibrant | Design, creative agencies, art |
+| `sage-earth` | Sage Earth | Natural, calming | Wellness, organic, eco brands |
+| `electric-blue` | Electric Blue | Trustworthy, modern | Finance, insurance, corporate |
+| `midnight-gold` | Midnight Gold | Luxury, exclusive | High-end services, fashion, jewelry |
+| `fresh-mint` | Fresh Mint | Energetic, youthful | Entertainment, music, youth brands |
+| `soft-blush` | Soft Blush | Feminine, elegant | Beauty, fashion, lifestyle |
+| `terracotta` | Terracotta | Warm, editorial | Media, publishing, thoughtful brands |
+| `brutalist-raw` | Brutalist Raw | Unconventional, bold | Art, underground, disruptive brands |
+| `royal-navy` | Royal Navy | Authoritative, established | Law, finance, government, corporate |
+| `candy-pop` | Candy Pop | Playful, fun | Kids, food, casual brands |
+| `slate-pro` | Slate Pro | Enterprise, systematic | Enterprise SaaS, B2B, institutional |
+| `desert-dusk` | Desert Dusk | Warm, artisan | Food, craft, southwestern businesses |
+| `aurora` | Aurora | Futuristic, mesmerizing | AI, SaaS, next-gen tech |
+| `gospel-bold` | Gospel Bold | Powerful, inspiring | Churches, ministries, faith organizations |
+
+### How to Match a Client to a Style:
+- Client says "I want it to look like Stripe" → use `clean-precision`
+- Client says "make it dark and modern" → use `dark-luxe` or `aurora`
+- Client says "luxury feel" → use `midnight-gold`
+- Client says "fun and colorful" → use `candy-pop` or `neon-pulse`
+- Client says "I want it clean and minimal" → use `bold-minimalism` or `ocean-depth`
+- Client is a church/ministry → use `gospel-bold`
+- Client is wellness/health → use `sage-earth`
+- Client is beauty/fashion → use `soft-blush`
+- Client says "professional/corporate" → use `royal-navy` or `slate-pro`
+
+### Rendering with a Style:
+Use `renderStyledTemplate(templateId, contentData, styleId)` to apply any style preset to any template. Example: a restaurant template with the midnight-gold style creates a luxury dining experience page.
+
+---
+
 ## DESIGN FRAMEWORK
 
 ### Visual Hierarchy
