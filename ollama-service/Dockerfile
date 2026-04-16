@@ -13,7 +13,7 @@ RUN mkdir -p /root/.ollama/models
 
 # Pre-pull the model during build so it's baked into the image.
 # This avoids the long download at runtime that causes healthcheck timeouts.
-RUN ollama serve & sleep 5 && ollama pull llama3.2 && kill %1
+RUN ollama serve & OLLAMA_PID=$! && sleep 5 && ollama pull llama3.2; kill $OLLAMA_PID 2>/dev/null || true
 
 COPY start.sh /start.sh
 RUN chmod +x /start.sh
