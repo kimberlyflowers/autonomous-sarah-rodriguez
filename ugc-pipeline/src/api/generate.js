@@ -99,20 +99,34 @@ router.post('/ab-test', async (req, res) => {
       // Generate 2 variants per format
       for (let i = 0; i < 2; i++) {
         const promptData = templateFn(brand, variantNum, i);
+        // WaveSpeed-formatted payload
+        // If we have a subject image -> image-to-video with subject as start frame
+        // If no subject but have product -> image-to-video with product
+        // Otherwise fall back to text-to-video with references
+        const hasImage = assetUrls.subject || assetUrls.product;
         const payload = {
-          type: 'image_to_video',
-          model: mod === 'seedance2-fast' ? 'multi-reference-fast' : 'multi-reference',
+          model: mod, // 'seedance2-fast' | 'seedance2-standard'
           prompt: promptData.prompt,
           duration: dur,
           resolution: rez,
-          aspect_ratio: ratio,
-          image_urls: []
+          aspect_ratio: ratio
         };
 
-        if (assetUrls.subject) payload.image_urls.push(assetUrls.subject);
-        if (assetUrls.product) payload.image_urls.push(assetUrls.product);
-        if (assetUrls.audio) payload.audio_url = assetUrls.audio;
-        if (webhookUrl) payload.webhook_url = webhookUrl;
+        if (hasImage) {
+          payload.image = assetUrls.subject || assetUrls.product;
+          // If we have BOTH, pass product as last_image so it appears in scene
+          if (assetUrls.subject && assetUrls.product) {
+            payload.last_image = assetUrls.product;
+          }
+        } else {
+          // No images — use text-to-video
+          payload.model = 'seedance2-t2v';
+        }
+
+        if (assetUrls.audio) {
+          // Audio only supported on text-to-video as reference_audios
+          payload.reference_audios = [assetUrls.audio];
+        }
 
         const cost = estimateCost(mod, rez, dur);
 
@@ -214,17 +228,19 @@ router.post('/single', async (req, res) => {
     if (!prompt) return res.status(400).json({ error: 'prompt required' });
 
     const payload = {
-      type: 'image_to_video',
-      model: (model || 'seedance2-fast').includes('fast') ? 'multi-reference-fast' : 'multi-reference',
+      model: model || 'seedance2-fast',
       prompt,
       duration: duration || 5,
       resolution: resolution || '720p',
-      aspect_ratio: aspectRatio || '9:16',
-      image_urls: imageUrl ? [imageUrl] : []
+      aspect_ratio: aspectRatio || '9:16'
     };
 
-    if (audioUrl) payload.audio_url = audioUrl;
-    if (webhookUrl) payload.webhook_url = webhookUrl;
+    if (imageUrl) {
+      payload.image = imageUrl;
+    } else {
+      payload.model = 'seedance2-t2v';
+    }
+    if (audioUrl) payload.reference_audios = [audioUrl];
 
     const result = await submitGeneration(payload);
     const cost = estimateCost(model || 'seedance2-fast', resolution || '720p', duration || 5);

@@ -34,11 +34,12 @@ app.use('/api/analyze', analyzeRouter);
 
 // Health check
 app.get('/health', (req, res) => {
-  const hasApiKey = !!process.env.SEEDANCE_API_KEY;
+  const hasApiKey = !!(process.env.WAVESPEED_API_KEY || process.env.SEEDANCE_API_KEY);
   res.json({
     status: 'ok',
     service: 'ugc-pipeline',
     version: '1.0.0',
+    provider: 'wavespeed',
     apiKeyConfigured: hasApiKey,
     uptime: process.uptime()
   });
@@ -63,14 +64,17 @@ app.get('/api/status', (req, res) => {
   } catch (e) { /* ignore */ }
 
   res.json({
-    apiKeyConfigured: !!process.env.SEEDANCE_API_KEY,
+    apiKeyConfigured: !!(process.env.WAVESPEED_API_KEY || process.env.SEEDANCE_API_KEY),
+    provider: 'wavespeed',
     brands: brandCount,
     videosGenerated: videoCount,
     pricing: {
-      'seedance2-fast-480p': '$0.073/sec',
-      'seedance2-fast-720p': '$0.126/sec',
-      'seedance2-standard-480p': '$0.10/sec',
-      'seedance2-standard-720p': '$0.18/sec'
+      'seedance2-fast-480p': '$0.10/sec',
+      'seedance2-fast-720p': '$0.20/sec',
+      'seedance2-fast-1080p': '$0.30/sec',
+      'seedance2-standard-480p': '$0.12/sec',
+      'seedance2-standard-720p': '$0.24/sec',
+      'seedance2-standard-1080p': '$0.36/sec'
     }
   });
 });

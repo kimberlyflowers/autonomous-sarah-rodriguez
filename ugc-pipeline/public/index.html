@@ -191,8 +191,8 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans
         <span class="chip" id="apiKeyChip">Checking...</span>
       </div>
       <p style="font-size:13px;color:var(--so)">
-        Set your API key as the <code style="background:var(--bg);padding:2px 6px;border-radius:4px">SEEDANCE_API_KEY</code> environment variable on Railway.
-        Get your key from the <a href="https://enhanceai.com" target="_blank" style="color:var(--ac)">Enhancer API Dashboard</a>.
+        Set your API key as the <code style="background:var(--bg);padding:2px 6px;border-radius:4px">WAVESPEED_API_KEY</code> environment variable on Railway.
+        Get your key from <a href="https://wavespeed.ai/accesskey" target="_blank" style="color:var(--ac)">WaveSpeed Access Keys</a>.
       </p>
     </div>
 
@@ -370,8 +370,9 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans
         <div class="form-group">
           <label class="form-label">Resolution</label>
           <select class="form-select" id="genResolution">
-            <option value="480p">480p (cheaper)</option>
+            <option value="480p">480p (cheapest)</option>
             <option value="720p" selected>720p</option>
+            <option value="1080p">1080p (premium)</option>
           </select>
         </div>
         <div class="form-group">
@@ -455,7 +456,7 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans
   <!-- Pricing Tab -->
   <div class="tab-content" id="tab-pricing">
     <h2 class="section-title">Pricing Breakdown</h2>
-    <p class="section-desc">Seedance 2 API costs by model and resolution</p>
+    <p class="section-desc">WaveSpeed Seedance 2.0 API costs by model and resolution</p>
 
     <div class="card">
       <table class="pricing-table">
@@ -470,38 +471,12 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans
           </tr>
         </thead>
         <tbody>
-          <tr>
-            <td><span class="chip chip-green">Fast</span></td>
-            <td>480p</td>
-            <td>$0.073</td>
-            <td>$0.37</td>
-            <td>$0.73</td>
-            <td>$1.10</td>
-          </tr>
-          <tr>
-            <td><span class="chip chip-green">Fast</span></td>
-            <td>720p</td>
-            <td>$0.126</td>
-            <td>$0.63</td>
-            <td>$1.26</td>
-            <td>$1.89</td>
-          </tr>
-          <tr>
-            <td><span class="chip chip-blue">Standard</span></td>
-            <td>480p</td>
-            <td>$0.10</td>
-            <td>$0.50</td>
-            <td>$1.00</td>
-            <td>$1.50</td>
-          </tr>
-          <tr>
-            <td><span class="chip chip-blue">Standard</span></td>
-            <td>720p</td>
-            <td>$0.18</td>
-            <td>$0.90</td>
-            <td>$1.80</td>
-            <td>$2.70</td>
-          </tr>
+          <tr><td><span class="chip chip-green">Fast</span></td><td>480p</td><td>$0.10</td><td>$0.50</td><td>$1.00</td><td>$1.50</td></tr>
+          <tr><td><span class="chip chip-green">Fast</span></td><td>720p</td><td>$0.20</td><td>$1.00</td><td>$2.00</td><td>$3.00</td></tr>
+          <tr><td><span class="chip chip-green">Fast</span></td><td>1080p</td><td>$0.30</td><td>$1.50</td><td>$3.00</td><td>$4.50</td></tr>
+          <tr><td><span class="chip chip-blue">Standard</span></td><td>480p</td><td>$0.12</td><td>$0.60</td><td>$1.20</td><td>$1.80</td></tr>
+          <tr><td><span class="chip chip-blue">Standard</span></td><td>720p</td><td>$0.24</td><td>$1.20</td><td>$2.40</td><td>$3.60</td></tr>
+          <tr><td><span class="chip chip-blue">Standard</span></td><td>1080p</td><td>$0.36</td><td>$1.80</td><td>$3.60</td><td>$5.40</td></tr>
         </tbody>
       </table>
     </div>
