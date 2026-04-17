@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UGC Pipeline - BLOOM</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='url(%23g)'/><defs><linearGradient id='g' x1='0' y1='0' x2='32' y2='32'><stop stop-color='%23F4A261'/><stop offset='1' stop-color='%23E76F8B'/></linearGradient></defs><text x='16' y='22' font-size='16' text-anchor='middle' fill='white' font-weight='bold'>U</text></svg>">
+</head>
+<body>
+
+<header class="header">
+  <div class="header-brand">
+    <div class="header-logo">U</div>
+    <div>
+      <div class="header-title">UGC Ad Pipeline</div>
+      <div class="header-subtitle">BLOOM Creative Engine</div>
+    </div>
+  </div>
+  <div class="header-status">
+    <div class="status-dot" id="statusDot"></div>
+    <span class="status-text" id="statusText">Connecting...</span>
+  </div>
+</header>
+
+<nav class="nav">
+  <button class="nav-tab active" data-tab="dashboard">Dashboard</button>
+  <button class="nav-tab" data-tab="assets">Assets</button>
+  <button class="nav-tab" data-tab="brands">Brands</button>
+  <button class="nav-tab" data-tab="generate">Generate</button>
+  <button class="nav-tab" data-tab="videos">Videos</button>
+  <button class="nav-tab" data-tab="pricing">Pricing</button>
+</nav>
+
+<main class="main">
+
+  <!-- Dashboard Tab -->
+  <div class="tab-content active" id="tab-dashboard">
+    <h2 class="section-title">Control Center</h2>
+    <p class="section-desc">UGC ad testing pipeline powered by Seedance 2 API</p>
+
+    <div class="metrics-grid" id="dashboardMetrics">
+      <div class="metric-card">
+        <div class="metric-value" id="metricBrands">-</div>
+        <div class="metric-label">Brands</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-value" id="metricAssets">-</div>
+        <div class="metric-label">Assets</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-value" id="metricVideos">-</div>
+        <div class="metric-label">Videos</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-value" id="metricPending">-</div>
+        <div class="metric-label">Pending</div>
+      </div>
+    </div>
+
+    <div class="card" id="apiKeyCard">
+      <div class="card-header">
+        <div>
+          <div class="card-title">API Configuration</div>
+          <div class="card-subtitle">Seedance 2 API key status</div>
+        </div>
+        <span class="chip" id="apiKeyChip">Checking...</span>
+      </div>
+      <p style="font-size:13px;color:var(--so)">
+        Set your API key as the <code style="background:var(--bg);padding:2px 6px;border-radius:4px">SEEDANCE_API_KEY</code> environment variable on Railway.
+        Get your key from the <a href="https://enhanceai.com" target="_blank" style="color:var(--ac)">Enhancer API Dashboard</a>.
+      </p>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Quick Actions</div>
+          <div class="card-subtitle">Common pipeline operations</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-primary" onclick="switchTab('brands')">Create Brand Profile</button>
+        <button class="btn btn-secondary" onclick="switchTab('assets')">Upload Assets</button>
+        <button class="btn btn-secondary" onclick="switchTab('generate')">Generate A/B Test</button>
+        <button class="btn btn-secondary" onclick="analyzeAssets()">Analyze Assets</button>
+        <button class="btn btn-secondary" onclick="pollAllJobs()">Poll All Jobs</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Assets Tab -->
+  <div class="tab-content" id="tab-assets">
+    <h2 class="section-title">Asset Manager</h2>
+    <p class="section-desc">Upload product images, subject photos, and audio clips</p>
+
+    <!-- Product Upload -->
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Product Images</div>
+          <div class="card-subtitle">Photos of the product being advertised</div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="showUploadModal('products')">Upload</button>
+      </div>
+      <div class="asset-grid" id="productGrid"></div>
+    </div>
+
+    <!-- Subject Upload -->
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Subject Images</div>
+          <div class="card-subtitle">Spokesperson / actor face references</div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="showUploadModal('subjects')">Upload</button>
+      </div>
+      <div class="asset-grid" id="subjectGrid"></div>
+    </div>
+
+    <!-- Audio Upload -->
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Audio Clips</div>
+          <div class="card-subtitle">Voice reference for tone and pacing</div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="showUploadModal('audio')">Upload</button>
+      </div>
+      <div class="asset-grid" id="audioGrid"></div>
+    </div>
+  </div>
+
+  <!-- Brands Tab -->
+  <div class="tab-content" id="tab-brands">
+    <h2 class="section-title">Brand Profiles</h2>
+    <p class="section-desc">Configure product details, selling points, and ad targeting</p>
+
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Create / Edit Brand</div>
+      </div>
+      <form id="brandForm" onsubmit="saveBrand(event)">
+        <div class="brand-profile">
+          <div>
+            <div class="form-group">
+              <label class="form-label">Product Name *</label>
+              <input class="form-input" name="name" required placeholder="e.g. AG1">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Category</label>
+              <input class="form-input" name="category" placeholder="e.g. wellness, fitness, tech">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Description</label>
+              <textarea class="form-textarea" name="description" placeholder="What does it do?"></textarea>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Price Point</label>
+              <input class="form-input" name="pricePoint" placeholder="e.g. $99">
+            </div>
+          </div>
+          <div>
+            <div class="form-group">
+              <label class="form-label">Key Selling Points (one per line)</label>
+              <textarea class="form-textarea" name="sellingPoints" rows="4" placeholder="75 vitamins and minerals&#10;Clean ingredients&#10;All day energy&#10;Gut health support"></textarea>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Target Audience</label>
+              <input class="form-input" name="targetAudience" placeholder="e.g. health-conscious adults 25-45">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Platforms</label>
+              <input class="form-input" name="platforms" placeholder="e.g. tiktok, instagram, youtube">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Tone</label>
+              <select class="form-select" name="tone">
+                <option value="energetic">Energetic & Aspirational</option>
+                <option value="casual">Casual & Conversational</option>
+                <option value="professional">Professional & Authoritative</option>
+                <option value="humorous">Humorous & Relatable</option>
+                <option value="cinematic">Cinematic & Premium</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Discount Code</label>
+              <input class="form-input" name="discountCode" placeholder="e.g. SAVE25">
+            </div>
+            <div class="form-group">
+              <label class="form-label">CTA</label>
+              <input class="form-input" name="cta" placeholder="e.g. Link in bio">
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:16px;display:flex;gap:8px">
+          <button type="submit" class="btn btn-primary">Save Brand Profile</button>
+          <button type="reset" class="btn btn-secondary">Clear</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Saved Brands</div>
+      </div>
+      <div id="brandsList"></div>
+    </div>
+  </div>
+
+  <!-- Generate Tab -->
+  <div class="tab-content" id="tab-generate">
+    <h2 class="section-title">A/B Test Generator</h2>
+    <p class="section-desc">Configure and generate video ad variants for testing</p>
+
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Generation Settings</div>
+      </div>
+
+      <div class="gen-config">
+        <div class="form-group">
+          <label class="form-label">Brand</label>
+          <select class="form-select" id="genBrand"></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Subject</label>
+          <select class="form-select" id="genSubject">
+            <option value="">None</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Audio Reference</label>
+          <select class="form-select" id="genAudio">
+            <option value="">None</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Duration (seconds)</label>
+          <select class="form-select" id="genDuration">
+            <option value="5">5s (test)</option>
+            <option value="10">10s</option>
+            <option value="15" selected>15s</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Resolution</label>
+          <select class="form-select" id="genResolution">
+            <option value="480p">480p (cheaper)</option>
+            <option value="720p" selected>720p</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Model</label>
+          <select class="form-select" id="genModel">
+            <option value="seedance2-fast" selected>Fast (recommended)</option>
+            <option value="seedance2-standard">Standard</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Aspect Ratio</label>
+          <select class="form-select" id="genAspect">
+            <option value="9:16" selected>9:16 (vertical)</option>
+            <option value="16:9">16:9 (horizontal)</option>
+            <option value="1:1">1:1 (square)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group" style="margin-top:16px">
+        <label class="form-label">Ad Formats</label>
+        <div class="format-checkboxes">
+          <input type="checkbox" class="format-checkbox" id="fmt-ugc" value="ugc" checked>
+          <label class="format-label" for="fmt-ugc">UGC Testimonial</label>
+          <input type="checkbox" class="format-checkbox" id="fmt-podcast" value="podcast" checked>
+          <label class="format-label" for="fmt-podcast">Podcast</label>
+          <input type="checkbox" class="format-checkbox" id="fmt-lifestyle" value="lifestyle" checked>
+          <label class="format-label" for="fmt-lifestyle">Lifestyle</label>
+          <input type="checkbox" class="format-checkbox" id="fmt-tiktok-greenscreen" value="tiktok-greenscreen" checked>
+          <label class="format-label" for="fmt-tiktok-greenscreen">TikTok Green Screen</label>
+          <input type="checkbox" class="format-checkbox" id="fmt-news-anchor" value="news-anchor">
+          <label class="format-label" for="fmt-news-anchor">News Anchor</label>
+          <input type="checkbox" class="format-checkbox" id="fmt-cinematic" value="cinematic">
+          <label class="format-label" for="fmt-cinematic">Cinematic</label>
+        </div>
+      </div>
+
+      <div style="margin-top:20px;display:flex;gap:8px">
+        <button class="btn btn-primary" onclick="previewVariants()">Preview Variants</button>
+        <button class="btn btn-secondary" onclick="estimateCost()">Estimate Cost</button>
+      </div>
+    </div>
+
+    <!-- Preview Section -->
+    <div class="card" id="variantPreviewCard" style="display:none">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Variant Preview</div>
+          <div class="card-subtitle">Review before submitting to API</div>
+        </div>
+        <div id="costEstimate"></div>
+      </div>
+      <div class="variant-list" id="variantList"></div>
+      <div style="margin-top:20px;display:flex;gap:8px;align-items:center">
+        <button class="btn btn-primary" id="submitBtn" onclick="submitVariants()">Approve & Generate</button>
+        <span style="font-size:12px;color:var(--so)" id="submitStatus"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Videos Tab -->
+  <div class="tab-content" id="tab-videos">
+    <h2 class="section-title">Generated Videos</h2>
+    <p class="section-desc">Preview, download, and manage your generated ad creatives</p>
+
+    <div style="display:flex;gap:8px;margin-bottom:20px">
+      <button class="btn btn-secondary btn-sm" onclick="loadVideos()">Refresh</button>
+      <button class="btn btn-secondary btn-sm" onclick="pollAllJobs()">Poll Pending</button>
+    </div>
+
+    <div id="videoProgress" style="display:none;margin-bottom:16px">
+      <div class="progress-bar">
+        <div class="progress-fill" id="progressFill" style="width:0%"></div>
+      </div>
+      <p style="font-size:12px;color:var(--so);margin-top:6px" id="progressText"></p>
+    </div>
+
+    <div class="video-grid" id="videoGrid"></div>
+  </div>
+
+  <!-- Pricing Tab -->
+  <div class="tab-content" id="tab-pricing">
+    <h2 class="section-title">Pricing Breakdown</h2>
+    <p class="section-desc">Seedance 2 API costs by model and resolution</p>
+
+    <div class="card">
+      <table class="pricing-table">
+        <thead>
+          <tr>
+            <th>Model</th>
+            <th>Resolution</th>
+            <th>Per Second</th>
+            <th>5s Video</th>
+            <th>10s Video</th>
+            <th>15s Video</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="chip chip-green">Fast</span></td>
+            <td>480p</td>
+            <td>$0.073</td>
+            <td>$0.37</td>
+            <td>$0.73</td>
+            <td>$1.10</td>
+          </tr>
+          <tr>
+            <td><span class="chip chip-green">Fast</span></td>
+            <td>720p</td>
+            <td>$0.126</td>
+            <td>$0.63</td>
+            <td>$1.26</td>
+            <td>$1.89</td>
+          </tr>
+          <tr>
+            <td><span class="chip chip-blue">Standard</span></td>
+            <td>480p</td>
+            <td>$0.10</td>
+            <td>$0.50</td>
+            <td>$1.00</td>
+            <td>$1.50</td>
+          </tr>
+          <tr>
+            <td><span class="chip chip-blue">Standard</span></td>
+            <td>720p</td>
+            <td>$0.18</td>
+            <td>$0.90</td>
+            <td>$1.80</td>
+            <td>$2.70</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="card-title" style="margin-bottom:12px">Cost Tips</div>
+      <ul style="font-size:13px;color:var(--so);padding-left:20px;display:flex;flex-direction:column;gap:8px">
+        <li>Start with <strong style="color:var(--tx)">480p Fast @ 5 seconds</strong> to validate prompts before scaling</li>
+        <li>Fast mode is ~30% cheaper and nearly identical quality for social media</li>
+        <li>Only use Standard when you need maximum quality for final deliverables</li>
+        <li>Test first, iterate, then scale - that's how you avoid burning credits</li>
+      </ul>
+    </div>
+  </div>
+
+</main>
+
+<!-- Upload Modal -->
+<div class="modal-overlay" id="uploadModal">
+  <div class="modal">
+    <div class="modal-title">Upload Asset</div>
+    <form id="uploadForm" onsubmit="uploadAsset(event)">
+      <input type="hidden" id="uploadType" value="">
+      <div class="form-group">
+        <label class="form-label">Name *</label>
+        <input class="form-input" id="uploadName" required placeholder="e.g. AG1, John, voiceover-1">
+      </div>
+      <div class="upload-zone" id="uploadZone" onclick="document.getElementById('uploadFile').click()">
+        <div class="upload-zone-icon">+</div>
+        <div class="upload-zone-text">Click to select file</div>
+        <div class="upload-zone-hint">Images, audio, or video files</div>
+      </div>
+      <input type="file" id="uploadFile" style="display:none" accept="image/*,audio/*,video/*" onchange="handleFileSelect(this)">
+      <div id="uploadFileName" style="font-size:13px;color:var(--ac);margin-top:8px"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeUploadModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Upload</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Toast Container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script src="/js/app.js"></script>
+</body>
+</html>

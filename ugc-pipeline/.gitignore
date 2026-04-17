@@ -1,0 +1,9 @@
+node_modules/
+.env
+assets/products/*/
+assets/subjects/*/
+assets/audio/*/
+assets/generated/
+config/brands/
+*.mp4
+.DS_Store
