@@ -814,6 +814,34 @@ async function serveClientSitePage(orgSlug, pageSlug, res) {
       .maybeSingle();
 
     if (siteErr || !site || !site.published) {
+      // No client_site found — fall back to artifacts table (published pages)
+      try {
+        const { data: artifact } = await supabase
+          .from('artifacts')
+          .select('name, file_type, content, storage_path')
+          .eq('slug', orgSlug)
+          .eq('published', true)
+          .maybeSingle();
+        if (artifact && artifact.file_type === 'html' && artifact.content) {
+          res.setHeader('Content-Type', 'text/html; charset=utf-8');
+          return res.send(artifact.content);
+        }
+        if (artifact && artifact.file_type === 'markdown' && artifact.content) {
+          const md = artifact.content
+            .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+            .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+            .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+            .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+            .replace(/\*(.+?)\*/g, '<em>$1</em>')
+            .replace(/^- (.+)$/gm, '<li>$1</li>')
+            .replace(/\n\n/g, '<br/><br/>')
+            .replace(/\n/g, '<br/>');
+          res.setHeader('Content-Type', 'text/html; charset=utf-8');
+          return res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${artifact.name}</title><style>body{max-width:800px;margin:40px auto;padding:0 20px;font-family:Georgia,serif;line-height:1.8;color:#1a1a1a}h1,h2,h3{font-family:system-ui,sans-serif}h1{font-size:2em;border-bottom:2px solid #eee;padding-bottom:8px}</style></head><body>${md}</body></html>`);
+        }
+      } catch (fallbackErr) {
+        logger.warn('Artifact fallback lookup failed:', fallbackErr.message);
+      }
       return res.status(404).send(site404Html());
     }
 
