@@ -24,13 +24,30 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 // Serve uploaded assets
 app.use('/assets', express.static(path.join(__dirname, '..', 'assets')));
 
-// API routes
-app.use('/api/assets', assetsRouter);
-app.use('/api/brands', brandsRouter);
-app.use('/api/generate', generateRouter);
-app.use('/api/videos', videosRouter);
+// Serve reference docs publicly (read by MCP connector + agents at runtime)
+app.use('/docs', express.static(path.join(__dirname, '..', 'docs')));
+
+// Optional API key auth — when UGC_API_KEYS is set (comma-separated), all
+// /api/* routes (except webhooks) require X-API-Key header. Unset = open.
+const apiKeyAuth = (req, res, next) => {
+  const allowed = (process.env.UGC_API_KEYS || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (allowed.length === 0) return next();
+  const provided = req.header('X-API-Key') || req.query.api_key;
+  if (!provided || !allowed.includes(provided)) {
+    return res.status(401).json({ error: 'Invalid or missing X-API-Key' });
+  }
+  next();
+};
+
+// Webhook is unauthenticated (called by Seedance/WaveSpeed)
 app.use('/api/webhook', webhookRouter);
-app.use('/api/analyze', analyzeRouter);
+
+// All other API routes use optional auth
+app.use('/api/assets', apiKeyAuth, assetsRouter);
+app.use('/api/brands', apiKeyAuth, brandsRouter);
+app.use('/api/generate', apiKeyAuth, generateRouter);
+app.use('/api/videos', apiKeyAuth, videosRouter);
+app.use('/api/analyze', apiKeyAuth, analyzeRouter);
 
 // Health check
 app.get('/health', (req, res) => {
