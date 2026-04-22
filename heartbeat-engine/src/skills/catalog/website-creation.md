@@ -224,7 +224,9 @@ If NO brand kit exists, choose palette based on industry:
 
 ## DESIGN STYLE PRESETS — VISUAL IDENTITY SYSTEM
 
-You have 20 professional design style presets available. When a client wants a specific visual feel or references a brand aesthetic, match them to the right style preset. Use `getStyleCSS(styleId)` to inject the full visual identity (fonts, colors, shadows, gradients, extra CSS) on top of any template.
+You have 20 professional design style presets available. Each has a **genuinely distinct HTML structure** — not just different colors. When a client wants a specific visual feel or references a brand aesthetic, match them to the right style preset.
+
+**CRITICAL: Always call `get_layout_blueprint(style_id)` FIRST before writing any HTML.** This returns the actual HTML skeleton for that style — the structural blueprint that ensures every design looks truly different. Do NOT invent a layout from scratch.
 
 ### Available Design Styles:
 | ID | Style Name | Vibe | Best For |
@@ -261,8 +263,14 @@ You have 20 professional design style presets available. When a client wants a s
 - Client is beauty/fashion → use `soft-blush`
 - Client says "professional/corporate" → use `royal-navy` or `slate-pro`
 
-### Rendering with a Style:
-Use `renderStyledTemplate(templateId, contentData, styleId)` to apply any style preset to any template. Example: a restaurant template with the midnight-gold style creates a luxury dining experience page.
+### Building with a Style:
+1. **Call `get_layout_blueprint(style_id)`** → Returns the full HTML skeleton for that style
+2. **Replace `{{PLACEHOLDER}}` tokens** with real content from the brand kit and pre-build gate answers
+3. **Apply brand kit CSS variables** (`--color-primary`, `--color-secondary`, `--color-accent`, `--color-dark`, `--color-light`, `--font-heading`, `--font-body`) in a `<style>` block
+4. **Connect all forms** to `/api/forms/submit` and embed GHL calendars via iframe
+5. **Generate images** with `image_generate` before building the HTML — use the returned URL in the blueprint's `{{HERO_IMAGE_URL}}` placeholder
+
+Each blueprint has a `hero_type`, `section_order`, and full `html_skeleton`. The section order tells you what sections exist — add content to each one.
 
 ---
 
@@ -779,3 +787,4 @@ Before delivering, verify:
 9. **No placeholders** — No Lorem Ipsum, no stock photos, no dummy forms
 
 The goal: A website that converts visitors to action, looks professional, works flawlessly on every device, and sends every lead directly to the CRM.
+
