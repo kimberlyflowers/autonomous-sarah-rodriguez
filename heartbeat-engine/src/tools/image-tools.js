@@ -27,6 +27,31 @@ function getRunPodMediaUrl() {
   return `${supabaseUrl.replace(/\/$/, "")}/functions/v1/runpod-media`;
 }
 
+
+// ── OPENAI IMAGE CIRCUIT BREAKER ──────────────────────────────────────────
+// When OpenAI returns billing_hard_limit_reached or 429 quota, skip OpenAI
+// image calls for the lifetime of the process. Prevents 3-second wasted
+// latency on every image op and removes misleading ERROR log lines.
+let _openaiImageDisabled = false;
+let _openaiImageDisabledReason = null;
+function isOpenAIImageDisabled() { return _openaiImageDisabled; }
+function disableOpenAIImage(reason) {
+  if (_openaiImageDisabled) return;
+  _openaiImageDisabled = true;
+  _openaiImageDisabledReason = reason;
+  logger.warn('OpenAI image disabled for this process — routing all image ops to Gemini', { reason });
+}
+function maybeTripBreaker(errText) {
+  if (!errText) return;
+  const s = String(errText).toLowerCase();
+  if (s.includes('billing_hard_limit_reached') ||
+      s.includes('billing hard limit') ||
+      s.includes('insufficient_quota') ||
+      s.includes('exceeded your current quota')) {
+    disableOpenAIImage(errText.slice(0, 200));
+  }
+}
+
 // ── PROMPT UPSAMPLING ─────────────────────────────────────────────────────
 // Like ChatGPT's internal prompt rewriter — transforms short/vague prompts
 // into rich, detailed scene descriptions that produce professional images.
@@ -357,6 +382,11 @@ export const imageToolExecutors = {
         throw e;
       }
     } else if (useEngine === 'gpt') {
+      // Circuit breaker: if OpenAI image is disabled, route directly to Gemini
+      if (isOpenAIImageDisabled() && getGeminiKey()) {
+        logger.info('OpenAI image disabled — auto-routing gpt request to Gemini');
+        return await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
+      }
       try {
         // If reference image provided with GPT, use edit endpoint (generation doesn't support references)
         if (hasReferenceImage) {
@@ -393,6 +423,12 @@ export const imageToolExecutors = {
     const prompt = params.prompt;
     const size = params.size || '1024x1024';
     const quality = params.quality || 'high';
+
+    // Circuit breaker: skip OpenAI entirely if it's been disabled
+    if (isOpenAIImageDisabled() && getGeminiKey()) {
+      logger.info('OpenAI image disabled — routing image_edit directly to Gemini');
+      return await editWithGemini(prompt, params.image_url, params.image_base64);
+    }
 
     if (getOpenAIKey()) {
       const result = await editWithGPTImage(prompt, params.image_url, params.image_base64, size, quality);
@@ -608,6 +644,7 @@ async function generateWithGPTImage(prompt, size, quality, background) {
     if (!response.ok) {
       const err = await response.text();
       logger.error('GPT Image API error', { status: response.status, err, keyPrefix: apiKey.substring(0, 8) });
+      maybeTripBreaker(err);
 
       // If 1.5 fails, try gpt-image-1
       if (response.status === 404 || response.status === 400) {
@@ -744,6 +781,7 @@ async function editWithGPTImage(prompt, imageUrl, imageBase64, size, quality) {
 
     if (!response.ok) {
       const err = await response.text();
+      maybeTripBreaker(err);
       throw new Error(`OpenAI Image Edit error ${response.status}: ${err}`);
     }
 
