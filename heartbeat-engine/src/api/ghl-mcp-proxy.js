@@ -1,12 +1,16 @@
-// BLOOM GHL MCP Proxy
-// The Anthropic Managed Agents API does not support custom headers in mcp_servers config.
-// This proxy sits between the Managed Agent and GHL's official MCP server,
-// injecting the Private Integration Token (PIT) and locationId before forwarding.
+// BLOOM GHL MCP Proxy — Multi-Tenant
+// Route: /ghl-mcp/:orgId
 //
-// Connector URL for Managed Agent: https://your-railway-url.up.railway.app/ghl-mcp
-// Forwards to: https://services.leadconnectorhq.com/mcp/
+// Each org has its own GHL Private Integration Token (PIT) stored in Supabase.
+// When the Managed Website Agent calls a GHL tool, it hits /ghl-mcp/{orgId}.
+// This proxy looks up that org's PIT from Supabase and injects it before
+// forwarding the request to GHL's official MCP server.
+//
+// NO env vars for PITs — fully multi-tenant via Supabase.
+// Each org's Managed Agent is created with its own /ghl-mcp/{orgId} URL.
 
 import express from 'express';
+import { createClient } from '@supabase/supabase-js';
 import { createLogger } from '../logging/logger.js';
 
 const logger = createLogger('ghl-mcp-proxy');
@@ -14,16 +18,66 @@ const router = express.Router();
 
 const GHL_MCP_URL = 'https://services.leadconnectorhq.com/mcp/';
 
-// ── Forward any MCP request to GHL with auth injected ────────────────────────
-router.post('/', async (req, res) => {
-  const pit = process.env.GHL_PRIVATE_INTEGRATION_TOKEN;
-  const locationId = process.env.GHL_LOCATION_ID;
+function getSupabase() {
+  return createClient(
+    process.env.SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_KEY,
+    { auth: { persistSession: false, autoRefreshToken: false } }
+  );
+}
 
-  if (!pit) {
-    return res.status(500).json({
+// Cache PIT lookups in memory for 5 minutes to reduce Supabase reads
+const pitCache = new Map(); // orgId → { pit, locationId, expiresAt }
+
+async function getPitForOrg(orgId) {
+  // Check memory cache first
+  const cached = pitCache.get(orgId);
+  if (cached && cached.expiresAt > Date.now()) {
+    return { pit: cached.pit, locationId: cached.locationId };
+  }
+
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from('organization_ghl_credentials')
+    .select('pit, location_id')
+    .eq('org_id', orgId)
+    .single();
+
+  if (error || !data?.pit) {
+    throw new Error(`No GHL credentials found for org ${orgId}`);
+  }
+
+  // Cache for 5 minutes
+  pitCache.set(orgId, {
+    pit: data.pit,
+    locationId: data.location_id,
+    expiresAt: Date.now() + 5 * 60 * 1000
+  });
+
+  return { pit: data.pit, locationId: data.location_id };
+}
+
+// ── POST /ghl-mcp/:orgId — forward MCP request with org's PIT injected ────────
+router.post('/:orgId', async (req, res) => {
+  const { orgId } = req.params;
+
+  if (!orgId) {
+    return res.status(400).json({
       jsonrpc: '2.0',
       id: req.body?.id,
-      error: { code: -32000, message: 'GHL_PRIVATE_INTEGRATION_TOKEN not configured' }
+      error: { code: -32000, message: 'orgId is required in URL: /ghl-mcp/{orgId}' }
+    });
+  }
+
+  let pit, locationId;
+  try {
+    ({ pit, locationId } = await getPitForOrg(orgId));
+  } catch (err) {
+    logger.error('GHL credential lookup failed', { orgId, error: err.message });
+    return res.status(403).json({
+      jsonrpc: '2.0',
+      id: req.body?.id,
+      error: { code: -32000, message: `GHL credentials not configured for this organization: ${err.message}` }
     });
   }
 
@@ -40,9 +94,9 @@ router.post('/', async (req, res) => {
 
     const data = await response.json();
 
-    // Log tool calls for debugging (skip tools/list to reduce noise)
     if (req.body?.method === 'tools/call') {
-      logger.info('GHL tool call forwarded', {
+      logger.info('GHL tool call proxied', {
+        orgId,
         tool: req.body?.params?.name,
         status: response.status
       });
@@ -51,7 +105,7 @@ router.post('/', async (req, res) => {
     return res.status(response.status).json(data);
 
   } catch (err) {
-    logger.error('GHL MCP proxy error', { error: err.message });
+    logger.error('GHL MCP proxy error', { orgId, error: err.message });
     return res.json({
       jsonrpc: '2.0',
       id: req.body?.id,
@@ -60,15 +114,38 @@ router.post('/', async (req, res) => {
   }
 });
 
-// GET health check
+// ── GET /ghl-mcp/:orgId — health check ───────────────────────────────────────
+router.get('/:orgId', async (req, res) => {
+  const { orgId } = req.params;
+  const bloomUrl = process.env.BLOOM_APP_URL || 'https://autonomous-sarah-rodriguez-production.up.railway.app';
+
+  let credStatus = 'unchecked';
+  try {
+    await getPitForOrg(orgId);
+    credStatus = 'configured';
+  } catch {
+    credStatus = 'missing — add to organization_ghl_credentials table';
+  }
+
+  res.json({
+    name: 'bloom-ghl-mcp-proxy',
+    version: '2.0.0',
+    status: 'ok',
+    orgId,
+    credentials: credStatus,
+    forwards_to: GHL_MCP_URL,
+    connector_url: `${bloomUrl}/ghl-mcp/${orgId}`
+  });
+});
+
+// ── GET /ghl-mcp — base health check ─────────────────────────────────────────
 router.get('/', (req, res) => {
   res.json({
     name: 'bloom-ghl-mcp-proxy',
-    version: '1.0.0',
+    version: '2.0.0',
     status: 'ok',
-    forwards_to: GHL_MCP_URL,
-    auth: 'PIT injected server-side',
-    connector_url: `${process.env.BLOOM_APP_URL || 'https://autonomous-sarah-rodriguez-production.up.railway.app'}/ghl-mcp`
+    usage: 'GET/POST /ghl-mcp/{orgId}',
+    note: 'Each org has its own PIT stored in organization_ghl_credentials (Supabase). No env vars for PITs.'
   });
 });
 
