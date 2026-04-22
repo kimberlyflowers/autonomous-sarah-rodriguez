@@ -126,6 +126,7 @@ function ClarificationCard({ clarification, onOptionSelect, theme, disabled }) {
 function Chat({ theme }) {
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
+  const [quickActionsOpen, setQuickActionsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId, setSessionId] = useState('session-' + Date.now());
   const messagesEndRef = useRef(null);
@@ -316,6 +317,7 @@ function Chat({ theme }) {
       alignSelf: 'flex-start',
     },
     inputContainer: {
+      position: 'relative',
       padding: 16,
       borderTop: `1px solid ${theme.border}`,
       backgroundColor: theme.bg,
@@ -359,6 +361,39 @@ function Chat({ theme }) {
       padding: 40,
       color: theme.textMuted,
     },
+  };
+
+
+  // Handle quick action selection from + button menu
+  const handleQuickAction = async (action) => {
+    setQuickActionsOpen(false);
+    if (action === 'build_website') {
+      setIsLoading(true);
+      const buildMessage = '🌐 Build a website for my business';
+      // Add user message to UI immediately
+      setMessages(prev => [...prev, { role: 'user', content: buildMessage }]);
+      try {
+        const res = await fetch('/api/chat/message', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: buildMessage,
+            sessionId,
+            sessionType: 'website_build',
+            action: 'build_website',
+          }),
+        });
+        const data = await res.json();
+        setMessages(prev => [...prev, { role: 'assistant', content: data.response || "I'm starting the website builder — I'll ask you a few questions to get the details right." }]);
+        if (data.clarification) {
+          setMessages(prev => [...prev, { role: 'assistant', content: null, clarification: data.clarification }]);
+        }
+      } catch (e) {
+        setMessages(prev => [...prev, { role: 'assistant', content: "Sorry, I couldn't start the website builder. Please try again." }]);
+      } finally {
+        setIsLoading(false);
+      }
+    }
   };
 
   return (
@@ -476,7 +511,74 @@ function Chat({ theme }) {
       </div>
 
       <div style={styles.inputContainer}>
-        <div style={styles.inputWrapper}>
+        {/* Quick actions popup */}
+        {quickActionsOpen && (
+          <div style={{
+            position: 'absolute',
+            bottom: 72,
+            left: 16,
+            backgroundColor: '#1e1e2e',
+            border: '1px solid #3a3a5c',
+            borderRadius: 12,
+            padding: '8px 0',
+            zIndex: 100,
+            minWidth: 220,
+            boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+          }}>
+            <button
+              onClick={() => handleQuickAction('build_website')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                width: '100%',
+                padding: '10px 16px',
+                background: 'none',
+                border: 'none',
+                color: '#e2e8f0',
+                fontSize: 14,
+                cursor: 'pointer',
+                textAlign: 'left',
+              }}
+              onMouseEnter={e => e.currentTarget.style.backgroundColor = '#2a2a4a'}
+              onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+            >
+              <span style={{ fontSize: 20 }}>🌐</span>
+              <div>
+                <div style={{ fontWeight: 600 }}>Build a website</div>
+                <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>AI-powered site builder</div>
+              </div>
+            </button>
+          </div>
+        )}
+
+        <div style={{ ...styles.inputWrapper, position: 'relative' }}>
+          {/* + button */}
+          <button
+            onClick={() => setQuickActionsOpen(o => !o)}
+            disabled={isLoading}
+            title="Quick actions"
+            style={{
+              flexShrink: 0,
+              width: 36,
+              height: 36,
+              borderRadius: '50%',
+              border: '1.5px solid #3a3a5c',
+              background: quickActionsOpen ? '#3a3a5c' : 'transparent',
+              color: '#94a3b8',
+              fontSize: 22,
+              lineHeight: 1,
+              cursor: isLoading ? 'default' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginRight: 8,
+              transition: 'all 0.15s ease',
+            }}
+          >
+            {quickActionsOpen ? '×' : '+'}
+          </button>
+
           <textarea
             style={styles.input}
             value={inputText}
@@ -485,6 +587,7 @@ function Chat({ theme }) {
             placeholder="Message Sarah..."
             disabled={isLoading}
             rows={1}
+            onClick={() => setQuickActionsOpen(false)}
           />
           <button
             style={{
