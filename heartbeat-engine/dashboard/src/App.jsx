@@ -3503,6 +3503,421 @@ function PwChangePanel({c}) {
   );
 }
 
+
+// ══════════════════════════════════════════════════════════════════════════════
+// WORK TAB — Cowork-style Managed Agent sessions
+// Left: session list  |  Right: live checklist + progress log + clarify Q&A
+// ══════════════════════════════════════════════════════════════════════════════
+function WorkTab({c,mob,aFN="Bloomie"}){
+  const [sessions,setSessions]=useState([]);
+  const [activeSid,setActiveSid]=useState(null);
+  const [session,setSession]=useState(null);
+  const [checklist,setChecklist]=useState([]);
+  const [msgs,setMsgs]=useState([]);
+  const [clarify,setClarify]=useState(null);
+  const [brief,setBrief]=useState('');
+  const [title,setTitle]=useState('');
+  const [starting,setStarting]=useState(false);
+  const [showForm,setShowForm]=useState(false);
+  const pollRef=useRef(null);
+  const logRef=useRef(null);
+
+  useEffect(()=>{loadSessions();},[]);
+  useEffect(()=>{logRef.current?.scrollIntoView({behavior:'smooth'});},[msgs]);
+
+  useEffect(()=>{
+    if(!activeSid)return;
+    loadDetail(activeSid);
+    if(pollRef.current)clearInterval(pollRef.current);
+    pollRef.current=setInterval(()=>loadDetail(activeSid),2500);
+    return()=>clearInterval(pollRef.current);
+  },[activeSid]);
+
+  const loadSessions=async()=>{
+    try{
+      const h=await getAuthHeaders();
+      const r=await fetch('/api/builds?type=work',{headers:h});
+      const d=await r.json();
+      setSessions(d.builds||[]);
+    }catch{}
+  };
+
+  const loadDetail=async(id)=>{
+    try{
+      const h=await getAuthHeaders();
+      const r=await fetch('/api/builds/'+id,{headers:h});
+      const d=await r.json();
+      setSession(d.build);
+      setChecklist(d.progress||[]);
+      setMsgs(d.messages||[]);
+      setClarify(d.clarify||null);
+      if(d.build?.status==='complete'||d.build?.status==='error')clearInterval(pollRef.current);
+    }catch{}
+  };
+
+  const startSession=async()=>{
+    if(!brief.trim())return;
+    setStarting(true);
+    try{
+      const h=await getAuthHeaders();
+      const r=await fetch('/api/builds',{method:'POST',headers:{...h,'Content-Type':'application/json'},body:JSON.stringify({brief:brief.trim(),title:title.trim()||brief.slice(0,50),type:'work'})});
+      const d=await r.json();
+      if(d.build?.id){await loadSessions();setActiveSid(d.build.id);setShowForm(false);setBrief('');setTitle('');}
+    }catch{}
+    setStarting(false);
+  };
+
+  const answerClarify=async(answer)=>{
+    if(!clarify||!activeSid)return;
+    try{
+      const h=await getAuthHeaders();
+      await fetch('/api/builds/'+activeSid+'/clarify',{method:'POST',headers:{...h,'Content-Type':'application/json'},body:JSON.stringify({answer,clarify_id:clarify.id})});
+      setClarify(null);
+    }catch{}
+  };
+
+  const sc=(s)=>s==='complete'?'#22c55e':s==='building'||s==='in_progress'?'#F4A261':s==='error'?'#ef4444':'#60a5fa';
+  const sl=(s)=>s==='complete'?'Complete':s==='building'?'Working…':s==='error'?'Error':s==='clarifying'?'Waiting for you':s==='queued'?'Queued':'Starting…';
+
+  return(
+    <div style={{display:'flex',height:'calc(100vh - 104px)',overflow:'hidden'}}>
+      {/* ── Session list sidebar ── */}
+      {!mob&&(
+        <div style={{width:260,borderRight:'1px solid '+c.ln,background:c.cd,display:'flex',flexDirection:'column',flexShrink:0}}>
+          <div style={{padding:'14px 12px 10px',borderBottom:'1px solid '+c.ln,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+            <span style={{fontSize:13,fontWeight:700,color:c.tx}}>Work Sessions</span>
+            <button onClick={()=>setShowForm(true)} style={{width:26,height:26,borderRadius:7,border:'none',background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center',lineHeight:1}}>+</button>
+          </div>
+          <div style={{flex:1,overflowY:'auto',padding:'8px 8px'}}>
+            {sessions.length===0&&<div style={{padding:24,textAlign:'center',color:c.so,fontSize:12}}>No sessions yet.<br/>Start a new task above.</div>}
+            {sessions.map(s=>(
+              <button key={s.id} onClick={()=>setActiveSid(s.id)} style={{width:'100%',textAlign:'left',padding:'10px 10px',borderRadius:10,border:'none',background:activeSid===s.id?c.ac+'18':'transparent',cursor:'pointer',marginBottom:4,display:'flex',alignItems:'center',gap:8}} onMouseEnter={e=>e.currentTarget.style.background=activeSid===s.id?c.ac+'18':c.hv} onMouseLeave={e=>e.currentTarget.style.background=activeSid===s.id?c.ac+'18':'transparent'}>
+                <span style={{width:8,height:8,borderRadius:'50%',background:sc(s.status),flexShrink:0}}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:12,fontWeight:600,color:c.tx,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{s.title||'Untitled'}</div>
+                  <div style={{fontSize:10,color:c.so,marginTop:2}}>{sl(s.status)}</div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Main panel ── */}
+      <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',background:c.bg}}>
+        {/* New session form */}
+        {showForm&&(
+          <div style={{padding:24,borderBottom:'1px solid '+c.ln,background:c.cd,flexShrink:0}}>
+            <div style={{fontSize:14,fontWeight:700,color:c.tx,marginBottom:14}}>New Work Session</div>
+            <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Session title (optional)" style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid '+c.ln,background:c.bg,color:c.tx,fontSize:12,fontFamily:'inherit',outline:'none',marginBottom:10}}/>
+            <textarea value={brief} onChange={e=>setBrief(e.target.value)} placeholder={`Tell ${aFN} what you need done…`} rows={3} style={{width:'100%',padding:12,borderRadius:10,border:'1px solid '+c.ln,background:c.bg,color:c.tx,fontSize:13,fontFamily:'inherit',resize:'none',outline:'none',marginBottom:12}}/>
+            <div style={{display:'flex',gap:8}}>
+              <button onClick={startSession} disabled={!brief.trim()||starting} style={{padding:'8px 20px',borderRadius:8,border:'none',background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',fontWeight:700,fontSize:13,cursor:'pointer',opacity:starting?0.6:1}}>{starting?'Starting…':'Start Session'}</button>
+              <button onClick={()=>{setShowForm(false);setBrief('');setTitle('');}} style={{padding:'8px 16px',borderRadius:8,border:'1px solid '+c.ln,background:'transparent',color:c.so,fontSize:13,cursor:'pointer'}}>Cancel</button>
+            </div>
+          </div>
+        )}
+
+        {/* Empty state */}
+        {!activeSid&&!showForm&&(
+          <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:16,padding:32}}>
+            <div style={{fontSize:44}}>🤖</div>
+            <div style={{fontSize:17,fontWeight:700,color:c.tx}}>Work Sessions</div>
+            <div style={{fontSize:13,color:c.so,textAlign:'center',maxWidth:380,lineHeight:1.6}}>Start a session and watch {aFN} work through your task step by step — live checklist, real-time progress, and built-in Q&A when she needs your input.</div>
+            <button onClick={()=>setShowForm(true)} style={{padding:'10px 26px',borderRadius:10,border:'none',background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',fontWeight:700,fontSize:14,cursor:'pointer',marginTop:8}}>+ New Work Session</button>
+          </div>
+        )}
+
+        {/* Session detail */}
+        {activeSid&&session&&(
+          <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
+            <div style={{padding:'12px 20px',borderBottom:'1px solid '+c.ln,background:c.cd,display:'flex',alignItems:'center',gap:10,flexShrink:0}}>
+              <span style={{width:10,height:10,borderRadius:'50%',background:sc(session.status),animation:session.status==='building'?'pulse 1.5s ease infinite':'none'}}/>
+              <span style={{fontSize:14,fontWeight:700,color:c.tx,flex:1}}>{session.title||'Work Session'}</span>
+              <span style={{fontSize:11,padding:'3px 10px',borderRadius:20,background:sc(session.status)+'22',color:sc(session.status),fontWeight:700}}>{sl(session.status)}</span>
+            </div>
+
+            <div style={{flex:1,overflowY:'auto',padding:20,display:'flex',flexDirection:'column',gap:14}}>
+              {/* Clarify prompt */}
+              {clarify&&(
+                <div style={{background:'linear-gradient(135deg,#1a0a2e,#2d1b4e)',borderRadius:14,border:'1px solid rgba(244,162,97,0.3)',padding:18}}>
+                  <div style={{fontSize:11,fontWeight:700,color:'#F4A261',marginBottom:10,textTransform:'uppercase',letterSpacing:'0.5px'}}>🤔 {aFN} needs your input</div>
+                  <div style={{fontSize:14,color:'#fff',marginBottom:14,lineHeight:1.5}}>{clarify.question}</div>
+                  {clarify.options?.length>0?(
+                    <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+                      {clarify.options.map((opt,i)=>(
+                        <button key={i} onClick={()=>answerClarify(opt)} style={{padding:'8px 16px',borderRadius:8,border:'1px solid rgba(244,162,97,0.4)',background:'rgba(244,162,97,0.1)',color:'#F4A261',fontSize:13,cursor:'pointer',fontWeight:500}}>{opt}</button>
+                      ))}
+                    </div>
+                  ):(
+                    <div style={{display:'flex',gap:8}}>
+                      <input id="clarify-ans" placeholder="Type your answer…" style={{flex:1,padding:'8px 12px',borderRadius:8,border:'1px solid rgba(244,162,97,0.4)',background:'rgba(255,255,255,0.05)',color:'#fff',fontSize:13,outline:'none'}}/>
+                      <button onClick={()=>{const v=document.getElementById('clarify-ans')?.value;if(v)answerClarify(v);}} style={{padding:'8px 16px',borderRadius:8,border:'none',background:'#F4A261',color:'#fff',fontWeight:700,fontSize:13,cursor:'pointer'}}>Send</button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Checklist */}
+              {checklist.length>0&&(
+                <div style={{background:c.cd,borderRadius:14,border:'1px solid '+c.ln,padding:16}}>
+                  <div style={{fontSize:11,fontWeight:700,color:c.so,textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:12}}>Checklist</div>
+                  <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                    {checklist.map((item,i)=>(
+                      <div key={i} style={{display:'flex',alignItems:'center',gap:10}}>
+                        <span style={{fontSize:15,flexShrink:0}}>{item.status==='complete'?'✅':item.status==='in_progress'?'⏳':'○'}</span>
+                        <span style={{fontSize:13,color:item.status==='complete'?c.so:c.tx,textDecoration:item.status==='complete'?'line-through':'none',lineHeight:1.4}}>{item.step_name}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Live log */}
+              <div style={{background:c.cd,borderRadius:14,border:'1px solid '+c.ln,padding:16,flex:1}}>
+                <div style={{fontSize:11,fontWeight:700,color:c.so,textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:12}}>Live Log</div>
+                {msgs.length===0?(
+                  <div style={{color:c.so,fontSize:12,textAlign:'center',padding:'24px 0'}}>{session.status==='queued'?'Queued — starting soon…':'Waiting for progress…'}</div>
+                ):(
+                  <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                    {msgs.map((m,i)=>(
+                      <div key={i} style={{fontSize:12,color:m.metadata?.source==='managed-website-agent'?c.ac:c.tx,lineHeight:1.5,padding:'6px 10px',borderRadius:8,background:c.sf}}>{m.content}</div>
+                    ))}
+                    <div ref={logRef}/>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// BUILD TAB — Claude Code-style Managed Agent build environment
+// Left: build list  |  Right: build phases + checklist + output + deploy
+// ══════════════════════════════════════════════════════════════════════════════
+function BuildTab({c,mob,aFN="Bloomie"}){
+  const [builds,setBuilds]=useState([]);
+  const [activeId,setActiveId]=useState(null);
+  const [build,setBuild]=useState(null);
+  const [checklist,setChecklist]=useState([]);
+  const [msgs,setMsgs]=useState([]);
+  const [clarify,setClarify]=useState(null);
+  const [brief,setBrief]=useState('');
+  const [title,setTitle]=useState('');
+  const [starting,setStarting]=useState(false);
+  const [showForm,setShowForm]=useState(false);
+  const pollRef=useRef(null);
+  const logRef=useRef(null);
+
+  useEffect(()=>{loadBuilds();},[]);
+  useEffect(()=>{logRef.current?.scrollIntoView({behavior:'smooth'});},[msgs]);
+
+  useEffect(()=>{
+    if(!activeId)return;
+    loadDetail(activeId);
+    if(pollRef.current)clearInterval(pollRef.current);
+    pollRef.current=setInterval(()=>loadDetail(activeId),2500);
+    return()=>clearInterval(pollRef.current);
+  },[activeId]);
+
+  const loadBuilds=async()=>{
+    try{
+      const h=await getAuthHeaders();
+      const r=await fetch('/api/builds?type=build',{headers:h});
+      const d=await r.json();
+      setBuilds(d.builds||[]);
+    }catch{}
+  };
+
+  const loadDetail=async(id)=>{
+    try{
+      const h=await getAuthHeaders();
+      const r=await fetch('/api/builds/'+id,{headers:h});
+      const d=await r.json();
+      setBuild(d.build);
+      setChecklist(d.progress||[]);
+      setMsgs(d.messages||[]);
+      setClarify(d.clarify||null);
+      if(d.build?.status==='complete'||d.build?.status==='error')clearInterval(pollRef.current);
+    }catch{}
+  };
+
+  const startBuild=async()=>{
+    if(!brief.trim())return;
+    setStarting(true);
+    try{
+      const h=await getAuthHeaders();
+      const r=await fetch('/api/builds',{method:'POST',headers:{...h,'Content-Type':'application/json'},body:JSON.stringify({brief:brief.trim(),title:title.trim()||brief.slice(0,50),type:'build'})});
+      const d=await r.json();
+      if(d.build?.id){await loadBuilds();setActiveId(d.build.id);setShowForm(false);setBrief('');setTitle('');}
+    }catch{}
+    setStarting(false);
+  };
+
+  const answerClarify=async(answer)=>{
+    if(!clarify||!activeId)return;
+    try{
+      const h=await getAuthHeaders();
+      await fetch('/api/builds/'+activeId+'/clarify',{method:'POST',headers:{...h,'Content-Type':'application/json'},body:JSON.stringify({answer,clarify_id:clarify.id})});
+      setClarify(null);
+    }catch{}
+  };
+
+  const sc=(s)=>s==='complete'?'#22c55e':s==='building'||s==='in_progress'?'#F4A261':s==='error'?'#ef4444':'#60a5fa';
+  const sl=(s)=>s==='complete'?'Complete':s==='building'?'Building…':s==='error'?'Error':s==='clarifying'?'Needs input':s==='queued'?'Queued':'Starting…';
+
+  const PHASES=['Requirements','Blueprint','Build','Review','Deploy'];
+  const phaseIdx=(s)=>s==='queued'?0:s==='clarifying'?1:s==='building'?2:s==='complete'?4:s==='error'?2:0;
+
+  return(
+    <div style={{display:'flex',height:'calc(100vh - 104px)',overflow:'hidden'}}>
+      {/* ── Build list sidebar ── */}
+      {!mob&&(
+        <div style={{width:260,borderRight:'1px solid '+c.ln,background:c.cd,display:'flex',flexDirection:'column',flexShrink:0}}>
+          <div style={{padding:'14px 12px 10px',borderBottom:'1px solid '+c.ln,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+            <span style={{fontSize:13,fontWeight:700,color:c.tx}}>Builds</span>
+            <button onClick={()=>setShowForm(true)} style={{width:26,height:26,borderRadius:7,border:'none',background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center',lineHeight:1}}>+</button>
+          </div>
+          <div style={{flex:1,overflowY:'auto',padding:'8px 8px'}}>
+            {builds.length===0&&<div style={{padding:24,textAlign:'center',color:c.so,fontSize:12}}>No builds yet.<br/>Start a new build above.</div>}
+            {builds.map(b=>(
+              <button key={b.id} onClick={()=>setActiveId(b.id)} style={{width:'100%',textAlign:'left',padding:'10px 10px',borderRadius:10,border:'none',background:activeId===b.id?c.ac+'18':'transparent',cursor:'pointer',marginBottom:4,display:'flex',alignItems:'center',gap:8}} onMouseEnter={e=>e.currentTarget.style.background=activeId===b.id?c.ac+'18':c.hv} onMouseLeave={e=>e.currentTarget.style.background=activeId===b.id?c.ac+'18':'transparent'}>
+                <span style={{width:8,height:8,borderRadius:'50%',background:sc(b.status),flexShrink:0}}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:12,fontWeight:600,color:c.tx,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{b.title||'Untitled Build'}</div>
+                  <div style={{fontSize:10,color:c.so,marginTop:2}}>{sl(b.status)}</div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Main panel ── */}
+      <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',background:c.bg}}>
+        {/* New build form */}
+        {showForm&&(
+          <div style={{padding:24,borderBottom:'1px solid '+c.ln,background:c.cd,flexShrink:0}}>
+            <div style={{fontSize:14,fontWeight:700,color:c.tx,marginBottom:14}}>New Build</div>
+            <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Build name (e.g. Spa Website, Law Firm Site…)" style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid '+c.ln,background:c.bg,color:c.tx,fontSize:12,fontFamily:'inherit',outline:'none',marginBottom:10}}/>
+            <textarea value={brief} onChange={e=>setBrief(e.target.value)} placeholder={`Describe what you need built. ${aFN} will ask a few questions before starting…`} rows={3} style={{width:'100%',padding:12,borderRadius:10,border:'1px solid '+c.ln,background:c.bg,color:c.tx,fontSize:13,fontFamily:'inherit',resize:'none',outline:'none',marginBottom:12}}/>
+            <div style={{display:'flex',gap:8}}>
+              <button onClick={startBuild} disabled={!brief.trim()||starting} style={{padding:'8px 20px',borderRadius:8,border:'none',background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',fontWeight:700,fontSize:13,cursor:'pointer',opacity:starting?0.6:1}}>{starting?'Queuing…':'Start Build'}</button>
+              <button onClick={()=>{setShowForm(false);setBrief('');setTitle('');}} style={{padding:'8px 16px',borderRadius:8,border:'1px solid '+c.ln,background:'transparent',color:c.so,fontSize:13,cursor:'pointer'}}>Cancel</button>
+            </div>
+          </div>
+        )}
+
+        {/* Empty state */}
+        {!activeId&&!showForm&&(
+          <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:16,padding:32}}>
+            <div style={{fontSize:44}}>🔨</div>
+            <div style={{fontSize:17,fontWeight:700,color:c.tx}}>Build Environment</div>
+            <div style={{fontSize:13,color:c.so,textAlign:'center',maxWidth:380,lineHeight:1.6}}>Start a build and {aFN} handles it end to end — answering your questions, building phase by phase, and deploying when done.</div>
+            <button onClick={()=>setShowForm(true)} style={{padding:'10px 26px',borderRadius:10,border:'none',background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',fontWeight:700,fontSize:14,cursor:'pointer',marginTop:8}}>+ New Build</button>
+          </div>
+        )}
+
+        {/* Build detail */}
+        {activeId&&build&&(
+          <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
+            {/* Header */}
+            <div style={{padding:'12px 20px',borderBottom:'1px solid '+c.ln,background:c.cd,flexShrink:0}}>
+              <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:build.output_url?10:0}}>
+                <span style={{width:10,height:10,borderRadius:'50%',background:sc(build.status),animation:build.status==='building'?'pulse 1.5s ease infinite':'none'}}/>
+                <span style={{fontSize:14,fontWeight:700,color:c.tx,flex:1}}>{build.title||'Build'}</span>
+                <span style={{fontSize:11,padding:'3px 10px',borderRadius:20,background:sc(build.status)+'22',color:sc(build.status),fontWeight:700}}>{sl(build.status)}</span>
+              </div>
+              {/* Phase progress bar */}
+              <div style={{display:'flex',gap:4,marginTop:10,alignItems:'center'}}>
+                {PHASES.map((p,i)=>{
+                  const cur=phaseIdx(build.status);
+                  const done=i<cur;
+                  const active=i===cur;
+                  return(
+                    <div key={p} style={{display:'flex',alignItems:'center',gap:4,flex:1}}>
+                      <div style={{flex:1}}>
+                        <div style={{height:3,borderRadius:2,background:done?'#22c55e':active?'#F4A261':c.ln,transition:'background .3s'}}/>
+                        <div style={{fontSize:9,color:done?'#22c55e':active?'#F4A261':c.so,marginTop:3,textAlign:'center',fontWeight:active?700:400}}>{p}</div>
+                      </div>
+                      {i<PHASES.length-1&&<div style={{width:1,height:10,background:c.ln,flexShrink:0}}/>}
+                    </div>
+                  );
+                })}
+              </div>
+              {/* Deploy button */}
+              {build.output_url&&(
+                <div style={{display:'flex',gap:8,marginTop:10}}>
+                  <a href={build.output_url} target="_blank" rel="noopener" style={{padding:'6px 16px',borderRadius:8,background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',fontSize:12,fontWeight:700,textDecoration:'none',display:'inline-flex',alignItems:'center',gap:6}}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                    Preview Site
+                  </a>
+                </div>
+              )}
+            </div>
+
+            <div style={{flex:1,overflowY:'auto',padding:20,display:'flex',flexDirection:'column',gap:14}}>
+              {/* Clarify prompt */}
+              {clarify&&(
+                <div style={{background:'linear-gradient(135deg,#1a0a2e,#2d1b4e)',borderRadius:14,border:'1px solid rgba(244,162,97,0.3)',padding:18,flexShrink:0}}>
+                  <div style={{fontSize:11,fontWeight:700,color:'#F4A261',marginBottom:10,textTransform:'uppercase',letterSpacing:'0.5px'}}>🤔 {aFN} needs your input</div>
+                  <div style={{fontSize:14,color:'#fff',marginBottom:14,lineHeight:1.5}}>{clarify.question}</div>
+                  {clarify.options?.length>0?(
+                    <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+                      {clarify.options.map((opt,i)=>(
+                        <button key={i} onClick={()=>answerClarify(opt)} style={{padding:'8px 16px',borderRadius:8,border:'1px solid rgba(244,162,97,0.4)',background:'rgba(244,162,97,0.1)',color:'#F4A261',fontSize:13,cursor:'pointer',fontWeight:500}}>{opt}</button>
+                      ))}
+                    </div>
+                  ):(
+                    <div style={{display:'flex',gap:8}}>
+                      <input id="build-clarify-ans" placeholder="Type your answer…" style={{flex:1,padding:'8px 12px',borderRadius:8,border:'1px solid rgba(244,162,97,0.4)',background:'rgba(255,255,255,0.05)',color:'#fff',fontSize:13,outline:'none'}}/>
+                      <button onClick={()=>{const v=document.getElementById('build-clarify-ans')?.value;if(v)answerClarify(v);}} style={{padding:'8px 16px',borderRadius:8,border:'none',background:'#F4A261',color:'#fff',fontWeight:700,fontSize:13,cursor:'pointer'}}>Send</button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Checklist */}
+              {checklist.length>0&&(
+                <div style={{background:c.cd,borderRadius:14,border:'1px solid '+c.ln,padding:16,flexShrink:0}}>
+                  <div style={{fontSize:11,fontWeight:700,color:c.so,textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:12}}>Build Checklist</div>
+                  <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                    {checklist.map((item,i)=>(
+                      <div key={i} style={{display:'flex',alignItems:'center',gap:10}}>
+                        <span style={{fontSize:15,flexShrink:0}}>{item.status==='complete'?'✅':item.status==='in_progress'?'⏳':'○'}</span>
+                        <span style={{fontSize:13,color:item.status==='complete'?c.so:c.tx,textDecoration:item.status==='complete'?'line-through':'none'}}>{item.step_name}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Live log */}
+              <div style={{background:c.cd,borderRadius:14,border:'1px solid '+c.ln,padding:16,flex:1,minHeight:120}}>
+                <div style={{fontSize:11,fontWeight:700,color:c.so,textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:12}}>Build Log</div>
+                {msgs.length===0?(
+                  <div style={{color:c.so,fontSize:12,textAlign:'center',padding:'20px 0'}}>{build.status==='queued'?'Queued — starting soon…':'Waiting for build output…'}</div>
+                ):(
+                  <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                    {msgs.map((m,i)=>(
+                      <div key={i} style={{fontSize:12,color:m.metadata?.type==='build_progress'?c.ac:c.tx,lineHeight:1.5,padding:'6px 10px',borderRadius:8,background:c.sf,fontFamily:m.metadata?.source==='tool'?"'JetBrains Mono',monospace":'inherit'}}>{m.content}</div>
+                    ))}
+                    <div ref={logRef}/>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function App({ authUser }) {
   const W=useW();
   const mob=W<768;
@@ -4237,7 +4652,6 @@ function App({ authUser }) {
   );
 
   const navTabs=[
-    {k:"chat",l:"Chat",icon:ChatIcon},
     {k:"bloomie",l:"Bloomie",icon:BloomieIcon},
     {k:"monitor",l:"Status",icon:StatusIcon},
     {k:"docs",l:"Docs",icon:FilesIcon},
@@ -4335,6 +4749,22 @@ function App({ authUser }) {
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke={c.so} strokeWidth="2"><path d="M10 3l-5 5 5 5"/></svg>
           </button>}
           <div style={{width:36,height:36,borderRadius:"50%",background:userImg?"transparent":"linear-gradient(135deg,#F4A261,#E76F8B)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,color:"#fff",overflow:"hidden"}}>{userImg?<img src={userImg} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>:meInitial}</div>
+        </div>
+      </div>
+
+      {/* ── ROW 2 — Chat · Work · Build workspace tabs (centered) ── */}
+      <div style={{position:"sticky",top:52,zIndex:59,background:c.cd,borderBottom:"1px solid "+c.ln,display:"flex",justifyContent:"center",alignItems:"center",padding:"4px 0",gap:0}}>
+        <div style={{display:"flex",gap:2,background:c.sf,padding:3,borderRadius:10}}>
+          {[
+            {k:"chat",l:"Chat"},
+            {k:"work",l:"Work"},
+            {k:"build",l:"Build"},
+          ].map(t=>(
+            <button key={t.k} onClick={()=>setPg(t.k)} style={{padding:mob?"6px 16px":"6px 24px",borderRadius:8,border:"none",cursor:"pointer",fontSize:12,fontWeight:600,background:pg===t.k?c.cd:"transparent",color:pg===t.k?c.tx:c.so,boxShadow:pg===t.k?"0 1px 4px rgba(0,0,0,.06)":"none",transition:"all .15s",position:"relative"}}>
+              {t.l}
+              {pg===t.k&&<span style={{position:"absolute",bottom:-1,left:"50%",transform:"translateX(-50%)",width:16,height:2,borderRadius:2,background:"linear-gradient(90deg,#F4A261,#E76F8B)"}}/>}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -4640,7 +5070,7 @@ function App({ authUser }) {
         )}
 
         {/* ── MAIN CONTENT ── */}
-        <div style={{flex:1,minWidth:0,height:"calc(100vh - 52px)",overflow:pg==="chat"?"hidden":"auto"}}>
+        <div style={{flex:1,minWidth:0,height:"calc(100vh - 104px)",overflow:pg==="chat"?"hidden":"auto"}}>
 
           {/* ══ CHAT ══ */}
           {pg==="chat"&&conferenceMode&&(
@@ -6599,6 +7029,8 @@ function App({ authUser }) {
           {pg==="business"&&(<BusinessProfilePage c={c} mob={mob} userImg={userImg} setUserImg={setUserImg} meInitial={meInitial} aFN={aFN} chatLightbox={chatLightbox} setChatLightbox={setChatLightbox}/>)}
           {pg==="skills"&&(<SkillsPage c={c} mob={mob} aFN={aFN}/>)}
           {pg==="dispatch"&&(<DispatchPage c={c} mob={mob} currentAgent={currentAgent} agentImgUrl={agentImgUrl}/>)}
+          {pg==="work"&&(<WorkTab c={c} mob={mob} aFN={aFN}/>)}
+          {pg==="build"&&(<BuildTab c={c} mob={mob} aFN={aFN}/>)}
           {pg==="mobile"&&(
             <div style={{padding:mob?"20px 16px 60px":"32px 40px 60px",maxWidth:680,margin:"0 auto"}}>
 
