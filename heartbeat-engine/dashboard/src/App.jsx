@@ -3734,6 +3734,11 @@ function App({ authUser }) {
   const plusMenuRef=useRef(null);
   const [oauthToast,setOauthToast]=useState(null);
   const [activeConnectors,setActiveConnectors]=useState({ghl:true});
+  const [ghlConnected,setGhlConnected]=useState(null); // null=checking, true=ok, false=not connected
+  const [showGhlBanner,setShowGhlBanner]=useState(false);
+  const [ghlPit,setGhlPit]=useState('');
+  const [ghlLocId,setGhlLocId]=useState('');
+  const [ghlSaving,setGhlSaving]=useState(false);
 
   // Extracted so it can be called both on mount and after OAuth success
   const loadActiveConnectors = () => {
@@ -3751,6 +3756,37 @@ function App({ authUser }) {
   };
 
   useEffect(()=>{ loadActiveConnectors(); },[]);
+
+  // Check GHL connection on mount — show onboarding banner if not yet connected
+  useEffect(()=>{
+    (async()=>{
+      try{
+        const h=await getAuthHeaders();
+        const r=await fetch('/api/integrations/ghl/status',{headers:h});
+        const d=await r.json();
+        setGhlConnected(!!d.connected);
+        if(!d.connected) setShowGhlBanner(true);
+      }catch{ setGhlConnected(false); setShowGhlBanner(true); }
+    })();
+  },[]);
+
+  const connectGhl=async()=>{
+    if(!ghlPit.trim()||!ghlPit.startsWith('pit-'))return;
+    setGhlSaving(true);
+    try{
+      const h=await getAuthHeaders();
+      const r=await fetch('/api/integrations/ghl/connect',{method:'POST',headers:{...h,'Content-Type':'application/json'},body:JSON.stringify({pit:ghlPit.trim(),location_id:ghlLocId.trim()||undefined})});
+      const d=await r.json();
+      if(d.success){
+        setGhlConnected(true);
+        setShowGhlBanner(false);
+        setActiveConnectors(p=>({...p,ghl:true}));
+        setOauthToast({type:'success',msg:'GoHighLevel connected! 🎉'});
+        setTimeout(()=>setOauthToast(null),4000);
+      }
+    }catch(e){ /* keep banner open on error */ }
+    setGhlSaving(false);
+  };
 
   useEffect(()=>{
     const params=new URLSearchParams(window.location.search);
@@ -4230,6 +4266,23 @@ function App({ authUser }) {
             ?<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
             :<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>}
           {oauthToast.msg}
+        </div>
+      )}
+      {/* ── GHL Connect Banner — shown on first login if GHL not connected ── */}
+      {showGhlBanner&&(
+        <div style={{position:"fixed",top:0,left:0,right:0,zIndex:9998,background:"linear-gradient(135deg,#1a0a2e,#2d1b4e)",borderBottom:"1px solid rgba(244,162,97,0.3)",padding:"14px 20px",display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
+          <div style={{flex:1,minWidth:200}}>
+            <div style={{fontSize:14,fontWeight:700,color:"#F4A261",marginBottom:3}}>🔗 Connect GoHighLevel to unlock website building</div>
+            <div style={{fontSize:12,color:"rgba(255,255,255,0.6)"}}>Your Private Integration Token (PIT) lets Bloomie build websites and manage your CRM.</div>
+          </div>
+          <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+            <input value={ghlPit} onChange={e=>setGhlPit(e.target.value)} placeholder="pit-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style={{padding:"7px 12px",borderRadius:8,border:"1px solid rgba(244,162,97,0.4)",background:"rgba(255,255,255,0.08)",color:"#fff",fontSize:12,fontFamily:"monospace",width:330,outline:"none"}}/>
+            <input value={ghlLocId} onChange={e=>setGhlLocId(e.target.value)} placeholder="Location ID (optional)" style={{padding:"7px 12px",borderRadius:8,border:"1px solid rgba(255,255,255,0.15)",background:"rgba(255,255,255,0.05)",color:"#fff",fontSize:12,fontFamily:"monospace",width:200,outline:"none"}}/>
+            <button onClick={connectGhl} disabled={!ghlPit.startsWith('pit-')||ghlSaving} style={{padding:"7px 16px",borderRadius:8,border:"none",cursor:ghlPit.startsWith('pit-')&&!ghlSaving?"pointer":"not-allowed",background:ghlPit.startsWith('pit-')?"linear-gradient(135deg,#F4A261,#E76F8B)":"rgba(255,255,255,0.1)",color:"#fff",fontSize:12,fontWeight:700,opacity:ghlSaving?0.6:1,whiteSpace:"nowrap"}}>
+              {ghlSaving?"Connecting…":"Connect GHL"}
+            </button>
+            <button onClick={()=>setShowGhlBanner(false)} style={{padding:"7px 12px",borderRadius:8,border:"1px solid rgba(255,255,255,0.15)",background:"transparent",color:"rgba(255,255,255,0.5)",fontSize:12,cursor:"pointer",whiteSpace:"nowrap"}}>Later</button>
+          </div>
         </div>
       )}
       <input ref={fRef} type="file" multiple accept="image/*,.pdf,.csv,.txt,.docx,.xlsx,.json,.md" style={{display:"none"}} onChange={async(e)=>{
@@ -7180,3 +7233,4 @@ function App({ authUser }) {
     </div>
   );
 }
+
