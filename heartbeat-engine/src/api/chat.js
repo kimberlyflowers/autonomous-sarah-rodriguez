@@ -5786,7 +5786,8 @@ router.post('/message', async (req, res) => {
           logger.info('Routing to Managed Website Agent', { sessionId, orgId: userOrgId });
           const buildResult = await websiteAgent(enrichedMessage, {
             orgId: userOrgId,
-            onEvent: null // SSE streaming not wired to this HTTP response — conference channel gets updates
+            chatSessionId: sessionId, // progress posts to this build's own chat session
+            onEvent: null
           });
           const buildResponse = buildResult.output || '✅ Website build complete! Check the conference channel for the live link and build summary.';
           await saveMessages(null, sessionId, message, buildResponse, null, userId, agentConfig.agentId, { skipUserSave: !!skipUserSave });
