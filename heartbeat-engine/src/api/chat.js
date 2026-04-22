@@ -19,6 +19,20 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 
+// ── Managed Website Agent (lazy import — only used when sessionType=website_build) ─────
+let runWebsiteBuild = null;
+async function getWebsiteAgent() {
+  if (!runWebsiteBuild) {
+    try {
+      const mod = await import('./managed-website-agent.js');
+      runWebsiteBuild = mod.runWebsiteBuild;
+    } catch (e) {
+      logger.warn('Managed website agent not available:', e.message);
+    }
+  }
+  return runWebsiteBuild;
+}
+
 // ── ElevenLabs TTS ────────────────────────────────────────────────────────────
 async function generateSpeech(text, agentConfig) {
   try {
@@ -5757,6 +5771,40 @@ router.post('/message', async (req, res) => {
     } catch (e) {
       // Fall through — orgId stays null, GHL uses env var defaults
     }
+
+    // ── MANAGED WEBSITE AGENT ROUTING ─────────────────────────────────────────
+    // If the dashboard sends sessionType='website_build' OR action='build_website',
+    // route to the Managed Agent instead of Sarah's normal chat loop.
+    const sessionType = req.body?.sessionType;
+    const action = req.body?.action;
+    const isWebsiteBuild = sessionType === 'website_build' || action === 'build_website';
+
+    if (isWebsiteBuild) {
+      const websiteAgent = await getWebsiteAgent();
+      if (websiteAgent) {
+        try {
+          logger.info('Routing to Managed Website Agent', { sessionId, orgId: userOrgId });
+          const buildResult = await websiteAgent(enrichedMessage, {
+            orgId: userOrgId,
+            onEvent: null // SSE streaming not wired to this HTTP response — conference channel gets updates
+          });
+          const buildResponse = buildResult.output || '✅ Website build complete! Check the conference channel for the live link and build summary.';
+          await saveMessages(null, sessionId, message, buildResponse, null, userId, agentConfig.agentId, { skipUserSave: !!skipUserSave });
+          if (history.length === 0) generateSessionTitle(sessionId, message, buildResponse).catch(() => {});
+          return res.json({ response: buildResponse, sessionId, agentId: agentConfig.agentId, skillsUsed: ['website-creation'], websiteBuild: true, buildSessionId: buildResult.sessionId });
+        } catch (err) {
+          if (err.useFallback) {
+            logger.warn('Managed Website Agent failed — falling back to Sarah', { error: err.message });
+            // Fall through to normal chatWithAgent below
+          } else {
+            throw err;
+          }
+        }
+      } else {
+        logger.warn('Managed Website Agent not loaded — falling back to Sarah for website build');
+      }
+    }
+    // ── END MANAGED WEBSITE AGENT ROUTING ──────────────────────────────────────
 
     const response = await chatWithAgent(enrichedMessage, history, agentConfig, sessionId, userOrgId);
 
