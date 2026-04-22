@@ -104,7 +104,7 @@ router.post('/', withAuth, async (req, res) => {
         const result = await runner(brief, {
           orgId,
           chatSessionId: build.id,  // progress messages use build.id as session_id
-          buildId: build.id,
+          buildId: build.id,         // agent stores session ID immediately for steering
         });
 
         await supabase.from('website_builds')
@@ -272,4 +272,64 @@ router.post('/:id/clarify', withAuth, async (req, res) => {
   }
 });
 
+
+// ════════════════════════════════════════════════════════════════
+// POST /api/builds/:id/message — steer an active session mid-build
+// Body: { message }
+// ════════════════════════════════════════════════════════════════
+router.post('/:id/message', withAuth, async (req, res) => {
+  try {
+    const { orgId, userId } = req;
+    const { id } = req.params;
+    const { message } = req.body;
+
+    if (!message?.trim()) return res.status(400).json({ error: 'message is required' });
+
+    const supabase = await getSupabase();
+
+    // Verify build belongs to this org
+    const { data: build } = await supabase
+      .from('website_builds')
+      .select('id, managed_agent_session_id, status')
+      .eq('id', id)
+      .eq('org_id', orgId)
+      .single();
+
+    if (!build) return res.status(404).json({ error: 'Build not found' });
+
+    // Save user message to messages table so it shows in the live log
+    await supabase.from('messages').insert({
+      session_id: id,
+      role: 'user',
+      content: message.trim(),
+      metadata: { source: 'user-steer', user_id: userId },
+    }).catch(() => {});
+
+    // If we have a live MA session, steer it
+    if (build.managed_agent_session_id) {
+      try {
+        let _steer = null;
+        try {
+          const mod = await import('../agents/managed-website-agent.js');
+          _steer = mod.steerSession;
+        } catch (e) {
+          logger.warn('steerSession not available', { error: e.message });
+        }
+        if (_steer) {
+          await _steer(build.managed_agent_session_id, message.trim());
+          logger.info('Build steered', { buildId: id, sessionId: build.managed_agent_session_id.slice(0, 8) });
+        }
+      } catch (e) {
+        logger.warn('Failed to steer session', { error: e.message });
+      }
+    }
+
+    res.json({ success: true, steered: !!build.managed_agent_session_id });
+  } catch (err) {
+    logger.error('POST /builds/:id/message failed', { error: err.message });
+    res.status(500).json({ error: 'Failed to send message' });
+  }
+});
+
 export default router;
+
