@@ -3515,10 +3515,8 @@ function WorkTab({c,mob,aFN="Bloomie"}){
   const [checklist,setChecklist]=useState([]);
   const [msgs,setMsgs]=useState([]);
   const [clarify,setClarify]=useState(null);
-  const [brief,setBrief]=useState('');
-  const [title,setTitle]=useState('');
-  const [starting,setStarting]=useState(false);
-  const [showForm,setShowForm]=useState(false);
+  const [chatInput,setChatInput]=useState('');
+  const [chatSending,setChatSending]=useState(false);
   const pollRef=useRef(null);
   const logRef=useRef(null);
 
@@ -3555,16 +3553,22 @@ function WorkTab({c,mob,aFN="Bloomie"}){
     }catch{}
   };
 
-  const startSession=async()=>{
-    if(!brief.trim())return;
-    setStarting(true);
+  const sendChat=async()=>{
+    if(!chatInput.trim()||chatSending)return;
+    setChatSending(true);
+    const msg=chatInput.trim();
+    setChatInput('');
     try{
       const h=await getAuthHeaders();
-      const r=await fetch('/api/builds',{method:'POST',headers:{...h,'Content-Type':'application/json'},body:JSON.stringify({brief:brief.trim(),title:title.trim()||brief.slice(0,50),type:'work'})});
-      const d=await r.json();
-      if(d.build?.id){await loadSessions();setActiveSid(d.build.id);setShowForm(false);setBrief('');setTitle('');}
+      if(!activeSid){
+        const r=await fetch('/api/builds',{method:'POST',headers:{...h,'Content-Type':'application/json'},body:JSON.stringify({brief:msg,title:msg.slice(0,60),type:'work'})});
+        const d=await r.json();
+        if(d.build?.id){await loadSessions();setActiveSid(d.build.id);}
+      }else{
+        await fetch('/api/builds/'+activeSid+'/message',{method:'POST',headers:{...h,'Content-Type':'application/json'},body:JSON.stringify({message:msg})});
+      }
     }catch{}
-    setStarting(false);
+    setChatSending(false);
   };
 
   const answerClarify=async(answer)=>{
@@ -3586,10 +3590,10 @@ function WorkTab({c,mob,aFN="Bloomie"}){
         <div style={{width:260,borderRight:'1px solid '+c.ln,background:c.cd,display:'flex',flexDirection:'column',flexShrink:0}}>
           <div style={{padding:'14px 12px 10px',borderBottom:'1px solid '+c.ln,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
             <span style={{fontSize:13,fontWeight:700,color:c.tx}}>Work Sessions</span>
-            <button onClick={()=>setShowForm(true)} style={{width:26,height:26,borderRadius:7,border:'none',background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center',lineHeight:1}}>+</button>
+            <button onClick={()=>setActiveSid(null)} title="New session" style={{width:26,height:26,borderRadius:7,border:'none',background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center',lineHeight:1}}>+</button>
           </div>
           <div style={{flex:1,overflowY:'auto',padding:'8px 8px'}}>
-            {sessions.length===0&&<div style={{padding:24,textAlign:'center',color:c.so,fontSize:12}}>No sessions yet.<br/>Start a new task above.</div>}
+            {sessions.length===0&&<div style={{padding:24,textAlign:'center',color:c.so,fontSize:12}}>No sessions yet.<br/>Type below to start one.</div>}
             {sessions.map(s=>(
               <button key={s.id} onClick={()=>setActiveSid(s.id)} style={{width:'100%',textAlign:'left',padding:'10px 10px',borderRadius:10,border:'none',background:activeSid===s.id?c.ac+'18':'transparent',cursor:'pointer',marginBottom:4,display:'flex',alignItems:'center',gap:8}} onMouseEnter={e=>e.currentTarget.style.background=activeSid===s.id?c.ac+'18':c.hv} onMouseLeave={e=>e.currentTarget.style.background=activeSid===s.id?c.ac+'18':'transparent'}>
                 <span style={{width:8,height:8,borderRadius:'50%',background:sc(s.status),flexShrink:0}}/>
@@ -3605,26 +3609,12 @@ function WorkTab({c,mob,aFN="Bloomie"}){
 
       {/* ── Main panel ── */}
       <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',background:c.bg}}>
-        {/* New session form */}
-        {showForm&&(
-          <div style={{padding:24,borderBottom:'1px solid '+c.ln,background:c.cd,flexShrink:0}}>
-            <div style={{fontSize:14,fontWeight:700,color:c.tx,marginBottom:14}}>New Work Session</div>
-            <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Session title (optional)" style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid '+c.ln,background:c.bg,color:c.tx,fontSize:12,fontFamily:'inherit',outline:'none',marginBottom:10}}/>
-            <textarea value={brief} onChange={e=>setBrief(e.target.value)} placeholder={`Tell ${aFN} what you need done…`} rows={3} style={{width:'100%',padding:12,borderRadius:10,border:'1px solid '+c.ln,background:c.bg,color:c.tx,fontSize:13,fontFamily:'inherit',resize:'none',outline:'none',marginBottom:12}}/>
-            <div style={{display:'flex',gap:8}}>
-              <button onClick={startSession} disabled={!brief.trim()||starting} style={{padding:'8px 20px',borderRadius:8,border:'none',background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',fontWeight:700,fontSize:13,cursor:'pointer',opacity:starting?0.6:1}}>{starting?'Starting…':'Start Session'}</button>
-              <button onClick={()=>{setShowForm(false);setBrief('');setTitle('');}} style={{padding:'8px 16px',borderRadius:8,border:'1px solid '+c.ln,background:'transparent',color:c.so,fontSize:13,cursor:'pointer'}}>Cancel</button>
-            </div>
-          </div>
-        )}
-
         {/* Empty state */}
-        {!activeSid&&!showForm&&(
+        {!activeSid&&(
           <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:16,padding:32}}>
             <div style={{fontSize:44}}>🤖</div>
             <div style={{fontSize:17,fontWeight:700,color:c.tx}}>Work Sessions</div>
-            <div style={{fontSize:13,color:c.so,textAlign:'center',maxWidth:380,lineHeight:1.6}}>Start a session and watch {aFN} work through your task step by step — live checklist, real-time progress, and built-in Q&A when she needs your input.</div>
-            <button onClick={()=>setShowForm(true)} style={{padding:'10px 26px',borderRadius:10,border:'none',background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',fontWeight:700,fontSize:14,cursor:'pointer',marginTop:8}}>+ New Work Session</button>
+            <div style={{fontSize:13,color:c.so,textAlign:'center',maxWidth:380,lineHeight:1.6}}>Type your task below and {aFN} will get started — live checklist, real-time progress, and built-in Q&amp;A when she needs your input.</div>
           </div>
         )}
 
@@ -3690,6 +3680,16 @@ function WorkTab({c,mob,aFN="Bloomie"}){
             </div>
           </div>
         )}
+
+        {/* ── Chat bar ── */}
+        <div style={{borderTop:'1px solid '+c.ln,padding:'12px 16px',background:c.cd,flexShrink:0}}>
+          <div style={{display:'flex',gap:8,alignItems:'flex-end'}}>
+            <textarea value={chatInput} onChange={e=>setChatInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat();}}} placeholder={activeId?`Message ${aFN}\u2026`:`Describe what you want to build and ${aFN} will start\u2026`} rows={1} style={{flex:1,padding:'9px 12px',borderRadius:10,border:'1px solid '+c.ln,background:c.bg,color:c.tx,fontSize:13,fontFamily:'inherit',resize:'none',outline:'none',lineHeight:1.4,maxHeight:120,overflowY:'auto'}}/>
+            <button onClick={sendChat} disabled={!chatInput.trim()||chatSending} style={{width:36,height:36,borderRadius:10,border:'none',background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',opacity:chatInput.trim()&&!chatSending?1:0.5,flexShrink:0}}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -3706,10 +3706,8 @@ function BuildTab({c,mob,aFN="Bloomie"}){
   const [checklist,setChecklist]=useState([]);
   const [msgs,setMsgs]=useState([]);
   const [clarify,setClarify]=useState(null);
-  const [brief,setBrief]=useState('');
-  const [title,setTitle]=useState('');
-  const [starting,setStarting]=useState(false);
-  const [showForm,setShowForm]=useState(false);
+  const [chatInput,setChatInput]=useState('');
+  const [chatSending,setChatSending]=useState(false);
   const pollRef=useRef(null);
   const logRef=useRef(null);
 
@@ -3746,16 +3744,22 @@ function BuildTab({c,mob,aFN="Bloomie"}){
     }catch{}
   };
 
-  const startBuild=async()=>{
-    if(!brief.trim())return;
-    setStarting(true);
+  const sendChat=async()=>{
+    if(!chatInput.trim()||chatSending)return;
+    setChatSending(true);
+    const msg=chatInput.trim();
+    setChatInput('');
     try{
       const h=await getAuthHeaders();
-      const r=await fetch('/api/builds',{method:'POST',headers:{...h,'Content-Type':'application/json'},body:JSON.stringify({brief:brief.trim(),title:title.trim()||brief.slice(0,50),type:'build'})});
-      const d=await r.json();
-      if(d.build?.id){await loadBuilds();setActiveId(d.build.id);setShowForm(false);setBrief('');setTitle('');}
+      if(!activeId){
+        const r=await fetch('/api/builds',{method:'POST',headers:{...h,'Content-Type':'application/json'},body:JSON.stringify({brief:msg,title:msg.slice(0,60),type:'build'})});
+        const d=await r.json();
+        if(d.build?.id){await loadBuilds();setActiveId(d.build.id);}
+      }else{
+        await fetch('/api/builds/'+activeId+'/message',{method:'POST',headers:{...h,'Content-Type':'application/json'},body:JSON.stringify({message:msg})});
+      }
     }catch{}
-    setStarting(false);
+    setChatSending(false);
   };
 
   const answerClarify=async(answer)=>{
@@ -3780,10 +3784,10 @@ function BuildTab({c,mob,aFN="Bloomie"}){
         <div style={{width:260,borderRight:'1px solid '+c.ln,background:c.cd,display:'flex',flexDirection:'column',flexShrink:0}}>
           <div style={{padding:'14px 12px 10px',borderBottom:'1px solid '+c.ln,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
             <span style={{fontSize:13,fontWeight:700,color:c.tx}}>Builds</span>
-            <button onClick={()=>setShowForm(true)} style={{width:26,height:26,borderRadius:7,border:'none',background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center',lineHeight:1}}>+</button>
+            <button onClick={()=>setActiveId(null)} title="New build" style={{width:26,height:26,borderRadius:7,border:'none',background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center',lineHeight:1}}>+</button>
           </div>
           <div style={{flex:1,overflowY:'auto',padding:'8px 8px'}}>
-            {builds.length===0&&<div style={{padding:24,textAlign:'center',color:c.so,fontSize:12}}>No builds yet.<br/>Start a new build above.</div>}
+            {builds.length===0&&<div style={{padding:24,textAlign:'center',color:c.so,fontSize:12}}>No builds yet.<br/>Type below to start one.</div>}
             {builds.map(b=>(
               <button key={b.id} onClick={()=>setActiveId(b.id)} style={{width:'100%',textAlign:'left',padding:'10px 10px',borderRadius:10,border:'none',background:activeId===b.id?c.ac+'18':'transparent',cursor:'pointer',marginBottom:4,display:'flex',alignItems:'center',gap:8}} onMouseEnter={e=>e.currentTarget.style.background=activeId===b.id?c.ac+'18':c.hv} onMouseLeave={e=>e.currentTarget.style.background=activeId===b.id?c.ac+'18':'transparent'}>
                 <span style={{width:8,height:8,borderRadius:'50%',background:sc(b.status),flexShrink:0}}/>
@@ -3799,26 +3803,12 @@ function BuildTab({c,mob,aFN="Bloomie"}){
 
       {/* ── Main panel ── */}
       <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',background:c.bg}}>
-        {/* New build form */}
-        {showForm&&(
-          <div style={{padding:24,borderBottom:'1px solid '+c.ln,background:c.cd,flexShrink:0}}>
-            <div style={{fontSize:14,fontWeight:700,color:c.tx,marginBottom:14}}>New Build</div>
-            <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Build name (e.g. Spa Website, Law Firm Site…)" style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid '+c.ln,background:c.bg,color:c.tx,fontSize:12,fontFamily:'inherit',outline:'none',marginBottom:10}}/>
-            <textarea value={brief} onChange={e=>setBrief(e.target.value)} placeholder={`Describe what you need built. ${aFN} will ask a few questions before starting…`} rows={3} style={{width:'100%',padding:12,borderRadius:10,border:'1px solid '+c.ln,background:c.bg,color:c.tx,fontSize:13,fontFamily:'inherit',resize:'none',outline:'none',marginBottom:12}}/>
-            <div style={{display:'flex',gap:8}}>
-              <button onClick={startBuild} disabled={!brief.trim()||starting} style={{padding:'8px 20px',borderRadius:8,border:'none',background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',fontWeight:700,fontSize:13,cursor:'pointer',opacity:starting?0.6:1}}>{starting?'Queuing…':'Start Build'}</button>
-              <button onClick={()=>{setShowForm(false);setBrief('');setTitle('');}} style={{padding:'8px 16px',borderRadius:8,border:'1px solid '+c.ln,background:'transparent',color:c.so,fontSize:13,cursor:'pointer'}}>Cancel</button>
-            </div>
-          </div>
-        )}
-
         {/* Empty state */}
-        {!activeId&&!showForm&&(
+        {!activeId&&(
           <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:16,padding:32}}>
             <div style={{fontSize:44}}>🔨</div>
             <div style={{fontSize:17,fontWeight:700,color:c.tx}}>Build Environment</div>
-            <div style={{fontSize:13,color:c.so,textAlign:'center',maxWidth:380,lineHeight:1.6}}>Start a build and {aFN} handles it end to end — answering your questions, building phase by phase, and deploying when done.</div>
-            <button onClick={()=>setShowForm(true)} style={{padding:'10px 26px',borderRadius:10,border:'none',background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',fontWeight:700,fontSize:14,cursor:'pointer',marginTop:8}}>+ New Build</button>
+            <div style={{fontSize:13,color:c.so,textAlign:'center',maxWidth:380,lineHeight:1.6}}>Describe what you want built below — {aFN} handles it end to end, phase by phase, and deploys when done.</div>
           </div>
         )}
 
@@ -5193,6 +5183,18 @@ function App({ authUser }) {
                                     <span style={{color:c.so,flexShrink:0}}>{item.icon}</span>{item.label}
                                   </button>
                                 ))}
+
+                                <div style={{height:1,background:c.ln,margin:"4px 0"}}/>
+                                <div style={{padding:"6px 14px 4px",fontSize:11,fontWeight:700,color:c.fa,letterSpacing:"0.06em",textTransform:"uppercase"}}>Start</div>
+                                {[
+                                  {icon:<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>, label:"Build a website", sub:"Goes to Build tab", action:()=>{setPg("build");setShowPlusMenu(false);}},
+                                  {icon:<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="9" y="1" width="6" height="13" rx="3"/><path d="M4 10a8 8 0 0 0 16 0"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>, label:"New work task", sub:"Goes to Work tab", action:()=>{setPg("work");setShowPlusMenu(false);}},
+                                ].map((item,i)=>(
+                                  <button key={i} onClick={item.action} style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"9px 14px",border:"none",background:"transparent",cursor:"pointer",color:c.tx,fontSize:13,textAlign:"left",transition:"background .12s"}} onMouseEnter={e=>e.currentTarget.style.background=c.hv} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                                    <span style={{width:28,height:28,borderRadius:8,background:"linear-gradient(135deg,#F4A261,#E76F8B)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><span style={{color:"#fff"}}>{item.icon}</span></span>
+                                    <div><div style={{fontWeight:600}}>{item.label}</div><div style={{fontSize:11,color:c.so,marginTop:1}}>{item.sub}</div></div>
+                                  </button>
+                                ))}
                                 <div style={{height:1,background:c.ln,margin:"4px 0"}}/>
                                 <div style={{padding:"6px 14px 4px",fontSize:11,fontWeight:700,color:c.fa,letterSpacing:"0.06em",textTransform:"uppercase"}}>Connectors</div>
                                 <button onClick={()=>{setPg("customize");setShowPlusMenu(false);}} style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"9px 14px",border:"none",background:"transparent",cursor:"pointer",fontSize:13,textAlign:"left",fontWeight:700,transition:"background .12s"}} onMouseEnter={e=>e.currentTarget.style.background=c.hv} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
@@ -5443,6 +5445,18 @@ function App({ authUser }) {
                                 ].map((item,i)=>(
                                   <button key={i} onClick={item.action} style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"9px 14px",border:"none",background:"transparent",cursor:"pointer",color:c.tx,fontSize:13,textAlign:"left",transition:"background .12s"}} onMouseEnter={e=>e.currentTarget.style.background=c.hv} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                                     <span style={{color:c.so,flexShrink:0}}>{item.icon}</span>{item.label}
+                                  </button>
+                                ))}
+
+                                <div style={{height:1,background:c.ln,margin:"4px 0"}}/>
+                                <div style={{padding:"6px 14px 4px",fontSize:11,fontWeight:700,color:c.fa,letterSpacing:"0.06em",textTransform:"uppercase"}}>Start</div>
+                                {[
+                                  {icon:<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>, label:"Build a website", sub:"Goes to Build tab", action:()=>{setPg("build");setShowPlusMenu(false);}},
+                                  {icon:<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="9" y="1" width="6" height="13" rx="3"/><path d="M4 10a8 8 0 0 0 16 0"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>, label:"New work task", sub:"Goes to Work tab", action:()=>{setPg("work");setShowPlusMenu(false);}},
+                                ].map((item,i)=>(
+                                  <button key={i} onClick={item.action} style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"9px 14px",border:"none",background:"transparent",cursor:"pointer",color:c.tx,fontSize:13,textAlign:"left",transition:"background .12s"}} onMouseEnter={e=>e.currentTarget.style.background=c.hv} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                                    <span style={{width:28,height:28,borderRadius:8,background:"linear-gradient(135deg,#F4A261,#E76F8B)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><span style={{color:"#fff"}}>{item.icon}</span></span>
+                                    <div><div style={{fontWeight:600}}>{item.label}</div><div style={{fontSize:11,color:c.so,marginTop:1}}>{item.sub}</div></div>
                                   </button>
                                 ))}
                                 <div style={{height:1,background:c.ln,margin:"4px 0"}}/>
