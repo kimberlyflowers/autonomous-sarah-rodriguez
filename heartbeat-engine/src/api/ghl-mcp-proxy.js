@@ -133,7 +133,7 @@ router.get('/:orgId', async (req, res) => {
     await getPitForOrg(orgId);
     credStatus = 'configured';
   } catch {
-    credStatus = 'missing — add to organization_ghl_credentials table';
+    credStatus = 'missing — connect via Settings → Integrations in the dashboard';
   }
 
   res.json({
@@ -154,8 +154,9 @@ router.get('/', (req, res) => {
     version: '2.0.0',
     status: 'ok',
     usage: 'GET/POST /ghl-mcp/{orgId}',
-    note: 'Each org has its own PIT stored in organization_ghl_credentials (Supabase). No env vars for PITs.'
+    note: 'Each org PIT is stored in user_connectors table (Supabase). Connect via POST /api/integrations/ghl/connect.'
   });
 });
 
 export default router;
+
