@@ -1,20 +1,16 @@
-// BLOOM Managed Website Agent
-// Uses Claude Managed Agents API (beta) — NOT the Messages API.
-// Anthropic manages the agent harness, container, tool execution, and session state.
+// BLOOM Managed Website Agent — Multi-Tenant
+// Uses Claude Managed Agents API (beta).
 //
-// Architecture:
-//   Cowork / heartbeat task
-//       → runWebsiteBuild(brief) — creates a Managed Agent session
-//       → Claude runs autonomously in a cloud container
-//       → Claude calls GHL tools via /website-mcp (our MCP server)
-//       → Claude writes files, generates images, publishes to GHL
-//       → Session streams events back; posts progress to conference channel
+// Multi-tenancy model:
+//   - One Managed Agent per org, created lazily on first use, cached in managed_website_agents table
+//   - Each agent's GHL MCP URL is /ghl-mcp/{orgId} — org-specific, no shared PITs
+//   - Org's GHL PIT lives in organization_ghl_credentials Supabase table
 //
-// One-time setup:
-//   node src/scripts/setup-website-agent.js
-//   → Creates Agent + Environment on Anthropic platform
-//   → Prints BLOOM_WEBSITE_AGENT_ID and BLOOM_WEBSITE_ENVIRONMENT_ID
-//   → Set those as Railway env vars on autonomous-sarah-rodriguez
+// Progress reporting:
+//   - All build updates post to the build's own chat session (messages table)
+//   - NOT the conference channel — that's for Sarah + Marcus operator comms
+//
+// Entry point: chat.js detects sessionType='website_build' → calls runWebsiteBuild()
 
 import Anthropic from '@anthropic-ai/sdk';
 import { readFileSync } from 'fs';
@@ -26,7 +22,6 @@ import { createClient } from '@supabase/supabase-js';
 const logger = createLogger('managed-website-agent');
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// ── Anthropic client with Managed Agents beta header ─────────────────────────
 function getClient() {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error('ANTHROPIC_API_KEY is not set');
@@ -36,21 +31,6 @@ function getClient() {
   });
 }
 
-// ── Load website-creation.md skill as system prompt ───────────────────────────
-function getSystemPrompt() {
-  try {
-    const skillPath = join(__dirname, '../skills/catalog/website-creation.md');
-    const raw = readFileSync(skillPath, 'utf-8');
-    // Strip YAML frontmatter (---...---) and return content only
-    const content = raw.replace(/^---[\s\S]*?---\n/, '').trim();
-    return `${content}\n\n## TOOL USAGE NOTE\nUse get_layout_blueprint(style_id) to get the real HTML structure for the requested design style BEFORE writing any code. Do NOT invent a layout from scratch — always start from the blueprint. Post progress updates to the conference channel using bloom_post_progress so the operator can see what you are building.`;
-  } catch {
-    logger.warn('Could not load website-creation.md skill, using fallback prompt');
-    return `You are BLOOM's professional website builder. Build conversion-optimized, mobile-first websites with brand kit styling, AI-generated images, CRM-connected forms, and GHL publishing. Always call get_layout_blueprint first to get the correct HTML structure for the design style requested.`;
-  }
-}
-
-// ── Supabase client (for posting conference channel progress) ─────────────────
 function getSupabase() {
   return createClient(
     process.env.SUPABASE_URL,
@@ -59,102 +39,123 @@ function getSupabase() {
   );
 }
 
-async function postProgress(orgId, message) {
+function getSystemPrompt() {
   try {
-    const supabase = getSupabase();
-    await supabase.from('conference_messages').insert({
-      org_id: orgId,
-      role: 'assistant',
-      content: message,
-      sender_type: 'claude',
-      message_type: 'update',
-      metadata: { sender_label: 'BLOOM Website Builder', source: 'managed-website-agent' }
-    });
-  } catch (e) {
-    logger.warn('Failed to post progress to conference', { error: e.message });
+    const skillPath = join(__dirname, '../skills/catalog/website-creation.md');
+    const raw = readFileSync(skillPath, 'utf-8');
+    const content = raw.replace(/^---[\s\S]*?---\n/, '').trim();
+    return `${content}\n\n## TOOL USAGE NOTE\nAlways call get_layout_blueprint(style_id) FIRST before writing any HTML — this gives you the real structural blueprint. Post updates using bloom_post_progress so the user can follow along in their chat session.`;
+  } catch {
+    return `You are BLOOM's professional website builder. Build conversion-optimized, mobile-first websites. Always call get_layout_blueprint first to get the correct HTML structure.`;
   }
 }
 
-// ── ONE-TIME SETUP ────────────────────────────────────────────────────────────
-// Call this ONCE via the setup script to create the Agent and Environment.
-// Store returned IDs as Railway env vars:
-//   BLOOM_WEBSITE_AGENT_ID
-//   BLOOM_WEBSITE_ENVIRONMENT_ID
+// ── Post a progress message to the build's own chat session ──────────────────
+// This shows up in the user's dedicated website build chat thread — NOT conference.
+async function postToBuildSession(sessionId, message) {
+  if (!sessionId) return;
+  try {
+    const supabase = getSupabase();
+    await supabase.from('messages').insert({
+      session_id: sessionId,
+      role: 'assistant',
+      content: message,
+      metadata: { sender_label: 'BLOOM Website Builder', source: 'managed-website-agent', type: 'build_progress' }
+    });
+  } catch (e) {
+    logger.warn('Failed to post build progress to session', { sessionId, error: e.message });
+  }
+}
 
-export async function setupWebsiteAgent() {
+// ── Get or create the Managed Agent for an org ───────────────────────────────
+// One agent per org, stored in managed_website_agents Supabase table.
+// Created lazily on first website build, reused for all subsequent builds.
+async function getOrCreateAgentForOrg(orgId) {
+  const supabase = getSupabase();
   const client = getClient();
   const bloomUrl = process.env.BLOOM_APP_URL ||
     'https://autonomous-sarah-rodriguez-production.up.railway.app';
 
-  logger.info('Creating BLOOM Website Builder managed agent...');
+  // Check if this org already has an agent
+  const { data: existing } = await supabase
+    .from('managed_website_agents')
+    .select('agent_id, environment_id')
+    .eq('org_id', orgId)
+    .single();
+
+  if (existing?.agent_id) {
+    logger.info('Reusing existing agent for org', { orgId, agentId: existing.agent_id });
+    return { agentId: existing.agent_id, environmentId: existing.environment_id };
+  }
+
+  // Create a new agent for this org
+  // The GHL MCP URL is org-specific — proxy looks up this org's PIT from Supabase
+  logger.info('Creating new Managed Agent for org', { orgId });
 
   const agent = await client.beta.agents.create({
-    name: 'BLOOM Website Builder',
+    name: `BLOOM Website Builder — ${orgId}`,
     model: { id: 'claude-sonnet-4-6' },
     system: getSystemPrompt(),
-    tools: [
-      { type: 'agent_toolset_20260401' } // bash, file ops, web search, web fetch
-    ],
+    tools: [{ type: 'agent_toolset_20260401' }],
     mcp_servers: [
+      {
+        type: 'url',
+        url: `${bloomUrl}/ghl-mcp/${orgId}`,  // org-specific — proxy injects this org's PIT
+        name: 'ghl-tools'
+      },
       {
         type: 'url',
         url: `${bloomUrl}/website-mcp`,
         name: 'bloom-website-tools'
-        // Provides: get_layout_blueprint, ghl_create_page, ghl_update_page,
-        //           ghl_publish_page, ghl_list_forms, ghl_list_calendars,
-        //           image_generate, bloom_post_progress
       }
     ]
   });
 
-  logger.info('Creating cloud environment (unrestricted networking for GHL API)...');
-
+  // Create the cloud environment (shared across this org's builds)
   const environment = await client.beta.environments.create({
-    name: 'bloom-website-env',
-    config: {
-      type: 'cloud',
-      networking: { type: 'unrestricted' }
-    }
+    name: `bloom-website-env-${orgId}`,
+    config: { type: 'cloud', networking: { type: 'unrestricted' } }
   });
 
-  const result = {
-    agentId: agent.id,
-    environmentId: environment.id,
-    mcpUrl: `${bloomUrl}/website-mcp`,
-    envVarsToSet: {
-      BLOOM_WEBSITE_AGENT_ID: agent.id,
-      BLOOM_WEBSITE_ENVIRONMENT_ID: environment.id
-    }
-  };
+  // Cache in Supabase
+  await supabase.from('managed_website_agents').insert({
+    org_id: orgId,
+    agent_id: agent.id,
+    environment_id: environment.id
+  });
 
-  logger.info('✅ Setup complete — set these Railway env vars:', result.envVarsToSet);
-  return result;
+  logger.info('Agent created and cached for org', { orgId, agentId: agent.id });
+  return { agentId: agent.id, environmentId: environment.id };
 }
 
 // ── RUN A WEBSITE BUILD ───────────────────────────────────────────────────────
-// Creates a new Managed Agent session and streams build events.
-// Returns { sessionId, output, toolCalls, status } when complete.
-// Fires onEvent(event) in real time for SSE/websocket callers.
-
+// Creates a Managed Agent session for this org and streams the build.
+// Progress posts go to the build's own chat session (chatSessionId), not conference.
 export async function runWebsiteBuild(brief, options = {}) {
-  const { onEvent = null, orgId = null } = options;
-  const client = getClient();
+  const { orgId = null, chatSessionId = null, onEvent = null } = options;
 
-  const agentId = process.env.BLOOM_WEBSITE_AGENT_ID;
-  const environmentId = process.env.BLOOM_WEBSITE_ENVIRONMENT_ID;
-
-  if (!agentId || !environmentId) {
-    const err = new Error(
-      'Website agent not configured. Run: node src/scripts/setup-website-agent.js'
-    );
+  if (!orgId) {
+    const err = new Error('orgId is required for website builds — cannot determine which GHL account to use');
     err.useFallback = true;
     throw err;
   }
 
-  logger.info('Starting website build session...', { briefLength: brief.length });
+  const client = getClient();
 
-  if (orgId) {
-    await postProgress(orgId, `🏗️ **Website Builder starting...** Creating new build session.`);
+  logger.info('Starting website build', { orgId, chatSessionId });
+
+  if (chatSessionId) {
+    await postToBuildSession(chatSessionId, `🏗️ **Website Builder starting...** I'll ask you a few questions before we build.`);
+  }
+
+  // Get or create this org's Managed Agent
+  let agentId, environmentId;
+  try {
+    ({ agentId, environmentId } = await getOrCreateAgentForOrg(orgId));
+  } catch (err) {
+    logger.error('Failed to get/create agent for org', { orgId, error: err.message });
+    err.useFallback = true;
+    throw err;
   }
 
   // Create session
@@ -164,11 +165,11 @@ export async function runWebsiteBuild(brief, options = {}) {
     title: `Website Build — ${new Date().toISOString().slice(0, 16)}`
   });
 
-  logger.info('Session created', { sessionId: session.id });
+  logger.info('Session created', { sessionId: session.id, orgId, chatSessionId });
 
-  if (orgId) {
-    await postProgress(orgId,
-      `🤖 **Session started** (ID: \`${session.id}\`)\nClaude is now planning the website build...`
+  if (chatSessionId) {
+    await postToBuildSession(chatSessionId,
+      `🤖 **Ready to build!** Session \`${session.id.slice(0, 8)}...\` — starting pre-build questions now.`
     );
   }
 
@@ -176,21 +177,13 @@ export async function runWebsiteBuild(brief, options = {}) {
   let toolCalls = [];
 
   try {
-    // Open stream BEFORE sending the first message (required by the API)
     const stream = client.beta.sessions.events.stream(session.id);
 
-    // Send the build brief as the first user event
     await client.beta.sessions.events.send(session.id, {
-      events: [{
-        type: 'user.message',
-        content: [{ type: 'text', text: brief }]
-      }]
+      events: [{ type: 'user.message', content: [{ type: 'text', text: brief }] }]
     });
 
-    // Process streaming events
     for await (const event of stream) {
-      logger.debug('Session event received', { type: event.type });
-
       if (onEvent) onEvent(event);
 
       switch (event.type) {
@@ -202,34 +195,31 @@ export async function runWebsiteBuild(brief, options = {}) {
 
         case 'agent.tool_use':
           toolCalls.push({ name: event.name, input: event.input });
-          logger.info(`Claude using tool: ${event.name}`);
-          if (orgId && event.name !== 'bloom_post_progress') {
-            // Show tool usage in conference (skip bloom_post_progress to avoid loops)
-            await postProgress(orgId, `🔧 Using tool: \`${event.name}\``);
+          logger.info(`Tool used: ${event.name}`, { orgId });
+          // Show tool usage in the build chat session (skip bloom_post_progress to avoid loops)
+          if (chatSessionId && event.name !== 'bloom_post_progress' && event.name !== 'task_progress') {
+            await postToBuildSession(chatSessionId, `🔧 \`${event.name}\``);
           }
           break;
 
         case 'session.status_idle':
-          logger.info('Website build complete', { sessionId: session.id });
-          if (orgId) {
-            await postProgress(orgId, `✅ **Website build complete!**\n\n${finalOutput.slice(0, 500)}${finalOutput.length > 500 ? '...' : ''}`);
+          logger.info('Website build complete', { sessionId: session.id, orgId });
+          if (chatSessionId) {
+            await postToBuildSession(chatSessionId,
+              `✅ **Website build complete!**\n\n${finalOutput.slice(0, 800)}${finalOutput.length > 800 ? '...' : ''}`
+            );
           }
-          return {
-            sessionId: session.id,
-            output: finalOutput,
-            toolCalls,
-            status: 'complete'
-          };
+          return { sessionId: session.id, output: finalOutput, toolCalls, status: 'complete' };
 
         case 'session.status_error':
           throw new Error(`Managed Agent session error: ${event.error || 'Unknown'}`);
       }
     }
   } catch (err) {
-    logger.error('Website build failed', { sessionId: session.id, error: err.message });
-    if (orgId) {
-      await postProgress(orgId,
-        `❌ **Website build failed:** ${err.message}\n\nFalling back to standard task executor.`
+    logger.error('Website build failed', { sessionId: session.id, orgId, error: err.message });
+    if (chatSessionId) {
+      await postToBuildSession(chatSessionId,
+        `❌ **Website build encountered an issue:** ${err.message}\n\nFalling back to Sarah for this request.`
       );
     }
     err.sessionId = session.id;
@@ -240,60 +230,48 @@ export async function runWebsiteBuild(brief, options = {}) {
   return { sessionId: session.id, output: finalOutput, toolCalls, status: 'complete' };
 }
 
-// ── CHECK SESSION STATUS ──────────────────────────────────────────────────────
+// ── SESSION CONTROLS ──────────────────────────────────────────────────────────
 export async function getSessionStatus(sessionId) {
   const client = getClient();
-  try {
-    const session = await client.beta.sessions.retrieve(sessionId);
-    return {
-      sessionId: session.id,
-      status: session.status,
-      title: session.title,
-      createdAt: session.created_at,
-      updatedAt: session.updated_at
-    };
-  } catch (err) {
-    logger.error('Failed to retrieve session', { sessionId, error: err.message });
-    throw err;
-  }
+  const session = await client.beta.sessions.retrieve(sessionId);
+  return { sessionId: session.id, status: session.status, title: session.title };
 }
 
-// ── STEER A RUNNING SESSION ───────────────────────────────────────────────────
-// Send a follow-up instruction to guide Claude mid-build
 export async function steerSession(sessionId, message) {
   const client = getClient();
   await client.beta.sessions.events.send(sessionId, {
-    events: [{
-      type: 'user.message',
-      content: [{ type: 'text', text: message }]
-    }]
+    events: [{ type: 'user.message', content: [{ type: 'text', text: message }] }]
   });
-  logger.info('Steering message sent', { sessionId });
   return { sessionId, sent: true };
 }
 
-// ── INTERRUPT A BUILD ─────────────────────────────────────────────────────────
 export async function interruptSession(sessionId) {
   const client = getClient();
   await client.beta.sessions.events.send(sessionId, {
     events: [{ type: 'user.interrupt' }]
   });
-  logger.info('Session interrupted', { sessionId });
   return { sessionId, interrupted: true };
 }
 
-// ── CONVENIENCE EXPORT ────────────────────────────────────────────────────────
-// Drop-in replacement for claude-website-agent.js runWebsiteTask()
+// ── DROP-IN REPLACEMENT for claude-website-agent.js ──────────────────────────
 export async function runWebsiteTask(task, context = {}) {
   if (!process.env.ANTHROPIC_API_KEY) {
     const err = new Error('ANTHROPIC_API_KEY not configured');
     err.useFallback = true;
     throw err;
   }
-  if (!process.env.BLOOM_WEBSITE_AGENT_ID) {
-    const err = new Error('BLOOM_WEBSITE_AGENT_ID not set — run setup-website-agent.js first');
-    err.useFallback = true;
-    throw err;
-  }
-  return runWebsiteBuild(task, { orgId: context.orgId || null });
+  return runWebsiteBuild(task, {
+    orgId: context.orgId || null,
+    chatSessionId: context.sessionId || null
+  });
+}
+
+// ── ONE-TIME SETUP (kept for backward compatibility) ─────────────────────────
+// With per-org agents, setup now happens lazily. This function exists for
+// testing — call it manually to pre-create an agent for a specific org.
+export async function setupWebsiteAgentForOrg(orgId) {
+  if (!orgId) throw new Error('orgId required');
+  const result = await getOrCreateAgentForOrg(orgId);
+  logger.info('Setup complete for org', { orgId, ...result });
+  return result;
 }
