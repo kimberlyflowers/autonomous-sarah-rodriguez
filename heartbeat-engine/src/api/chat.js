@@ -5807,6 +5807,73 @@ router.post('/message', async (req, res) => {
     }
     // ── END MANAGED WEBSITE AGENT ROUTING ──────────────────────────────────────
 
+
+    // ── SARAH BUILD ROUTING ──────────────────────────────────────────────────────
+    // When the user tells Sarah to build a website, quietly queue it to the Build tab
+    // and reply with a friendly redirect. Works only if we have an orgId.
+    const _buildSignal = /\b(build|create|make|design|launch|start)\s+(me\s+)?(a\s+|an\s+)?website\b|\bI\s+need\s+(a\s+)?website\b|\bbuild\s+me\s+a\s+site\b/i;
+    const _workSignal  = /\b(new|start|create|add)\s+(a\s+)?(work\s+(task|session)|task\s+for\s+you)\b/i;
+
+    if (userOrgId && (_buildSignal.test(enrichedMessage) || _workSignal.test(enrichedMessage))) {
+      const _isBuild = _buildSignal.test(enrichedMessage);
+      try {
+        const { createClient: _sbc } = await import('@supabase/supabase-js');
+        const _sbs = _sbc(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+        const { data: _nb } = await _sbs.from('website_builds').insert({
+          org_id: userOrgId,
+          created_by: userId,
+          title: message.trim().slice(0, 60),
+          brief: message.trim(),
+          type: _isBuild ? 'build' : 'work',
+          status: 'queued',
+        }).select('id').single();
+        if (_nb?.id) {
+          // Fire MA in background
+          (async () => {
+            try {
+              const websiteAgent = await getWebsiteAgent();
+              if (websiteAgent) {
+                await _sbs.from('website_builds').update({ status: 'building' }).eq('id', _nb.id);
+                const _res = await websiteAgent(message.trim(), { orgId: userOrgId, chatSessionId: _nb.id, buildId: _nb.id });
+                await _sbs.from('website_builds').update({ status: 'complete', managed_agent_session_id: _res.sessionId || null, output_url: _res.outputUrl || null }).eq('id', _nb.id);
+              }
+            } catch(e) {
+              await _sbs.from('website_builds').update({ status: 'error' }).eq('id', _nb.id).catch(()=>{});
+            }
+          })();
+          const _tab = _isBuild ? 'Build' : 'Work';
+          const _sarahReply = _isBuild
+            ? `Got it! I've queued your website build — head to the **Build** tab to follow along. I'll work through it phase by phase. 🔨`
+            : `On it! I've queued a new work session — check the **Work** tab to see progress in real time. 🤖`;
+          await saveMessages(null, sessionId, message, _sarahReply, null, userId, agentConfig.agentId, { skipUserSave: !!skipUserSave });
+          if (history.length === 0) generateSessionTitle(sessionId, message, _sarahReply).catch(() => {});
+          return res.json({ response: _sarahReply, sessionId, agentId: agentConfig.agentId, skillsUsed: [], routedToTab: _tab.toLowerCase(), buildId: _nb.id });
+        }
+      } catch(e) {
+        logger.warn('Sarah build routing failed — falling through to normal chat', { error: e.message });
+      }
+    }
+    // ── END SARAH BUILD ROUTING ───────────────────────────────────────────────────
+
+    // ── INJECT RECENT BUILDS CONTEXT ─────────────────────────────────────────────
+    if (userOrgId) {
+      try {
+        const { createClient: _sbc2 } = await import('@supabase/supabase-js');
+        const _sbs2 = _sbc2(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+        const { data: _rb } = await _sbs2
+          .from('website_builds')
+          .select('title, type, status, created_at')
+          .eq('org_id', userOrgId)
+          .order('created_at', { ascending: false })
+          .limit(5);
+        if (_rb?.length) {
+          const _rbSummary = _rb.map(b => `• ${b.title} (${b.type} — ${b.status})`).join('\n');
+          enrichedMessage = enrichedMessage + `\n\n[Recent Work/Build sessions for context:\n${_rbSummary}]`;
+        }
+      } catch(e) { /* non-critical */ }
+    }
+    // ── END CONTEXT INJECTION ─────────────────────────────────────────────────────
+
     const response = await chatWithAgent(enrichedMessage, history, agentConfig, sessionId, userOrgId);
 
     // Handle clarification pause — bloom_clarify returns structured data instead of text
