@@ -26,6 +26,9 @@ function getSupabase() {
   );
 }
 
+// GHL connector ID — the 'ghl' connector in the connectors table
+const GHL_CONNECTOR_ID = 'd2bbdfe4-f1f1-46a5-9084-ab4422766835';
+
 // Cache PIT lookups in memory for 5 minutes to reduce Supabase reads
 const pitCache = new Map(); // orgId → { pit, locationId, expiresAt }
 
@@ -36,25 +39,31 @@ async function getPitForOrg(orgId) {
     return { pit: cached.pit, locationId: cached.locationId };
   }
 
+  // Read PIT from user_connectors (same table used by all connectors)
   const supabase = getSupabase();
   const { data, error } = await supabase
-    .from('organization_ghl_credentials')
-    .select('pit, location_id')
-    .eq('org_id', orgId)
-    .single();
+    .from('user_connectors')
+    .select('api_key, external_account_id')
+    .eq('connector_id', GHL_CONNECTOR_ID)
+    .eq('organization_id', orgId)
+    .eq('status', 'active')
+    .maybeSingle();
 
-  if (error || !data?.pit) {
-    throw new Error(`No GHL credentials found for org ${orgId}`);
+  if (error || !data?.api_key) {
+    throw new Error(
+      `No GHL credentials found for org ${orgId}. ` +
+      `Please connect your GHL account in Settings → Integrations.`
+    );
   }
 
   // Cache for 5 minutes
   pitCache.set(orgId, {
-    pit: data.pit,
-    locationId: data.location_id,
+    pit: data.api_key,
+    locationId: data.external_account_id,
     expiresAt: Date.now() + 5 * 60 * 1000
   });
 
-  return { pit: data.pit, locationId: data.location_id };
+  return { pit: data.api_key, locationId: data.external_account_id };
 }
 
 // ── POST /ghl-mcp/:orgId — forward MCP request with org's PIT injected ────────
