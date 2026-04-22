@@ -70,11 +70,14 @@ const PROVIDERS = {
 // Failover order: Gemini first (always has credits), then OpenAI, then Anthropic, then Ollama LAST
 // Ollama is the FREE backstop — no billing, no rate limits, no API keys. Always available.
 const FAILOVER_CHAIN = [
-  { provider: 'gemini',    model: 'gemini-2.5-flash' },
-  { provider: 'openai',    model: 'gpt-4o' },
-  { provider: 'openai',    model: 'gpt-4o-mini' },
+  // ── Claude FIRST — primary intelligent fallback ──
   { provider: 'anthropic', model: 'claude-sonnet-4-6' },
   { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
+  // ── Gemini second ──
+  { provider: 'gemini',    model: 'gemini-2.5-flash' },
+  // ── OpenAI third ──
+  { provider: 'openai',    model: 'gpt-4o' },
+  { provider: 'openai',    model: 'gpt-4o-mini' },
   // ── DeepSeek — ultra-cheap reasoning fallback ──
   { provider: 'deepseek',  model: 'deepseek-chat' },
   // ── FREE FALLBACK — Ollama (self-hosted on Railway) ──
@@ -342,7 +345,7 @@ function formatAssistantMessageOpenAI(content) {
 export class UnifiedLLMClient {
   constructor() {
     this._anthropicClient = null;
-    this._currentModel = process.env.LLM_MODEL || 'gemini-2.5-flash'; // cold-start fallback — overridden by bloom_admin_settings within 60s
+    this._currentModel = process.env.LLM_MODEL || 'claude-sonnet-4-6'; // cold-start fallback — overridden by bloom_admin_settings within 60s
     this._currentProvider = detectProvider(this._currentModel);
     this._failoverActive = false;
     this._isFailingOver = false; // Guard against recursive failover
