@@ -239,9 +239,11 @@ async function senseCalendar(agentConfig) {
     };
 
     // Check GHL calendar/appointments
+    // Note: GHL v2 requires startTime/endTime as ISO strings (not startDate/endDate as Date objects).
+    // ghl.getAppointments() will list calendars and aggregate events across them.
     const appointments = await ghlClient.getAppointments({
-      startDate: new Date(),
-      endDate: new Date(Date.now() + 48 * 60 * 60 * 1000) // next 48 hours
+      startTime: new Date().toISOString(),
+      endTime: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString() // next 48 hours
     });
 
     calendar.upcoming = appointments;

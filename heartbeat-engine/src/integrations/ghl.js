@@ -151,29 +151,66 @@ class GHLClient {
     }
   }
 
+  // List calendars for the configured location (cached for 5 minutes)
+  async getCalendarIds() {
+    const now = Date.now();
+    if (this._calendarCache && (now - this._calendarCache.ts) < 5 * 60 * 1000) {
+      return this._calendarCache.ids;
+    }
+    try {
+      const response = await this.client.get('/calendars/', {
+        params: { locationId: this.locationId }
+      });
+      const calendars = response.data.calendars || [];
+      const ids = calendars.map(c => c.id).filter(Boolean);
+      this._calendarCache = { ts: now, ids };
+      logger.info(`Retrieved ${ids.length} calendar IDs for location`);
+      return ids;
+    } catch (error) {
+      logger.error('Failed to list calendars:', error.message);
+      return [];
+    }
+  }
+
   // Get upcoming appointments
   async getUpcomingAppointments(hours = 24) {
     try {
       const startTime = new Date();
       const endTime = new Date(Date.now() + hours * 60 * 60 * 1000);
 
-      const response = await this.client.get(`/calendars/events`, {
-        params: {
-          locationId: this.locationId,
-          startTime: startTime.toISOString(),
-          endTime: endTime.toISOString()
+      const calendarIds = await this.getCalendarIds();
+      if (calendarIds.length === 0) {
+        logger.warn('No calendars found for location - skipping upcoming appointments');
+        return [];
+      }
+
+      // GHL v2 requires userId|calendarId|groupId. Query each calendar and aggregate.
+      const allAppointments = [];
+      for (const calendarId of calendarIds) {
+        try {
+          const response = await this.client.get(`/calendars/events`, {
+            params: {
+              locationId: this.locationId,
+              calendarId,
+              startTime: startTime.toISOString(),
+              endTime: endTime.toISOString()
+            }
+          });
+          const events = response.data.events || [];
+          allAppointments.push(...events);
+        } catch (err) {
+          logger.warn(`Failed to fetch events for calendar ${calendarId}: ${err.message}`);
         }
-      });
+      }
 
-      const appointments = response.data.events || [];
-
-      logger.info(`Retrieved ${appointments.length} upcoming appointments`, {
+      logger.info(`Retrieved ${allAppointments.length} upcoming appointments`, {
         hours,
+        calendarsQueried: calendarIds.length,
         startTime: startTime.toISOString(),
         endTime: endTime.toISOString()
       });
 
-      return appointments.map(this.formatAppointment);
+      return allAppointments.map(this.formatAppointment);
 
     } catch (error) {
       logger.error('Failed to get upcoming appointments:', error.message);
@@ -273,15 +310,32 @@ class GHLClient {
   }
 
   // Get tasks
+  // GHL v2 API does not have a top-level GET /tasks/ endpoint.
+  // Use POST /locations/{locationId}/tasks/search instead.
   async getTasks(filters = {}) {
     try {
-      const params = {
-        locationId: this.locationId,
-        limit: 100,
-        ...filters
-      };
+      const {
+        completed,
+        assignedTo,
+        contactId,
+        limit = 100,
+        skip = 0,
+        ...rest
+      } = filters;
 
-      const response = await this.client.get('/tasks/', { params });
+      const body = {
+        limit,
+        skip,
+        ...rest
+      };
+      if (typeof completed === 'boolean') body.completed = completed;
+      if (Array.isArray(assignedTo)) body.assignedTo = assignedTo;
+      if (contactId) body.contactId = Array.isArray(contactId) ? contactId : [contactId];
+
+      const response = await this.client.post(
+        `/locations/${this.locationId}/tasks/search`,
+        body
+      );
       const tasks = response.data.tasks || [];
 
       logger.info(`Retrieved ${tasks.length} tasks`);
@@ -389,17 +443,69 @@ class GHLClient {
   }
 
   // Get appointments
+  // GHL v2 /calendars/events requires userId|calendarId|groupId and startTime/endTime as ISO strings.
+  // Accepts legacy callers passing startDate/endDate (Date | string) and normalizes to startTime/endTime.
   async getAppointments(filters = {}) {
     try {
-      const params = {
-        locationId: this.locationId,
-        ...filters
-      };
+      const {
+        startDate,
+        endDate,
+        startTime,
+        endTime,
+        calendarId,
+        userId,
+        groupId,
+        ...rest
+      } = filters;
 
-      const response = await this.client.get('/calendars/events', { params });
-      const appointments = response.data.events || [];
+      // Normalize date/time params
+      const toIso = v => (v instanceof Date ? v.toISOString() : (v ? new Date(v).toISOString() : undefined));
+      const resolvedStart = toIso(startTime) || toIso(startDate) || new Date().toISOString();
+      const resolvedEnd = toIso(endTime) || toIso(endDate) || new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
 
-      return appointments.map(this.formatAppointment);
+      // If caller already provided a scope param, single request
+      if (calendarId || userId || groupId) {
+        const params = {
+          locationId: this.locationId,
+          startTime: resolvedStart,
+          endTime: resolvedEnd,
+          ...(calendarId ? { calendarId } : {}),
+          ...(userId ? { userId } : {}),
+          ...(groupId ? { groupId } : {}),
+          ...rest
+        };
+        const response = await this.client.get('/calendars/events', { params });
+        const appointments = response.data.events || [];
+        return appointments.map(this.formatAppointment);
+      }
+
+      // Otherwise: list calendars and aggregate events across all of them
+      const calendarIds = await this.getCalendarIds();
+      if (calendarIds.length === 0) {
+        logger.warn('No calendars found for location - skipping appointments');
+        return [];
+      }
+
+      const allAppointments = [];
+      for (const cid of calendarIds) {
+        try {
+          const response = await this.client.get('/calendars/events', {
+            params: {
+              locationId: this.locationId,
+              calendarId: cid,
+              startTime: resolvedStart,
+              endTime: resolvedEnd,
+              ...rest
+            }
+          });
+          const events = response.data.events || [];
+          allAppointments.push(...events);
+        } catch (err) {
+          logger.warn(`Failed to fetch events for calendar ${cid}: ${err.message}`);
+        }
+      }
+
+      return allAppointments.map(this.formatAppointment);
 
     } catch (error) {
       logger.error('Failed to get appointments:', error.message);
