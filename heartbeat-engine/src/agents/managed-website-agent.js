@@ -132,7 +132,7 @@ async function getOrCreateAgentForOrg(orgId) {
 // Creates a Managed Agent session for this org and streams the build.
 // Progress posts go to the build's own chat session (chatSessionId), not conference.
 export async function runWebsiteBuild(brief, options = {}) {
-  const { orgId = null, chatSessionId = null, onEvent = null } = options;
+  const { orgId = null, chatSessionId = null, onEvent = null, buildId = null } = options;
 
   if (!orgId) {
     const err = new Error('orgId is required for website builds — cannot determine which GHL account to use');
@@ -166,6 +166,15 @@ export async function runWebsiteBuild(brief, options = {}) {
   });
 
   logger.info('Session created', { sessionId: session.id, orgId, chatSessionId });
+
+  // Persist session ID immediately so the /message route can steer mid-build
+  if (buildId) {
+    const _sb = getSupabase();
+    await _sb.from('website_builds')
+      .update({ managed_agent_session_id: session.id, updated_at: new Date().toISOString() })
+      .eq('id', buildId)
+      .catch(e => logger.warn('Could not persist session ID', { error: e.message }));
+  }
 
   if (chatSessionId) {
     await postToBuildSession(chatSessionId,
@@ -231,6 +240,17 @@ export async function runWebsiteBuild(brief, options = {}) {
 }
 
 // ── SESSION CONTROLS ──────────────────────────────────────────────────────────
+
+// Steer an active Managed Agent session with a new user message.
+// Used by POST /api/builds/:id/message to let users redirect a running build.
+export async function steerSession(sessionId, message) {
+  const client = getClient();
+  await client.beta.sessions.events.send(sessionId, {
+    events: [{ type: 'user.message', content: [{ type: 'text', text: message }] }]
+  });
+  logger.info('Session steered', { sessionId: sessionId.slice(0, 8) });
+}
+
 export async function getSessionStatus(sessionId) {
   const client = getClient();
   const session = await client.beta.sessions.retrieve(sessionId);
