@@ -34,6 +34,8 @@ import adminRoutes from './api/admin.js';
 import mcpRoutes from './api/mcp.js';
 import commsMcpRoutes from './api/comms-mcp.js';
 import opsMcpRoutes from './api/ops-mcp.js';
+import ghlMcpProxyRoutes from './api/ghl-mcp-proxy.js';  // GHL MCP Proxy — injects PIT auth headers before forwarding to GHL official MCP
+import websiteMcpRoutes from './api/website-mcp.js';    // BLOOM Website MCP — layout blueprints, bloom_clarify, task_progress
 import integrationRoutes from './api/integrations.js';
 import cookieParser from 'cookie-parser';
 
@@ -1162,6 +1164,8 @@ app.use('/admin', adminRoutes);
 app.use('/mcp', mcpRoutes);       // BLOOM MCP Server — Cowork custom connector (ticket tools)
 app.use('/comms-mcp', commsMcpRoutes); // BLOOM Comms MCP — communication tools (chat, conference, operator)
 app.use('/ops-mcp', opsMcpRoutes);    // BLOOM Ops MCP — Railway, GitHub, and BLOOM health tools
+app.use('/ghl-mcp', ghlMcpProxyRoutes);   // GHL MCP Proxy — Managed Agent auth injection
+app.use('/website-mcp', websiteMcpRoutes); // BLOOM Website MCP — used by Managed Website Agent
 
 // ── /blog clean URL — serves blog index from Supabase ────────────────────────
 app.get('/blog', async (req, res) => {
@@ -1681,3 +1685,4 @@ process.on('SIGINT', () => {
 
 // Start the engine
 startHeartbeatEngine();// Railway rebuild trigger Fri Mar  6 09:33:57 UTC 2026
+
