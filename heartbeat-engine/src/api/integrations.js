@@ -270,6 +270,106 @@ router.get('/list', withAuth, async (req, res) => {
   }
 });
 
+
+// ════════════════════════════════════════════════════════════════
+// GHL (GoHighLevel) — API Key connector (not OAuth)
+// Users provide their Private Integration Token (PIT) directly.
+// PIT is stored in user_connectors.api_key;
+// location_id in user_connectors.external_account_id.
+// ════════════════════════════════════════════════════════════════
+const GHL_CONNECTOR_ID = 'd2bbdfe4-f1f1-46a5-9084-ab4422766835';
+
+// GET /api/integrations/ghl/status
+router.get('/ghl/status', withAuth, async (req, res) => {
+  try {
+    const supabase = await getSupabase();
+    const { orgId } = req;
+
+    const { data } = await supabase
+      .from('user_connectors')
+      .select('id, api_key, external_account_id, connected_at')
+      .eq('connector_id', GHL_CONNECTOR_ID)
+      .eq('organization_id', orgId)
+      .eq('status', 'active')
+      .maybeSingle();
+
+    if (!data?.api_key) {
+      return res.json({ connected: false });
+    }
+
+    res.json({
+      connected: true,
+      locationId: data.external_account_id || null,
+      connectedAt: data.connected_at || null,
+    });
+  } catch (error) {
+    logger.error('GHL status check failed', { error: error.message });
+    res.json({ connected: false });
+  }
+});
+
+// POST /api/integrations/ghl/connect — save PIT to user_connectors
+router.post('/ghl/connect', withAuth, async (req, res) => {
+  try {
+    const { pit, location_id } = req.body;
+    const { orgId, userId } = req;
+
+    if (!pit || typeof pit !== 'string' || !pit.startsWith('pit-')) {
+      return res.status(400).json({
+        error: 'Invalid PIT format — GoHighLevel Private Integration Tokens start with "pit-"'
+      });
+    }
+
+    const supabase = await getSupabase();
+
+    const { error } = await supabase
+      .from('user_connectors')
+      .upsert({
+        connector_id: GHL_CONNECTOR_ID,
+        organization_id: orgId,
+        connected_by: userId,
+        api_key: pit,
+        external_account_id: location_id || null,
+        status: 'active',
+        connected_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'connector_id,organization_id' });
+
+    if (error) {
+      logger.error('Failed to save GHL credentials', { error: error.message, org: orgId?.slice(0, 8) });
+      return res.status(500).json({ error: 'Failed to save GHL credentials' });
+    }
+
+    logger.info('GHL PIT saved', { org: orgId?.slice(0, 8), hasLocationId: !!location_id });
+    res.json({ success: true, connected: true });
+  } catch (error) {
+    logger.error('GHL connect failed', { error: error.message });
+    res.status(500).json({ error: 'Failed to connect GHL' });
+  }
+});
+
+// POST /api/integrations/ghl/disconnect
+router.post('/ghl/disconnect', withAuth, async (req, res) => {
+  try {
+    const supabase = await getSupabase();
+    const { orgId } = req;
+
+    const { error } = await supabase
+      .from('user_connectors')
+      .update({ status: 'inactive', updated_at: new Date().toISOString() })
+      .eq('connector_id', GHL_CONNECTOR_ID)
+      .eq('organization_id', orgId);
+
+    if (error) throw error;
+
+    logger.info('GHL disconnected', { org: orgId?.slice(0, 8) });
+    res.json({ success: true, disconnected: true });
+  } catch (error) {
+    logger.error('GHL disconnect failed', { error: error.message });
+    res.status(500).json({ error: 'GHL disconnect failed' });
+  }
+});
+
 // ════════════════════════════════════════════════════════════════
 // GET /api/integrations/:platform/status
 // Returns connection status for the platform for the current org.
@@ -449,3 +549,4 @@ router.post('/:platform/disconnect', withAuth, async (req, res) => {
 
 export { refreshIfExpired };
 export default router;
+
