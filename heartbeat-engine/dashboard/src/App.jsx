@@ -3517,8 +3517,10 @@ function WorkTab({c,mob,aFN="Bloomie"}){
   const [clarify,setClarify]=useState(null);
   const [chatInput,setChatInput]=useState('');
   const [chatSending,setChatSending]=useState(false);
+  const [pendingImgs,setPendingImgs]=useState([]);
   const pollRef=useRef(null);
   const logRef=useRef(null);
+  const imgRef=useRef(null);
 
   useEffect(()=>{loadSessions();},[]);
   useEffect(()=>{logRef.current?.scrollIntoView({behavior:'smooth'});},[msgs]);
@@ -3554,18 +3556,20 @@ function WorkTab({c,mob,aFN="Bloomie"}){
   };
 
   const sendChat=async()=>{
-    if(!chatInput.trim()||chatSending)return;
-    setChatSending(true);
     const msg=chatInput.trim();
-    setChatInput('');
+    const imgs=[...pendingImgs];
+    if(!msg&&!imgs.length||chatSending)return;
+    setChatSending(true);
+    setChatInput('');setPendingImgs([]);
+    setMsgs(p=>[...p,{role:'user',content:msg,images:imgs,ts:Date.now()}]);
     try{
       const h=await getAuthHeaders();
       if(!activeSid){
-        const r=await fetch('/api/builds',{method:'POST',headers:{...h,'Content-Type':'application/json'},body:JSON.stringify({brief:msg,title:msg.slice(0,60),type:'work'})});
+        const r=await fetch('/api/builds',{method:'POST',headers:{...h,'Content-Type':'application/json'},body:JSON.stringify({brief:msg,title:msg.slice(0,60),type:'work',images:imgs})});
         const d=await r.json();
         if(d.build?.id){await loadSessions();setActiveSid(d.build.id);}
       }else{
-        await fetch('/api/builds/'+activeSid+'/message',{method:'POST',headers:{...h,'Content-Type':'application/json'},body:JSON.stringify({message:msg})});
+        await fetch('/api/builds/'+activeSid+'/message',{method:'POST',headers:{...h,'Content-Type':'application/json'},body:JSON.stringify({message:msg,images:imgs})});
       }
     }catch{}
     setChatSending(false);
@@ -3681,11 +3685,34 @@ function WorkTab({c,mob,aFN="Bloomie"}){
           </div>
         )}
 
-        {/* ── Chat bar ── */}
-        <div style={{borderTop:'1px solid '+c.ln,padding:'12px 16px',background:c.cd,flexShrink:0}}>
-          <div style={{display:'flex',gap:8,alignItems:'flex-end'}}>
-            <textarea value={chatInput} onChange={e=>setChatInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat();}}} placeholder={activeSid?`Message ${aFN}\u2026`:`Describe your task and ${aFN} will get started\u2026`} rows={1} style={{flex:1,padding:'9px 12px',borderRadius:10,border:'1px solid '+c.ln,background:c.bg,color:c.tx,fontSize:13,fontFamily:'inherit',resize:'none',outline:'none',lineHeight:1.4,maxHeight:120,overflowY:'auto'}}/>
-            <button onClick={sendChat} disabled={!chatInput.trim()||chatSending} style={{width:36,height:36,borderRadius:10,border:'none',background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',opacity:chatInput.trim()&&!chatSending?1:0.5,flexShrink:0}}>
+        {{/* ── Chat bar ── */}
+        <input ref={imgRef} type="file" multiple accept="image/*,.pdf,.txt,.docx" style={{display:'none'}} onChange={e=>{
+          const files=Array.from(e.target.files||[]);
+          files.forEach(file=>{
+            const reader=new FileReader();
+            reader.onload=ev=>setPendingImgs(p=>[...p,{name:file.name,type:file.type,data:ev.target.result}]);
+            reader.readAsDataURL(file);
+          });
+          e.target.value='';
+        }}/>
+        {pendingImgs.length>0&&(
+          <div style={{display:'flex',gap:6,padding:'6px 16px',background:c.cd,borderTop:'1px solid '+c.ln,flexWrap:'wrap'}}>
+            {pendingImgs.map((img,i)=>(
+              <div key={i} style={{position:'relative',display:'inline-flex',alignItems:'center',gap:4,padding:'3px 8px',borderRadius:8,background:c.bg,border:'1px solid '+c.ln,fontSize:12,color:c.tx2}}>
+                {img.type&&img.type.startsWith('image/')
+                  ?<img src={img.data} style={{width:32,height:32,objectFit:'cover',borderRadius:4}}/>
+                  :<span style={{fontSize:16}}>&#x1F4C4;</span>}
+                <span style={{maxWidth:80,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{img.name}</span>
+                <button onClick={()=>setPendingImgs(p=>p.filter((_,j)=>j!==i))} style={{background:'none',border:'none',cursor:'pointer',color:c.tx2,padding:0,fontSize:14,lineHeight:1}}>&#x2715;</button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div style={{borderTop:'1px solid '+c.ln,padding:'10px 14px',background:c.cd,flexShrink:0}}>
+          <div style={{display:'flex',gap:6,alignItems:'flex-end',padding:'8px 10px',borderRadius:16,border:'1.5px solid '+c.ln,background:c.bg}}>
+            <button onClick={()=>imgRef.current?.click()} style={{width:30,height:30,borderRadius:8,border:'none',background:'none',color:c.tx2,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,flexShrink:0}} title="Attach file">&#x1F4CE;</button>
+            <textarea value={chatInput} onChange={e=>setChatInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat();}}} placeholder={activeSid?`Message ${aFN}\u2026`:`Describe your task and ${aFN} will get started\u2026`} rows={1} style={{flex:1,padding:'4px 0',border:'none',background:'transparent',color:c.tx,fontSize:13,fontFamily:'inherit',resize:'none',outline:'none',lineHeight:1.4,maxHeight:120,overflowY:'auto'}}/>
+            <button onClick={sendChat} disabled={(!chatInput.trim()&&!pendingImgs.length)||chatSending} style={{width:32,height:32,borderRadius:10,border:'none',background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',opacity:(chatInput.trim()||pendingImgs.length)&&!chatSending?1:0.5,flexShrink:0}}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg>
             </button>
           </div>
@@ -3699,17 +3726,21 @@ function WorkTab({c,mob,aFN="Bloomie"}){
 // BUILD TAB — Claude Code-style Managed Agent build environment
 // Left: build list  |  Right: build phases + checklist + output + deploy
 // ══════════════════════════════════════════════════════════════════════════════
+// BUILD TAB — Claude Code-style conversation + artifact preview
+// Left: build list  |  Center: conversation thread + chat bar  |  Right: artifact
+// ══════════════════════════════════════════════════════════════════════════════
 function BuildTab({c,mob,aFN="Bloomie"}){
   const [builds,setBuilds]=useState([]);
   const [activeId,setActiveId]=useState(null);
   const [build,setBuild]=useState(null);
-  const [checklist,setChecklist]=useState([]);
   const [msgs,setMsgs]=useState([]);
   const [clarify,setClarify]=useState(null);
   const [chatInput,setChatInput]=useState('');
   const [chatSending,setChatSending]=useState(false);
+  const [pendingImgs,setPendingImgs]=useState([]);
   const pollRef=useRef(null);
   const logRef=useRef(null);
+  const imgRef=useRef(null);
 
   useEffect(()=>{loadBuilds();},[]);
   useEffect(()=>{logRef.current?.scrollIntoView({behavior:'smooth'});},[msgs]);
@@ -3728,7 +3759,8 @@ function BuildTab({c,mob,aFN="Bloomie"}){
       const r=await fetch('/api/builds?type=build',{headers:h});
       const d=await r.json();
       setBuilds(d.builds||[]);
-    }catch{}
+      if(!activeId&&d.builds?.length){setActiveId(d.builds[0].id);}
+    }catch(e){console.error(e);}
   };
 
   const loadDetail=async(id)=>{
@@ -3736,183 +3768,248 @@ function BuildTab({c,mob,aFN="Bloomie"}){
       const h=await getAuthHeaders();
       const r=await fetch('/api/builds/'+id,{headers:h});
       const d=await r.json();
-      setBuild(d.build);
-      setChecklist(d.progress||[]);
+      setBuild(d.build||d);
       setMsgs(d.messages||[]);
-      setClarify(d.clarify||null);
-      if(d.build?.status==='complete'||d.build?.status==='error')clearInterval(pollRef.current);
-    }catch{}
+      if(d.clarification_needed)setClarify(d.clarification_prompt||'Please clarify:');
+      else setClarify(null);
+    }catch(e){console.error(e);}
   };
 
   const sendChat=async()=>{
-    if(!chatInput.trim()||chatSending)return;
-    setChatSending(true);
     const msg=chatInput.trim();
-    setChatInput('');
+    const imgs=[...pendingImgs];
+    if(!msg&&!imgs.length||chatSending)return;
+    setChatInput('');setPendingImgs([]);setChatSending(true);
+    setMsgs(p=>[...p,{role:'user',content:msg,images:imgs,ts:Date.now()}]);
     try{
       const h=await getAuthHeaders();
-      if(!activeId){
-        const r=await fetch('/api/builds',{method:'POST',headers:{...h,'Content-Type':'application/json'},body:JSON.stringify({brief:msg,title:msg.slice(0,60),type:'build'})});
-        const d=await r.json();
-        if(d.build?.id){await loadBuilds();setActiveId(d.build.id);}
-      }else{
-        await fetch('/api/builds/'+activeId+'/message',{method:'POST',headers:{...h,'Content-Type':'application/json'},body:JSON.stringify({message:msg})});
+      let url=activeId?'/api/builds/'+activeId+'/message':'/api/builds';
+      const body=activeId?{message:msg,images:imgs}:{description:msg,images:imgs};
+      const r=await fetch(url,{method:'POST',headers:{...h,'Content-Type':'application/json'},body:JSON.stringify(body)});
+      const d=await r.json();
+      if(!activeId&&d.id){setActiveId(d.id);}
+      else if(activeId){loadDetail(activeId);}
+    }catch(e){console.error(e);}
+    finally{setChatSending(false);}
+  };
+
+  const answerClarify=async(ans)=>{
+    if(!activeId)return;
+    setClarify(null);setChatSending(true);
+    setMsgs(p=>[...p,{role:'user',content:ans,ts:Date.now()}]);
+    try{
+      const h=await getAuthHeaders();
+      await fetch('/api/builds/'+activeId+'/clarify',{method:'POST',headers:{...h,'Content-Type':'application/json'},body:JSON.stringify({answer:ans})});
+      setTimeout(()=>loadDetail(activeId),1000);
+    }catch(e){console.error(e);}
+    finally{setChatSending(false);}
+  };
+
+  // Extract latest HTML artifact from agent messages
+  const latestHtml=(()=>{
+    const rev=[...msgs].reverse();
+    const m=rev.find(m=>m.role!=='user'&&/```html[\s\S]*?```/i.test(m.content||''));
+    if(!m)return null;
+    const match=(m.content||'').match(/```html\n?([\s\S]*?)```/i);
+    return match?match[1]:null;
+  })();
+
+  // Render a single message (agent or user)
+  const renderMsg=(m,i)=>{
+    const isUser=m.role==='user';
+    if(isUser){
+      return(
+        <div key={i} style={{display:'flex',flexDirection:'column',alignItems:'flex-end',marginBottom:12}}>
+          {m.images&&m.images.length>0&&(
+            <div style={{display:'flex',gap:6,marginBottom:6,flexWrap:'wrap',justifyContent:'flex-end'}}>
+              {m.images.map((img,j)=>(
+                img.type&&img.type.startsWith('image/')
+                  ?<img key={j} src={img.data} style={{maxWidth:180,maxHeight:120,borderRadius:8,objectFit:'cover'}}/>
+                  :<div key={j} style={{padding:'4px 10px',borderRadius:8,background:c.cd,border:'1px solid '+c.ln,fontSize:12,color:c.tx2}}>📄 {img.name}</div>
+              ))}
+            </div>
+          )}
+          {m.content&&<div style={{maxWidth:'75%',padding:'10px 14px',borderRadius:'18px 18px 4px 18px',background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',fontSize:13,lineHeight:1.5,wordBreak:'break-word'}}>{m.content}</div>}
+        </div>
+      );
+    }
+    // Agent message — parse code blocks
+    const parts=[];
+    let lastIdx=0;
+    const codeRe=/```(\w*)\n?([\s\S]*?)```/g;
+    let match;
+    const raw=m.content||'';
+    while((match=codeRe.exec(raw))!==null){
+      if(match.index>lastIdx){
+        parts.push({type:'text',content:raw.slice(lastIdx,match.index)});
       }
-    }catch{}
-    setChatSending(false);
+      parts.push({type:'code',lang:match[1]||'text',content:match[2]});
+      lastIdx=match.index+match[0].length;
+    }
+    if(lastIdx<raw.length)parts.push({type:'text',content:raw.slice(lastIdx)});
+    return(
+      <div key={i} style={{display:'flex',gap:8,marginBottom:12,alignItems:'flex-start'}}>
+        <div style={{width:28,height:28,borderRadius:'50%',background:'linear-gradient(135deg,#6C63FF,#A78BFA)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,color:'#fff',flexShrink:0,marginTop:2}}>B</div>
+        <div style={{flex:1,minWidth:0}}>
+          {parts.map((p,pi)=>p.type==='text'
+            ?<p key={pi} style={{margin:'0 0 6px',fontSize:13,lineHeight:1.6,color:c.tx,whiteSpace:'pre-wrap',wordBreak:'break-word'}}>{p.content}</p>
+            :(
+              <div key={pi} style={{marginBottom:8,borderRadius:8,overflow:'hidden',border:'1px solid #30363d'}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'4px 12px',background:'#161b22',fontSize:11,color:'#8b949e'}}>
+                  <span>{p.lang||'code'}</span>
+                  <div style={{display:'flex',gap:8}}>
+                    <button onClick={()=>navigator.clipboard?.writeText(p.content)} style={{background:'none',border:'none',color:'#8b949e',cursor:'pointer',fontSize:11,padding:0}}>Copy</button>
+                    {(p.lang==='html'||p.lang==='HTML')&&<button onClick={()=>{}} style={{background:'none',border:'none',color:'#58a6ff',cursor:'pointer',fontSize:11,padding:0}}>Preview</button>}
+                  </div>
+                </div>
+                <pre style={{margin:0,padding:'12px',background:'#0d1117',color:'#e6edf3',fontSize:12,lineHeight:1.5,overflowX:'auto',fontFamily:"'Fira Code','Cascadia Code','Courier New',monospace"}}><code>{p.content}</code></pre>
+              </div>
+            )
+          )}
+        </div>
+      </div>
+    );
   };
 
-  const answerClarify=async(answer)=>{
-    if(!clarify||!activeId)return;
-    try{
-      const h=await getAuthHeaders();
-      await fetch('/api/builds/'+activeId+'/clarify',{method:'POST',headers:{...h,'Content-Type':'application/json'},body:JSON.stringify({answer,clarify_id:clarify.id})});
-      setClarify(null);
-    }catch{}
-  };
-
-  const sc=(s)=>s==='complete'?'#22c55e':s==='building'||s==='in_progress'?'#F4A261':s==='error'?'#ef4444':'#60a5fa';
-  const sl=(s)=>s==='complete'?'Complete':s==='building'?'Building…':s==='error'?'Error':s==='clarifying'?'Needs input':s==='queued'?'Queued':'Starting…';
-
-  const PHASES=['Requirements','Blueprint','Build','Review','Deploy'];
-  const phaseIdx=(s)=>s==='queued'?0:s==='clarifying'?1:s==='building'?2:s==='complete'?4:s==='error'?2:0;
+  const statusColor={'pending':'#F59E0B','running':'#3B82F6','completed':'#10B981','failed':'#EF4444','paused':'#6B7280'}[build?.status]||c.tx2;
+  const phases=['planning','coding','testing','deploying'];
 
   return(
     <div style={{display:'flex',height:'calc(100vh - 104px)',overflow:'hidden'}}>
-      {/* ── Build list sidebar ── */}
-      {!mob&&(
-        <div style={{width:260,borderRight:'1px solid '+c.ln,background:c.cd,display:'flex',flexDirection:'column',flexShrink:0}}>
-          <div style={{padding:'14px 12px 10px',borderBottom:'1px solid '+c.ln,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-            <span style={{fontSize:13,fontWeight:700,color:c.tx}}>Builds</span>
-            <button onClick={()=>setActiveId(null)} title="New build" style={{width:26,height:26,borderRadius:7,border:'none',background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center',lineHeight:1}}>+</button>
-          </div>
-          <div style={{flex:1,overflowY:'auto',padding:'8px 8px'}}>
-            {builds.length===0&&<div style={{padding:24,textAlign:'center',color:c.so,fontSize:12}}>No builds yet.<br/>Type below to start one.</div>}
-            {builds.map(b=>(
-              <button key={b.id} onClick={()=>setActiveId(b.id)} style={{width:'100%',textAlign:'left',padding:'10px 10px',borderRadius:10,border:'none',background:activeId===b.id?c.ac+'18':'transparent',cursor:'pointer',marginBottom:4,display:'flex',alignItems:'center',gap:8}} onMouseEnter={e=>e.currentTarget.style.background=activeId===b.id?c.ac+'18':c.hv} onMouseLeave={e=>e.currentTarget.style.background=activeId===b.id?c.ac+'18':'transparent'}>
-                <span style={{width:8,height:8,borderRadius:'50%',background:sc(b.status),flexShrink:0}}/>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:12,fontWeight:600,color:c.tx,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{b.title||'Untitled Build'}</div>
-                  <div style={{fontSize:10,color:c.so,marginTop:2}}>{sl(b.status)}</div>
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
 
-      {/* ── Main panel ── */}
-      <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',background:c.bg}}>
-        {/* Empty state */}
+      {/* ── Sidebar: build list ── */}
+      <div style={{width:mob?200:260,borderRight:'1px solid '+c.ln,display:'flex',flexDirection:'column',background:c.cd,flexShrink:0}}>
+        <div style={{padding:'14px 16px 10px',borderBottom:'1px solid '+c.ln,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <span style={{fontSize:13,fontWeight:600,color:c.tx}}>Builds</span>
+          <button onClick={()=>{setActiveId(null);setBuild(null);setMsgs([]);}} style={{fontSize:11,padding:'3px 10px',borderRadius:8,border:'1px solid '+c.ln,background:'linear-gradient(135deg,#6C63FF,#A78BFA)',color:'#fff',cursor:'pointer'}}>+ New</button>
+        </div>
+        <div style={{flex:1,overflowY:'auto'}}>
+          {builds.length===0&&<div style={{padding:'20px 16px',fontSize:12,color:c.tx2,textAlign:'center'}}>No builds yet.<br/>Start a new build below.</div>}
+          {builds.map(b=>(
+            <div key={b.id} onClick={()=>setActiveId(b.id)} style={{padding:'10px 16px',cursor:'pointer',borderBottom:'1px solid '+c.ln,background:activeId===b.id?c.bg:'transparent',borderLeft:activeId===b.id?'3px solid #6C63FF':'3px solid transparent'}}>
+              <div style={{fontSize:13,fontWeight:500,color:c.tx,marginBottom:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{b.name||b.description||'Build #'+b.id?.slice(-6)}</div>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <span style={{fontSize:11,color:{'pending':'#F59E0B','running':'#3B82F6','completed':'#10B981','failed':'#EF4444'}[b.status]||c.tx2}}>{b.status||'pending'}</span>
+                <span style={{fontSize:11,color:c.tx2}}>{b.created_at?new Date(b.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric'}):'–'}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Main panel: conversation + chat bar ── */}
+      <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',background:c.bg,minWidth:0}}>
+
         {!activeId&&(
-          <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:16,padding:32}}>
-            <div style={{fontSize:44}}>🔨</div>
-            <div style={{fontSize:17,fontWeight:700,color:c.tx}}>Build Environment</div>
-            <div style={{fontSize:13,color:c.so,textAlign:'center',maxWidth:380,lineHeight:1.6}}>Describe what you want built below — {aFN} handles it end to end, phase by phase, and deploys when done.</div>
+          <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:12,padding:40}}>
+            <div style={{fontSize:40}}>&#x1F528;</div>
+            <div style={{fontSize:16,fontWeight:600,color:c.tx}}>Start a new build</div>
+            <div style={{fontSize:13,color:c.tx2,textAlign:'center',maxWidth:320}}>Describe what you want to build and {aFN} will plan, code, and deploy it for you.</div>
           </div>
         )}
 
-        {/* Build detail */}
         {activeId&&build&&(
           <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
             {/* Header */}
-            <div style={{padding:'12px 20px',borderBottom:'1px solid '+c.ln,background:c.cd,flexShrink:0}}>
-              <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:build.output_url?10:0}}>
-                <span style={{width:10,height:10,borderRadius:'50%',background:sc(build.status),animation:build.status==='building'?'pulse 1.5s ease infinite':'none'}}/>
-                <span style={{fontSize:14,fontWeight:700,color:c.tx,flex:1}}>{build.title||'Build'}</span>
-                <span style={{fontSize:11,padding:'3px 10px',borderRadius:20,background:sc(build.status)+'22',color:sc(build.status),fontWeight:700}}>{sl(build.status)}</span>
+            <div style={{padding:'12px 16px',borderBottom:'1px solid '+c.ln,flexShrink:0}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+                <span style={{fontSize:14,fontWeight:600,color:c.tx,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:'60%'}}>{build.name||build.description||'Build in progress'}</span>
+                <span style={{fontSize:12,fontWeight:600,color:statusColor,textTransform:'capitalize'}}>{build.status||'pending'}</span>
               </div>
-              {/* Phase progress bar */}
-              <div style={{display:'flex',gap:4,marginTop:10,alignItems:'center'}}>
-                {PHASES.map((p,i)=>{
-                  const cur=phaseIdx(build.status);
-                  const done=i<cur;
-                  const active=i===cur;
+              <div style={{display:'flex',gap:4}}>
+                {phases.map((ph,pi)=>{
+                  const phaseIdx=phases.indexOf(build.phase);
+                  const done=phaseIdx>pi;
+                  const active=phaseIdx===pi;
                   return(
-                    <div key={p} style={{display:'flex',alignItems:'center',gap:4,flex:1}}>
-                      <div style={{flex:1}}>
-                        <div style={{height:3,borderRadius:2,background:done?'#22c55e':active?'#F4A261':c.ln,transition:'background .3s'}}/>
-                        <div style={{fontSize:9,color:done?'#22c55e':active?'#F4A261':c.so,marginTop:3,textAlign:'center',fontWeight:active?700:400}}>{p}</div>
-                      </div>
-                      {i<PHASES.length-1&&<div style={{width:1,height:10,background:c.ln,flexShrink:0}}/>}
-                    </div>
+                    <div key={ph} style={{flex:1,height:4,borderRadius:2,background:done?'#10B981':active?'#3B82F6':c.ln,transition:'background 0.3s'}}/>
                   );
                 })}
               </div>
-              {/* Deploy button */}
-              {build.output_url&&(
-                <div style={{display:'flex',gap:8,marginTop:10}}>
-                  <a href={build.output_url} target="_blank" rel="noopener" style={{padding:'6px 16px',borderRadius:8,background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',fontSize:12,fontWeight:700,textDecoration:'none',display:'inline-flex',alignItems:'center',gap:6}}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-                    Preview Site
-                  </a>
-                </div>
-              )}
+              {build.output_url&&<div style={{marginTop:6}}><a href={build.output_url} target="_blank" rel="noopener noreferrer" style={{fontSize:11,color:'#3B82F6',textDecoration:'none'}}>&#x1F517; Open preview ↗</a></div>}
             </div>
-
-            <div style={{flex:1,overflowY:'auto',padding:20,display:'flex',flexDirection:'column',gap:14}}>
-              {/* Clarify prompt */}
+            {/* Conversation thread */}
+            <div style={{flex:1,overflowY:'auto',padding:'16px',display:'flex',flexDirection:'column'}}>
+              {msgs.length===0&&<div style={{textAlign:'center',color:c.tx2,fontSize:13,marginTop:40}}>Waiting for {aFN} to start...</div>}
+              {msgs.map((m,i)=>renderMsg(m,i))}
               {clarify&&(
-                <div style={{background:'linear-gradient(135deg,#1a0a2e,#2d1b4e)',borderRadius:14,border:'1px solid rgba(244,162,97,0.3)',padding:18,flexShrink:0}}>
-                  <div style={{fontSize:11,fontWeight:700,color:'#F4A261',marginBottom:10,textTransform:'uppercase',letterSpacing:'0.5px'}}>🤔 {aFN} needs your input</div>
-                  <div style={{fontSize:14,color:'#fff',marginBottom:14,lineHeight:1.5}}>{clarify.question}</div>
-                  {clarify.options?.length>0?(
-                    <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
-                      {clarify.options.map((opt,i)=>(
-                        <button key={i} onClick={()=>answerClarify(opt)} style={{padding:'8px 16px',borderRadius:8,border:'1px solid rgba(244,162,97,0.4)',background:'rgba(244,162,97,0.1)',color:'#F4A261',fontSize:13,cursor:'pointer',fontWeight:500}}>{opt}</button>
-                      ))}
-                    </div>
-                  ):(
-                    <div style={{display:'flex',gap:8}}>
-                      <input id="build-clarify-ans" placeholder="Type your answer…" style={{flex:1,padding:'8px 12px',borderRadius:8,border:'1px solid rgba(244,162,97,0.4)',background:'rgba(255,255,255,0.05)',color:'#fff',fontSize:13,outline:'none'}}/>
-                      <button onClick={()=>{const v=document.getElementById('build-clarify-ans')?.value;if(v)answerClarify(v);}} style={{padding:'8px 16px',borderRadius:8,border:'none',background:'#F4A261',color:'#fff',fontWeight:700,fontSize:13,cursor:'pointer'}}>Send</button>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Checklist */}
-              {checklist.length>0&&(
-                <div style={{background:c.cd,borderRadius:14,border:'1px solid '+c.ln,padding:16,flexShrink:0}}>
-                  <div style={{fontSize:11,fontWeight:700,color:c.so,textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:12}}>Build Checklist</div>
-                  <div style={{display:'flex',flexDirection:'column',gap:8}}>
-                    {checklist.map((item,i)=>(
-                      <div key={i} style={{display:'flex',alignItems:'center',gap:10}}>
-                        <span style={{fontSize:15,flexShrink:0}}>{item.status==='complete'?'✅':item.status==='in_progress'?'⏳':'○'}</span>
-                        <span style={{fontSize:13,color:item.status==='complete'?c.so:c.tx,textDecoration:item.status==='complete'?'line-through':'none'}}>{item.step_name}</span>
-                      </div>
+                <div style={{margin:'8px 0',padding:'12px 16px',borderRadius:12,background:'linear-gradient(135deg,rgba(108,99,255,0.15),rgba(167,139,250,0.15))',border:'1px solid rgba(108,99,255,0.3)'}}>
+                  <div style={{fontSize:13,fontWeight:500,color:'#A78BFA',marginBottom:8}}>&#x2753; {aFN} needs clarification</div>
+                  <div style={{fontSize:13,color:c.tx,marginBottom:10}}>{clarify}</div>
+                  <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                    {['Yes, proceed','No, adjust','Give me options'].map(opt=>(
+                      <button key={opt} onClick={()=>answerClarify(opt)} style={{padding:'6px 12px',borderRadius:8,border:'1px solid rgba(108,99,255,0.4)',background:'rgba(108,99,255,0.1)',color:'#A78BFA',cursor:'pointer',fontSize:12}}>{opt}</button>
                     ))}
                   </div>
                 </div>
               )}
-
-              {/* Live log */}
-              <div style={{background:c.cd,borderRadius:14,border:'1px solid '+c.ln,padding:16,flex:1,minHeight:120}}>
-                <div style={{fontSize:11,fontWeight:700,color:c.so,textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:12}}>Build Log</div>
-                {msgs.length===0?(
-                  <div style={{color:c.so,fontSize:12,textAlign:'center',padding:'20px 0'}}>{build.status==='queued'?'Queued — starting soon…':'Waiting for build output…'}</div>
-                ):(
-                  <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                    {msgs.map((m,i)=>(
-                      <div key={i} style={{fontSize:12,color:m.metadata?.type==='build_progress'?c.ac:c.tx,lineHeight:1.5,padding:'6px 10px',borderRadius:8,background:c.sf,fontFamily:m.metadata?.source==='tool'?"'JetBrains Mono',monospace":'inherit'}}>{m.content}</div>
-                    ))}
-                    <div ref={logRef}/>
+              {chatSending&&(
+                <div style={{display:'flex',gap:8,alignItems:'flex-start',marginBottom:12}}>
+                  <div style={{width:28,height:28,borderRadius:'50%',background:'linear-gradient(135deg,#6C63FF,#A78BFA)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,color:'#fff',flexShrink:0}}>B</div>
+                  <div style={{display:'flex',gap:4,padding:'10px 14px',borderRadius:'18px 18px 18px 4px',background:c.cd,alignItems:'center'}}>
+                    {[0,1,2].map(i=><span key={i} style={{width:6,height:6,borderRadius:'50%',background:c.tx2,display:'inline-block',animation:'bounce 1.2s ease-in-out '+[0,0.2,0.4][i]+'s infinite'}}/>)}
                   </div>
-                )}
-              </div>
+                </div>
+              )}
+              <div ref={logRef}/>
             </div>
           </div>
         )}
-      </div>
-      {/* ── Chat bar ── */}
-      <div style={{borderTop:'1px solid '+c.ln,padding:'12px 16px',background:c.cd,flexShrink:0}}>
-        <div style={{display:'flex',gap:8,alignItems:'flex-end'}}>
-          <textarea value={chatInput} onChange={e=>setChatInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat();}}} placeholder={activeId?`Message ${aFN}…`:`Describe what you want to build and ${aFN} will start…`} rows={1} style={{flex:1,padding:'9px 12px',borderRadius:10,border:'1px solid '+c.ln,background:c.bg,color:c.tx,fontSize:13,fontFamily:'inherit',resize:'none',outline:'none',lineHeight:1.4,maxHeight:120,overflowY:'auto'}}/>
-          <button onClick={sendChat} disabled={!chatInput.trim()||chatSending} style={{width:36,height:36,borderRadius:10,border:'none',background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',opacity:chatInput.trim()&&!chatSending?1:0.5,flexShrink:0}}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg>
-          </button>
+
+        {/* File input (hidden) */}
+        <input ref={imgRef} type="file" multiple accept="image/*,.pdf,.txt,.docx" style={{display:'none'}} onChange={e=>{
+          const files=Array.from(e.target.files||[]);
+          files.forEach(file=>{
+            const reader=new FileReader();
+            reader.onload=ev=>setPendingImgs(p=>[...p,{name:file.name,type:file.type,data:ev.target.result}]);
+            reader.readAsDataURL(file);
+          });
+          e.target.value='';
+        }}/>
+
+        {/* Pending image previews */}
+        {pendingImgs.length>0&&(
+          <div style={{display:'flex',gap:6,padding:'6px 16px',background:c.cd,borderTop:'1px solid '+c.ln,flexWrap:'wrap',flexShrink:0}}>
+            {pendingImgs.map((img,i)=>(
+              <div key={i} style={{position:'relative',display:'inline-flex',alignItems:'center',gap:4,padding:'3px 8px',borderRadius:8,background:c.bg,border:'1px solid '+c.ln,fontSize:12,color:c.tx2}}>
+                {img.type&&img.type.startsWith('image/')
+                  ?<img src={img.data} style={{width:32,height:32,objectFit:'cover',borderRadius:4}}/>
+                  :<span style={{fontSize:16}}>&#x1F4C4;</span>}
+                <span style={{maxWidth:80,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{img.name}</span>
+                <button onClick={()=>setPendingImgs(p=>p.filter((_,j)=>j!==i))} style={{background:'none',border:'none',cursor:'pointer',color:c.tx2,padding:0,fontSize:14,lineHeight:1}}>&#x2715;</button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Chat bar — always at bottom of main column */}
+        <div style={{borderTop:'1px solid '+c.ln,padding:'10px 14px',background:c.cd,flexShrink:0}}>
+          <div style={{display:'flex',gap:6,alignItems:'flex-end',padding:'8px 10px',borderRadius:16,border:'1.5px solid '+c.ln,background:c.bg}}>
+            <button onClick={()=>imgRef.current?.click()} style={{width:30,height:30,borderRadius:8,border:'none',background:'none',color:c.tx2,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,flexShrink:0}} title="Attach file">&#x1F4CE;</button>
+            <textarea value={chatInput} onChange={e=>setChatInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat();}}} placeholder={activeId?`Message ${aFN}\u2026`:`Describe what you want to build\u2026`} rows={1} style={{flex:1,padding:'4px 0',border:'none',background:'transparent',color:c.tx,fontSize:13,fontFamily:'inherit',resize:'none',outline:'none',lineHeight:1.4,maxHeight:120,overflowY:'auto'}}/>
+            <button onClick={sendChat} disabled={(!chatInput.trim()&&!pendingImgs.length)||chatSending} style={{width:32,height:32,borderRadius:10,border:'none',background:'linear-gradient(135deg,#6C63FF,#A78BFA)',color:'#fff',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',opacity:(chatInput.trim()||pendingImgs.length)&&!chatSending?1:0.5,flexShrink:0}}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg>
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* ── Artifact preview panel (right column, conditional) ── */}
+      {(latestHtml||build?.output_url)&&activeId&&(
+        <div style={{width:440,borderLeft:'1px solid '+c.ln,display:'flex',flexDirection:'column',background:c.cd,flexShrink:0}}>
+          <div style={{padding:'10px 14px',borderBottom:'1px solid '+c.ln,display:'flex',justifyContent:'space-between',alignItems:'center',flexShrink:0}}>
+            <span style={{fontSize:12,fontWeight:600,color:c.tx}}>Artifact Preview</span>
+            {(build?.output_url||latestHtml)&&(
+              <a href={build?.output_url||'#'} target="_blank" rel="noopener noreferrer" style={{fontSize:11,color:'#3B82F6',textDecoration:'none'}}>Open &#x2197;</a>
+            )}
+          </div>
+          {latestHtml
+            ?<iframe srcDoc={latestHtml} sandbox="allow-scripts allow-same-origin" style={{flex:1,border:'none',background:'#fff',width:'100%'}} title="Artifact Preview"/>
+            :<iframe src={build.output_url} sandbox="allow-scripts allow-same-origin allow-forms" style={{flex:1,border:'none',width:'100%'}} title="Build Preview"/>
+          }
+        </div>
+      )}
+
     </div>
   );
 }
@@ -4664,6 +4761,7 @@ function App({ authUser }) {
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
         @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
         @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+@keyframes bounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-6px)}}
         @keyframes pop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
         @keyframes bloomGlow{0%,100%{opacity:.5;transform:scale(1)}50%{opacity:1;transform:scale(1.15)}}
         @keyframes bloomieWiggle{0%,100%{transform:rotate(0deg)}25%{transform:rotate(-3deg)}75%{transform:rotate(3deg)}}
