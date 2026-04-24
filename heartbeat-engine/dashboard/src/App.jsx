@@ -3684,7 +3684,7 @@ function WorkTab({c,mob,aFN="Bloomie"}){
         {/* ── Chat bar ── */}
         <div style={{borderTop:'1px solid '+c.ln,padding:'12px 16px',background:c.cd,flexShrink:0}}>
           <div style={{display:'flex',gap:8,alignItems:'flex-end'}}>
-            <textarea value={chatInput} onChange={e=>setChatInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat();}}} placeholder={activeId?`Message ${aFN}\u2026`:`Describe what you want to build and ${aFN} will start\u2026`} rows={1} style={{flex:1,padding:'9px 12px',borderRadius:10,border:'1px solid '+c.ln,background:c.bg,color:c.tx,fontSize:13,fontFamily:'inherit',resize:'none',outline:'none',lineHeight:1.4,maxHeight:120,overflowY:'auto'}}/>
+            <textarea value={chatInput} onChange={e=>setChatInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat();}}} placeholder={activeSid?`Message ${aFN}\u2026`:`Describe your task and ${aFN} will get started\u2026`} rows={1} style={{flex:1,padding:'9px 12px',borderRadius:10,border:'1px solid '+c.ln,background:c.bg,color:c.tx,fontSize:13,fontFamily:'inherit',resize:'none',outline:'none',lineHeight:1.4,maxHeight:120,overflowY:'auto'}}/>
             <button onClick={sendChat} disabled={!chatInput.trim()||chatSending} style={{width:36,height:36,borderRadius:10,border:'none',background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',opacity:chatInput.trim()&&!chatSending?1:0.5,flexShrink:0}}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg>
             </button>
@@ -3903,6 +3903,15 @@ function BuildTab({c,mob,aFN="Bloomie"}){
             </div>
           </div>
         )}
+      </div>
+      {/* ── Chat bar ── */}
+      <div style={{borderTop:'1px solid '+c.ln,padding:'12px 16px',background:c.cd,flexShrink:0}}>
+        <div style={{display:'flex',gap:8,alignItems:'flex-end'}}>
+          <textarea value={chatInput} onChange={e=>setChatInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat();}}} placeholder={activeId?`Message ${aFN}…`:`Describe what you want to build and ${aFN} will start…`} rows={1} style={{flex:1,padding:'9px 12px',borderRadius:10,border:'1px solid '+c.ln,background:c.bg,color:c.tx,fontSize:13,fontFamily:'inherit',resize:'none',outline:'none',lineHeight:1.4,maxHeight:120,overflowY:'auto'}}/>
+          <button onClick={sendChat} disabled={!chatInput.trim()||chatSending} style={{width:36,height:36,borderRadius:10,border:'none',background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',opacity:chatInput.trim()&&!chatSending?1:0.5,flexShrink:0}}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg>
+          </button>
+        </div>
       </div>
     </div>
   );
