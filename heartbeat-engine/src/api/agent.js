@@ -498,7 +498,7 @@ router.get('/tasks', async (req, res) => {
 
     const tasks = (data || []).map(t => ({
       id:          t.id,
-      taskId:      t.task_id,
+      taskId:      t.task_id || t.id,  // fall back to row id for legacy rows where task_id is null
       name:        t.name,
       description: t.description,
       taskType:    t.task_type,
@@ -555,7 +555,8 @@ router.post('/tasks', async (req, res) => {
         cron_expression: cron,
         run_time:        runTime || '09:00',
         next_run_at:     nextRun,
-        enabled:         true
+        enabled:         true,
+        status:          'active'  // keep in sync with enabled for legacy scheduler compat
       })
       .select()
       .single();
@@ -583,21 +584,40 @@ router.patch('/tasks/:taskId', async (req, res) => {
 
     const supabase = await getSupabase();
 
+    // Fetch existing row first so we can recalculate next_run_at correctly
+    // even when only runTime (not frequency) changes, and to support legacy
+    // rows where task_id is null (matched by row id instead).
+    const { data: existing } = await supabase
+      .from('scheduled_tasks')
+      .select('frequency, run_time')
+      .or(`task_id.eq.${taskId},id.eq.${taskId}`)
+      .eq('agent_id', targetAgentId)
+      .single();
+
+    const effFreq = frequency || existing?.frequency || 'daily';
+    const effTime = runTime   || existing?.run_time  || '09:00';
+
     const updates = { updated_at: new Date().toISOString() };
-    if (enabled !== undefined) updates.enabled     = enabled;
-    if (name)                  updates.name        = name;
-    if (instruction)           updates.instruction = instruction;
+    if (enabled !== undefined) {
+      updates.enabled = enabled;
+      updates.status  = enabled ? 'active' : 'paused'; // keep in sync
+    }
+    if (name)        updates.name        = name;
+    if (instruction) updates.instruction = instruction;
     if (frequency) {
       updates.frequency       = frequency;
-      updates.cron_expression = frequencyToCron(frequency, runTime || '09:00');
-      updates.next_run_at     = nextRunTime(frequency, runTime);
+      updates.cron_expression = frequencyToCron(effFreq, effTime);
+    }
+    // Recalculate next_run_at any time frequency or runTime changes
+    if (frequency || runTime) {
+      updates.next_run_at = nextRunTime(effFreq, effTime);
     }
     if (runTime) updates.run_time = runTime;
 
     const { data, error } = await supabase
       .from('scheduled_tasks')
       .update(updates)
-      .eq('task_id', taskId)
+      .or(`task_id.eq.${taskId},id.eq.${taskId}`)
       .eq('agent_id', targetAgentId)
       .select()
       .single();
@@ -626,9 +646,9 @@ router.delete('/tasks/:taskId', async (req, res) => {
     const { data, error } = await supabase
       .from('scheduled_tasks')
       .delete()
-      .eq('task_id', taskId)
+      .or(`task_id.eq.${taskId},id.eq.${taskId}`)
       .eq('agent_id', targetAgentId)
-      .select('task_id')
+      .select('task_id, id')
       .single();
 
     if (error) throw new Error(error.message);
