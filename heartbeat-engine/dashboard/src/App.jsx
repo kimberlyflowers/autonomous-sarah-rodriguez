@@ -4447,7 +4447,7 @@ function App({ authUser }) {
       const qs = aid ? `?agentId=${aid}` : '';
       const [pRes, tRes] = await Promise.all([
         fetch('/api/agent/profile'+qs).then(r=>r.json()),
-        fetch('/api/agent/tasks').then(r=>r.json())
+        fetch('/api/agent/tasks' + qs).then(r=>r.json())  // pass agentId so the right agent's tasks load
       ]);
       setProfileData(pRes);
       setScheduledTasks(tRes.tasks||[]);
@@ -5740,7 +5740,7 @@ function App({ authUser }) {
                         </div>
                         <button onClick={async()=>{
                           if(!newTask.name||!newTask.instruction) return;
-                          await fetch('/api/agent/tasks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(newTask)});
+                          await fetch('/api/agent/tasks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...newTask,agentId:currentAgentId})});
                           setNewTask({name:'',instruction:'',taskType:'content',frequency:'daily',runTime:'09:00'});
                           setTaskFormOpen(false);
                           loadActivity();
@@ -5808,7 +5808,7 @@ function App({ authUser }) {
                               const name=parts[0];const instruction=parts[1]||parts[0];
                               const frequency=(parts[2]||'daily').toLowerCase();const runTime=parts[3]||'09:00';
                               const taskType=instruction.match(/blog|post|write|content/i)?'content':instruction.match(/email|newsletter|campaign/i)?'email':instruction.match(/crm|contact|lead/i)?'crm':instruction.match(/research|search|find/i)?'research':'custom';
-                              if(name){try{await fetch('/api/agent/tasks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,instruction,taskType,frequency,runTime})});created++;}catch{}}
+                              if(name){try{await fetch('/api/agent/tasks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,instruction,taskType,frequency,runTime,agentId:currentAgentId})});created++;}catch{}}
                             }
                             setBulkText('');setBulkImportOpen(false);loadActivity();
                           }} disabled={!bulkText.trim()} style={{padding:"10px 24px",borderRadius:8,border:"none",background:bulkText.trim()?c.gradient:"#444",cursor:bulkText.trim()?"pointer":"not-allowed",fontSize:13,fontWeight:700,color:"#fff",fontFamily:"inherit"}}>
@@ -5851,7 +5851,7 @@ function App({ authUser }) {
                         }}>
                           <button onClick={(e)=>{
                             e.stopPropagation();
-                            (async()=>{await fetch(`/api/agent/tasks/${task.taskId}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:!task.enabled})});loadActivity();})();
+                            (async()=>{await fetch(`/api/agent/tasks/${task.taskId}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:!task.enabled,agentId:currentAgentId})});loadActivity();})();
                           }} style={{width:38,height:22,borderRadius:11,border:"none",background:task.enabled?c.gr:"#444",cursor:"pointer",position:"relative",flexShrink:0}}>
                             <div style={{width:16,height:16,borderRadius:"50%",background:"#fff",position:"absolute",top:3,left:task.enabled?19:3,transition:"left .2s",boxShadow:"0 1px 3px rgba(0,0,0,.3)"}}/>
                           </button>
@@ -5865,7 +5865,7 @@ function App({ authUser }) {
                             <div style={{fontSize:11,color:task.enabled?c.so:c.fa,marginTop:2}}>{task.enabled?"Active":"Paused"}</div>
                             {task.runCount>0&&<div style={{fontSize:10,color:c.fa,marginTop:1}}>{task.runCount} runs</div>}
                           </div>
-                          <button onClick={(e)=>{e.stopPropagation();if(confirm('Delete this task?')){(async()=>{await fetch(`/api/agent/tasks/${task.taskId}`,{method:'DELETE'});loadActivity();})();}}} style={{width:28,height:28,borderRadius:6,border:"1px solid "+c.ln,background:"transparent",cursor:"pointer",color:c.fa,fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>✕</button>
+                          <button onClick={(e)=>{e.stopPropagation();if(confirm('Delete this task?')){(async()=>{await fetch(`/api/agent/tasks/${task.taskId}?agentId=${currentAgentId}`,{method:'DELETE'});loadActivity();})();}}} style={{width:28,height:28,borderRadius:6,border:"1px solid "+c.ln,background:"transparent",cursor:"pointer",color:c.fa,fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>✕</button>
                         </div>
                       );
                     })}
@@ -5917,7 +5917,7 @@ function App({ authUser }) {
                             if(editForm.frequency!==editTask.frequency) body.frequency=editForm.frequency;
                             if(editForm.runTime!==editTask.runTime) body.runTime=editForm.runTime;
                             if(Object.keys(body).length===0){setEditTask(null);return;}
-                            await fetch(`/api/agent/tasks/${editTask.taskId}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+                            await fetch(`/api/agent/tasks/${editTask.taskId}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({...body,agentId:currentAgentId})});
                             setEditTask(null);
                             loadActivity();
                           }} style={{flex:1,padding:"10px 16px",borderRadius:8,border:"none",background:c.ac,color:"#fff",fontSize:13,fontWeight:600,cursor:"pointer"}}>
@@ -6129,7 +6129,7 @@ function App({ authUser }) {
                           <button onClick={async()=>{
                             if(!calTask.name||!calTask.instruction) return;
                             const taskType=calTask.instruction.match(/blog|post|write|content/i)?'content':calTask.instruction.match(/email|newsletter/i)?'email':calTask.instruction.match(/crm|contact|lead/i)?'crm':'custom';
-                            await fetch('/api/agent/tasks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...calTask,taskType})});
+                            await fetch('/api/agent/tasks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...calTask,taskType,agentId:currentAgentId})});
                             setCalTask({name:'',instruction:'',frequency:'daily',runTime:'09:00'});
                             setCalSelDay(null);
                             loadActivity();
