@@ -3685,7 +3685,7 @@ function WorkTab({c,mob,aFN="Bloomie"}){
           </div>
         )}
 
-        {{/* ── Chat bar ── */}
+        {/* ── Chat bar ── */}
         <input ref={imgRef} type="file" multiple accept="image/*,.pdf,.txt,.docx" style={{display:'none'}} onChange={e=>{
           const files=Array.from(e.target.files||[]);
           files.forEach(file=>{
