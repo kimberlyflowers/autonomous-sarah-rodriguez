@@ -1480,13 +1480,15 @@ async function runScheduledTasks(agentConfig) {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
   });
 
-  // Find tasks that are due now
+  // Find tasks that are due now.
+  // Use enabled=true as the authoritative filter (matches what the UI writes).
+  // Also accept legacy status='active' rows so old records still run.
   let dueTasks;
   try {
     const { data, error } = await supabase
       .from('scheduled_tasks')
       .select('*')
-      .eq('status', 'active')
+      .or('enabled.eq.true,status.eq.active')
       .not('next_run_at', 'is', null)
       .lte('next_run_at', new Date().toISOString())
       .order('next_run_at', { ascending: true })
