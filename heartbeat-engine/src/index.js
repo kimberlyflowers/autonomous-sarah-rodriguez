@@ -1,10 +1,4 @@
-    // Trust gates disabled — write result and move on
-    if (success) {
-      logger.info(`📦 Task completed: ${task.name}`);
-    } else {
-      logger.warn(`⚠️ Task failed: ${task.name} — ${output.slice(0, 120)}`);
-    }
-  }// BLOOM Heartbeat Engine - Main Entry Point
+// BLOOM Heartbeat Engine - Main Entry Point
 // Autonomous agent infrastructure for BLOOM Staffing
 
 import 'dotenv/config';
