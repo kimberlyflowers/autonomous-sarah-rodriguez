@@ -15,7 +15,7 @@ import { executeImageTool, imageToolDefinitions } from '../tools/image-tools.js'
 import { executeScrapeTools, scrapeToolDefinitions } from '../tools/scrape-tools.js';
 import { executeGmailTool, gmailToolDefinitions } from '../tools/gmail-tools.js';
 import { subAgentSystem, SUB_AGENTS } from '../agents/sub-agent-system.js';
-import { trustGate } from '../trust/trust-gate.js';
+// trustGate disabled — import removed to prevent gate-related module failures
 import { contextManager } from '../context/context-manager.js';
 import { ModelFormatter, modelSelector } from '../context/model-formatter.js';
 import { enhancedExecutor } from '../tools/enhanced-executor.js';
