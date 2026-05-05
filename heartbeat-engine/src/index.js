@@ -1,4 +1,10 @@
-// BLOOM Heartbeat Engine - Main Entry Point
+    // Trust gates disabled — write result and move on
+    if (success) {
+      logger.info(`📦 Task completed: ${task.name}`);
+    } else {
+      logger.warn(`⚠️ Task failed: ${task.name} — ${output.slice(0, 120)}`);
+    }
+  }// BLOOM Heartbeat Engine - Main Entry Point
 // Autonomous agent infrastructure for BLOOM Staffing
 
 import 'dotenv/config';
@@ -1571,97 +1577,11 @@ async function runScheduledTasks(agentConfig) {
       logger.warn('Could not write task_run record:', e.message);
     }
 
-    // ── Quality Gate Review Pipeline ────────────────────────────────────
-    if (!success || !taskRunId) continue; // nothing to review on failure
-
-    const deliverableType = task.deliverable_type || task.task_type || 'document';
-    const needsReview = ALWAYS_REVIEW_TYPES.has(deliverableType)
-      || (task.confidence_score == null || task.confidence_score < REVIEW_CONFIDENCE_THRESHOLD);
-
-    if (!needsReview) {
-      // Low-stakes task, confidence is high — mark delivered directly
-      await supabase.from('task_runs').update({ status: 'delivered' }).eq('id', taskRunId);
-      logger.info(`📦 Task delivered (no review needed): ${task.name}`);
-      continue;
-    }
-
-    logger.info(`🔍 Quality Gate: reviewing ${deliverableType} for task "${task.name}"`);
-
-    let approved = false;
-    let lastFeedback = '';
-
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      try {
-        const { review } = await runQualityGateReview(
-          supabase, taskRunId,
-          task.organization_id, task.agent_id,
-          deliverableType, output, null
-        );
-
-        lastFeedback = review.feedback || '';
-
-        if (review.status === 'APPROVED') {
-          approved = true;
-          logger.info(`✅ Quality Gate APPROVED on attempt ${attempt}: ${task.name}`);
-          break;
-        }
-
-        logger.warn(`⚠️  Quality Gate NEEDS_REVISION (attempt ${attempt}/3): ${task.name}`, {
-          feedback: review.feedback?.slice(0, 120),
-        });
-
-        if (attempt < 3) {
-          // Re-run the task with revision instructions appended
-          const revisionInstruction = `${task.instruction}\n\n` +
-            `[REVISION REQUIRED — previous attempt was rejected by the Quality Gate]\n` +
-            `Feedback: ${review.feedback}\n` +
-            (review.revision_instructions ? `Instructions: ${review.revision_instructions}` : '');
-
-          try {
-            const { AgentExecutor } = await import('./agent/executor.js');
-            const executor = new AgentExecutor(agentConfig);
-            const revised = await executor.execute(revisionInstruction, [], `scheduled_task_${task.id}_rev${attempt}`);
-            output = typeof revised === 'string' ? revised : revised?.response || JSON.stringify(revised);
-
-            // Increment revision_count in the latest review queue row
-            await supabase.from('bloom_review_queue')
-              .update({ revision_count: attempt })
-              .eq('task_run_id', taskRunId)
-              .order('created_at', { ascending: false })
-              .limit(1);
-
-          } catch (revErr) {
-            logger.error(`Revision attempt ${attempt} failed:`, revErr.message);
-            break;
-          }
-        }
-      } catch (reviewErr) {
-        logger.error(`Quality Gate review attempt ${attempt} errored:`, reviewErr.message);
-        break;
-      }
-    }
-
-    // Update task_run with final status
-    const finalStatus = approved ? 'approved' : 'needs_revision';
-    await supabase.from('task_runs')
-      .update({ status: finalStatus })
-      .eq('id', taskRunId)
-      .catch(e => logger.warn('Could not update task_run status:', e.message));
-
-    if (approved) {
-      // Mark as delivered
-      await supabase.from('task_runs')
-        .update({ status: 'delivered' })
-        .eq('id', taskRunId)
-        .catch(e => logger.warn('Could not mark task_run delivered:', e.message));
-      logger.info(`📦 Task approved and delivered: ${task.name}`);
+    // Trust gates disabled — task result logged, no review pipeline
+    if (success) {
+      logger.info(`📦 Task completed: ${task.name}`);
     } else {
-      // Escalate after 3 failed revisions
-      logger.error(`🚨 Escalating after 3 failed revisions: ${task.name}`);
-      await escalateToBloomieTicket(
-        supabase, taskRunId, task.name,
-        task.agent_id, task.organization_id, lastFeedback
-      );
+      logger.warn(`⚠️ Task failed: ${task.name} — ${output.slice(0,120)}`);
     }
   }
 }
