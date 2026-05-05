@@ -1,3 +1,3 @@
-# Trigger Railway redeploy - Wed Apr 22 07:49:23 UTC 2026
-trigger-1776844163
-# Claude agent + failover fix - switched to claude-sonnet-4-6 as primary
+# Trigger Railway redeploy - Tue May 05 07:01:02 UTC 2026
+trigger-1777964462
+# fix: quality gate removed, trust gates disabled, tasks now execute cleanly
