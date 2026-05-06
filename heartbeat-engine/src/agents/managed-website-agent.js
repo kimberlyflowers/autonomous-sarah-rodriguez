@@ -257,14 +257,6 @@ export async function getSessionStatus(sessionId) {
   return { sessionId: session.id, status: session.status, title: session.title };
 }
 
-export async function steerSession(sessionId, message) {
-  const client = getClient();
-  await client.beta.sessions.events.send(sessionId, {
-    events: [{ type: 'user.message', content: [{ type: 'text', text: message }] }]
-  });
-  return { sessionId, sent: true };
-}
-
 export async function interruptSession(sessionId) {
   const client = getClient();
   await client.beta.sessions.events.send(sessionId, {

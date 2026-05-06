@@ -1851,7 +1851,6 @@ const _ALL_TOOLS = [
       required: ["ref", "path"]
     }
   },
-  },
   // ── NEW BROWSER BRIDGE TOOLS (added by Codex — matches desktop harness v2.0.0) ──
   {
     name: "bloom_browser_launch_chrome",

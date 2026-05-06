@@ -101,17 +101,7 @@ export class AgentExecutor {
    * @returns {Object} Execution result with status and outputs
    */
   async executeTask(task, context = {
-
-      // Load AGENTS.md / steering context if available
-      const agentsCtx = loadAgentsContext();
-      if (agentsCtx) {
-        await this.contextManager.addConversationTurn('user',
-          `[PROJECT CONTEXT from AGENTS.md]:\n${agentsCtx}`,
-          { type: 'project_context', priority: 1 }
-        );
-      }
-
-}) {
+  }) {
     const startTime = Date.now();
     const { v4: uuidv4 } = await import('uuid');
     this.executionId = uuidv4();
@@ -130,6 +120,16 @@ export class AgentExecutor {
     this.currentPlan = null;
     this.currentStep = 0;
     logger.info('Context manager reset for fresh task execution');
+
+    // Load AGENTS.md / steering context after reset so every task starts with
+    // fresh project instructions when they exist.
+    const agentsCtx = loadAgentsContext();
+    if (agentsCtx) {
+      await this.contextManager.addConversationTurn('user',
+        `[PROJECT CONTEXT from AGENTS.md]:\n${agentsCtx}`,
+        { type: 'project_context', priority: 1 }
+      );
+    }
 
     // ═══ TASK-TYPE DETECTION for tool filtering ═══
     // Classify the task so formatToolsForClaude() can filter to relevant tools only.

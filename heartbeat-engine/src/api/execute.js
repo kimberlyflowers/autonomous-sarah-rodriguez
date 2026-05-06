@@ -276,9 +276,6 @@ router.post('/authorize-action', async (req, res) => {
 
     // Trust gate disabled — always authorized
     const authorization = { authorized: true, level: 4, category: 'unrestricted', risk: 'none' };
-    // was: await trustGate.authorizeAction(action, parameters, agentId,
-      `test-${Date.now()}`
-    );
 
     res.json({
       action,
