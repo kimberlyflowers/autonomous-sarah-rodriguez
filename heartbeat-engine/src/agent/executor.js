@@ -1,7 +1,3 @@
-// Sarah's Agentic Execution Engine
-// Multi-turn tool chaining system similar to Claude Code architecture
-// Executes tasks autonomously with tool use until completion
-
 import { createLogger } from '../logging/logger.js';
 import { loadAgentConfig } from '../config/agent-profile.js';
 import { getAnthropicClient } from '../api/chat.js';
@@ -15,7 +11,6 @@ import { executeImageTool, imageToolDefinitions } from '../tools/image-tools.js'
 import { executeScrapeTools, scrapeToolDefinitions } from '../tools/scrape-tools.js';
 import { executeGmailTool, gmailToolDefinitions } from '../tools/gmail-tools.js';
 import { subAgentSystem, SUB_AGENTS } from '../agents/sub-agent-system.js';
-// trustGate disabled — import removed to prevent gate-related module failures
 import { contextManager } from '../context/context-manager.js';
 import { ModelFormatter, modelSelector } from '../context/model-formatter.js';
 import { enhancedExecutor } from '../tools/enhanced-executor.js';
@@ -23,27 +18,23 @@ import { systemMonitor } from '../monitoring/system-monitor.js';
 import { broadcastExecutionProgress } from '../api/events.js';
 import { verifyAction } from './verify.js';
 import { appendProgress, getProgressText } from './progress-log.js';
-
-
-// ── GIT SNAPSHOT — lightweight rollback before destructive file ops ───────────
 import { exec as _exec } from 'child_process';
 import { promisify } from 'util';
-const execAsync = promisify(_exec);
+import { readFileSync, existsSync } from 'fs';
 
+const _execAsync = promisify(_exec);
+
+// ── GIT SNAPSHOT — lightweight rollback before destructive file ops ───────────
 async function gitSnapshot(reason = 'auto-snapshot') {
   try {
-    await execAsync('git add -A && git stash push -m "bloom-auto: ' + reason + '"', { timeout: 10000 });
+    await _execAsync(`git add -A && git stash push -m "bloom-auto: ${reason}"`, { timeout: 10000 });
     return { success: true };
   } catch (e) {
-    // Not a git repo or git unavailable — non-fatal
-    return { success: false, reason: e.message };
+    return { success: false, reason: e.message }; // non-fatal
   }
 }
 
-// ── AGENTS.md CONTEXT LOADER — Kiro-style per-task project context ────────────
-import { readFileSync, existsSync } from 'fs';
-import { join } from 'path';
-
+// ── AGENTS.md CONTEXT LOADER — Kiro-style per-task context ───────────────────
 function loadAgentsContext() {
   const paths = ['./AGENTS.md', './CLAUDE.md', './.kiro/steering/product.md'];
   for (const p of paths) {
@@ -53,8 +44,6 @@ function loadAgentsContext() {
   }
   return null;
 }
-
-
 
 const logger = createLogger('agent-executor');
 
