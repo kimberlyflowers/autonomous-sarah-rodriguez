@@ -24,6 +24,38 @@ import { broadcastExecutionProgress } from '../api/events.js';
 import { verifyAction } from './verify.js';
 import { appendProgress, getProgressText } from './progress-log.js';
 
+
+// ── GIT SNAPSHOT — lightweight rollback before destructive file ops ───────────
+import { exec as _exec } from 'child_process';
+import { promisify } from 'util';
+const execAsync = promisify(_exec);
+
+async function gitSnapshot(reason = 'auto-snapshot') {
+  try {
+    await execAsync('git add -A && git stash push -m "bloom-auto: ' + reason + '"', { timeout: 10000 });
+    return { success: true };
+  } catch (e) {
+    // Not a git repo or git unavailable — non-fatal
+    return { success: false, reason: e.message };
+  }
+}
+
+// ── AGENTS.md CONTEXT LOADER — Kiro-style per-task project context ────────────
+import { readFileSync, existsSync } from 'fs';
+import { join } from 'path';
+
+function loadAgentsContext() {
+  const paths = ['./AGENTS.md', './CLAUDE.md', './.kiro/steering/product.md'];
+  for (const p of paths) {
+    if (existsSync(p)) {
+      try { return readFileSync(p, 'utf8').slice(0, 4000); } catch(e) {}
+    }
+  }
+  return null;
+}
+
+
+
 const logger = createLogger('agent-executor');
 
 // Agent execution status
@@ -79,7 +111,18 @@ export class AgentExecutor {
    * @param {Object} context - Additional context for execution
    * @returns {Object} Execution result with status and outputs
    */
-  async executeTask(task, context = {}) {
+  async executeTask(task, context = {
+
+      // Load AGENTS.md / steering context if available
+      const agentsCtx = loadAgentsContext();
+      if (agentsCtx) {
+        await this.contextManager.addConversationTurn('user',
+          `[PROJECT CONTEXT from AGENTS.md]:\n${agentsCtx}`,
+          { type: 'project_context', priority: 1 }
+        );
+      }
+
+}) {
     const startTime = Date.now();
     const { v4: uuidv4 } = await import('uuid');
     this.executionId = uuidv4();
