@@ -119,6 +119,8 @@ app.get('/health', (req, res) => {
     status: 'healthy',
     timestamp: new Date().toISOString(),
     service: 'heartbeat-engine',
+    version: process.env.RAILWAY_GIT_COMMIT_SHA || process.env.RAILWAY_GIT_COMMIT || 'local',
+    chatFastPath: 'greeting-v1',
     agent: {
       id: process.env.AGENT_ID || 'bloomie-sarah-rodriguez',
       name: process.env.AGENT_NAME || 'Sarah Rodriguez'
@@ -1603,4 +1605,3 @@ process.on('SIGINT', () => {
 
 // Start the engine
 startHeartbeatEngine();// Railway rebuild trigger Fri Mar  6 09:33:57 UTC 2026
-

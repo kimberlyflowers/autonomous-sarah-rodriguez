@@ -167,8 +167,9 @@ function buildSystemPrompt(agentConfig) {
   return `${identityBlock}
 OPERATOR: ${operatorName} | BLOOMIE AGENT
 
-You are an autonomous AI employee — you plan, execute, and verify tasks.
-You don't explain what you're going to do. You do it, verify it worked, then report.
+You are an AI employee who can chat naturally and execute work.
+If the user is only greeting, thanking, checking in, or making small talk, reply directly without tools, task_progress, bloom_clarify, or planning.
+When the user asks you to do work, plan, execute, verify, and report.
 
 ════════════════════════════════════════
 COMMUNICATION
@@ -2178,7 +2179,7 @@ const _ALL_TOOLS = [
   },
   {
     name: "task_progress",
-    description: "MANDATORY for any task involving tool calls — part of your Autonomous Work Protocol. Use liberally — the Active Tasks panel is visible to the user and shows them you're working. Call at every phase transition: (1) PLAN: call with ALL steps 'pending' before starting work. (2) EXECUTE: mark each step 'in_progress' then 'completed' as you work — exactly ONE in_progress at a time. (3) VERIFY: mark verify step 'in_progress' while checking, then 'completed'. (4) DELIVER: include the returned inlineChecklist in your final response. RULES: Always include a final 'Verify all deliverables' step. Send the COMPLETE todo array every call. Mark complete IMMEDIATELY on success. NEVER mark complete if tool returned an error. Each item needs content (imperative: 'Generate flyer') and activeForm (continuous: 'Generating flyer').",
+    description: "MANDATORY for real tasks involving tool calls — part of your Autonomous Work Protocol. Do NOT use for greetings, thanks, small talk, or simple conversational replies. The Active Tasks panel is visible to the user and should only appear when work is actually being done. Call at every phase transition: (1) PLAN: call with ALL steps 'pending' before starting work. (2) EXECUTE: mark each step 'in_progress' then 'completed' as you work — exactly ONE in_progress at a time. (3) VERIFY: mark verify step 'in_progress' while checking, then 'completed'. (4) DELIVER: include the returned inlineChecklist in your final response. RULES: Always include a final 'Verify all deliverables' step. Send the COMPLETE todo array every call. Mark complete IMMEDIATELY on success. NEVER mark complete if tool returned an error. Each item needs content (imperative: 'Generate flyer') and activeForm (continuous: 'Generating flyer').",
     input_schema: {
       type: "object",
       properties: {
@@ -4207,9 +4208,69 @@ async function callAnthropicDirect(params, maxRetries = 2, client = null) {
   }
 }
 
+function getMessageText(userMessage) {
+  if (typeof userMessage === 'string') return userMessage;
+  if (Array.isArray(userMessage)) {
+    return userMessage
+      .filter(block => block?.type === 'text')
+      .map(block => block.text || '')
+      .join(' ');
+  }
+  return '';
+}
+
+function hasNonTextContent(userMessage) {
+  return Array.isArray(userMessage) && userMessage.some(block => block?.type && block.type !== 'text');
+}
+
+function isConversationalMessage(text) {
+  const normalized = (text || '').trim().toLowerCase();
+  if (!normalized) return true;
+  if (normalized.length > 160) return false;
+
+  const workIntent = /\b(create|make|build|write|draft|send|open|click|type|search|find|look up|research|schedule|update|delete|move|copy|read|summarize|analyze|generate|post|publish|login|fill|navigate|download|upload|fix|deploy|run|check|test|call|email|text|message)\b/i;
+  if (workIntent.test(normalized)) return false;
+
+  const conversationalPatterns = [
+    /^(hi|hello|hey|heyy|hiya|howdy|yo|sup|good morning|good afternoon|good evening|gm|gn)[!.?\s]*$/i,
+    /^(hi|hello|hey|yo|good morning|good afternoon|good evening)\s+(bloomie|sarah|there|friend|team)[!.?\s]*$/i,
+    /^(thanks|thank you|ty|thx|ok|okay|cool|got it|nice|awesome|perfect|great)[!.?\s]*$/i,
+    /^(how are you|how's it going|what's up|you there|are you there)[!.?\s]*$/i
+  ];
+  if (conversationalPatterns.some(pattern => pattern.test(normalized))) return true;
+
+  return false;
+}
+
+function buildInstantConversationReply(text) {
+  const normalized = (text || '').trim().toLowerCase();
+  if (!normalized) return 'Hi, I am here with you.';
+  if (/^(thanks|thank you|ty|thx)[!.?\s]*$/i.test(normalized)) {
+    return "You're welcome. I'm here when you're ready.";
+  }
+  if (/^(ok|okay|cool|got it|nice|awesome|perfect|great)[!.?\s]*$/i.test(normalized)) {
+    return 'Got it.';
+  }
+  if (/^(how are you|how's it going|what's up|you there|are you there)[!.?\s]*$/i.test(normalized)) {
+    return "I'm here and ready to help. What are we working on?";
+  }
+  return 'Hi, I am here. What can I help you with?';
+}
+
 async function chatWithAgent(userMessage, history, agentConfig, sessionId = null, orgId = null) {
   // Get the right Anthropic client — per-agent key if configured, otherwise platform key
   const agentClient = getAnthropicClient(agentConfig);
+  const messageText = getMessageText(userMessage);
+  const isConversationOnly = !hasNonTextContent(userMessage) && isConversationalMessage(messageText);
+
+  if (isConversationOnly) {
+    const trackingKey = sessionId || 'default';
+    taskProgress.delete(trackingKey);
+    thinkingLog.delete(trackingKey);
+
+    return buildInstantConversationReply(messageText);
+  }
+
   let systemPrompt = buildSystemPrompt(agentConfig);
 
   // LIVE DESKTOP DETECTION — auto-detect if BLOOM Desktop app is running
@@ -4641,7 +4702,6 @@ NEVER skip steps 3 and 4 even if step 2 fails.
   const failedTools = [];       // Array of { name, error, round } — full failure log
 
   // Model selection — per-org tier system with unified client failover
-  const messageText = Array.isArray(userMessage) ? userMessage.filter(b => b.type === 'text').map(b => b.text).join(' ') : userMessage;
   const llmClient = getLLMClient();
   // activeProvider declared here — used by both model adaptation and task injection below
   let activeProvider = llmClient.provider;
@@ -5819,6 +5879,19 @@ router.post('/message', async (req, res) => {
     const agentConfig = await loadAgentConfig(agentId || null);
     await ensureSession(null, sessionId, userId, agentConfig.agentId);
     const history = await loadHistory(null, sessionId);
+
+    const rawMessageText = getMessageText(message);
+    if (isConversationalMessage(rawMessageText)) {
+      const instantResponse = buildInstantConversationReply(rawMessageText);
+      await saveMessages(null, sessionId, message, instantResponse, null, userId, agentConfig.agentId, { skipUserSave: !!skipUserSave });
+      return res.json({
+        response: instantResponse,
+        sessionId,
+        agentId: agentConfig.agentId,
+        skillsUsed: [],
+        conversational: true
+      });
+    }
 
     // Auto-fetch Google Docs/Sheets/Slides if URL detected in message
     let enrichedMessage = message;
