@@ -1796,11 +1796,11 @@ const _ALL_TOOLS = [
   },
   {
     name: "bloom_browser_tabs_switch",
-    description: "Switch to a specific browser tab.",
+    description: "Switch to a specific browser tab by index (0-based).",
     input_schema: {
       type: "object",
-      properties: { tabId: { type: "string" } },
-      required: ["tabId"]
+      properties: { index: { type: "number", description: "0-based tab index from bloom_browser_tabs_list" } },
+      required: ["index"]
     }
   },
   {
@@ -1849,6 +1849,107 @@ const _ALL_TOOLS = [
         path: { type: "string" }
       },
       required: ["ref", "path"]
+    }
+  },
+  },
+  // ── NEW BROWSER BRIDGE TOOLS (added by Codex — matches desktop harness v2.0.0) ──
+  {
+    name: "bloom_browser_launch_chrome",
+    description: "Launch Chrome with remote debugging enabled. Call this if browser tools fail because Chrome isn't started with CDP. Optionally pass a URL to open on launch.",
+    input_schema: {
+      type: "object",
+      properties: {
+        url: { type: "string", description: "Optional URL to open when Chrome launches" },
+        connectDelay: { type: "number", description: "ms to wait after launch before connecting (default 2000)" }
+      },
+      required: []
+    }
+  },
+  {
+    name: "bloom_browser_current_url",
+    description: "Get the current URL of the active browser tab.",
+    input_schema: { type: "object", properties: {}, required: [] }
+  },
+  {
+    name: "bloom_browser_wait",
+    description: "Wait for a specified number of milliseconds before continuing.",
+    input_schema: {
+      type: "object",
+      properties: { ms: { type: "number", description: "Milliseconds to wait" } },
+      required: ["ms"]
+    }
+  },
+  {
+    name: "bloom_browser_wait_for_selector",
+    description: "Wait until a CSS selector appears on the page (up to timeout ms).",
+    input_schema: {
+      type: "object",
+      properties: {
+        selector: { type: "string", description: "CSS selector to wait for" },
+        timeout: { type: "number", description: "Max wait in ms (default 10000)" }
+      },
+      required: ["selector"]
+    }
+  },
+  {
+    name: "bloom_browser_tabs_create",
+    description: "Open a new browser tab, optionally navigating to a URL.",
+    input_schema: {
+      type: "object",
+      properties: { url: { type: "string", description: "URL to open in the new tab (optional)" } },
+      required: []
+    }
+  },
+  {
+    name: "bloom_browser_tabs_close",
+    description: "Close a browser tab by its 0-based index.",
+    input_schema: {
+      type: "object",
+      properties: { index: { type: "number", description: "0-based tab index to close" } },
+      required: ["index"]
+    }
+  },
+  {
+    name: "bloom_browser_form_fill",
+    description: "Fill multiple form fields at once by CSS selector. More reliable than typing field by field for complex forms.",
+    input_schema: {
+      type: "object",
+      properties: {
+        fields: {
+          type: "array",
+          description: "Array of {selector, value} objects",
+          items: {
+            type: "object",
+            properties: {
+              selector: { type: "string" },
+              value: { type: "string" }
+            },
+            required: ["selector", "value"]
+          }
+        }
+      },
+      required: ["fields"]
+    }
+  },
+  {
+    name: "bloom_browser_hover",
+    description: "Hover the mouse over a browser element by CSS selector (triggers hover menus/tooltips).",
+    input_schema: {
+      type: "object",
+      properties: { selector: { type: "string", description: "CSS selector of the element to hover" } },
+      required: ["selector"]
+    }
+  },
+  {
+    name: "bloom_browser_select_option",
+    description: "Select an option from a <select> dropdown element.",
+    input_schema: {
+      type: "object",
+      properties: {
+        selector: { type: "string", description: "CSS selector of the <select> element" },
+        value: { type: "string", description: "The option value or visible text to select" }
+      },
+      required: ["selector", "value"]
     }
   },
   // ── AUDIT TOOLS ───────────────────────────────────────────────────────
