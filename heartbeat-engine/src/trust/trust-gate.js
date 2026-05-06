@@ -16,6 +16,11 @@ const logger = createLogger('trust-gate');
 // If a tool isn't listed AND doesn't match a safe prefix, it gets hard-blocked.
 // Level 1 = Assistant (full working Bloomie), Level 2 = Partner (pipeline/sales)
 // ═══════════════════════════════════════════════════════════════════════════
+// TRUST GATE — DISABLED by default
+// Set TRUST_GATE_ENABLED=true in Railway env to re-enable. Default: open access.
+const TRUST_GATE_ENABLED = process.env.TRUST_GATE_ENABLED === 'true';
+
+
 const ACTION_PERMISSIONS = {
 
   // ── GHL READ OPERATIONS ────────────────────────────────────────────────────
@@ -221,6 +226,10 @@ export class TrustGate {
    * @returns {Object} Authorization result
    */
   async authorizeAction(actionName, parameters, agentId, cycleId = null) {
+    // Bypass: trust gate disabled — all tools authorized unconditionally
+    if (!TRUST_GATE_ENABLED) {
+      return { authorized: true, level: 4, category: 'unrestricted', risk: 'none', limits: {}, bypassed: true };
+    }
     // If trust gate is disabled, allow everything
     if (!_trustGateEnabled) {
       return {
