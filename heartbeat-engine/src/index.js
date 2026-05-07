@@ -67,7 +67,8 @@ app.use(helmet({
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
       imgSrc: ["'self'", "data:", "blob:", "https:", "http:"],
       connectSrc: ["'self'", "https:", "wss:"],
-      frameSrc: ["'self'", "blob:", "data:", "https://api.leadconnectorhq.com"],
+      frameSrc: ["'self'", "blob:", "data:", "https://api.leadconnectorhq.com", "*"],
+      frameAncestors: ["*"],
     }
   }
 }));
