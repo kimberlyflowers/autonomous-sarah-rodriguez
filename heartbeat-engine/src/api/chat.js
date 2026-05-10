@@ -684,6 +684,141 @@ function getModelAdaptation(provider) {
 }
 
 
+const WEBSITE_TOOL_NAMES = new Set([
+  'list_websites',
+  'register_website',
+  'create_page',
+  'update_page',
+  'publish_page',
+  'list_site_events',
+  'create_event',
+  'update_event',
+  'set_registration_link',
+  'connect_ghl_calendar',
+  'set_homepage_feature',
+  'create_blog',
+  'create_blog_post',
+  'deploy_site',
+  'publish_website'
+]);
+
+const WEBSITE_CHAT_TOOLS = [
+  {
+    name: "list_websites",
+    description: "List websites owned by the current organization. Use before editing a website so you pick the right site.",
+    input_schema: { type: "object", properties: { org_id: { type: "string" } }, required: [] }
+  },
+  {
+    name: "register_website",
+    description: "Register or update a website for this organization, including optional GitHub, Vercel, domain, and GHL calendar metadata.",
+    input_schema: {
+      type: "object",
+      properties: {
+        org_id: { type: "string" },
+        site_name: { type: "string" },
+        org_slug: { type: "string" },
+        custom_domain: { type: "string" },
+        ghl_calendar_id: { type: "string" },
+        ghl_location_id: { type: "string" },
+        source_repo: { type: "string" },
+        vercel_project_id: { type: "string" },
+        published: { type: "boolean" },
+        settings: { type: "object" }
+      },
+      required: ["site_name"]
+    }
+  },
+  {
+    name: "create_page",
+    description: "Create a page on a registered website.",
+    input_schema: {
+      type: "object",
+      properties: { org_id: { type: "string" }, site_id: { type: "string" }, site_slug: { type: "string" }, page_slug: { type: "string" }, title: { type: "string" }, content_html: { type: "string" }, content_data: { type: "object" }, published: { type: "boolean" } },
+      required: ["page_slug"]
+    }
+  },
+  {
+    name: "update_page",
+    description: "Update a page on a registered website.",
+    input_schema: {
+      type: "object",
+      properties: { org_id: { type: "string" }, site_id: { type: "string" }, site_slug: { type: "string" }, page_slug: { type: "string" }, title: { type: "string" }, content_html: { type: "string" }, content_data: { type: "object" }, published: { type: "boolean" } },
+      required: ["page_slug"]
+    }
+  },
+  {
+    name: "publish_page",
+    description: "Publish or unpublish one page on a registered website.",
+    input_schema: {
+      type: "object",
+      properties: { org_id: { type: "string" }, site_id: { type: "string" }, site_slug: { type: "string" }, page_slug: { type: "string" }, published: { type: "boolean" } },
+      required: ["page_slug"]
+    }
+  },
+  {
+    name: "list_site_events",
+    description: "List events for a registered website before creating or updating event details.",
+    input_schema: {
+      type: "object",
+      properties: { org_id: { type: "string" }, site_id: { type: "string" }, site_slug: { type: "string" }, include_unpublished: { type: "boolean" } },
+      required: []
+    }
+  },
+  {
+    name: "create_event",
+    description: "Create an event for a website, including free/paid ticket info and GHL registration wiring.",
+    input_schema: {
+      type: "object",
+      properties: { org_id: { type: "string" }, site_id: { type: "string" }, site_slug: { type: "string" }, title: { type: "string" }, event_slug: { type: "string" }, starts_at: { type: "string" }, ends_at: { type: "string" }, location: { type: "string" }, summary: { type: "string" }, description: { type: "string" }, image_url: { type: "string" }, registration_url: { type: "string" }, ghl_calendar_id: { type: "string" }, ticket_type: { type: "string", enum: ["free", "paid"] }, ticket_price_cents: { type: "number" }, currency: { type: "string" }, published: { type: "boolean" }, metadata: { type: "object" } },
+      required: ["title"]
+    }
+  },
+  {
+    name: "update_event",
+    description: "Update an existing website event.",
+    input_schema: {
+      type: "object",
+      properties: { org_id: { type: "string" }, site_id: { type: "string" }, site_slug: { type: "string" }, event_id: { type: "string" }, title: { type: "string" }, event_slug: { type: "string" }, starts_at: { type: "string" }, ends_at: { type: "string" }, location: { type: "string" }, summary: { type: "string" }, description: { type: "string" }, image_url: { type: "string" }, registration_url: { type: "string" }, ghl_calendar_id: { type: "string" }, ticket_type: { type: "string", enum: ["free", "paid"] }, ticket_price_cents: { type: "number" }, currency: { type: "string" }, published: { type: "boolean" }, metadata: { type: "object" } },
+      required: ["event_id", "title"]
+    }
+  },
+  {
+    name: "set_registration_link",
+    description: "Set or replace the registration URL/calendar wiring for one website event.",
+    input_schema: { type: "object", properties: { org_id: { type: "string" }, event_id: { type: "string" }, registration_url: { type: "string" }, ghl_calendar_id: { type: "string" }, ghl_form_id: { type: "string" } }, required: ["event_id", "registration_url"] }
+  },
+  {
+    name: "connect_ghl_calendar",
+    description: "Connect or update the default GHL calendar for one website.",
+    input_schema: { type: "object", properties: { org_id: { type: "string" }, site_id: { type: "string" }, site_slug: { type: "string" }, ghl_calendar_id: { type: "string" }, ghl_location_id: { type: "string" } }, required: ["ghl_calendar_id"] }
+  },
+  {
+    name: "set_homepage_feature",
+    description: "Mark an event or page as the homepage feature for a website.",
+    input_schema: { type: "object", properties: { org_id: { type: "string" }, site_id: { type: "string" }, site_slug: { type: "string" }, event_id: { type: "string" }, page_slug: { type: "string" }, headline: { type: "string" }, cta_label: { type: "string" }, cta_url: { type: "string" } }, required: [] }
+  },
+  {
+    name: "create_blog",
+    description: "Create or update blog settings and a blog index page for a registered website.",
+    input_schema: { type: "object", properties: { org_id: { type: "string" }, site_id: { type: "string" }, site_slug: { type: "string" }, title: { type: "string" }, blog_slug: { type: "string" }, description: { type: "string" }, published: { type: "boolean" } }, required: [] }
+  },
+  {
+    name: "create_blog_post",
+    description: "Create or update a blog post for a registered website.",
+    input_schema: { type: "object", properties: { org_id: { type: "string" }, site_id: { type: "string" }, site_slug: { type: "string" }, post_id: { type: "string" }, title: { type: "string" }, post_slug: { type: "string" }, excerpt: { type: "string" }, content_html: { type: "string" }, author: { type: "string" }, hero_image_url: { type: "string" }, tags: { type: "array", items: { type: "string" } }, published: { type: "boolean" }, metadata: { type: "object" } }, required: ["title"] }
+  },
+  {
+    name: "deploy_site",
+    description: "Publish a website record and record a deployment request. For Git/Vercel sites, still push file changes to GitHub to trigger Vercel.",
+    input_schema: { type: "object", properties: { org_id: { type: "string" }, site_id: { type: "string" }, site_slug: { type: "string" }, reason: { type: "string" } }, required: [] }
+  },
+  {
+    name: "publish_website",
+    description: "Publish or unpublish a registered website.",
+    input_schema: { type: "object", properties: { org_id: { type: "string" }, site_id: { type: "string" }, site_slug: { type: "string" }, published: { type: "boolean" } }, required: [] }
+  }
+];
+
 // TOOL DEFINITIONS — Full suite available to Sarah
 const _ALL_TOOLS = [
   // ── CONTACTS ──────────────────────────────────────────────────────────────
@@ -1186,6 +1321,7 @@ const _ALL_TOOLS = [
       required: ["funnelId"]
     }
   },
+  ...WEBSITE_CHAT_TOOLS,
 
   // ── LOCATION & USERS ──────────────────────────────────────────────────────
   {
@@ -2440,9 +2576,12 @@ After getting the page list, you can:
       type: "object",
       properties: {
         sessionId: { type: "string", description: "Session ID of the site. Use your current session ID." },
-        siteName: { type: "string", description: "Optional — name/keyword to help identify the site (e.g. 'bloomie', 'staffing'). Used for logging only." }
+        siteName: { type: "string", description: "Optional — name/keyword to help identify the site (e.g. 'bloomie', 'staffing'). Used for logging only." },
+        org_id: { type: "string", description: "Organization ID. If provided, this lists registered multi-tenant site pages instead of session artifact pages." },
+        site_id: { type: "string", description: "Registered website ID" },
+        site_slug: { type: "string", description: "Registered website slug" }
       },
-      required: ["sessionId"]
+      required: []
     }
   },
   // ── LEAD SCRAPER TOOLS ──────────────────────────────────────────────────
@@ -2740,6 +2879,39 @@ function getCapabilityNotes() {
 async function executeTool(toolName, toolInput, sessionId = null, agentConfig = null, orgId = null) {
   logger.info(`Executing tool: ${toolName}`, { input: toolInput });
   try {
+    // Multi-tenant website tools — available from normal Bloomie chat too.
+    // The user never supplies the write key; this server attaches it internally.
+    if (WEBSITE_TOOL_NAMES.has(toolName) || (toolName === 'get_site_pages' && (toolInput.org_id || toolInput.site_id || toolInput.site_slug))) {
+      const resolvedOrgId = toolInput.org_id || orgId || agentConfig?.organizationId || agentConfig?.organization_id || process.env.BLOOM_ORG_ID;
+      if (!resolvedOrgId) return { success: false, error: 'No organization ID available for website tool call' };
+
+      const key = process.env.WEBSITE_MCP_WRITE_KEY;
+      if (!key) return { success: false, error: 'WEBSITE_MCP_WRITE_KEY is not configured for website write tools' };
+
+      const port = process.env.PORT || 3000;
+      const resp = await fetch(`http://localhost:${port}/website-mcp?key=${encodeURIComponent(key)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: `chat-${Date.now()}`,
+          method: 'tools/call',
+          params: {
+            name: toolName,
+            arguments: { ...toolInput, org_id: resolvedOrgId }
+          }
+        })
+      });
+      const data = await resp.json();
+      if (data.error) return { success: false, error: data.error.message || 'Website tool failed' };
+      const text = data.result?.content?.[0]?.text;
+      try {
+        return JSON.parse(text);
+      } catch {
+        return { success: true, result: text || data.result };
+      }
+    }
+
     // bloom_log goes to database
     if (toolName === 'bloom_log') {
       try {
