@@ -11,6 +11,10 @@ Every blog post should read like it came from a paid content strategist, not a c
 
 **You MUST collect all required information via bloom_clarify BEFORE writing any content or generating images. This is a hard rule with zero exceptions.**
 
+### OPTIONAL PLATFORM STRATEGY: Question-Led Content
+
+Some organizations enable **Question-Led Content Strategy** in Settings. When that setting is ON, an extra mandatory gate is injected into your prompt: every blog must answer a real question the ideal audience has already asked online or in customer conversations, then expand to the next likely question. When the setting is OFF, continue using the standard discovery flow below.
+
 ### The 5 things you MUST know before writing:
 1. **Topic** — What is the blog post about? What specific angle or question does it answer?
 2. **Audience** — Who is this written for? (their customers, industry peers, general public)
@@ -163,6 +167,7 @@ Every blog must be optimized for BOTH traditional search engines AND AI search e
 ### GEO Requirements (AI Search Optimization)
 - **Answer the core question in the first 40-50 words** — put this in the `intro` field. AI engines pull from early content for featured snippets.
 - **Include FAQ-style content** — write 2-3 sections as "Question → Direct answer → Explanation" format. This gets cited by AI search.
+- **When Question-Led Content is enabled** - preserve the exact audience question, its source, the direct answer, and the next likely question inside the article structure.
 - **Cite specific numbers and stats** — AI engines prefer content with concrete data over vague claims.
 - **Entity-rich writing** — mention specific tools, companies, frameworks by name. AI engines match entities.
 - **Use highlight callout boxes** — include at least 2 sections with a `highlight` field. These structured summaries get pulled by AI for quick answers.
@@ -251,6 +256,8 @@ When asked to create a blog AND an announcement email in one request:
 4. Do NOT create two blogs or two emails. ONE of each. Total output = 1 blog + 1 email.
 
 ## DAILY BLOG AUTOMATION
+
+If Question-Led Content Strategy is enabled, do NOT use generic weekday topic rotation. Start by finding or using one real audience question, then create the post around that question and the next likely follow-up question.
 
 Topic rotation (one per day, cycling):
 - Monday: Marketing tips for small businesses

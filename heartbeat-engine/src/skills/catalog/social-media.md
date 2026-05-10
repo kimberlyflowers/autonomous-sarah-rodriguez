@@ -5,6 +5,10 @@ description: "Create scroll-stopping social media content, captions, content cal
 
 # Social Media Content — Scroll-Stopping Posts
 
+## OPTIONAL PLATFORM STRATEGY: Question-Led Video Scripts
+
+Some organizations enable **Question-Led Content Strategy for Video Scripts** in Settings. When that setting is ON, an extra mandatory gate is injected into your prompt for video/reel/shorts scripts: the script must answer a real audience question, then expand to the next likely question. When the setting is OFF, continue using the standard social content workflow below.
+
 Every post should make someone stop scrolling. The standard: would this post get saved, shared, or commented on — not just liked?
 
 ## MANDATORY PRE-BUILD GATE — NO EXCEPTIONS

@@ -4020,8 +4020,8 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
         // Inject matching skill context into specialist prompt
         let skillContext = '';
         try {
-          const { getSkillContext } = await import('../skills/skill-loader.js');
-          skillContext = getSkillContext(taskType, toolInput.specialistPrompt);
+          const { getSkillContextForOrg } = await import('../skills/skill-loader.js');
+          skillContext = await getSkillContextForOrg(taskType, toolInput.specialistPrompt, orgId || null);
         } catch (e) { /* skills not critical */ }
 
         logger.info('Dispatching to specialist', { taskType, model, promptLength: toolInput.specialistPrompt?.length, hasSkill: !!skillContext });
@@ -4061,8 +4061,8 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
           
           let skillContext = '';
           try {
-            const { getSkillContext } = await import('../skills/skill-loader.js');
-            skillContext = getSkillContext(toolInput.taskType || 'writing', toolInput.specialistPrompt);
+            const { getSkillContextForOrg } = await import('../skills/skill-loader.js');
+            skillContext = await getSkillContextForOrg(toolInput.taskType || 'writing', toolInput.specialistPrompt, orgId || null);
           } catch (e) {}
 
           const fallbackResult = await callLLMWithRetry({

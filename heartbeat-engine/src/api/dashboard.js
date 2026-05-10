@@ -449,6 +449,83 @@ router.post('/trust-gate-status', (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════
+// CONTENT STRATEGY SETTINGS - per organization, default OFF
+// ══════════════════════════════════════════════════════════════════════════
+
+router.get('/content-strategy-settings', async (req, res) => {
+  try {
+    const orgId = await getUserOrgId(req) || ORG_ID;
+    const supabase = await getSupabase();
+    const { data, error } = await supabase.from('user_settings')
+      .select('value')
+      .eq('organization_id', orgId)
+      .eq('key', 'question_led_content')
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+
+    const stored = data?.value || {};
+    const settings = {
+      blog: Boolean(stored.blog),
+      email: Boolean(stored.email),
+      video: Boolean(stored.video)
+    };
+
+    res.json({
+      questionLedContent: settings.blog || settings.email || settings.video,
+      settings,
+      strategy: { ...stored, ...settings }
+    });
+  } catch (e) {
+    logger.warn('content-strategy-settings GET error', { error: e.message });
+    res.json({
+      questionLedContent: false,
+      settings: { blog: false, email: false, video: false },
+      strategy: { blog: false, email: false, video: false },
+      error: e.message
+    });
+  }
+});
+
+router.post('/content-strategy-settings', async (req, res) => {
+  try {
+    const incoming = req.body.settings || req.body;
+    const next = {};
+    for (const key of ['blog', 'email', 'video']) {
+      if (incoming[key] !== undefined && typeof incoming[key] !== 'boolean') {
+        return res.status(400).json({ error: `${key} must be a boolean` });
+      }
+      next[key] = Boolean(incoming[key]);
+    }
+
+    const orgId = await getUserOrgId(req) || ORG_ID;
+    const supabase = await getSupabase();
+    const value = {
+      ...next,
+      mode: 'question-led',
+      updated_at: new Date().toISOString()
+    };
+    const { error } = await supabase.from('user_settings').upsert(
+      { organization_id: orgId, key: 'question_led_content', value, updated_at: new Date().toISOString() },
+      { onConflict: 'organization_id,key' }
+    );
+    if (error) throw new Error(error.message);
+
+    try {
+      const { invalidateQuestionLedContentCache } = await import('../skills/skill-loader.js');
+      invalidateQuestionLedContentCache(orgId);
+    } catch (cacheErr) {
+      logger.warn('Failed to invalidate question-led content cache', { error: cacheErr.message });
+    }
+
+    logger.info('Question-led content strategy toggled', { orgId, settings: next });
+    res.json({ success: true, questionLedContent: next.blog || next.email || next.video, settings: next, strategy: value });
+  } catch (e) {
+    logger.warn('content-strategy-settings POST error', { error: e.message });
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════════
 // OPERATIONS MONITOR ENDPOINTS — powers the 8 cards on the Status page
 // ══════════════════════════════════════════════════════════════════════════
 

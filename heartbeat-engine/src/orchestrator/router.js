@@ -11,7 +11,7 @@
 import { callModel, calculateCost } from '../llm/unified-client.js';
 import { getResolvedConfig } from '../config/admin-config.js';
 import { createLogger } from '../logging/logger.js';
-import { getSkillContext } from '../skills/skill-loader.js';
+import { getSkillContextForOrg } from '../skills/skill-loader.js';
 
 const logger = createLogger('orchestrator-router');
 
@@ -260,7 +260,11 @@ export async function executeSubAgent(routing, context = {}) {
 
   // Inject skill context — this is the critical fix for "abandoned" scheduled tasks.
   // Previously only chat.js did this; now scheduled tasks get skills too.
-  const skillContext = getSkillContext(routing.taskType, subAgentUserPrompt || routing.instruction || '');
+  const skillContext = await getSkillContextForOrg(
+    routing.taskType,
+    subAgentUserPrompt || routing.instruction || '',
+    context.orgId || FALLBACK_ORG_ID
+  );
   const systemWithSkills = (subAgentSystemPrompt || 'You are a helpful specialist.') + skillContext;
 
   logger.info('Executing sub-agent', {

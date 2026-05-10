@@ -23,6 +23,7 @@ const CATALOG_DIR = path.join(__dirname, 'catalog');
 // Built on startup by reading all .md files in catalog/
 
 let _skills = null;
+const _questionLedCache = new Map();
 
 function parseSkillFile(filePath) {
   try {
@@ -201,6 +202,90 @@ export function getSkillContext(taskType, instruction = '') {
   return `\n\n<available_skills>\nThe following expert knowledge has been loaded for this task. Follow these guidelines:\n${sections.join('\n\n')}\n</available_skills>`;
 }
 
+async function getQuestionLedContentSettings(organizationId = null) {
+  const defaults = { blog: false, email: false, video: false };
+  if (!organizationId || !process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) return defaults;
+
+  const now = Date.now();
+  const cached = _questionLedCache.get(organizationId);
+  if (cached && now < cached.expiry) return cached.settings;
+
+  try {
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+    });
+    const { data, error } = await supabase.from('user_settings')
+      .select('value')
+      .eq('organization_id', organizationId)
+      .eq('key', 'question_led_content')
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+
+    const stored = data?.value || {};
+    const settings = {
+      blog: Boolean(stored.blog ?? stored.enabled),
+      email: Boolean(stored.email ?? stored.enabled),
+      video: Boolean(stored.video)
+    };
+    _questionLedCache.set(organizationId, { settings, expiry: now + 60_000 });
+    return settings;
+  } catch (e) {
+    logger.warn('Failed to load question-led content setting', { orgId: organizationId, error: e.message });
+    _questionLedCache.set(organizationId, { settings: defaults, expiry: now + 15_000 });
+    return defaults;
+  }
+}
+
+function getQuestionLedContentGate(contentType) {
+  const label = contentType === 'video' ? 'video script' : contentType;
+  return `
+
+<question_led_content_strategy>
+This organization has enabled Question-Led Content Strategy for ${label} creation. This is a mandatory gate for this content type.
+
+Do NOT create or publish this ${label} content unless it answers a real question the ideal audience has already asked or the user explicitly provides the source question.
+
+Before drafting, establish and preserve:
+1. Exact audience question, in the audience's natural language.
+2. Source of the question: Reddit, Quora, Google autocomplete/People Also Ask, Perplexity, YouTube comments, Facebook groups, CRM/GHL conversations, sales calls, support tickets, community posts, or another real audience source.
+3. Audience segment and search intent.
+4. Direct answer in the first useful paragraph.
+5. The next likely question the reader will ask, plus a clear answer to that next question.
+6. A natural CTA connected to the question's business problem.
+
+If no real question/source is available, ask for it or research it before writing. Do not fall back to a generic topic calendar when this strategy is enabled for this content type.
+</question_led_content_strategy>`;
+}
+
+function resolveQuestionLedContentType(taskType, skillNames, instruction = '') {
+  if (taskType === 'video' || /\b(video script|reel script|youtube script|shorts script|tiktok script|script for (a )?video|video content)\b/i.test(instruction)) {
+    return 'video';
+  }
+  if (taskType === 'email' || skillNames.some(name => ['email-marketing', 'email-creator'].includes(name))) {
+    return 'email';
+  }
+  if (skillNames.includes('blog-content')) {
+    return 'blog';
+  }
+  return null;
+}
+
+export async function getSkillContextForOrg(taskType, instruction = '', organizationId = null) {
+  const skills = findSkills(taskType, instruction).map(skill => skill.name);
+  const contentType = resolveQuestionLedContentType(taskType, skills, instruction);
+  const context = getSkillContext(taskType, instruction);
+  if (!contentType) return context;
+
+  const settings = await getQuestionLedContentSettings(organizationId);
+  return settings[contentType] ? context + getQuestionLedContentGate(contentType) : context;
+}
+
+export function invalidateQuestionLedContentCache(organizationId = null) {
+  if (organizationId) _questionLedCache.delete(organizationId);
+  else _questionLedCache.clear();
+}
+
 /**
  * Get the skill catalog metadata (for system prompt / dashboard display).
  * Returns compact descriptions — always in context.
@@ -225,4 +310,4 @@ export function getAllSkills() {
   }));
 }
 
-export default { findSkills, getSkillContext, getSkillCatalogSummary, getAllSkills };
+export default { findSkills, getSkillContext, getSkillContextForOrg, getSkillCatalogSummary, getAllSkills };

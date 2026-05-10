@@ -4365,6 +4365,8 @@ function App({ authUser }) {
   const [stab,setStab]=useState("General");
   const [tgEnabled,setTgEnabled]=useState(false);
   const [tgLoading,setTgLoading]=useState(false);
+  const [questionLedContent,setQuestionLedContent]=useState({blog:false,email:false,video:false});
+  const [questionLedLoading,setQuestionLedLoading]=useState(false);
   const [hlpO,setHlpO]=useState(false);
   const [blmMsgs,setBlmMsgs]=useState([]);
   const [blmInput,setBlmInput]=useState("");
@@ -4416,6 +4418,7 @@ function App({ authUser }) {
   // Fetch trust gate status + model config + image engine config on mount
   useEffect(()=>{
     getAuthHeaders().then(h=>fetch("/api/dashboard/trust-gate-status",{headers:h})).then(r=>r.ok?r.json():null).then(d=>{if(d)setTgEnabled(d.enabled)}).catch(()=>{});
+    getAuthHeaders().then(h=>fetch("/api/dashboard/content-strategy-settings",{headers:h})).then(r=>r.ok?r.json():null).then(d=>{if(d?.settings)setQuestionLedContent({blog:!!d.settings.blog,email:!!d.settings.email,video:!!d.settings.video})}).catch(()=>{});
     getAuthHeaders().then(h=>fetch("/api/dashboard/model-config",{headers:h})).then(r=>r.ok?r.json():null).then(d=>{if(d)setModelConfig(d)}).catch(()=>{});
     getAuthHeaders().then(h=>fetch("/api/dashboard/image-engine-config",{headers:h})).then(r=>r.ok?r.json():null).then(d=>{if(d)setImgEngineConfig(d)}).catch(()=>{});
   },[]);
@@ -4427,6 +4430,17 @@ function App({ authUser }) {
       if(r.ok){const d=await r.json();setTgEnabled(d.enabled);}
     }catch{}
     setTgLoading(false);
+  };
+
+  const toggleQuestionLedContent=async(key)=>{
+    setQuestionLedLoading(true);
+    try{
+      const _hh=await getAuthHeaders();
+      const next={...questionLedContent,[key]:!questionLedContent[key]};
+      const r=await fetch("/api/dashboard/content-strategy-settings",{method:"POST",headers:{..._hh,"Content-Type":"application/json"},body:JSON.stringify({settings:next})});
+      if(r.ok){const d=await r.json();setQuestionLedContent({blog:!!d.settings.blog,email:!!d.settings.email,video:!!d.settings.video});}
+    }catch{}
+    setQuestionLedLoading(false);
   };
 
   const handleCSVFile=(file)=>{
@@ -7005,6 +7019,28 @@ function App({ authUser }) {
                         </div>
                       </div>
                       <div style={{marginBottom:28}}>
+                        <div style={{fontSize:14,fontWeight:700,color:c.tx,marginBottom:10}}>Content Strategy</div>
+                        <div style={{padding:"14px 16px",borderRadius:10,background:c.sf,border:"1px solid "+c.ln}}>
+                          <div style={{fontSize:13,fontWeight:700,color:c.tx}}>Question-Led Content</div>
+                          <div style={{fontSize:11,color:c.so,marginTop:2,lineHeight:1.45,marginBottom:12}}>When enabled, that content type must start from a real audience question, answer it directly, and expand to the next likely question. All toggles default off.</div>
+                          {[
+                            ["blog","Blog posts"],
+                            ["email","Emails"],
+                            ["video","Video scripts"]
+                          ].map(([key,label])=>(
+                            <div key={key} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:16,padding:"10px 0",borderTop:"1px solid "+c.ln}}>
+                              <div>
+                                <div style={{fontSize:13,fontWeight:600,color:c.tx}}>{label}</div>
+                                <div style={{fontSize:11,color:c.so,marginTop:2}}>{questionLedContent[key]?"On - must answer proven audience questions":"Off - can follow the user's chosen topic"}</div>
+                              </div>
+                              <button aria-label={`Toggle question-led content for ${label}`} onClick={()=>toggleQuestionLedContent(key)} disabled={questionLedLoading} style={{width:48,height:26,borderRadius:13,border:"none",cursor:questionLedLoading?"wait":"pointer",background:questionLedContent[key]?"#22c55e":"#94a3b8",position:"relative",transition:"background 0.2s",flexShrink:0}}>
+                                <div style={{width:20,height:20,borderRadius:"50%",background:"#fff",position:"absolute",top:3,left:questionLedContent[key]?25:3,transition:"left 0.2s",boxShadow:"0 1px 3px rgba(0,0,0,0.2)"}}/>
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <div style={{marginBottom:28}}>
                         <div style={{fontSize:14,fontWeight:700,color:c.tx,marginBottom:10}}>Security</div>
                         <div style={{padding:"14px 16px",borderRadius:10,background:c.sf,border:"1px solid "+c.ln}}>
                           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
@@ -7786,4 +7822,3 @@ function App({ authUser }) {
     </div>
   );
 }
-

@@ -11,6 +11,10 @@ Every email should feel like it came from a real person who cares — not a mark
 
 **You MUST collect all required information via bloom_clarify BEFORE writing any email content. This is a hard rule with zero exceptions.**
 
+### OPTIONAL PLATFORM STRATEGY: Question-Led Content
+
+Some organizations enable **Question-Led Content Strategy** in Settings. When that setting is ON, an extra mandatory gate is injected into your prompt: every email should answer one real question the ideal audience has already asked, then bridge to the next likely question. When the setting is OFF, continue using the standard email strategy below.
+
 ### The 5 things you MUST know before writing:
 1. **Email type** — Is this a single email, a campaign/sequence, or a newsletter?
 2. **Goal** — What should the reader do after reading? (buy, book, sign up, reply, click)
@@ -68,6 +72,7 @@ Ask: "What's the main thing you want to communicate? Include any specific offer,
 - **Above-the-fold CTA** — 70% don't scroll past first screen
 - **Single column layout** — outperforms multi-column 2x on mobile (60%+ read on phones)
 - **One email = one goal** — don't ask them to buy AND follow AND share AND reply
+- **When Question-Led Content is enabled** - one email = one audience question. Open with the question or pain, answer it clearly, and use the CTA to continue to the next answer.
 - **Inverted pyramid**: Hook → Value → CTA. Widest attention at top, narrowing to action.
 - **Short paragraphs**: 1-3 sentences. One idea per paragraph. White space between.
 - **P.S. line** — 2nd most-read part of any email (after headline). Use for urgency, bonus, or personal touch.

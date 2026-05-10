@@ -11,6 +11,10 @@ Every email should feel like it came from a real person who gives a damn — not
 
 **You MUST collect all required information via bloom_clarify BEFORE writing any email content or generating images. This is a hard rule with zero exceptions.**
 
+### OPTIONAL PLATFORM STRATEGY: Question-Led Content
+
+Some organizations enable **Question-Led Content Strategy** in Settings. When that setting is ON, an extra mandatory gate is injected into your prompt: every blog announcement, newsletter, or nurture email should lead from a real audience question, answer it briefly, and point to the next likely question or related content. When the setting is OFF, continue using the standard email discovery flow below.
+
 ### The 4 things you MUST know before creating:
 1. **Email purpose** — What's this email about? (blog announcement, promotion, newsletter, event invite, follow-up)
 2. **Audience** — Who is receiving this? (full list, specific segment, new subscribers)
@@ -217,6 +221,7 @@ The 3 CTA buttons (Call, Demo, Text) are hardcoded. You don't need to provide th
 ### Blog Announcement Email (most common)
 - `headline`: The ACTUAL blog post title (never "New Blog Post")
 - `openingHook`: 1-2 sentence hook about the blog topic
+- If Question-Led Content is enabled, the `openingHook` should name or paraphrase the audience question first, then invite the reader into the answer.
 - `calloutHeading`: "Inside the post:"
 - `calloutItems`: 3 key takeaways from the blog
 - `ctaButtonText`: "Read the Full Post"
