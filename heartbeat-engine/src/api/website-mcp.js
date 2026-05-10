@@ -1655,7 +1655,7 @@ router.post('/', async (req, res) => {
         result: {
           protocolVersion: '2024-11-05',
           capabilities: { tools: {} },
-          serverInfo: { name: 'bloom-website-mcp', version: '1.0.0' }
+          serverInfo: { name: 'bloom-website-mcp', version: '1.1.0' }
         }
       });
     }
@@ -1692,7 +1692,7 @@ router.get('/', (req, res) => {
   const bloomUrl = process.env.BLOOM_APP_URL || 'https://autonomous-sarah-rodriguez-production.up.railway.app';
   res.json({
     name: 'bloom-website-mcp',
-    version: '1.0.0',
+    version: '1.1.0',
     status: 'ok',
     tools: TOOLS.map(t => t.name),
     public_tools: TOOLS.filter(t => !SITE_WRITE_TOOL_NAMES.has(t.name)).map(t => t.name),
