@@ -825,9 +825,259 @@ const LAYOUT_BLUEPRINTS = {
 // Fill in any missing styles with a clean default
 const DEFAULT_STYLES = ['bold-minimalism', 'clean-precision', 'warm-sunset', 'dark-luxe'];
 const ALL_STYLES = ['clean-precision','bold-minimalism','warm-sunset','dark-luxe','coral-energy','ocean-depth','neon-pulse','sage-earth','electric-blue','midnight-gold','fresh-mint','soft-blush','terracotta','brutalist-raw','royal-navy','candy-pop','slate-pro','desert-dusk','aurora','gospel-bold'];
+const SITE_WRITE_TOOL_NAMES = new Set([
+  'list_websites',
+  'register_website',
+  'get_site_pages',
+  'upsert_site_page',
+  'list_site_events',
+  'upsert_site_event',
+  'set_homepage_feature',
+  'create_blog',
+  'create_blog_post',
+  'publish_website'
+]);
+
+// ── MULTI-TENANT WEBSITE TOOL HELPERS ────────────────────────────────────────
+function cleanSlug(value, fallback = 'site') {
+  const slug = String(value || fallback)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 80);
+  return slug || fallback;
+}
+
+function requireOrgId(args) {
+  const orgId = args?.org_id || args?.organization_id;
+  if (!orgId) throw new Error('org_id is required so website edits stay scoped to one organization');
+  return orgId;
+}
+
+function publicSiteUrl(site, pageSlug = 'home') {
+  const base = process.env.BLOOM_APP_URL || 'https://app.bloomiestaffing.com';
+  if (site?.custom_domain) {
+    return pageSlug === 'home'
+      ? `https://${site.custom_domain}`
+      : `https://${site.custom_domain}/${pageSlug}`;
+  }
+  const orgSlug = site?.org_slug || site?.slug;
+  return pageSlug === 'home' ? `${base}/p/${orgSlug}` : `${base}/p/${orgSlug}/${pageSlug}`;
+}
+
+async function findSite(supabase, orgId, { site_id, site_slug, org_slug }) {
+  let query = supabase
+    .from('client_sites')
+    .select('*')
+    .eq('organization_id', orgId)
+    .limit(1);
+
+  if (site_id) query = query.eq('id', site_id);
+  else query = query.eq('org_slug', site_slug || org_slug);
+
+  const { data, error } = await query.maybeSingle();
+  if (error) throw new Error(`Failed to load website: ${error.message}`);
+  if (!data) throw new Error('Website not found for this organization');
+  return data;
+}
+
+function hasWebsiteWriteAccess(req) {
+  if (process.env.WEBSITE_MCP_ENABLE_SITE_WRITES === 'true') return true;
+  const secret = process.env.WEBSITE_MCP_WRITE_KEY;
+  if (!secret) return false;
+  const provided =
+    req.headers['x-api-key'] ||
+    req.headers['x-website-mcp-key'] ||
+    req.query?.key ||
+    '';
+  return provided === secret;
+}
 
 // ── TOOL DEFINITIONS ──────────────────────────────────────────────────────────
 const TOOLS = [
+  {
+    name: 'list_websites',
+    description: 'List websites owned by one organization. Use before editing so a Bloomie picks the right client site.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        org_id: { type: 'string', description: 'Organization ID that owns the websites' }
+      },
+      required: ['org_id']
+    }
+  },
+  {
+    name: 'register_website',
+    description: 'Create or update a client website record for an organization. Use when a Bloomie creates a new site or connects an existing Git/Vercel site to Bloomie.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        org_id: { type: 'string', description: 'Organization ID that owns this site' },
+        site_name: { type: 'string', description: 'Human-friendly site name' },
+        org_slug: { type: 'string', description: 'Public site slug, e.g. sabwb' },
+        custom_domain: { type: 'string', description: 'Optional custom domain without https://' },
+        template_id: { type: 'string', description: 'Optional template id for template-rendered pages' },
+        theme_color: { type: 'string', description: 'Primary brand color hex' },
+        ghl_location_id: { type: 'string', description: 'Optional GoHighLevel location ID' },
+        ghl_calendar_id: { type: 'string', description: 'Optional default GoHighLevel calendar ID' },
+        source_repo: { type: 'string', description: 'Optional GitHub repo full name or URL' },
+        vercel_project_id: { type: 'string', description: 'Optional Vercel project ID' },
+        published: { type: 'boolean', description: 'Whether the public site route should serve this site', default: false },
+        settings: { type: 'object', description: 'Optional site settings JSON' }
+      },
+      required: ['org_id', 'site_name']
+    }
+  },
+  {
+    name: 'get_site_pages',
+    description: 'List pages for one registered website. Use before creating or updating pages so navigation stays consistent.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        org_id: { type: 'string', description: 'Organization ID that owns the site' },
+        site_id: { type: 'string', description: 'Website ID' },
+        site_slug: { type: 'string', description: 'Website public slug if site_id is unknown' }
+      },
+      required: ['org_id']
+    }
+  },
+  {
+    name: 'upsert_site_page',
+    description: 'Create or update a page for a registered website. Use for Bloomie page edits and GrapesJS saves.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        org_id: { type: 'string', description: 'Organization ID that owns the site' },
+        site_id: { type: 'string', description: 'Website ID' },
+        site_slug: { type: 'string', description: 'Website public slug if site_id is unknown' },
+        page_slug: { type: 'string', description: 'Page slug, use home for the homepage' },
+        title: { type: 'string', description: 'Page title' },
+        content_html: { type: 'string', description: 'Complete HTML for raw HTML pages' },
+        content_data: { type: 'object', description: 'Structured page data for template-rendered pages' },
+        template_id: { type: 'string', description: 'Optional template override' },
+        published: { type: 'boolean', description: 'Whether this page is ready to publish', default: true }
+      },
+      required: ['org_id', 'page_slug']
+    }
+  },
+  {
+    name: 'list_site_events',
+    description: 'List structured events for a registered website. Use before editing event pages or homepage featured events.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        org_id: { type: 'string', description: 'Organization ID that owns the site' },
+        site_id: { type: 'string', description: 'Website ID' },
+        site_slug: { type: 'string', description: 'Website public slug if site_id is unknown' },
+        include_unpublished: { type: 'boolean', default: false }
+      },
+      required: ['org_id']
+    }
+  },
+  {
+    name: 'upsert_site_event',
+    description: 'Create or update an event for any Bloomie-managed website, including free/paid registration details and GHL wiring.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        org_id: { type: 'string', description: 'Organization ID that owns the site' },
+        site_id: { type: 'string', description: 'Website ID' },
+        site_slug: { type: 'string', description: 'Website public slug if site_id is unknown' },
+        event_id: { type: 'string', description: 'Existing event ID when updating' },
+        title: { type: 'string', description: 'Event title' },
+        event_slug: { type: 'string', description: 'URL-safe event slug' },
+        starts_at: { type: 'string', description: 'ISO start datetime' },
+        ends_at: { type: 'string', description: 'ISO end datetime' },
+        location: { type: 'string', description: 'Event location or online' },
+        summary: { type: 'string', description: 'Short event card description' },
+        description: { type: 'string', description: 'Full event description' },
+        image_url: { type: 'string', description: 'Hero/card image URL' },
+        registration_url: { type: 'string', description: 'Registration URL, usually GHL booking/form link' },
+        ghl_calendar_id: { type: 'string', description: 'GHL calendar ID used for registration' },
+        ghl_form_id: { type: 'string', description: 'Optional GHL form ID' },
+        ticket_type: { type: 'string', enum: ['free', 'paid'], default: 'free' },
+        ticket_price_cents: { type: 'number', description: 'Ticket price in cents for paid events' },
+        currency: { type: 'string', default: 'USD' },
+        published: { type: 'boolean', default: true },
+        metadata: { type: 'object', description: 'Extra event details such as speakers, schedule, or tags' }
+      },
+      required: ['org_id', 'title']
+    }
+  },
+  {
+    name: 'set_homepage_feature',
+    description: 'Mark an event or page as the website homepage feature. This updates site settings so the Bloomie knows what should be promoted.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        org_id: { type: 'string', description: 'Organization ID that owns the site' },
+        site_id: { type: 'string', description: 'Website ID' },
+        site_slug: { type: 'string', description: 'Website public slug if site_id is unknown' },
+        event_id: { type: 'string', description: 'Featured event ID' },
+        page_slug: { type: 'string', description: 'Featured page slug' },
+        headline: { type: 'string', description: 'Optional feature headline' },
+        cta_label: { type: 'string', description: 'Optional CTA label' },
+        cta_url: { type: 'string', description: 'Optional CTA URL' }
+      },
+      required: ['org_id']
+    }
+  },
+  {
+    name: 'create_blog',
+    description: 'Create or update blog settings for a registered website and ensure the blog index page exists.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        org_id: { type: 'string', description: 'Organization ID that owns the site' },
+        site_id: { type: 'string', description: 'Website ID' },
+        site_slug: { type: 'string', description: 'Website public slug if site_id is unknown' },
+        title: { type: 'string', description: 'Blog title, e.g. News or Articles' },
+        blog_slug: { type: 'string', description: 'Blog index page slug', default: 'blog' },
+        description: { type: 'string', description: 'Short blog description' },
+        published: { type: 'boolean', default: true }
+      },
+      required: ['org_id']
+    }
+  },
+  {
+    name: 'create_blog_post',
+    description: 'Create or update a blog post for a registered website. The post is stored as structured content and can also create/update a public page.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        org_id: { type: 'string', description: 'Organization ID that owns the site' },
+        site_id: { type: 'string', description: 'Website ID' },
+        site_slug: { type: 'string', description: 'Website public slug if site_id is unknown' },
+        post_id: { type: 'string', description: 'Existing blog post ID when updating' },
+        title: { type: 'string', description: 'Blog post title' },
+        post_slug: { type: 'string', description: 'Blog post slug' },
+        excerpt: { type: 'string', description: 'Short summary/excerpt' },
+        content_html: { type: 'string', description: 'Full HTML body or full HTML document for the post' },
+        author: { type: 'string', description: 'Author display name' },
+        hero_image_url: { type: 'string', description: 'Hero image URL' },
+        tags: { type: 'array', items: { type: 'string' }, description: 'Post tags/categories' },
+        published: { type: 'boolean', default: true },
+        published_at: { type: 'string', description: 'ISO publish date' },
+        metadata: { type: 'object', description: 'Extra SEO or post metadata' }
+      },
+      required: ['org_id', 'title']
+    }
+  },
+  {
+    name: 'publish_website',
+    description: 'Publish or unpublish a registered website. Returns the live URL Bloomie should show the user.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        org_id: { type: 'string', description: 'Organization ID that owns the site' },
+        site_id: { type: 'string', description: 'Website ID' },
+        site_slug: { type: 'string', description: 'Website public slug if site_id is unknown' },
+        published: { type: 'boolean', default: true }
+      },
+      required: ['org_id']
+    }
+  },
   {
     name: 'get_layout_blueprint',
     description: 'Get the HTML skeleton and structural blueprint for a design style. ALWAYS call this before writing any website HTML. Returns a real layout structure — not just CSS colors. Each style has a genuinely different layout: split-hero, typographic, full-bleed cinematic, bento grid, editorial, brutalist, etc.',
@@ -905,6 +1155,371 @@ const TOOLS = [
 // ── TOOL EXECUTOR ─────────────────────────────────────────────────────────────
 async function executeTool(name, args) {
   const supabase = getSupabase();
+
+  // ── list_websites ─────────────────────────────────────────────────────────
+  if (name === 'list_websites') {
+    const orgId = requireOrgId(args);
+    const { data, error } = await supabase
+      .from('client_sites')
+      .select('id, site_name, org_slug, custom_domain, published, theme_color, ghl_location_id, ghl_calendar_id, source_repo, vercel_project_id, settings, created_at, updated_at')
+      .eq('organization_id', orgId)
+      .order('updated_at', { ascending: false });
+
+    if (error) throw new Error(`Failed to list websites: ${error.message}`);
+
+    return {
+      org_id: orgId,
+      websites: (data || []).map(site => ({
+        ...site,
+        live_url: publicSiteUrl(site)
+      })),
+      count: data?.length || 0
+    };
+  }
+
+  // ── register_website ──────────────────────────────────────────────────────
+  if (name === 'register_website') {
+    const orgId = requireOrgId(args);
+    const orgSlug = cleanSlug(args.org_slug || args.site_name, 'site');
+    const now = new Date().toISOString();
+
+    const payload = {
+      organization_id: orgId,
+      site_name: args.site_name,
+      org_slug: orgSlug,
+      custom_domain: args.custom_domain || null,
+      template_id: args.template_id || '01',
+      theme_color: args.theme_color || null,
+      ghl_location_id: args.ghl_location_id || null,
+      ghl_calendar_id: args.ghl_calendar_id || null,
+      source_repo: args.source_repo || null,
+      vercel_project_id: args.vercel_project_id || null,
+      published: Boolean(args.published),
+      settings: args.settings || {},
+      updated_at: now
+    };
+
+    const { data, error } = await supabase
+      .from('client_sites')
+      .upsert(payload, { onConflict: 'organization_id,org_slug' })
+      .select('*')
+      .single();
+
+    if (error) throw new Error(`Failed to register website: ${error.message}`);
+
+    return {
+      success: true,
+      website: data,
+      live_url: publicSiteUrl(data),
+      next_steps: [
+        'Use upsert_site_page with page_slug="home" to create or update the homepage.',
+        'Use publish_website when the site is ready to go live.',
+        'Use upsert_site_event or create_blog_post for common content updates.'
+      ]
+    };
+  }
+
+  // ── get_site_pages ────────────────────────────────────────────────────────
+  if (name === 'get_site_pages') {
+    const orgId = requireOrgId(args);
+    const site = await findSite(supabase, orgId, args);
+    const { data, error } = await supabase
+      .from('site_pages')
+      .select('id, slug, title, template_id, content_html, content_data, published, created_at, updated_at')
+      .eq('site_id', site.id)
+      .order('created_at', { ascending: true });
+
+    if (error) throw new Error(`Failed to list site pages: ${error.message}`);
+
+    return {
+      site: { id: site.id, site_name: site.site_name, org_slug: site.org_slug, live_url: publicSiteUrl(site) },
+      pages: (data || []).map(page => ({
+        id: page.id,
+        slug: page.slug,
+        title: page.title,
+        published: page.published,
+        uses_raw_html: Boolean(page.content_html),
+        has_content_data: Boolean(page.content_data),
+        url: publicSiteUrl(site, page.slug),
+        updated_at: page.updated_at
+      })),
+      count: data?.length || 0
+    };
+  }
+
+  // ── upsert_site_page ──────────────────────────────────────────────────────
+  if (name === 'upsert_site_page') {
+    const orgId = requireOrgId(args);
+    const site = await findSite(supabase, orgId, args);
+    const pageSlug = cleanSlug(args.page_slug || args.title, 'home');
+    const now = new Date().toISOString();
+
+    const payload = {
+      site_id: site.id,
+      slug: pageSlug,
+      title: args.title || (pageSlug === 'home' ? 'Home' : pageSlug.replace(/-/g, ' ')),
+      content_html: args.content_html || null,
+      content_data: args.content_data || null,
+      template_id: args.template_id || site.template_id || '01',
+      published: args.published !== false,
+      updated_at: now
+    };
+
+    const { data, error } = await supabase
+      .from('site_pages')
+      .upsert(payload, { onConflict: 'site_id,slug' })
+      .select('id, slug, title, published, updated_at')
+      .single();
+
+    if (error) throw new Error(`Failed to upsert site page: ${error.message}`);
+
+    return {
+      success: true,
+      page: data,
+      url: publicSiteUrl(site, data.slug),
+      message: `Saved page "${data.title}" for ${site.site_name}`
+    };
+  }
+
+  // ── list_site_events ──────────────────────────────────────────────────────
+  if (name === 'list_site_events') {
+    const orgId = requireOrgId(args);
+    const site = await findSite(supabase, orgId, args);
+    let query = supabase
+      .from('website_events')
+      .select('*')
+      .eq('organization_id', orgId)
+      .eq('site_id', site.id)
+      .order('starts_at', { ascending: true, nullsFirst: false });
+
+    if (!args.include_unpublished) query = query.eq('published', true);
+
+    const { data, error } = await query;
+    if (error) throw new Error(`Failed to list site events: ${error.message}`);
+
+    return { site: { id: site.id, site_name: site.site_name, org_slug: site.org_slug }, events: data || [], count: data?.length || 0 };
+  }
+
+  // ── upsert_site_event ─────────────────────────────────────────────────────
+  if (name === 'upsert_site_event') {
+    const orgId = requireOrgId(args);
+    const site = await findSite(supabase, orgId, args);
+    const eventSlug = cleanSlug(args.event_slug || args.title, 'event');
+    const now = new Date().toISOString();
+    const basePayload = {
+      organization_id: orgId,
+      site_id: site.id,
+      title: args.title,
+      slug: eventSlug,
+      starts_at: args.starts_at || null,
+      ends_at: args.ends_at || null,
+      location: args.location || null,
+      summary: args.summary || null,
+      description: args.description || null,
+      image_url: args.image_url || null,
+      registration_url: args.registration_url || null,
+      ghl_calendar_id: args.ghl_calendar_id || site.ghl_calendar_id || null,
+      ghl_form_id: args.ghl_form_id || null,
+      ticket_type: args.ticket_type || 'free',
+      ticket_price_cents: Number.isFinite(args.ticket_price_cents) ? args.ticket_price_cents : 0,
+      currency: args.currency || 'USD',
+      published: args.published !== false,
+      metadata: args.metadata || {},
+      updated_at: now
+    };
+
+    let result;
+    if (args.event_id) {
+      const { data, error } = await supabase
+        .from('website_events')
+        .update(basePayload)
+        .eq('id', args.event_id)
+        .eq('organization_id', orgId)
+        .select('*')
+        .single();
+      if (error) throw new Error(`Failed to update event: ${error.message}`);
+      result = data;
+    } else {
+      const { data, error } = await supabase
+        .from('website_events')
+        .upsert(basePayload, { onConflict: 'site_id,slug' })
+        .select('*')
+        .single();
+      if (error) throw new Error(`Failed to save event: ${error.message}`);
+      result = data;
+    }
+
+    return {
+      success: true,
+      event: result,
+      registration_url: result.registration_url,
+      message: `Saved event "${result.title}" for ${site.site_name}`
+    };
+  }
+
+  // ── set_homepage_feature ──────────────────────────────────────────────────
+  if (name === 'set_homepage_feature') {
+    const orgId = requireOrgId(args);
+    const site = await findSite(supabase, orgId, args);
+    const settings = {
+      ...(site.settings || {}),
+      homepage_feature: {
+        event_id: args.event_id || null,
+        page_slug: args.page_slug || null,
+        headline: args.headline || null,
+        cta_label: args.cta_label || null,
+        cta_url: args.cta_url || null,
+        updated_at: new Date().toISOString()
+      }
+    };
+
+    const { data, error } = await supabase
+      .from('client_sites')
+      .update({ settings, updated_at: new Date().toISOString() })
+      .eq('id', site.id)
+      .eq('organization_id', orgId)
+      .select('id, site_name, org_slug, settings')
+      .single();
+
+    if (error) throw new Error(`Failed to set homepage feature: ${error.message}`);
+    return { success: true, website: data, homepage_feature: data.settings?.homepage_feature || null };
+  }
+
+  // ── create_blog ───────────────────────────────────────────────────────────
+  if (name === 'create_blog') {
+    const orgId = requireOrgId(args);
+    const site = await findSite(supabase, orgId, args);
+    const blogSlug = cleanSlug(args.blog_slug || 'blog', 'blog');
+    const settings = {
+      ...(site.settings || {}),
+      blog: {
+        title: args.title || 'Blog',
+        slug: blogSlug,
+        description: args.description || null,
+        published: args.published !== false,
+        updated_at: new Date().toISOString()
+      }
+    };
+
+    const { error: siteErr } = await supabase
+      .from('client_sites')
+      .update({ settings, updated_at: new Date().toISOString() })
+      .eq('id', site.id)
+      .eq('organization_id', orgId);
+    if (siteErr) throw new Error(`Failed to save blog settings: ${siteErr.message}`);
+
+    const indexHtml = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${args.title || 'Blog'} | ${site.site_name}</title></head><body><main><h1>${args.title || 'Blog'}</h1><p>${args.description || ''}</p><section data-bloom-blog-index="${site.org_slug}"></section></main></body></html>`;
+    const { data: page, error: pageErr } = await supabase
+      .from('site_pages')
+      .upsert({
+        site_id: site.id,
+        slug: blogSlug,
+        title: args.title || 'Blog',
+        content_html: indexHtml,
+        content_data: { blog: settings.blog },
+        template_id: site.template_id || '01',
+        published: args.published !== false,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'site_id,slug' })
+      .select('id, slug, title, published')
+      .single();
+    if (pageErr) throw new Error(`Failed to create blog page: ${pageErr.message}`);
+
+    return { success: true, blog: settings.blog, page, url: publicSiteUrl(site, blogSlug) };
+  }
+
+  // ── create_blog_post ──────────────────────────────────────────────────────
+  if (name === 'create_blog_post') {
+    const orgId = requireOrgId(args);
+    const site = await findSite(supabase, orgId, args);
+    const postSlug = cleanSlug(args.post_slug || args.title, 'post');
+    const blogSettings = site.settings?.blog || { slug: 'blog', title: 'Blog' };
+    const pageSlug = cleanSlug(`${blogSettings.slug || 'blog'}-${postSlug}`, `blog-${postSlug}`);
+    const now = new Date().toISOString();
+
+    const postPayload = {
+      organization_id: orgId,
+      site_id: site.id,
+      title: args.title,
+      slug: postSlug,
+      page_slug: pageSlug,
+      excerpt: args.excerpt || null,
+      content_html: args.content_html || '',
+      author: args.author || null,
+      hero_image_url: args.hero_image_url || null,
+      tags: args.tags || [],
+      published: args.published !== false,
+      published_at: args.published_at || now,
+      metadata: args.metadata || {},
+      updated_at: now
+    };
+
+    let post;
+    if (args.post_id) {
+      const { data, error } = await supabase
+        .from('website_blog_posts')
+        .update(postPayload)
+        .eq('id', args.post_id)
+        .eq('organization_id', orgId)
+        .select('*')
+        .single();
+      if (error) throw new Error(`Failed to update blog post: ${error.message}`);
+      post = data;
+    } else {
+      const { data, error } = await supabase
+        .from('website_blog_posts')
+        .upsert(postPayload, { onConflict: 'site_id,slug' })
+        .select('*')
+        .single();
+      if (error) throw new Error(`Failed to save blog post: ${error.message}`);
+      post = data;
+    }
+
+    const normalizedHtml = args.content_html?.trim().toLowerCase() || '';
+    const pageHtml = normalizedHtml.startsWith('<!doctype') || normalizedHtml.startsWith('<html')
+      ? args.content_html
+      : `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${args.title} | ${site.site_name}</title></head><body><article><h1>${args.title}</h1>${args.hero_image_url ? `<img src="${args.hero_image_url}" alt="">` : ''}<p>${args.excerpt || ''}</p>${args.content_html || ''}</article></body></html>`;
+
+    const { data: page, error: pageErr } = await supabase
+      .from('site_pages')
+      .upsert({
+        site_id: site.id,
+        slug: pageSlug,
+        title: args.title,
+        content_html: pageHtml,
+        content_data: { blog_post_id: post.id, slug: postSlug, tags: post.tags },
+        template_id: site.template_id || '01',
+        published: args.published !== false,
+        updated_at: now
+      }, { onConflict: 'site_id,slug' })
+      .select('id, slug, title, published')
+      .single();
+    if (pageErr) throw new Error(`Blog post saved, but page creation failed: ${pageErr.message}`);
+
+    return {
+      success: true,
+      post,
+      page,
+      url: publicSiteUrl(site, page.slug),
+      message: `Saved blog post "${post.title}" for ${site.site_name}`
+    };
+  }
+
+  // ── publish_website ───────────────────────────────────────────────────────
+  if (name === 'publish_website') {
+    const orgId = requireOrgId(args);
+    const site = await findSite(supabase, orgId, args);
+    const { data, error } = await supabase
+      .from('client_sites')
+      .update({ published: args.published !== false, updated_at: new Date().toISOString() })
+      .eq('id', site.id)
+      .eq('organization_id', orgId)
+      .select('*')
+      .single();
+
+    if (error) throw new Error(`Failed to publish website: ${error.message}`);
+    return { success: true, website: data, live_url: publicSiteUrl(data), published: data.published };
+  }
 
   // ── get_layout_blueprint ───────────────────────────────────────────────────
   if (name === 'get_layout_blueprint') {
@@ -1048,11 +1663,16 @@ router.post('/', async (req, res) => {
     if (method === 'notifications/initialized') return res.status(204).end();
 
     if (method === 'tools/list') {
-      return res.json({ jsonrpc: '2.0', id, result: { tools: TOOLS } });
+      const canWrite = hasWebsiteWriteAccess(req);
+      const tools = canWrite ? TOOLS : TOOLS.filter(t => !SITE_WRITE_TOOL_NAMES.has(t.name));
+      return res.json({ jsonrpc: '2.0', id, result: { tools } });
     }
 
     if (method === 'tools/call') {
       const { name, arguments: toolArgs } = params || {};
+      if (SITE_WRITE_TOOL_NAMES.has(name) && !hasWebsiteWriteAccess(req)) {
+        throw new Error('Website write tools are not enabled for this MCP request. Configure WEBSITE_MCP_WRITE_KEY and pass it as x-website-mcp-key or ?key=..., or set WEBSITE_MCP_ENABLE_SITE_WRITES=true for a trusted private deployment.');
+      }
       const result = await executeTool(name, toolArgs || {});
       return res.json({
         jsonrpc: '2.0', id,
@@ -1075,6 +1695,8 @@ router.get('/', (req, res) => {
     version: '1.0.0',
     status: 'ok',
     tools: TOOLS.map(t => t.name),
+    public_tools: TOOLS.filter(t => !SITE_WRITE_TOOL_NAMES.has(t.name)).map(t => t.name),
+    write_tools_enabled: hasWebsiteWriteAccess(req),
     connector_url: `${bloomUrl}/website-mcp`,
     note: 'Used by BLOOM Managed Website Agent. Not a Cowork entry point — entry is the dashboard chat.'
   });

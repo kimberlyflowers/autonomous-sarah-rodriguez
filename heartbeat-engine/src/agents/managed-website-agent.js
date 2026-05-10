@@ -50,6 +50,12 @@ function getSystemPrompt() {
   }
 }
 
+function websiteMcpUrl(baseUrl) {
+  const key = process.env.WEBSITE_MCP_WRITE_KEY;
+  const url = `${baseUrl}/website-mcp`;
+  return key ? `${url}?key=${encodeURIComponent(key)}` : url;
+}
+
 // ── Post a progress message to the build's own chat session ──────────────────
 // This shows up in the user's dedicated website build chat thread — NOT conference.
 async function postToBuildSession(sessionId, message) {
@@ -105,7 +111,7 @@ async function getOrCreateAgentForOrg(orgId) {
       },
       {
         type: 'url',
-        url: `${bloomUrl}/website-mcp`,
+        url: websiteMcpUrl(bloomUrl),
         name: 'bloom-website-tools'
       }
     ]
