@@ -829,12 +829,20 @@ const SITE_WRITE_TOOL_NAMES = new Set([
   'list_websites',
   'register_website',
   'get_site_pages',
+  'create_page',
+  'update_page',
+  'publish_page',
   'upsert_site_page',
   'list_site_events',
+  'create_event',
+  'update_event',
+  'set_registration_link',
+  'connect_ghl_calendar',
   'upsert_site_event',
   'set_homepage_feature',
   'create_blog',
   'create_blog_post',
+  'deploy_site',
   'publish_website'
 ]);
 
@@ -962,6 +970,59 @@ const TOOLS = [
     }
   },
   {
+    name: 'create_page',
+    description: 'Create a new page for a registered website. Friendly alias for upsert_site_page.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        org_id: { type: 'string' },
+        site_id: { type: 'string' },
+        site_slug: { type: 'string' },
+        page_slug: { type: 'string' },
+        title: { type: 'string' },
+        content_html: { type: 'string' },
+        content_data: { type: 'object' },
+        template_id: { type: 'string' },
+        published: { type: 'boolean', default: true }
+      },
+      required: ['org_id', 'page_slug']
+    }
+  },
+  {
+    name: 'update_page',
+    description: 'Update an existing page for a registered website. Friendly alias for upsert_site_page.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        org_id: { type: 'string' },
+        site_id: { type: 'string' },
+        site_slug: { type: 'string' },
+        page_slug: { type: 'string' },
+        title: { type: 'string' },
+        content_html: { type: 'string' },
+        content_data: { type: 'object' },
+        template_id: { type: 'string' },
+        published: { type: 'boolean', default: true }
+      },
+      required: ['org_id', 'page_slug']
+    }
+  },
+  {
+    name: 'publish_page',
+    description: 'Publish or unpublish one page on a registered website.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        org_id: { type: 'string' },
+        site_id: { type: 'string' },
+        site_slug: { type: 'string' },
+        page_slug: { type: 'string' },
+        published: { type: 'boolean', default: true }
+      },
+      required: ['org_id', 'page_slug']
+    }
+  },
+  {
     name: 'list_site_events',
     description: 'List structured events for a registered website. Use before editing event pages or homepage featured events.',
     inputSchema: {
@@ -1003,6 +1064,97 @@ const TOOLS = [
         metadata: { type: 'object', description: 'Extra event details such as speakers, schedule, or tags' }
       },
       required: ['org_id', 'title']
+    }
+  },
+  {
+    name: 'create_event',
+    description: 'Create an event for a website, including free/paid ticket details and GHL registration wiring.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        org_id: { type: 'string' },
+        site_id: { type: 'string' },
+        site_slug: { type: 'string' },
+        title: { type: 'string' },
+        event_slug: { type: 'string' },
+        starts_at: { type: 'string' },
+        ends_at: { type: 'string' },
+        location: { type: 'string' },
+        summary: { type: 'string' },
+        description: { type: 'string' },
+        image_url: { type: 'string' },
+        registration_url: { type: 'string' },
+        ghl_calendar_id: { type: 'string' },
+        ghl_form_id: { type: 'string' },
+        ticket_type: { type: 'string', enum: ['free', 'paid'], default: 'free' },
+        ticket_price_cents: { type: 'number' },
+        currency: { type: 'string', default: 'USD' },
+        published: { type: 'boolean', default: true },
+        metadata: { type: 'object' }
+      },
+      required: ['org_id', 'title']
+    }
+  },
+  {
+    name: 'update_event',
+    description: 'Update an existing event for a website.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        org_id: { type: 'string' },
+        site_id: { type: 'string' },
+        site_slug: { type: 'string' },
+        event_id: { type: 'string' },
+        title: { type: 'string' },
+        event_slug: { type: 'string' },
+        starts_at: { type: 'string' },
+        ends_at: { type: 'string' },
+        location: { type: 'string' },
+        summary: { type: 'string' },
+        description: { type: 'string' },
+        image_url: { type: 'string' },
+        registration_url: { type: 'string' },
+        ghl_calendar_id: { type: 'string' },
+        ghl_form_id: { type: 'string' },
+        ticket_type: { type: 'string', enum: ['free', 'paid'] },
+        ticket_price_cents: { type: 'number' },
+        currency: { type: 'string', default: 'USD' },
+        published: { type: 'boolean' },
+        metadata: { type: 'object' }
+      },
+      required: ['org_id', 'event_id', 'title']
+    }
+  },
+  {
+    name: 'set_registration_link',
+    description: 'Set or replace the registration URL/calendar wiring for one website event.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        org_id: { type: 'string' },
+        site_id: { type: 'string' },
+        site_slug: { type: 'string' },
+        event_id: { type: 'string' },
+        registration_url: { type: 'string' },
+        ghl_calendar_id: { type: 'string' },
+        ghl_form_id: { type: 'string' }
+      },
+      required: ['org_id', 'event_id', 'registration_url']
+    }
+  },
+  {
+    name: 'connect_ghl_calendar',
+    description: 'Connect or update the default GHL calendar for one website.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        org_id: { type: 'string' },
+        site_id: { type: 'string' },
+        site_slug: { type: 'string' },
+        ghl_calendar_id: { type: 'string' },
+        ghl_location_id: { type: 'string' }
+      },
+      required: ['org_id', 'ghl_calendar_id']
     }
   },
   {
@@ -1062,6 +1214,20 @@ const TOOLS = [
         metadata: { type: 'object', description: 'Extra SEO or post metadata' }
       },
       required: ['org_id', 'title']
+    }
+  },
+  {
+    name: 'deploy_site',
+    description: 'Request deployment for a website and publish its Bloomie site record. For Git/Vercel sites, this records the deploy request and returns the configured production path.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        org_id: { type: 'string', description: 'Organization ID that owns the site' },
+        site_id: { type: 'string', description: 'Website ID' },
+        site_slug: { type: 'string', description: 'Website public slug if site_id is unknown' },
+        reason: { type: 'string', description: 'Why deployment is requested' }
+      },
+      required: ['org_id']
     }
   },
   {
@@ -1155,6 +1321,106 @@ const TOOLS = [
 // ── TOOL EXECUTOR ─────────────────────────────────────────────────────────────
 async function executeTool(name, args) {
   const supabase = getSupabase();
+
+  // Friendly aliases for Bloomies/users. Keep the upsert_* tools for
+  // compatibility, but expose simple verbs for everyday work.
+  if (name === 'create_page' || name === 'update_page') name = 'upsert_site_page';
+  if (name === 'create_event' || name === 'update_event') name = 'upsert_site_event';
+
+  // ── publish_page ──────────────────────────────────────────────────────────
+  if (name === 'publish_page') {
+    const orgId = requireOrgId(args);
+    const site = await findSite(supabase, orgId, args);
+    const pageSlug = cleanSlug(args.page_slug, 'home');
+    const { data, error } = await supabase
+      .from('site_pages')
+      .update({ published: args.published !== false, updated_at: new Date().toISOString() })
+      .eq('site_id', site.id)
+      .eq('slug', pageSlug)
+      .select('id, slug, title, published')
+      .single();
+
+    if (error) throw new Error(`Failed to publish page: ${error.message}`);
+    return { success: true, page: data, url: publicSiteUrl(site, data.slug) };
+  }
+
+  // ── set_registration_link ─────────────────────────────────────────────────
+  if (name === 'set_registration_link') {
+    const orgId = requireOrgId(args);
+    const updates = {
+      registration_url: args.registration_url,
+      updated_at: new Date().toISOString()
+    };
+    if (args.ghl_calendar_id) updates.ghl_calendar_id = args.ghl_calendar_id;
+    if (args.ghl_form_id) updates.ghl_form_id = args.ghl_form_id;
+
+    const { data, error } = await supabase
+      .from('website_events')
+      .update(updates)
+      .eq('id', args.event_id)
+      .eq('organization_id', orgId)
+      .select('*')
+      .single();
+
+    if (error) throw new Error(`Failed to set registration link: ${error.message}`);
+    return { success: true, event: data, registration_url: data.registration_url };
+  }
+
+  // ── connect_ghl_calendar ──────────────────────────────────────────────────
+  if (name === 'connect_ghl_calendar') {
+    const orgId = requireOrgId(args);
+    const site = await findSite(supabase, orgId, args);
+    const updates = {
+      ghl_calendar_id: args.ghl_calendar_id,
+      updated_at: new Date().toISOString()
+    };
+    if (args.ghl_location_id) updates.ghl_location_id = args.ghl_location_id;
+
+    const { data, error } = await supabase
+      .from('client_sites')
+      .update(updates)
+      .eq('id', site.id)
+      .eq('organization_id', orgId)
+      .select('id, site_name, org_slug, ghl_location_id, ghl_calendar_id')
+      .single();
+
+    if (error) throw new Error(`Failed to connect GHL calendar: ${error.message}`);
+    return { success: true, website: data };
+  }
+
+  // ── deploy_site ───────────────────────────────────────────────────────────
+  if (name === 'deploy_site') {
+    const orgId = requireOrgId(args);
+    const site = await findSite(supabase, orgId, args);
+    const settings = {
+      ...(site.settings || {}),
+      last_deploy_request: {
+        requested_at: new Date().toISOString(),
+        reason: args.reason || null,
+        source_repo: site.source_repo || null,
+        vercel_project_id: site.vercel_project_id || null
+      }
+    };
+
+    const { data, error } = await supabase
+      .from('client_sites')
+      .update({ published: true, settings, updated_at: new Date().toISOString() })
+      .eq('id', site.id)
+      .eq('organization_id', orgId)
+      .select('*')
+      .single();
+
+    if (error) throw new Error(`Failed to deploy site: ${error.message}`);
+    return {
+      success: true,
+      website: data,
+      live_url: publicSiteUrl(data),
+      deployment_mode: data.vercel_project_id ? 'git_vercel' : 'bloomie_pages',
+      message: data.vercel_project_id
+        ? 'Deploy request recorded. For Git/Vercel sites, push the generated file changes to the connected repo to trigger Vercel.'
+        : 'Bloomie-hosted site published.'
+    };
+  }
 
   // ── list_websites ─────────────────────────────────────────────────────────
   if (name === 'list_websites') {
