@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     <style>
-        :root { --primary:#F4A261; --accent:#E76F8B; --dark:#2D3436; --muted:#627089; --soft:#FFF4EF; --line:#e7e9ee; --green:#28B487; }
+        :root { --primary:#F4A261; --accent:#E76F8B; --dark:#2D3436; --white:#FFFFFF; --light:#F5F5F5; --muted:#6b7174; --soft:#FFF4EF; --line:#e8e5e2; }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: Inter, sans-serif; color: var(--dark); background: #fbfcfd; min-height: 100vh; }
         body::before { content: ""; position: fixed; inset: 64px 0 auto; height: 360px; pointer-events: none; background-image: linear-gradient(rgba(45,52,54,0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(45,52,54,0.035) 1px, transparent 1px); background-size: 22px 22px; mask-image: linear-gradient(to bottom, #000, transparent); }
@@ -21,18 +21,18 @@
         .hero { position: relative; max-width: 1180px; margin: 0 auto; padding: 4.5rem 1.5rem 4rem; text-align: center; }
         .pill { display: inline-flex; align-items: center; gap: 0.45rem; color: var(--accent); background: rgba(231,111,139,0.08); border: 1px solid rgba(231,111,139,0.22); border-radius: 999px; padding: 0.55rem 1rem; font-weight: 800; font-size: 0.88rem; margin-bottom: 1.4rem; }
         .hero h1 { max-width: 850px; margin: 0 auto; font-size: clamp(2.25rem, 5vw, 4.3rem); line-height: 0.98; font-weight: 900; letter-spacing: 0; }
-        .hero h1 span { background: linear-gradient(135deg, var(--accent), var(--primary), var(--green)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+        .hero h1 span { background: linear-gradient(135deg, var(--accent), var(--primary)); -webkit-background-clip: text; background-clip: text; color: transparent; }
         .hero p { max-width: 680px; margin: 1.35rem auto 0; color: var(--muted); font-size: 1.1rem; line-height: 1.65; }
         .booking-shell { position: relative; max-width: 1180px; margin: 0 auto 2rem; padding: 0 1.5rem 2rem; }
         .booking-card { display: grid; grid-template-columns: 360px minmax(0, 1fr); background: #fff; border: 1px solid var(--line); border-radius: 18px; overflow: hidden; box-shadow: 0 24px 70px rgba(45,52,54,0.13); }
-        .discovery { background: linear-gradient(180deg, #fff, #f8fafc); border-right: 1px solid var(--line); padding: 2rem; min-height: 620px; display: flex; flex-direction: column; }
+        .discovery { background: linear-gradient(180deg, var(--white), var(--light)); border-right: 1px solid var(--line); padding: 2rem; min-height: 620px; display: flex; flex-direction: column; }
         .discovery h2 { font-size: 1.25rem; margin-bottom: 1.55rem; }
         .item { display: grid; grid-template-columns: 38px 1fr; gap: 0.85rem; align-items: start; margin-bottom: 1.35rem; }
         .icon { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; font-weight: 900; }
         .icon.orange { color: #c76321; background: rgba(244,162,97,0.18); }
         .icon.pink { color: var(--accent); background: rgba(231,111,139,0.13); }
-        .icon.green { color: var(--green); background: rgba(40,180,135,0.14); }
-        .icon.blue { color: #4763d8; background: rgba(71,99,216,0.12); }
+        .icon.soft { color: var(--dark); background: rgba(244,162,97,0.12); border: 1px solid rgba(231,111,139,0.16); }
+        .icon.dark { color: var(--dark); background: rgba(45,52,54,0.08); }
         .item h3 { font-size: 0.96rem; margin-bottom: 0.28rem; }
         .item p { color: var(--muted); font-size: 0.86rem; line-height: 1.45; }
         .trust { margin-top: auto; background: #f2f5f9; border: 1px solid #dce3ec; border-radius: 12px; padding: 1rem; }
@@ -40,7 +40,7 @@
         .face { width: 34px; height: 34px; border-radius: 50%; border: 2px solid #fff; margin-right: -8px; display: grid; place-items: center; color: #fff; font-weight: 800; font-size: 0.72rem; }
         .face.one { background: linear-gradient(135deg, #2D3436, #627089); }
         .face.two { background: linear-gradient(135deg, var(--primary), var(--accent)); }
-        .face.three { background: linear-gradient(135deg, var(--green), #4763d8); }
+        .face.three { background: linear-gradient(135deg, var(--dark), var(--accent)); }
         .trust strong { display: block; color: var(--dark); font-size: 0.84rem; margin-bottom: 0.45rem; }
         .trust p { color: var(--muted); font-size: 0.82rem; line-height: 1.5; font-style: italic; }
         .calendar-wrap { padding: 1rem; background: #fff; }
@@ -88,14 +88,14 @@
                         </div>
                     </div>
                     <div class="item">
-                        <div class="icon green">03</div>
+                        <div class="icon soft">03</div>
                         <div>
                             <h3>ROI and Time Savings</h3>
                             <p>Estimate what gets recovered when lead follow-up, content drafts, reporting, and CRM updates stop piling up.</p>
                         </div>
                     </div>
                     <div class="item">
-                        <div class="icon blue">04</div>
+                        <div class="icon dark">04</div>
                         <div>
                             <h3>Q&A Strategy Session</h3>
                             <p>Ask what hiring a Bloomie would look like for your team, tools, clients, and weekly workload.</p>
