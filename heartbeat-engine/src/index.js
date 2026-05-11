@@ -1196,6 +1196,10 @@ app.get('/app/*', (req, res) => {
 const dashboardDist = path.join(__dirname, '../dashboard/dist');
 const landingPageDir = path.join(__dirname, '../landing-page');
 
+app.get(['/book-demo', '/booking'], (req, res) => {
+  res.sendFile(path.join(landingPageDir, 'book-demo.html'));
+});
+
 app.use((req, res, next) => {
   if (req.hostname && req.hostname.startsWith('app.')) {
     express.static(dashboardDist)(req, res, next);

@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Book a Bloomie Demo - Bloomie Staffing</title>
+    <meta name="description" content="Book a Bloomie Staffing demo to see how reliable AI employees support content marketing, lead follow-up, CRM updates, customer support, and business operations.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        :root { --primary:#F4A261; --accent:#E76F8B; --dark:#2D3436; --muted:#627089; --soft:#FFF4EF; --line:#e7e9ee; --green:#28B487; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: Inter, sans-serif; color: var(--dark); background: #fbfcfd; min-height: 100vh; }
+        body::before { content: ""; position: fixed; inset: 64px 0 auto; height: 360px; pointer-events: none; background-image: linear-gradient(rgba(45,52,54,0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(45,52,54,0.035) 1px, transparent 1px); background-size: 22px 22px; mask-image: linear-gradient(to bottom, #000, transparent); }
+        .topbar { position: sticky; top: 0; z-index: 5; background: rgba(255,255,255,0.92); backdrop-filter: blur(16px); border-bottom: 1px solid rgba(45,52,54,0.08); }
+        .nav { max-width: 1180px; margin: 0 auto; padding: 1rem 1.5rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+        .brand { color: var(--dark); text-decoration: none; font-weight: 900; font-size: 1.08rem; letter-spacing: 0; }
+        .brand span { color: var(--accent); }
+        .back { color: var(--muted); text-decoration: none; font-weight: 700; font-size: 0.92rem; }
+        .hero { position: relative; max-width: 1180px; margin: 0 auto; padding: 4.5rem 1.5rem 4rem; text-align: center; }
+        .pill { display: inline-flex; align-items: center; gap: 0.45rem; color: var(--accent); background: rgba(231,111,139,0.08); border: 1px solid rgba(231,111,139,0.22); border-radius: 999px; padding: 0.55rem 1rem; font-weight: 800; font-size: 0.88rem; margin-bottom: 1.4rem; }
+        .hero h1 { max-width: 850px; margin: 0 auto; font-size: clamp(2.25rem, 5vw, 4.3rem); line-height: 0.98; font-weight: 900; letter-spacing: 0; }
+        .hero h1 span { background: linear-gradient(135deg, var(--accent), var(--primary), var(--green)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+        .hero p { max-width: 680px; margin: 1.35rem auto 0; color: var(--muted); font-size: 1.1rem; line-height: 1.65; }
+        .booking-shell { position: relative; max-width: 1180px; margin: 0 auto 2rem; padding: 0 1.5rem 2rem; }
+        .booking-card { display: grid; grid-template-columns: 360px minmax(0, 1fr); background: #fff; border: 1px solid var(--line); border-radius: 18px; overflow: hidden; box-shadow: 0 24px 70px rgba(45,52,54,0.13); }
+        .discovery { background: linear-gradient(180deg, #fff, #f8fafc); border-right: 1px solid var(--line); padding: 2rem; min-height: 620px; display: flex; flex-direction: column; }
+        .discovery h2 { font-size: 1.25rem; margin-bottom: 1.55rem; }
+        .item { display: grid; grid-template-columns: 38px 1fr; gap: 0.85rem; align-items: start; margin-bottom: 1.35rem; }
+        .icon { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; font-weight: 900; }
+        .icon.orange { color: #c76321; background: rgba(244,162,97,0.18); }
+        .icon.pink { color: var(--accent); background: rgba(231,111,139,0.13); }
+        .icon.green { color: var(--green); background: rgba(40,180,135,0.14); }
+        .icon.blue { color: #4763d8; background: rgba(71,99,216,0.12); }
+        .item h3 { font-size: 0.96rem; margin-bottom: 0.28rem; }
+        .item p { color: var(--muted); font-size: 0.86rem; line-height: 1.45; }
+        .trust { margin-top: auto; background: #f2f5f9; border: 1px solid #dce3ec; border-radius: 12px; padding: 1rem; }
+        .faces { display: flex; align-items: center; margin-bottom: 0.7rem; }
+        .face { width: 34px; height: 34px; border-radius: 50%; border: 2px solid #fff; margin-right: -8px; display: grid; place-items: center; color: #fff; font-weight: 800; font-size: 0.72rem; }
+        .face.one { background: linear-gradient(135deg, #2D3436, #627089); }
+        .face.two { background: linear-gradient(135deg, var(--primary), var(--accent)); }
+        .face.three { background: linear-gradient(135deg, var(--green), #4763d8); }
+        .trust strong { display: block; color: var(--dark); font-size: 0.84rem; margin-bottom: 0.45rem; }
+        .trust p { color: var(--muted); font-size: 0.82rem; line-height: 1.5; font-style: italic; }
+        .calendar-wrap { padding: 1rem; background: #fff; }
+        .calendar-frame { width: 100%; min-height: 710px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+        .note { text-align: center; color: var(--muted); font-size: 0.86rem; line-height: 1.5; margin: 1.4rem auto 0; max-width: 560px; }
+        .social-proof-toast { position: fixed; left: 22px; bottom: 22px; z-index: 20; width: min(360px, calc(100vw - 32px)); display: flex; align-items: center; gap: 0.9rem; padding: 0.95rem 1rem; background: rgba(255,255,255,0.96); border: 1px solid rgba(45,52,54,0.08); border-radius: 16px; box-shadow: 0 16px 42px rgba(45,52,54,0.18); }
+        .social-proof-icon { width: 50px; height: 50px; border-radius: 14px; background: linear-gradient(135deg, rgba(244,162,97,0.18), rgba(231,111,139,0.18)); display: grid; place-items: center; color: var(--accent); font-weight: 900; flex: 0 0 auto; }
+        .social-proof-text { color: var(--dark); font-size: 0.9rem; line-height: 1.35; font-weight: 700; }
+        .social-proof-meta { color: #8a94a6; font-size: 0.72rem; font-weight: 700; margin-top: 0.3rem; }
+        @media (max-width: 920px) { .booking-card { grid-template-columns: 1fr; } .discovery { min-height: auto; border-right: 0; border-bottom: 1px solid var(--line); } .calendar-frame { min-height: 760px; } .social-proof-toast { display: none; } }
+        @media (max-width: 560px) { .nav { padding: 0.9rem 1rem; } .hero { padding: 3rem 1rem 2.5rem; } .booking-shell { padding: 0 0.75rem 2rem; } .discovery { padding: 1.35rem; } .calendar-wrap { padding: 0.65rem; } }
+    </style>
+</head>
+<body>
+    <header class="topbar">
+        <nav class="nav">
+            <a class="brand" href="/">Bloomie <span>Staffing</span></a>
+            <a class="back" href="/">&larr; Go Back</a>
+        </nav>
+    </header>
+
+    <main>
+        <section class="hero">
+            <div class="pill">Book a free Bloomie walkthrough</div>
+            <h1>See Bloomie in Action - <span>Book Your Demo</span></h1>
+            <p>See how a reliable AI employee can support content marketing, lead follow-up, CRM updates, customer communication, and repeatable operations inside your business.</p>
+        </section>
+
+        <section class="booking-shell" aria-label="Book a Bloomie demo">
+            <div class="booking-card">
+                <aside class="discovery">
+                    <h2>What You'll Discover:</h2>
+                    <div class="item">
+                        <div class="icon pink">01</div>
+                        <div>
+                            <h3>Live AI Employee Walkthrough</h3>
+                            <p>See how a Bloomie can work through real content, CRM, follow-up, and admin tasks.</p>
+                        </div>
+                    </div>
+                    <div class="item">
+                        <div class="icon orange">02</div>
+                        <div>
+                            <h3>Workflow Fit Check</h3>
+                            <p>Map where an AI employee can reduce repetitive work without adding another disconnected tool.</p>
+                        </div>
+                    </div>
+                    <div class="item">
+                        <div class="icon green">03</div>
+                        <div>
+                            <h3>ROI and Time Savings</h3>
+                            <p>Estimate what gets recovered when lead follow-up, content drafts, reporting, and CRM updates stop piling up.</p>
+                        </div>
+                    </div>
+                    <div class="item">
+                        <div class="icon blue">04</div>
+                        <div>
+                            <h3>Q&A Strategy Session</h3>
+                            <p>Ask what hiring a Bloomie would look like for your team, tools, clients, and weekly workload.</p>
+                        </div>
+                    </div>
+                    <div class="trust">
+                        <div class="faces">
+                            <div class="face one">FA</div>
+                            <div class="face two">RE</div>
+                            <div class="face three">SMB</div>
+                        </div>
+                        <strong>Built for financial advisors, real estate teams, and lean businesses.</strong>
+                        <p>"The demo made it clear where an AI employee could support our follow-up, content, and operations without replacing our judgment."</p>
+                    </div>
+                </aside>
+                <div class="calendar-wrap">
+                    <iframe src="https://api.leadconnectorhq.com/widget/booking/UXtwpEpVRVg8ZVnratzA" class="calendar-frame" scrolling="no" id="msgsndr-calendar" title="Bloomie Staffing demo calendar"></iframe>
+                </div>
+            </div>
+            <p class="note">No commitment required. This is a free consultation to see whether Bloomie Staffing is the right fit for hiring a reliable AI employee.</p>
+        </section>
+    </main>
+
+    <div class="social-proof-toast" aria-hidden="true">
+        <div class="social-proof-icon">AI</div>
+        <div>
+            <div class="social-proof-text">A financial advisor team just booked a Bloomie walkthrough</div>
+            <div class="social-proof-meta">Content marketing, CRM updates, and client follow-up</div>
+        </div>
+    </div>
+
+    <script src="https://link.msgsndr.com/js/form_embed.js"></script>
+</body>
+</html>
