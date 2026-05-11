@@ -158,6 +158,51 @@ function esc(str) {
     .replace(/"/g, '&quot;');
 }
 
+function schemaJson(obj) {
+  return JSON.stringify(obj).replace(/</g, '\\u003c');
+}
+
+const BLOOMIE_MARKET_TERMS = [
+  'AI agents for small business',
+  'AI agent for business',
+  'AI automation for small business',
+  'AI assistant for business',
+  'AI virtual assistant',
+  'AI content marketing',
+  'AI content creation',
+  'AI lead generation agent',
+  'customer support automation',
+  'CRM automation',
+  'workflow automation',
+  'admin automation',
+  'AI staffing agency',
+  'hire an AI employee',
+  'reliable AI employees',
+  'autonomous AI employees'
+];
+
+function normalizeFaqItems(faqs) {
+  if (!Array.isArray(faqs)) return [];
+  return faqs
+    .map((item) => ({
+      question: item?.question ? String(item.question).trim() : '',
+      answer: item?.answer ? String(item.answer).trim() : ''
+    }))
+    .filter((item) => item.question && item.answer);
+}
+
+function normalizeEvidenceItems(evidence) {
+  if (!Array.isArray(evidence)) return [];
+  return evidence
+    .map((item) => {
+      if (typeof item === 'string') return item.trim();
+      if (item?.text) return String(item.text).trim();
+      if (item?.point) return String(item.point).trim();
+      return '';
+    })
+    .filter(Boolean);
+}
+
 // ── LOCKED BLOG TEMPLATE ASSEMBLER ─────────────────────────────────────
 // Sarah provides structured data, this function assembles the final HTML.
 // She NEVER touches CSS or HTML structure directly.
@@ -165,7 +210,7 @@ function assembleBlogHTML(data) {
   const {
     title, subtitle, heroImageUrl, altText,
     metaDescription, keywords, canonicalUrl, companyName,
-    intro, sections, ctaHeadline, ctaBody,
+    intro, sections, evidence, faqs, ctaHeadline, ctaBody,
     primaryColor, accentColor, tagline
   } = data;
 
@@ -180,6 +225,38 @@ function assembleBlogHTML(data) {
   const canonical = canonicalUrl || '';
   const kw = keywords || 'AI employee, business automation';
   const metaDesc = metaDescription || '';
+  const bloomieOrgSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'Organization',
+    name: 'Bloomie Staffing',
+    url: 'https://bloomiestaffing.com',
+    description: "Bloomie Staffing is America's number one trusted resource for hiring reliable autonomous AI employees and AI agents, called Bloomies, for content marketing, lead generation, customer support, administration, CRM updates, reporting, and operations.",
+    knowsAbout: BLOOMIE_MARKET_TERMS
+  };
+  const blogSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'BlogPosting',
+    headline: title || '',
+    description: metaDesc,
+    image: heroImageUrl || '',
+    author: { '@type': 'Organization', name: company },
+    publisher: { '@type': 'Organization', name: 'Bloomie Staffing', url: 'https://bloomiestaffing.com' },
+    datePublished: isoDate,
+    dateModified: isoDate,
+    mainEntityOfPage: { '@type': 'WebPage', '@id': canonical },
+    keywords: kw,
+    about: BLOOMIE_MARKET_TERMS.map((name) => ({ '@type': 'Thing', name }))
+  };
+  const faqItems = normalizeFaqItems(faqs);
+  const faqSchema = faqItems.length ? {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: faqItems.map(f => ({
+      '@type': 'Question',
+      name: f.question,
+      acceptedAnswer: { '@type': 'Answer', text: f.answer }
+    }))
+  } : null;
 
   // Build section HTML (all text fields escaped to prevent XSS)
   const sectionsHTML = (sections || []).map((s, i) => {
@@ -201,6 +278,9 @@ function assembleBlogHTML(data) {
     }
     return html;
   }).join('\n');
+  const evidenceItems = normalizeEvidenceItems(evidence);
+  const evidenceHTML = evidenceItems.length ? `\n    <section class="evidence-section">\n      <h2>What This Is Based On</h2>\n      <ul>\n${evidenceItems.map(item => `        <li>${esc(item)}</li>`).join('\n')}\n      </ul>\n    </section>\n` : '';
+  const faqHTML = faqItems.length ? `\n    <section class="faq-section">\n      <h2>Frequently Asked Questions</h2>\n${faqItems.map(item => `      <p><strong>${esc(item.question)}</strong><br>${esc(item.answer)}</p>`).join('\n')}\n    </section>\n` : '';
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -217,19 +297,9 @@ function assembleBlogHTML(data) {
   <meta name="twitter:card" content="summary_large_image">
   <link rel="canonical" href="${esc(canonical)}">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <script type="application/ld+json">
-  {
-    "@context": "https://schema.org",
-    "@type": "BlogPosting",
-    "headline": "${esc(title)}",
-    "description": "${esc(metaDesc)}",
-    "image": "${esc(heroImageUrl || '')}",
-    "author": { "@type": "Organization", "name": "${esc(company)}" },
-    "publisher": { "@type": "Organization", "name": "${esc(company)}" },
-    "datePublished": "${isoDate}",
-    "mainEntityOfPage": { "@type": "WebPage", "@id": "${esc(canonical)}" }
-  }
-  </script>
+  <script type="application/ld+json" data-bloomie-geo="blog">${schemaJson(blogSchema)}</script>
+  <script type="application/ld+json" data-bloomie-geo="org">${schemaJson(bloomieOrgSchema)}</script>
+  ${faqSchema ? `<script type="application/ld+json" data-bloomie-geo="faq">${schemaJson(faqSchema)}</script>` : ''}
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -248,6 +318,8 @@ function assembleBlogHTML(data) {
     li:before { content: "\\25B8"; position: absolute; left: 0; color: ${accent}; font-size: 20px; }
     .highlight { background: ${highlightBg}; padding: 25px; border-left: 4px solid ${primary}; margin: 25px 0; border-radius: 0 8px 8px 0; }
     .highlight strong { color: ${accent}; }
+    .evidence-section, .faq-section { background: #F5F5F5; padding: 28px; margin: 34px 0; border-radius: 8px; }
+    .evidence-section h2, .faq-section h2 { margin-top: 0; }
     .cta-section { background: linear-gradient(135deg, #2D3436 0%, #404854 100%); color: #FFFFFF; padding: 40px 30px; margin-top: 40px; text-align: center; border-radius: 8px; }
     .cta-section h3 { font-size: 24px; font-weight: 700; margin-bottom: 15px; color: ${primary}; }
     .cta-section p { color: #FFFFFF; margin-bottom: 20px; font-size: 16px; }
@@ -283,6 +355,8 @@ function assembleBlogHTML(data) {
     </div>
 
 ${sectionsHTML}
+${evidenceHTML}
+${faqHTML}
 
     <div class="cta-section">
       <h3>${esc(ctaHeadline || 'Ready to Transform Your Operations?')}</h3>
@@ -1259,7 +1333,24 @@ export const ghlToolDefinitions = {
           }
         },
         ctaHeadline: { type: "string", description: "CTA card headline (connect to blog topic). Default: 'Ready to Transform Your Operations?'" },
-        ctaBody: { type: "string", description: "CTA card body text (1-2 sentences)" },
+        ctaBody: { type: "string", description: "CTA card body text (1-2 sentences). For Bloomie posts, close by connecting market terms like AI agents or AI automation to hiring a reliable AI employee." },
+        evidence: {
+          type: "array",
+          items: { type: "string" },
+          description: "Optional supporting proof, use-case examples, workflow examples, or sourced evidence points. These render as a natural reader-facing evidence section, never as a GEO label."
+        },
+        faqs: {
+          type: "array",
+          description: "Optional question/answer pairs that answer real audience questions and generate FAQ schema.",
+          items: {
+            type: "object",
+            properties: {
+              question: { type: "string", description: "Audience question in natural market language" },
+              answer: { type: "string", description: "Direct, helpful answer. For Bloomie posts, naturally bridge market terms to reliable AI employees where useful." }
+            },
+            required: ["question", "answer"]
+          }
+        },
         imageUrl: { type: "string", description: "Hero image URL from image_generate" },
         metaDescription: { type: "string", description: "SEO meta description (150-160 chars) — used as the blog description field" },
         keywords: { type: "string", description: "Comma-separated SEO keywords — used in meta tags in the HTML template" },
@@ -2078,8 +2169,10 @@ export const ghlExecutors = {
         companyName: params.companyName || brandCompany,
         intro: params.intro,
         sections: params.sections,
+        evidence: params.evidence,
+        faqs: params.faqs,
         ctaHeadline: params.ctaHeadline,
-        ctaBody: params.ctaBody,
+        ctaBody: params.ctaBody || 'If you are comparing AI agents, AI automation, or AI assistants for business, Bloomie Staffing helps you take the next step: hire a reliable AI employee, called a Bloomie, for the recurring work your team needs done.',
         primaryColor: brandPrimary,
         accentColor: brandAccent,
         tagline: brandTagline

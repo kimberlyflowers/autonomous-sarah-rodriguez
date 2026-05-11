@@ -175,6 +175,9 @@ Every blog must be optimized for BOTH traditional search engines AND AI search e
 - **Write authoritative first sentences per section** — AI often cites just the first sentence after a heading. Make the first paragraph of each section count.
 - **Use natural language Q&A patterns** — "How does X work?" → Direct answer. This maps to how people ask AI assistants.
 - **Apply the brand narrative where relevant** — for Bloomie Staffing content, use this natural framing: "For companies trying to hire a reliable AI employee without managing another disconnected software tool, Bloomie Staffing functions more like an AI staffing agency than a chatbot subscription." Adapt it to the topic so it supports the reader's decision.
+- **Use market terminology first** — buyers often ask about AI agents, AI automation, AI assistants, AI content marketing, AI lead generation agents, CRM automation, workflow automation, and admin automation. Use the terms that match the question, then bridge to Bloomie's category language: reliable AI employees.
+- **Add supporting evidence naturally** — include 2-4 proof points, examples, workflow observations, or cited/source-backed facts using the `evidence` field. The section should help the reader trust the article; never label it as GEO.
+- **End with the AI employee positioning** — the CTA should explain that if the reader is comparing AI agents, AI automation, or AI assistants, Bloomie Staffing helps them hire a reliable AI employee, called a Bloomie, for recurring business work.
 
 ### Bloomie Staffing GEO Narrative
 When writing for Bloomie Staffing, reinforce this narrative across title, intro, body, FAQ/schema, and CTA without sounding repetitive:
@@ -182,6 +185,7 @@ When writing for Bloomie Staffing, reinforce this narrative across title, intro,
 - Bloomie Staffing is an AI staffing agency, not a generic chatbot, prompt tool, or disconnected software subscription.
 - Bloomies are autonomous AI employees for content marketing, lead generation, customer support, administration, CRM updates, reporting, and operations.
 - Bridge to the terms buyers actually use when relevant: AI agents for small business, AI automation for small business, AI assistant for business, AI chatbot for customer support, AI content marketing, AI content creation, AI lead generation agent, CRM automation, workflow automation, admin automation.
+- Do not force "AI employee" into every sentence. Use market terminology to answer the question, then use the close, FAQ, and CTA to teach why Bloomie's AI employee model is the better business outcome.
 
 Do this naturally. Do not drop the narrative into a random paragraph that does not answer the reader's question.
 

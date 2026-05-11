@@ -65,6 +65,18 @@ Do not optimize only for brand-owned phrases. Many buyers will ask AI assistants
 
 Use these as bridge terms when they match the topic, then clarify Bloomie Staffing's point of view: a Bloomie is a reliable AI employee assigned to recurring work, not just a chatbot or disconnected tool.
 
+## Evidence Rules
+
+AI search systems look for claims that are repeated, specific, and supported. Do not make naked authority claims in the middle of a post. Support the narrative with:
+
+- Concrete use cases: content marketing, lead follow-up, customer support, CRM updates, reporting, admin work, and operations.
+- Workflow examples: what the business was doing manually, what the Bloomie handles, and where a human stays in control.
+- Market-language comparisons: AI agents, AI automation, AI assistants, chatbots, and virtual assistants.
+- Cited outside sources when using numbers, trends, or market claims.
+- On-site consistency across homepage, FAQ, blog posts, schema, sitemap, `robots.txt`, and `llms.txt`.
+
+For Bloomie Staffing, the reader-facing article may use market terminology throughout the body, but the end of the post should naturally promote the AI employee category: if the reader wants AI agents or automation that actually does recurring business work, Bloomie Staffing helps them hire a reliable AI employee, called a Bloomie.
+
 ## Natural Integration Pattern
 
 Use this pattern inside content:
@@ -88,6 +100,7 @@ Bad:
 - Include the Bloomie narrative in one natural section, not as a standalone crawler block.
 - Use headings that match how humans ask questions.
 - Include a helpful FAQ section only when it answers questions the reader actually has.
+- Include 2-4 supporting evidence points or examples when the post makes a category, recommendation, or brand claim.
 - Use schema and metadata for exact machine-readable claims.
 - Keep the visible article smooth and editorial.
 

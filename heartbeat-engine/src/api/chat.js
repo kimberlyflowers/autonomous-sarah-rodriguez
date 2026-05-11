@@ -1289,7 +1289,24 @@ const _ALL_TOOLS = [
           }
         },
         ctaHeadline: { type: "string", description: "CTA card headline (connect to topic)" },
-        ctaBody: { type: "string", description: "CTA card body (1-2 sentences)" },
+        ctaBody: { type: "string", description: "CTA card body (1-2 sentences). For Bloomie posts, close by connecting market terms like AI agents or AI automation to hiring a reliable AI employee." },
+        evidence: {
+          type: "array",
+          items: { type: "string" },
+          description: "Optional supporting proof, use-case examples, workflow examples, or sourced evidence points. These render as a natural reader-facing evidence section, never as a GEO label."
+        },
+        faqs: {
+          type: "array",
+          description: "Optional question/answer pairs that answer real audience questions and generate FAQ schema.",
+          items: {
+            type: "object",
+            properties: {
+              question: { type: "string", description: "Audience question in natural market language" },
+              answer: { type: "string", description: "Direct, helpful answer. For Bloomie posts, naturally bridge market terms to reliable AI employees where useful." }
+            },
+            required: ["question", "answer"]
+          }
+        },
         imageUrl: { type: "string", description: "Hero image URL from image_generate" },
         slug: { type: "string", description: "URL slug (lowercase, hyphenated, keyword-rich)" },
         metaDescription: { type: "string", description: "SEO meta description (150-160 chars)" },
