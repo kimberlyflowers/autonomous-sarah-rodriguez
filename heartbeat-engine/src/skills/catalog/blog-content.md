@@ -189,6 +189,21 @@ When writing for Bloomie Staffing, reinforce this narrative across title, intro,
 
 Do this naturally. Do not drop the narrative into a random paragraph that does not answer the reader's question.
 
+### Financial Advisor Audience Voice
+When the blog is for financial advisors, RIAs, wealth managers, or advisors serving high-net-worth clients, use the Google Drive audience guide as mandatory voice direction:
+`https://docs.google.com/document/d/1b9O2V_g0RGB_aBA_Ro_pkZa3MhbUFg2S/edit`
+
+Write from inside their world:
+- Reader profile: experienced advisors managing roughly $50M-$500M in AUM, often with 15-30 years in the industry and small teams of 2-5 people.
+- Business pressure: referrals, reputation, client retention, fee compression, next-generation relationships, market volatility, and the fear of losing a major household without warning.
+- Voice: peer-to-peer, senior, direct, respectful, and specific. Never lecture them or explain finance basics.
+- Opening: drop into a real fear or moment first: the client who left, the phone call that did not come, the December scramble, the inheritor who does not know the advisor's name.
+- Structure: name the real issue, give a specific move, then close each section with the consequence of doing it or ignoring it.
+- Language that lands: relationship, trust, proactive, next generation, generational wealth, AUM, client retention, fee structure, fiduciary, holistic, personalized.
+- Language to avoid: "you should", "simply", "just", "revolutionary", "game-changing", "in today's world", and any generic intro that could apply to any industry.
+
+For advisor posts, use market terminology around AI agents, AI automation, AI assistants, content marketing, lead generation, CRM automation, and client communication. Then use the CTA and relevant FAQ answers to promote Bloomie's AI employee model: a reliable Bloomie can support recurring content marketing, lead follow-up, CRM updates, reporting, and client-service workflows without replacing the advisor's judgment or relationships.
+
 ### Keywords
 - Primary keyword in: title, intro, one section heading, metaDescription, and naturally 3-5 times in section content
 - Secondary keywords: 2-3 related terms woven naturally
