@@ -114,7 +114,9 @@
         .testimonials h2 { text-align: center; font-size: 2.35rem; margin-bottom: 0.6rem; color: var(--dark); }
         .testimonials-subtitle { text-align: center; font-size: 1rem; color: #666; max-width: 680px; margin: 0 auto 3rem; line-height: 1.7; }
         .testimonial-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; }
-        .testimonial-card { background: var(--light); border-radius: 8px; padding: 1.6rem; border: 1px solid rgba(45,52,54,0.08); box-shadow: 0 8px 22px rgba(0,0,0,0.05); }
+        .testimonial-card { background: var(--light); border-radius: 8px; padding: 0; overflow: hidden; border: 1px solid rgba(45,52,54,0.08); box-shadow: 0 8px 22px rgba(0,0,0,0.05); }
+        .testimonial-image { width: 100%; aspect-ratio: 16 / 9; display: block; object-fit: cover; background: linear-gradient(135deg, rgba(244,162,97,0.15), rgba(231,111,139,0.15)); }
+        .testimonial-body { padding: 1.6rem; }
         .testimonial-industry { color: var(--primary); font-size: 0.78rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.8rem; }
         .testimonial-quote { font-size: 1.28rem; line-height: 1.25; color: var(--dark); font-weight: 800; margin-bottom: 0.9rem; }
         .testimonial-result { color: #555; font-size: 0.95rem; line-height: 1.75; margin-bottom: 1rem; }
@@ -137,6 +139,18 @@
         .faq-item { background: var(--white); border-radius: 10px; padding: 1.5rem; margin-bottom: 1rem; box-shadow: 0 4px 14px rgba(0,0,0,0.05); }
         .faq-item h3 { font-size: 1.1rem; margin-bottom: 0.6rem; color: var(--dark); }
         .faq-item p { color: #555; line-height: 1.8; }
+        .social-proof-toast { position: fixed; left: 22px; bottom: 22px; z-index: 9000; width: min(360px, calc(100vw - 32px)); display: flex; align-items: center; gap: 0.9rem; padding: 0.95rem 1rem; background: rgba(255,255,255,0.96); border: 1px solid rgba(45,52,54,0.08); border-radius: 16px; box-shadow: 0 16px 42px rgba(45,52,54,0.18); transform: translateY(24px); opacity: 0; pointer-events: none; transition: opacity 0.35s ease, transform 0.35s ease; }
+        .social-proof-toast.show { transform: translateY(0); opacity: 1; pointer-events: auto; }
+        .social-proof-icon { width: 56px; height: 56px; border-radius: 14px; background: linear-gradient(135deg, rgba(244,162,97,0.18), rgba(231,111,139,0.18)); display: flex; align-items: center; justify-content: center; color: var(--primary); flex-shrink: 0; }
+        .social-proof-icon svg { width: 30px; height: 30px; stroke: currentColor; }
+        .social-proof-content { min-width: 0; flex: 1; }
+        .social-proof-headline { font-size: 0.92rem; color: var(--dark); line-height: 1.35; font-weight: 600; }
+        .social-proof-headline strong { color: #3f46c8; font-weight: 800; }
+        .social-proof-action { color: var(--primary); font-weight: 800; }
+        .social-proof-meta { display: flex; align-items: center; gap: 0.55rem; margin-top: 0.35rem; color: #9a9a9a; font-size: 0.72rem; font-weight: 700; }
+        .social-proof-dot { width: 7px; height: 7px; border-radius: 50%; background: #34A853; box-shadow: 0 0 0 4px rgba(52,168,83,0.12); }
+        .social-proof-close { border: 0; background: transparent; color: #aaa; font-size: 1.1rem; line-height: 1; cursor: pointer; padding: 0.15rem; align-self: flex-start; }
+        .social-proof-close:hover { color: var(--dark); }
         .cta-section { padding: 5rem 2rem; text-align: center; background: linear-gradient(135deg, rgba(244, 162, 97, 0.12) 0%, rgba(231, 111, 139, 0.12) 100%); }
         .cta-section h2 { font-size: 2.5rem; margin-bottom: 1rem; color: var(--dark); }
         .cta-section p { font-size: 1.1rem; color: #555; margin-bottom: 2rem; max-width: 600px; margin-left: auto; margin-right: auto; }
@@ -478,6 +492,8 @@
             <p class="testimonials-subtitle">Representative client-style examples showing how reliable AI employees support the work that keeps firms visible, responsive, and organized.</p>
             <div class="testimonial-grid">
                 <div class="testimonial-card">
+                    <img class="testimonial-image" src="/assets/testimonial-financial-advisor.svg" alt="Financial advisor team reviewing client follow-up workflow">
+                    <div class="testimonial-body">
                     <div class="testimonial-industry">Financial Advisors</div>
                     <div class="testimonial-quote">"Our client follow-up finally feels proactive."</div>
                     <p class="testimonial-result">The Bloomie helps draft review prep, organize CRM updates, and keep advisor-approved content moving. Our senior advisors spend less time chasing notes and more time with clients.</p>
@@ -490,8 +506,11 @@
                         <div class="testimonial-initials">RC</div>
                         <div><div class="testimonial-name">Rebecca Cole</div><div class="testimonial-role">RIA Operations Lead, Charlotte, NC</div></div>
                     </div>
+                    </div>
                 </div>
                 <div class="testimonial-card">
+                    <img class="testimonial-image" src="/assets/testimonial-real-estate.svg" alt="Real estate professional managing lead follow-up and listing marketing">
+                    <div class="testimonial-body">
                     <div class="testimonial-industry">Real Estate</div>
                     <div class="testimonial-quote">"No lead sits cold anymore."</div>
                     <p class="testimonial-result">Our Bloomie keeps listing content, buyer follow-up, and CRM tasks moving while we are in showings. The experience feels like adding a marketing coordinator without adding payroll.</p>
@@ -504,8 +523,11 @@
                         <div class="testimonial-initials">JM</div>
                         <div><div class="testimonial-name">Janelle Morris</div><div class="testimonial-role">Team Lead, Scottsdale, AZ</div></div>
                     </div>
+                    </div>
                 </div>
                 <div class="testimonial-card">
+                    <img class="testimonial-image" src="/assets/testimonial-small-business.svg" alt="Small business founder using AI employee support for marketing and operations">
+                    <div class="testimonial-body">
                     <div class="testimonial-industry">Small Business</div>
                     <div class="testimonial-quote">"The busywork stopped owning the week."</div>
                     <p class="testimonial-result">Our Bloomie handles recurring marketing drafts, customer replies, and operations checklists so the team can focus on decisions instead of admin. It feels like support that never waits for Monday.</p>
@@ -517,6 +539,7 @@
                     <div class="testimonial-author">
                         <div class="testimonial-initials">AT</div>
                         <div><div class="testimonial-name">Andre Taylor</div><div class="testimonial-role">Founder, Atlanta, GA</div></div>
+                    </div>
                     </div>
                 </div>
             </div>
@@ -618,6 +641,15 @@
 
 </div></div>
 
+<div class="social-proof-toast" id="socialProofToast" aria-live="polite">
+  <div class="social-proof-icon" id="socialProofIcon"></div>
+  <div class="social-proof-content">
+    <div class="social-proof-headline" id="socialProofHeadline"></div>
+    <div class="social-proof-meta"><span class="social-proof-dot"></span><span id="socialProofMeta"></span></div>
+  </div>
+  <button class="social-proof-close" id="socialProofClose" aria-label="Dismiss notification">&times;</button>
+</div>
+
 <script>
 (function(){
   var CHAT_API='https://njfhzabmaxhfzekbzpzz.supabase.co/functions/v1/bloomie-chat';
@@ -641,6 +673,44 @@
   document.addEventListener('mouseout',function(e){var b=e.target.closest('.bloomie-pick-btn');if(b){b.style.borderColor='#e0e0e0';b.style.background='#fff';}});
   // Visitor enrichment
   try{fetch('https://ipapi.co/json/').then(function(r){return r.json();}).then(function(g){fetch(CHAT_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'track_visitor',visitor:{ts:new Date().toISOString(),ip:g.ip,city:g.city,region:g.region,country:g.country_name,org:g.org,ref:document.referrer||'direct',ua:navigator.userAgent.slice(0,120),tz:Intl.DateTimeFormat().resolvedOptions().timeZone,screen:screen.width+'x'+screen.height,url:location.href,utm_source:new URLSearchParams(location.search).get('utm_source')||''}})}).catch(function(){});}).catch(function(){});}catch(e){}
+})();
+</script>
+<script>
+(function(){
+  var toast=document.getElementById('socialProofToast');
+  if(!toast||window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+  var icon=document.getElementById('socialProofIcon');
+  var headline=document.getElementById('socialProofHeadline');
+  var meta=document.getElementById('socialProofMeta');
+  var close=document.getElementById('socialProofClose');
+  var dismissed=false;
+  var icons={
+    advisor:'<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l8-4 6 4v14"/><path d="M9 10h1"/><path d="M14 10h1"/><path d="M9 14h1"/><path d="M14 14h1"/></svg>',
+    realestate:'<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v11h14V10"/><path d="M9 21v-6h6v6"/></svg>',
+    founder:'<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5"/><path d="M4 5h10l1 4h5v8H4"/><path d="M9 22v-3"/></svg>',
+    creator:'<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9l5 3-5 3V9z"/></svg>'
+  };
+  var items=[
+    {icon:'advisor',name:'A financial advisor in Charlotte',action:'started AI employee onboarding',meta:'Bloomie for CRM updates + client follow-up'},
+    {icon:'realestate',name:'Janelle from Scottsdale',action:'explored a Real Estate Bloomie',meta:'Lead follow-up, listing content, CRM cleanup'},
+    {icon:'founder',name:'A Nashville founder',action:'picked a Content Marketing Bloomie',meta:'Blogs, email drafts, and weekly campaigns'},
+    {icon:'advisor',name:'An RIA operations team in Dallas',action:'reviewed advisor workflow support',meta:'Review prep, reporting, and client-service reminders'},
+    {icon:'creator',name:'A creator-led team in Atlanta',action:'started comparing AI employee plans',meta:'Content, customer replies, and admin support'}
+  ];
+  var i=0;
+  function show(){
+    if(dismissed)return;
+    var item=items[i%items.length];
+    icon.innerHTML=icons[item.icon]||icons.founder;
+    headline.innerHTML='<strong>'+item.name+'</strong> <span class="social-proof-action">'+item.action+'</span>';
+    meta.textContent=item.meta+' · moments ago';
+    toast.classList.add('show');
+    setTimeout(function(){toast.classList.remove('show');},6200);
+    i++;
+  }
+  if(close){close.addEventListener('click',function(){dismissed=true;toast.classList.remove('show');});}
+  setTimeout(show,3500);
+  setInterval(show,12500);
 })();
 </script>
 <div class="chat-overlay" id="chatOverlay"></div>

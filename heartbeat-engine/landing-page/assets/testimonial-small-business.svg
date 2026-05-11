@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" role="img" aria-labelledby="title desc">
+  <title id="title">Small business AI employee operations support</title>
+  <desc id="desc">Stylized small business operations board with marketing drafts, customer replies, and reporting.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f8f4f0"/>
+      <stop offset="1" stop-color="#ffe9f0"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#F4A261"/>
+      <stop offset="1" stop-color="#E76F8B"/>
+    </linearGradient>
+  </defs>
+  <rect width="960" height="540" fill="url(#bg)"/>
+  <rect x="96" y="96" width="768" height="348" rx="28" fill="#fff" opacity=".94"/>
+  <rect x="136" y="142" width="188" height="236" rx="18" fill="#2D3436"/>
+  <rect x="364" y="142" width="188" height="236" rx="18" fill="#fff7f0"/>
+  <rect x="592" y="142" width="188" height="236" rx="18" fill="#f5f5f5"/>
+  <path d="M174 198h108M174 248h84M174 298h124" stroke="#fff" stroke-width="14" stroke-linecap="round" opacity=".85"/>
+  <path d="M400 198h108M400 248h84M400 298h124" stroke="#2D3436" stroke-width="14" stroke-linecap="round" opacity=".7"/>
+  <path d="M628 198h108M628 248h84M628 298h124" stroke="#2D3436" stroke-width="14" stroke-linecap="round" opacity=".7"/>
+  <circle cx="240" cy="385" r="42" fill="url(#accent)"/>
+  <path d="M225 385l12 12 23-29" fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M452 385h74M680 385h74" stroke="url(#accent)" stroke-width="11" stroke-linecap="round"/>
+  <text x="136" y="486" fill="#2D3436" font-family="Inter, Arial, sans-serif" font-size="26" font-weight="800">Busywork becomes a workflow</text>
+</svg>

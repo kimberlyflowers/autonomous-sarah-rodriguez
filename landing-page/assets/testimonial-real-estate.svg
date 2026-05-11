@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" role="img" aria-labelledby="title desc">
+  <title id="title">Real estate AI employee lead follow-up</title>
+  <desc id="desc">Stylized real estate dashboard with listing content, lead follow-up, and appointment reminders.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff6ec"/>
+      <stop offset="1" stop-color="#ffe8dd"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#F4A261"/>
+      <stop offset="1" stop-color="#E76F8B"/>
+    </linearGradient>
+  </defs>
+  <rect width="960" height="540" fill="url(#bg)"/>
+  <path d="M128 290l170-148 168 148v150H128z" fill="#fff"/>
+  <path d="M92 302l206-181 205 181" fill="none" stroke="#2D3436" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="245" y="330" width="96" height="110" rx="8" fill="#F4A261"/>
+  <rect x="548" y="102" width="292" height="336" rx="26" fill="#fff"/>
+  <rect x="590" y="148" width="206" height="44" rx="12" fill="#fff3e8"/>
+  <rect x="590" y="222" width="206" height="44" rx="12" fill="#f5f5f5"/>
+  <rect x="590" y="296" width="206" height="44" rx="12" fill="#f5f5f5"/>
+  <circle cx="621" cy="170" r="13" fill="#34A853"/>
+  <circle cx="621" cy="244" r="13" fill="#F4A261"/>
+  <circle cx="621" cy="318" r="13" fill="#E76F8B"/>
+  <path d="M660 170h92M660 244h112M660 318h86" stroke="#2D3436" stroke-width="12" stroke-linecap="round" opacity=".75"/>
+  <path d="M706 403c54-34 98-34 130 0" fill="none" stroke="url(#accent)" stroke-width="10" stroke-linecap="round"/>
+  <text x="126" y="488" fill="#2D3436" font-family="Inter, Arial, sans-serif" font-size="26" font-weight="800">Every lead gets a next step</text>
+</svg>

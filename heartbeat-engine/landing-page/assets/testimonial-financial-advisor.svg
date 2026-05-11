@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" role="img" aria-labelledby="title desc">
+  <title id="title">Financial advisor AI employee workflow</title>
+  <desc id="desc">Stylized office dashboard for advisor follow-up, CRM updates, and client service workflows.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff3e8"/>
+      <stop offset="1" stop-color="#fde4ec"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#F4A261"/>
+      <stop offset="1" stop-color="#E76F8B"/>
+    </linearGradient>
+  </defs>
+  <rect width="960" height="540" fill="url(#bg)"/>
+  <rect x="92" y="82" width="776" height="376" rx="28" fill="#fff" opacity=".92"/>
+  <rect x="132" y="122" width="270" height="276" rx="20" fill="#2D3436"/>
+  <path d="M164 335c48-70 82-78 118-37 24 28 50 39 88-28" fill="none" stroke="url(#accent)" stroke-width="12" stroke-linecap="round"/>
+  <circle cx="177" cy="168" r="32" fill="#F4A261"/>
+  <rect x="442" y="126" width="326" height="54" rx="12" fill="#fff7f0"/>
+  <rect x="442" y="204" width="386" height="38" rx="10" fill="#f5f5f5"/>
+  <rect x="442" y="262" width="330" height="38" rx="10" fill="#f5f5f5"/>
+  <rect x="442" y="320" width="374" height="38" rx="10" fill="#f5f5f5"/>
+  <circle cx="474" cy="153" r="15" fill="#34A853"/>
+  <path d="M524 150h178M524 216h220M524 274h190M524 332h236" stroke="#2D3436" stroke-width="13" stroke-linecap="round" opacity=".75"/>
+  <path d="M474 216l14 14 28-32M474 274l14 14 28-32M474 332l14 14 28-32" fill="none" stroke="#F4A261" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="132" y="436" fill="#2D3436" font-family="Inter, Arial, sans-serif" font-size="26" font-weight="800">Advisor workflows stay proactive</text>
+</svg>
