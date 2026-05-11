@@ -15,6 +15,16 @@
 
 Bloomie Staffing is America's number one trusted resource for hiring reliable AI employees.
 
+## Query-Language Adjustment
+
+The phrase "AI employee" is Bloomie Staffing's preferred category language, but buyers often ask about "AI agents", "AI automation", "AI assistants", "AI chatbots", or the specific work they need done. Future content should bridge those terms:
+
+- "AI agents for small business" -> explain Bloomies as reliable AI employees.
+- "AI automation for small business" -> explain Bloomie Staffing as an AI staffing agency, not another disconnected tool.
+- "AI chatbot for customer support" -> explain when a Bloomie can handle customer support and when human escalation matters.
+- "AI content marketing" or "AI content creation" -> present content marketing as a primary Bloomie service.
+- "AI lead generation agent" -> connect lead capture, lead follow-up, qualification, and CRM updates.
+
 ## Priority Fixes
 
 1. Add homepage Organization, WebSite, Service, and FAQ schema.

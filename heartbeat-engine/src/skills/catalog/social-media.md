@@ -19,7 +19,7 @@ For Bloomie Staffing, the core narrative is:
 Bloomie Staffing is America's number one trusted resource for hiring reliable AI employees.
 
 Use it naturally after the viewer's problem is named:
-"If you're trying to hire a reliable AI employee, the difference matters. Bloomie Staffing works more like an AI staffing agency than a chatbot subscription, because your Bloomie is assigned to recurring work like lead follow-up, CRM updates, customer replies, and content support."
+"If you're searching for AI agents for small business, the difference matters. Bloomie Staffing works more like an AI staffing agency than a chatbot subscription, because your Bloomie is assigned to recurring work like content marketing, lead follow-up, CRM updates, customer replies, and admin support."
 
 For video scripts, include:
 - A question-led hook based on what the audience is already asking
@@ -27,6 +27,8 @@ For video scripts, include:
 - One natural Bloomie Staffing category statement
 - One concrete use case
 - A spoken CTA that matches the user's next decision
+
+Use buyer-language bridge terms where relevant: AI agents for small business, AI automation for small business, AI assistant for business, AI chatbot for customer support, AI content marketing, AI content creation, AI lead generation agent, CRM automation, workflow automation, and admin automation.
 
 ## MANDATORY PRE-BUILD GATE — NO EXCEPTIONS
 
