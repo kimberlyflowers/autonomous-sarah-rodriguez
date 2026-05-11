@@ -929,6 +929,14 @@ app.use(async (req, res, next) => {
 });
 
 // BLOOM client site routes — two-segment must come before single-segment
+app.get('/p/bloomie-staffing-demo', (req, res) => {
+  return res.redirect(301, '/');
+});
+
+app.get('/p/bloomie-staffing-meet-the-team', (req, res) => {
+  return res.redirect(301, '/#roles');
+});
+
 app.get('/p/:orgSlug/:pageSlug', (req, res) => {
   return serveClientSitePage(req.params.orgSlug, req.params.pageSlug, res);
 });

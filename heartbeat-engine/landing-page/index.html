@@ -88,20 +88,27 @@
         .roles h2 { text-align: center; font-size: 2.5rem; margin-bottom: 0.5rem; color: var(--dark); }
         .roles-subtitle { text-align: center; font-size: 1.1rem; color: #666; margin-bottom: 3rem; }
         .role-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 2.5rem; margin-bottom: 3rem; }
-        .role-card { background: var(--light); border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.08); transition: all 0.3s; }
-        .role-card:hover { transform: translateY(-8px); box-shadow: 0 12px 24px rgba(244, 162, 97, 0.2); }
-        .role-card img { width: 100%; height: 300px; object-fit: cover; }
+        .role-card { background: var(--white); border-radius: 16px; overflow: hidden; box-shadow: 0 12px 34px rgba(45,52,54,0.09); border: 1px solid rgba(45,52,54,0.06); transition: all 0.3s; }
+        .role-card:hover { transform: translateY(-8px); box-shadow: 0 18px 40px rgba(244, 162, 97, 0.22); }
+        .role-card-image { position: relative; height: 320px; overflow: hidden; background: var(--light); }
+        .role-card-image img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .role-card-badge { position: absolute; top: 1rem; right: 1rem; padding: 0.55rem 1.05rem; border-radius: 999px; color: var(--white); font-weight: 800; font-size: 0.88rem; background: linear-gradient(135deg, #F4A261, #E76F8B); box-shadow: 0 8px 18px rgba(231,111,139,0.24); }
+        .role-card-status { position: absolute; left: 1.35rem; bottom: 1rem; display: inline-flex; align-items: center; gap: 0.45rem; color: #40f090; background: rgba(45,52,54,0.8); padding: 0.45rem 0.75rem; border-radius: 999px; font-size: 0.78rem; font-weight: 800; }
+        .role-card-status span { width: 8px; height: 8px; border-radius: 50%; background: #40f090; display: inline-block; }
         .role-card-content { padding: 2rem; }
-        .role-card h3 { font-size: 1.5rem; margin-bottom: 0.75rem; color: var(--dark); }
-        .role-card p { color: #555; font-size: 0.95rem; line-height: 1.8; margin-bottom: 1rem; }
-        .role-features { list-style: none; margin-bottom: 1.5rem; }
-        .role-features li { padding: 0.35rem 0; color: #666; font-size: 0.85rem; display: flex; align-items: center; line-height: 1.4; }
-        .role-features li:before { content: ""; display: inline-block; width: 13px; height: 13px; margin-right: 0.6rem; flex-shrink: 0; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23F4A261' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E") no-repeat center; background-size: contain; opacity: 0.85; }
-        .card-buttons { display: flex; gap: 0.5rem; margin-top: 1rem; padding: 0 1.5rem 1.25rem; }
-        .card-buttons .btn-profile { flex: 1; padding: 0.55rem 0.75rem; border-radius: 6px; font-weight: 600; font-size: 0.82rem; text-align: center; cursor: pointer; transition: all 0.25s; text-decoration: none; display: inline-block; border: 1.5px solid var(--primary); color: var(--primary); background: transparent; letter-spacing: 0.01em; }
-        .card-buttons .btn-profile:hover { background: var(--primary); color: var(--white); }
-        .card-buttons .btn-hire { flex: 1; padding: 0.55rem 0.75rem; border-radius: 6px; font-weight: 600; font-size: 0.82rem; text-align: center; cursor: pointer; transition: all 0.25s; text-decoration: none; display: inline-block; border: none; background: linear-gradient(135deg, #F4A261 0%, #E76F8B 100%); color: var(--white); letter-spacing: 0.01em; }
-        .card-buttons .btn-hire:hover { background: linear-gradient(135deg, #E76F8B 0%, #F4A261 100%); transform: translateY(-1px); box-shadow: 0 4px 10px rgba(231, 111, 139, 0.28); }
+        .role-card h3 { font-size: 1.75rem; margin-bottom: 0.4rem; color: var(--dark); }
+        .role-card-role { color: var(--primary); font-size: 0.98rem; font-weight: 800; margin-bottom: 1.15rem; }
+        .role-card p { color: #4d4d4d; font-size: 1rem; line-height: 1.7; margin-bottom: 1.25rem; }
+        .role-card-rate { color: #777; font-size: 0.86rem; font-weight: 700; margin-bottom: 1rem; }
+        .role-card-rate strong { color: var(--dark); }
+        .skill-tags { display: flex; flex-wrap: wrap; gap: 0.55rem; margin-bottom: 1.55rem; }
+        .skill-tag { border: 1px solid rgba(244,162,97,0.35); background: rgba(244,162,97,0.07); color: var(--dark); border-radius: 999px; padding: 0.45rem 0.78rem; font-size: 0.82rem; font-weight: 700; }
+        .card-buttons { display: flex; gap: 0.75rem; margin-top: auto; }
+        .card-buttons .btn-profile, .card-buttons .btn-hire { flex: 1; min-height: 46px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; font-weight: 800; font-size: 0.9rem; text-align: center; cursor: pointer; transition: all 0.25s; text-decoration: none; letter-spacing: 0; }
+        .card-buttons .btn-profile { border: none; color: var(--white); background: linear-gradient(135deg, #F4A261 0%, #E76F8B 100%); }
+        .card-buttons .btn-profile:hover { transform: translateY(-1px); box-shadow: 0 7px 14px rgba(231, 111, 139, 0.24); }
+        .card-buttons .btn-hire { border: 1.5px solid var(--dark); background: var(--white); color: var(--dark); }
+        .card-buttons .btn-hire:hover { border-color: transparent; color: var(--white); background: linear-gradient(135deg, #F4A261 0%, #E76F8B 100%); transform: translateY(-1px); box-shadow: 0 7px 14px rgba(231,111,139,0.24); }
         .benefits { background: linear-gradient(135deg, var(--dark) 0%, #1a1a1a 100%); color: var(--white); padding: 5rem 2rem; }
         .benefits-container { max-width: 1200px; margin: 0 auto; }
         .benefits h2 { text-align: center; font-size: 2.5rem; margin-bottom: 3rem; }
@@ -185,7 +192,7 @@
             .roles h2, .benefits h2, .cta-section h2 { font-size: 1.75rem; }
             .roles-subtitle { font-size: 1rem; }
             .role-grid { grid-template-columns: 1fr; gap: 1.75rem; }
-            .role-card img { height: 220px; }
+            .role-card-image { height: 240px; }
             .card-buttons { flex-direction: column; gap: 0.6rem; }
             .benefit-grid { grid-template-columns: 1fr; gap: 1.25rem; }
             .benefit-item { padding: 1.5rem; }
@@ -278,7 +285,7 @@
         </button>
         <ul>
             <li><a href="#roles">Our Roles</a></li>
-            <li><a href="/p/bloomie-staffing-meet-the-team">Meet the Team</a></li>
+            <li><a href="/#roles">Meet the Team</a></li>
             <li><a href="/p/blog">Blog</a></li><li><a href="/p/faq">FAQ</a></li><li><a href="#pricing">Pricing</a></li><li><a href="#benefits">Why Bloomie</a></li>
             <li><a class="cta-button" href="/book-demo">Book a Demo</a></li>
         </ul>
@@ -325,61 +332,61 @@
         <div class="role-grid">
             <div class="role-card">
                 <a href="/p/bloomie-staffing-marcus-profile" style="text-decoration:none; color:inherit;">
+                    <div class="role-card-image">
                     <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/assets/2026/03/bloom-img-1773960788647-89gl.png" alt="Marketing Manager">
+                    <div class="role-card-badge">Full-Time</div>
+                    <div class="role-card-status"><span></span>Available to Hire</div>
+                    </div>
                     <div class="role-card-content">
-                        <h3>Marketing Manager</h3>
-                        <p style="font-size: 0.85rem; color: var(--primary); font-weight: 600; margin-bottom: 0.25rem;">Marcus</p><p style="font-size: 0.8rem; color: #888; margin-bottom: 0.5rem; font-weight: 500;">From <strong style='color:var(--dark)'>$597/mo</strong> part-time · <strong style='color:var(--dark)'>$997/mo</strong> full-time</p>
+                        <h3>Marcus</h3>
+                        <div class="role-card-role">Marketing Operations Manager</div>
+                        <div class="role-card-rate">From <strong>$597/mo</strong> part-time · <strong>$997/mo</strong> full-time</div>
                         <p>Handle your marketing operations with expertise in campaign strategy, content creation, and performance analysis.</p>
-                        <ul class="role-features">
-                            <li>Campaign planning &amp; execution</li>
-                            <li>Social media management</li>
-                            <li>Content creation &amp; optimization</li>
-                            <li>Analytics &amp; reporting</li>
-                        </ul>
+                        <div class="skill-tags"><span class="skill-tag">Campaign Strategy</span><span class="skill-tag">Social Media</span><span class="skill-tag">Content Creation</span><span class="skill-tag">Analytics</span></div>
                     </div>
                 </a>
-                <div class="card-buttons" style="padding: 0;">
-                    <a href="/p/bloomie-staffing-marcus-profile" class="btn-profile">View Profile</a>
+                <div class="card-buttons">
+                    <a href="/p/bloomie-staffing-marcus-profile" class="btn-profile">View Full Profile</a>
                     <a href="/p/bloomie-staffing-checkout?employee=marcus" class="btn-hire">Hire Marcus</a>
                 </div>
             </div>
             <div class="role-card">
                 <a href="/p/bloomie-staffing-emma-profile" style="text-decoration:none; color:inherit;">
+                    <div class="role-card-image">
                     <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/assets/2026/03/bloom-img-1773961760770-90ug.png" alt="Customer Service Agent">
+                    <div class="role-card-badge">Full-Time</div>
+                    <div class="role-card-status"><span></span>Available to Hire</div>
+                    </div>
                     <div class="role-card-content">
-                        <h3>Customer Service Support Agent</h3>
-                        <p style="font-size: 0.85rem; color: var(--primary); font-weight: 600; margin-bottom: 0.25rem;">Emma</p><p style="font-size: 0.8rem; color: #888; margin-bottom: 0.5rem; font-weight: 500;">From <strong style='color:var(--dark)'>$597/mo</strong> part-time · <strong style='color:var(--dark)'>$997/mo</strong> full-time</p>
-                        <p>Provide 24/7 customer support with professionalism, efficiency, and genuine care for your clients.</p>
-                        <ul class="role-features">
-                            <li>24/7 availability</li>
-                            <li>Multi-channel support</li>
-                            <li>Issue resolution</li>
-                            <li>Customer satisfaction tracking</li>
-                        </ul>
+                        <h3>Emma</h3>
+                        <div class="role-card-role">Customer Support Specialist</div>
+                        <div class="role-card-rate">From <strong>$597/mo</strong> part-time · <strong>$997/mo</strong> full-time</div>
+                        <p>Provide daily customer support with professionalism, efficiency, and genuine care during the hours your team needs covered.</p>
+                        <div class="skill-tags"><span class="skill-tag">4-8 Hours/Day</span><span class="skill-tag">Multi-Channel</span><span class="skill-tag">Issue Resolution</span><span class="skill-tag">CSAT Tracking</span></div>
                     </div>
                 </a>
-                <div class="card-buttons" style="padding: 0;">
-                    <a href="/p/bloomie-staffing-emma-profile" class="btn-profile">View Profile</a>
+                <div class="card-buttons">
+                    <a href="/p/bloomie-staffing-emma-profile" class="btn-profile">View Full Profile</a>
                     <a href="/p/bloomie-staffing-checkout?employee=emma" class="btn-hire">Hire Emma</a>
                 </div>
             </div>
             <div class="role-card">
                 <a href="/p/bloomie-staffing-alex-profile" style="text-decoration:none; color:inherit;">
+                    <div class="role-card-image">
                     <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/assets/2026/03/bloom-img-1773960802490-ab82.png" alt="Operations Agent">
+                    <div class="role-card-badge">Full-Time</div>
+                    <div class="role-card-status"><span></span>Available to Hire</div>
+                    </div>
                     <div class="role-card-content">
-                        <h3>Business Operations Agent</h3>
-                        <p style="font-size: 0.85rem; color: var(--primary); font-weight: 600; margin-bottom: 0.25rem;">Alex</p><p style="font-size: 0.8rem; color: #888; margin-bottom: 0.5rem; font-weight: 500;">From <strong style='color:var(--dark)'>$597/mo</strong> part-time · <strong style='color:var(--dark)'>$997/mo</strong> full-time</p>
+                        <h3>Alex</h3>
+                        <div class="role-card-role">Business Operations &amp; Customer Service Manager</div>
+                        <div class="role-card-rate">From <strong>$597/mo</strong> part-time · <strong>$997/mo</strong> full-time</div>
                         <p>Streamline your operations with intelligent task management, scheduling, and process optimization.</p>
-                        <ul class="role-features">
-                            <li>Process automation</li>
-                            <li>Administrative support</li>
-                            <li>Data management</li>
-                            <li>Workflow optimization</li>
-                        </ul>
+                        <div class="skill-tags"><span class="skill-tag">Process Automation</span><span class="skill-tag">Admin Support</span><span class="skill-tag">Data Management</span><span class="skill-tag">Workflow</span></div>
                     </div>
                 </a>
-                <div class="card-buttons" style="padding: 0;">
-                    <a href="/p/bloomie-staffing-alex-profile" class="btn-profile">View Profile</a>
+                <div class="card-buttons">
+                    <a href="/p/bloomie-staffing-alex-profile" class="btn-profile">View Full Profile</a>
                     <a href="/p/bloomie-staffing-checkout?employee=alex" class="btn-hire">Hire Alex</a>
                 </div>
             </div>
@@ -601,7 +608,7 @@
     </button>
     <button class="bloomie-pick-btn" data-bloomie="emma" data-role="Customer Service" data-bname="Emma" data-bavatar="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/assets/2026/03/bloom-img-1773961760770-90ug.png" style="display:flex;align-items:center;gap:1rem;padding:1rem;border:2px solid #e0e0e0;border-radius:12px;background:#fff;cursor:pointer;text-align:left;transition:all 0.2s;font-family:Inter,sans-serif;">
       <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/assets/2026/03/bloom-img-1773961760770-90ug.png" style="width:52px;height:52px;border-radius:50%;object-fit:cover;object-position:top;flex-shrink:0;">
-      <div><div style="font-weight:700;color:#2D3436;font-size:0.95rem;">Emma</div><div style="font-size:0.82rem;color:#F4A261;font-weight:600;">Customer Service Support Agent</div><div style="font-size:0.8rem;color:#888;margin-top:2px;">24/7 support, ticket resolution, client satisfaction</div></div>
+      <div><div style="font-weight:700;color:#2D3436;font-size:0.95rem;">Emma</div><div style="font-size:0.82rem;color:#F4A261;font-weight:600;">Customer Service Support Agent</div><div style="font-size:0.8rem;color:#888;margin-top:2px;">4-8 hours/day support, ticket resolution, client satisfaction</div></div>
     </button>
   </div>
   <p style="text-align:center;font-size:0.8rem;color:#aaa;">No commitment. Ask them anything.</p>
