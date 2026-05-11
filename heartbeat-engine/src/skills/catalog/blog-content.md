@@ -212,7 +212,8 @@ For advisor posts, use market terminology around AI agents, AI automation, AI as
 ## CONTENT STANDARDS
 
 ### Structure That Performs
-- **Word count**: 1,500-2,500 words total across all sections
+- **Word count**: 1,200-1,800 words for most authority posts, with roughly 1,500 words as the default target. This creates a consistent 5-7 minute read.
+- **Short exceptions**: Use 800-1,000 words only for narrow announcements, short answers, or local updates where depth would feel padded.
 - **5-7 sections** — readers scan in F-pattern, each heading is an entry point
 - **Intro must hook** — bold claim, surprising stat, or provocative question. NEVER generic. See BANNED PHRASES below.
 - **Short paragraphs**: 2-4 sentences max. Use arrays of paragraph strings for multi-paragraph sections.
