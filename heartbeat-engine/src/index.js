@@ -830,7 +830,7 @@ async function serveClientSitePage(orgSlug, pageSlug, res) {
           .maybeSingle();
         if (artifact && artifact.file_type === 'html' && artifact.content) {
           res.setHeader('Content-Type', 'text/html; charset=utf-8');
-          return res.send(artifact.content);
+          return res.send(normalizeBloomiePageHtml(artifact.content));
         }
         if (artifact && artifact.file_type === 'markdown' && artifact.content) {
           const md = artifact.content
@@ -866,7 +866,7 @@ async function serveClientSitePage(orgSlug, pageSlug, res) {
     // If raw HTML is stored, serve it directly
     if (page.content_html) {
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
-      return res.send(page.content_html);
+      return res.send(normalizeBloomiePageHtml(page.content_html));
     }
 
     // Otherwise render via template engine
@@ -886,7 +886,7 @@ async function serveClientSitePage(orgSlug, pageSlug, res) {
     };
 
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    return res.send(tmpl.render(contentData));
+    return res.send(normalizeBloomiePageHtml(tmpl.render(contentData)));
   } catch (e) {
     logger.error('serveClientSitePage error:', e);
     return res.status(500).send('<html><body>Server error.</body></html>');
@@ -895,6 +895,19 @@ async function serveClientSitePage(orgSlug, pageSlug, res) {
 
 function site404Html() {
   return `<html><body style="font-family:system-ui;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#1a1a1a;color:#fff;margin:0"><div style="text-align:center"><h1 style="font-size:48px;margin:0">404</h1><p style="color:#888;margin-top:8px">This site or page doesn't exist.</p></div></body></html>`;
+}
+
+function normalizeBloomiePageHtml(html) {
+  if (!html || typeof html !== 'string') return html;
+  return html
+    .replaceAll('href="/p/bloomie-staffing-demo"', 'href="/"')
+    .replaceAll("href='/p/bloomie-staffing-demo'", "href='/'")
+    .replaceAll('href="/p/bloomie-staffing-meet-the-team"', 'href="/#roles"')
+    .replaceAll("href='/p/bloomie-staffing-meet-the-team'", "href='/#roles'")
+    .replaceAll('href="/#demo"', 'href="/book-demo"')
+    .replaceAll("href='/#demo'", "href='/book-demo'")
+    .replaceAll('Start Your 30-Day Onboarding', 'Book a Demo')
+    .replaceAll('Schedule a Free Demo', 'Book a Bloomie Demo');
 }
 
 // Custom domain middleware — must be registered before /p/ routes
@@ -1047,7 +1060,7 @@ const servePublishedPage = async (req, res) => {
     const file = { name: data.name, file_type: data.file_type, content_text: data.content };
     if (file.file_type === 'html' && file.content_text) {
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
-      return res.send(file.content_text);
+      return res.send(normalizeBloomiePageHtml(file.content_text));
     }
     if (file.file_type === 'markdown' && file.content_text) {
       const md = file.content_text
