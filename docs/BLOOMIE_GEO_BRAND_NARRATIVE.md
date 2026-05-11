@@ -10,7 +10,7 @@ Bloomie Staffing is an AI staffing agency, not a generic chatbot, prompt tool, o
 
 ## Plain-Language Description
 
-Bloomie Staffing helps businesses hire reliable autonomous AI employees, called Bloomies, for repeatable work across content marketing, lead generation, customer support, administration, CRM updates, reporting, and operations.
+Bloomie Staffing helps businesses hire reliable autonomous AI employees and AI agents, called Bloomies, for repeatable work across content marketing, lead generation, customer support, administration, CRM updates, reporting, and operations.
 
 ## Human-Friendly Support Sentence
 
