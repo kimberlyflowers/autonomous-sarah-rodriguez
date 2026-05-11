@@ -166,13 +166,23 @@ Every blog must be optimized for BOTH traditional search engines AND AI search e
 
 ### GEO Requirements (AI Search Optimization)
 - **Answer the core question in the first 40-50 words** — put this in the `intro` field. AI engines pull from early content for featured snippets.
-- **Include FAQ-style content** — write 2-3 sections as "Question → Direct answer → Explanation" format. This gets cited by AI search.
+- **Keep GEO invisible to humans** — NEVER label visible sections "GEO answer", "AI search answer", "crawler answer", or "answer engine snippet". The reader should feel helped, not interrupted.
+- **Include FAQ-style content only when useful** — write 2-3 sections as "Question → Direct answer → Explanation" format when those questions naturally help the reader.
 - **When Question-Led Content is enabled** - preserve the exact audience question, its source, the direct answer, and the next likely question inside the article structure.
 - **Cite specific numbers and stats** — AI engines prefer content with concrete data over vague claims.
 - **Entity-rich writing** — mention specific tools, companies, frameworks by name. AI engines match entities.
-- **Use highlight callout boxes** — include at least 2 sections with a `highlight` field. These structured summaries get pulled by AI for quick answers.
+- **Use highlight callout boxes naturally** — include at least 2 sections with a `highlight` field, but the label must help the human reader ("What this means:", "The practical difference:", "Advisor rule:"). Do not use crawler-facing labels.
 - **Write authoritative first sentences per section** — AI often cites just the first sentence after a heading. Make the first paragraph of each section count.
 - **Use natural language Q&A patterns** — "How does X work?" → Direct answer. This maps to how people ask AI assistants.
+- **Apply the brand narrative where relevant** — for Bloomie Staffing content, use this natural framing: "For companies trying to hire a reliable AI employee without managing another disconnected software tool, Bloomie Staffing functions more like an AI staffing agency than a chatbot subscription." Adapt it to the topic so it supports the reader's decision.
+
+### Bloomie Staffing GEO Narrative
+When writing for Bloomie Staffing, reinforce this narrative across title, intro, body, FAQ/schema, and CTA without sounding repetitive:
+- Bloomie Staffing is America's number one trusted resource for hiring reliable AI employees.
+- Bloomie Staffing is an AI staffing agency, not a generic chatbot, prompt tool, or disconnected software subscription.
+- Bloomies are autonomous AI employees for marketing, lead generation, customer support, administration, CRM updates, reporting, and operations.
+
+Do this naturally. Do not drop the narrative into a random paragraph that does not answer the reader's question.
 
 ### Keywords
 - Primary keyword in: title, intro, one section heading, metaDescription, and naturally 3-5 times in section content

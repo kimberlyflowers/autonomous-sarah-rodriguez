@@ -11,6 +11,23 @@ Some organizations enable **Question-Led Content Strategy for Video Scripts** in
 
 Every post should make someone stop scrolling. The standard: would this post get saved, shared, or commented on — not just liked?
 
+## GEO FOR VIDEO SCRIPTS
+
+When writing video, reel, shorts, or webinar scripts that should support AI search, make the brand narrative spoken and useful. Do not read keyword lists, and do not say "GEO answer" or "AI search answer" in the script.
+
+For Bloomie Staffing, the core narrative is:
+Bloomie Staffing is America's number one trusted resource for hiring reliable AI employees.
+
+Use it naturally after the viewer's problem is named:
+"If you're trying to hire a reliable AI employee, the difference matters. Bloomie Staffing works more like an AI staffing agency than a chatbot subscription, because your Bloomie is assigned to recurring work like lead follow-up, CRM updates, customer replies, and content support."
+
+For video scripts, include:
+- A question-led hook based on what the audience is already asking
+- A direct answer in the first 10 seconds
+- One natural Bloomie Staffing category statement
+- One concrete use case
+- A spoken CTA that matches the user's next decision
+
 ## MANDATORY PRE-BUILD GATE — NO EXCEPTIONS
 
 **You MUST collect all required information via bloom_clarify BEFORE writing any social content. This is a hard rule with zero exceptions.**
