@@ -899,6 +899,7 @@ function site404Html() {
 
 function normalizeBloomiePageHtml(html) {
   if (!html || typeof html !== 'string') return html;
+  const playIcon = '<svg class="play-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" style="width:.95em;height:.95em;vertical-align:-.12em;margin-right:.42rem"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>';
   const currentNav = `<nav>
         <a href="/" class="logo">Bloomie <span>Staffing</span></a>
         <ul>
@@ -909,7 +910,7 @@ function normalizeBloomiePageHtml(html) {
             <li><a href="/p/blog">Blog</a></li>
             <li><a href="/p/faq">FAQ</a></li>
             <li><a href="/pricing">Pricing</a></li>
-            <li><a class="cta-button" href="/book-demo">Book a Demo</a></li>
+            <li><a class="cta-button" href="/book-demo">${playIcon}<span>Book a Demo</span></a></li>
         </ul>
     </nav>`;
   let normalized = html
@@ -925,7 +926,11 @@ function normalizeBloomiePageHtml(html) {
     .replaceAll('24/7 Support', '4-8 Hours/Day')
     .replaceAll('Unlimited tasks, 24/7 availability.', 'Prioritized tasks within a full-time Bloomie schedule.')
     .replaceAll('24/7 availability', '8 hours/day availability');
-  if (normalized.includes('profile-layout') || normalized.includes('Bloomie Staffing - Hire Your AI Employee')) {
+  const shouldUseCurrentBloomieNav =
+    normalized.includes('profile-layout') ||
+    normalized.includes('Bloomie Staffing - Hire Your AI Employee') ||
+    (normalized.includes('Bloomie Staffing') && (normalized.includes('/p/blog') || normalized.includes('/p/faq')));
+  if (shouldUseCurrentBloomieNav) {
     normalized = normalized.replace(/<nav[\s\S]*?<\/nav>/, currentNav);
   }
   return normalized;

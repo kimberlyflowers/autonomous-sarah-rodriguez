@@ -69,8 +69,9 @@
         .nav-links { display: flex; align-items: center; gap: 1.25rem; list-style: none; }
         .nav-links a { text-decoration: none; font-size: 0.92rem; font-weight: 700; color: var(--dark); }
         .nav-links a:hover { color: var(--primary); }
-        .cta-button { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; border: 0; border-radius: 8px; padding: 0.78rem 1.15rem; color: var(--white); font-weight: 800; background: linear-gradient(135deg, var(--primary), var(--accent)); box-shadow: 0 9px 22px rgba(231,111,139,0.18); }
+        .cta-button { display: inline-flex; align-items: center; justify-content: center; gap: 0.42rem; text-decoration: none; border: 0; border-radius: 8px; padding: 0.78rem 1.15rem; color: var(--white); font-weight: 800; background: linear-gradient(135deg, var(--primary), var(--accent)); box-shadow: 0 9px 22px rgba(231,111,139,0.18); }
         .cta-button:hover { background: linear-gradient(135deg, var(--accent), var(--primary)); transform: translateY(-1px); }
+        .play-icon { width: 0.95em; height: 0.95em; flex: 0 0 auto; }
         .ghost-button { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; border-radius: 8px; padding: 0.78rem 1.15rem; color: var(--dark); font-weight: 800; border: 1.5px solid rgba(45,52,54,0.18); background: var(--white); }
         .ghost-button:hover { border-color: var(--primary); color: var(--primary); }
         .hero { position: relative; min-height: 620px; display: grid; align-items: center; overflow: hidden; background: #111; }
@@ -131,6 +132,7 @@
         .step p { color: var(--muted); font-size: 0.93rem; line-height: 1.65; }
         .use-cases { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; }
         .use-case { padding: 1.45rem; border-radius: 12px; background: var(--soft); border: 1px solid rgba(244,162,97,0.25); }
+        .use-case-image { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block; border-radius: 10px; margin-bottom: 1rem; border: 1px solid rgba(244,162,97,0.22); box-shadow: 0 12px 28px rgba(45,52,54,0.08); }
         .use-case h3 { margin-bottom: 0.4rem; }
         .use-case p { color: #555; line-height: 1.7; margin-bottom: 1rem; }
         .workday { display: grid; gap: 0.55rem; margin-top: 1rem; }
@@ -172,7 +174,7 @@
                 <li><a href="/p/blog">Blog</a></li>
                 <li><a href="/p/faq">FAQ</a></li>
                 <li><a href="/pricing">Pricing</a></li>
-                <li><a class="cta-button" href="/book-demo">Book a Demo</a></li>
+                <li><a class="cta-button" href="/book-demo"><svg class="play-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 5v14l11-7z" fill="currentColor"/></svg><span>Book a Demo</span></a></li>
             </ul>
         </div>
     </nav>
@@ -185,7 +187,7 @@
                 <h1>Chatbots tell you what to do. <span>At Bloomie Staffing, you tell your AI employees what to do.</span></h1>
                 <p>That is the difference people understand fast. Chatbots answer. AI employees execute. Bloomie Staffing gives you an AI employee hired to complete defined work start to finish, with real human technical oversight helping make sure scheduled tasks get done.</p>
                 <div class="hero-actions">
-                    <a class="cta-button" href="/book-demo">Book a Demo</a>
+                    <a class="cta-button" href="/book-demo"><svg class="play-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 5v14l11-7z" fill="currentColor"/></svg><span>Book a Demo</span></a>
                     <a class="ghost-button" href="#comparison">Compare the Difference</a>
                 </div>
                 <div class="audience-nav" aria-label="Audience pages">
@@ -370,7 +372,7 @@
                     <h2>Automated AI, managed by real humans.</h2>
                     <p>A Bloomie is not a magic button and it is not unsupported software. It is an AI employee model built around scheduled work, connected workflows, and human technical oversight.</p>
                     <p>That matters because AI can make mistakes. Bloomie Staffing is designed so businesses get the speed of AI with a more practical support structure around the work.</p>
-                    <a class="cta-button" href="/book-demo">See How It Works</a>
+                    <a class="cta-button" href="/book-demo"><svg class="play-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 5v14l11-7z" fill="currentColor"/></svg><span>See How It Works</span></a>
                 </div>
                 <div class="proof-list">
                     <div class="proof-item">
@@ -397,6 +399,7 @@
                 </div>
                 <div class="use-cases">
                     <article class="use-case">
+                        <img class="use-case-image" src="/assets/bloomie-category-financial-advisors.png" alt="Financial advisor reviewing client follow-up and meeting prep with a Bloomie AI employee">
                         <h3>Financial advisors</h3>
                         <p>Gets prospect follow-up, referral touches, review prep, CRM cleanup, and advisor-approved content done so more qualified conversations reach the advisor.</p>
                         <p><a href="/ai-employee-for-financial-advisors">See the financial advisor workday</a></p>
@@ -408,6 +411,7 @@
                         </div>
                     </article>
                     <article class="use-case">
+                        <img class="use-case-image" src="/assets/bloomie-category-real-estate.png" alt="Real estate agent reviewing warm seller appointments and follow-up tasks">
                         <h3>Real estate agents</h3>
                         <p>Works seller leads, absorbs the rejection, follows up with expireds and FSBOs, updates the CRM, and hands the agent warmer conversations.</p>
                         <p><a href="/ai-employee-for-real-estate-agents">See the real estate workday</a></p>
@@ -419,6 +423,7 @@
                         </div>
                     </article>
                     <article class="use-case">
+                        <img class="use-case-image" src="/assets/bloomie-category-small-business.png" alt="Small business owner reviewing organized customer messages and daily operations tasks">
                         <h3>Small business owners</h3>
                         <p>Support admin, customer replies, email drafts, reporting, campaign tasks, and operations work without adding payroll or another tool nobody has time to manage.</p>
                         <p><a href="/ai-employee-for-small-business">See the small business workday</a></p>
@@ -430,6 +435,7 @@
                         </div>
                     </article>
                     <article class="use-case">
+                        <img class="use-case-image" src="/assets/bloomie-category-ecommerce.png" alt="Ecommerce shop owner reviewing product content, campaigns, and customer follow-up">
                         <h3>Ecommerce shop owners</h3>
                         <p>Support product descriptions, email campaigns, customer questions, order follow-up, review requests, abandoned cart messaging, and weekly promotional content.</p>
                         <p><a href="/ai-employee-for-ecommerce">See the ecommerce workday</a></p>
@@ -474,7 +480,7 @@
             <div class="container">
                 <h2>Stop asking AI what to do. Hire an AI employee to get it done.</h2>
                 <p>Bloomie Staffing helps businesses hire reliable autonomous AI employees called Bloomies for content marketing, lead generation, customer communication, CRM updates, reporting, admin, and operations support.</p>
-                <a class="cta-button" href="/book-demo">Book a Bloomie Demo</a>
+                <a class="cta-button" href="/book-demo"><svg class="play-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 5v14l11-7z" fill="currentColor"/></svg><span>Book a Bloomie Demo</span></a>
             </div>
         </section>
     </main>

@@ -18,8 +18,9 @@
         .nav-links { display: flex; align-items: center; gap: 1.15rem; list-style: none; }
         .nav-links a { text-decoration: none; font-size: 0.9rem; font-weight: 700; color: var(--dark); }
         .nav-links a:hover { color: var(--primary); }
-        .cta-button { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; border: 0; border-radius: 8px; padding: 0.78rem 1.15rem; color: var(--white); font-weight: 800; background: linear-gradient(135deg, var(--primary), var(--accent)); box-shadow: 0 9px 22px rgba(231,111,139,0.18); }
+        .cta-button { display: inline-flex; align-items: center; justify-content: center; gap: 0.42rem; text-decoration: none; border: 0; border-radius: 8px; padding: 0.78rem 1.15rem; color: var(--white); font-weight: 800; background: linear-gradient(135deg, var(--primary), var(--accent)); box-shadow: 0 9px 22px rgba(231,111,139,0.18); }
         .cta-button:hover { background: linear-gradient(135deg, var(--accent), var(--primary)); transform: translateY(-1px); }
+        .play-icon { width: 0.95em; height: 0.95em; flex: 0 0 auto; }
         .hero { padding: 5rem 1.5rem 3rem; text-align: center; background: linear-gradient(135deg, rgba(244,162,97,0.12), rgba(231,111,139,0.12)); }
         .hero h1 { font-size: clamp(2.25rem, 5vw, 4.2rem); line-height: 1.05; margin-bottom: 1rem; letter-spacing: 0; }
         .hero p { max-width: 720px; margin: 0 auto; color: #555; font-size: 1.08rem; line-height: 1.8; }
@@ -73,7 +74,7 @@
                 <li><a href="/p/blog">Blog</a></li>
                 <li><a href="/p/faq">FAQ</a></li>
                 <li><a href="/pricing">Pricing</a></li>
-                <li><a class="cta-button" href="/book-demo">Book a Demo</a></li>
+                <li><a class="cta-button" href="/book-demo"><svg class="play-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 5v14l11-7z" fill="currentColor"/></svg><span>Book a Demo</span></a></li>
             </ul>
         </div>
     </nav>
@@ -144,7 +145,7 @@
         <section class="closing">
             <h2>Want to see which plan fits?</h2>
             <p>Book a demo and we will map the Bloomie role, schedule, and outcomes around the work your business needs done.</p>
-            <a class="cta-button" href="/book-demo">Book a Bloomie Demo</a>
+            <a class="cta-button" href="/book-demo"><svg class="play-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 5v14l11-7z" fill="currentColor"/></svg><span>Book a Bloomie Demo</span></a>
         </section>
     </main>
     <footer>
