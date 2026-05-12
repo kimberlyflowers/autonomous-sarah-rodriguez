@@ -921,7 +921,9 @@ function normalizeBloomiePageHtml(html) {
     .replaceAll('Start Your 30-Day Onboarding', 'Book a Demo')
     .replaceAll('Schedule a Free Demo', 'Book a Bloomie Demo')
     .replaceAll('24/7 customer service support', 'daily customer service support')
-    .replaceAll('24/7 Support', '4-8 Hours/Day');
+    .replaceAll('24/7 Support', '4-8 Hours/Day')
+    .replaceAll('Unlimited tasks, 24/7 availability.', 'Prioritized tasks within a full-time Bloomie schedule.')
+    .replaceAll('24/7 availability', '8 hours/day availability');
   if (normalized.includes('profile-layout') || normalized.includes('Bloomie Staffing - Hire Your AI Employee')) {
     normalized = normalized.replace(/<nav[\s\S]*?<\/nav>/, currentNav);
   }
