@@ -902,13 +902,13 @@ function normalizeBloomiePageHtml(html) {
   const currentNav = `<nav>
         <a href="/" class="logo">Bloomie <span>Staffing</span></a>
         <ul>
-            <li><a href="/#roles">Our Roles</a></li>
             <li><a href="/#roles">Meet the Team</a></li>
             <li><a href="/ai-employee-vs-chatbot">AI vs Chatbots</a></li>
+            <li><a href="/ai-employee-for-financial-advisors">Financial Advisors</a></li>
+            <li><a href="/ai-employee-for-real-estate-agents">Real Estate</a></li>
             <li><a href="/p/blog">Blog</a></li>
             <li><a href="/p/faq">FAQ</a></li>
-            <li><a href="/#pricing">Pricing</a></li>
-            <li><a href="/#benefits">Why Bloomie</a></li>
+            <li><a href="/pricing">Pricing</a></li>
             <li><a class="cta-button" href="/book-demo">Book a Demo</a></li>
         </ul>
     </nav>`;
@@ -1240,6 +1240,10 @@ const landingPageDir = path.join(__dirname, '../landing-page');
 
 app.get(['/book-demo', '/booking'], (req, res) => {
   res.sendFile(path.join(landingPageDir, 'book-demo.html'));
+});
+
+app.get(['/pricing', '/plans'], (req, res) => {
+  res.sendFile(path.join(landingPageDir, 'pricing.html'));
 });
 
 app.get(['/ai-employee-vs-chatbot', '/ai-employee-vs-chatbots'], (req, res) => {
