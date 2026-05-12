@@ -131,7 +131,7 @@
         .testimonial-points li { padding: 0.3rem 0 0.3rem 1.35rem; color: #555; font-size: 0.86rem; position: relative; line-height: 1.45; }
         .testimonial-points li:before { content: ""; position: absolute; left: 0; top: 0.52rem; width: 10px; height: 10px; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23F4A261' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E") center/contain no-repeat; }
         .testimonial-author { display: flex; align-items: center; gap: 0.75rem; border-top: 1px solid rgba(45,52,54,0.08); padding-top: 1rem; }
-        .testimonial-initials { width: 42px; height: 42px; border-radius: 50%; background: linear-gradient(135deg, #F4A261, #E76F8B); color: var(--white); display: flex; align-items: center; justify-content: center; font-size: 0.85rem; font-weight: 800; flex-shrink: 0; }
+        .testimonial-avatar { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; flex-shrink: 0; border: 2px solid rgba(244,162,97,0.45); box-shadow: 0 6px 14px rgba(45,52,54,0.12); }
         .testimonial-name { font-weight: 800; color: var(--dark); font-size: 0.92rem; }
         .testimonial-role { color: #777; font-size: 0.82rem; line-height: 1.45; margin-top: 0.1rem; }
         .geo-explainer { padding: 5rem 2rem; background: var(--white); }
@@ -510,7 +510,7 @@
                         <li>Advisor-approved content marketing support</li>
                     </ul>
                     <div class="testimonial-author">
-                        <div class="testimonial-initials">RC</div>
+                        <img class="testimonial-avatar" src="/assets/testimonial-rebecca-cole.jpg" alt="Rebecca Cole">
                         <div><div class="testimonial-name">Rebecca Cole</div><div class="testimonial-role">RIA Operations Lead, Charlotte, NC</div></div>
                     </div>
                     </div>
@@ -527,7 +527,7 @@
                         <li>CRM cleanup after calls and showings</li>
                     </ul>
                     <div class="testimonial-author">
-                        <div class="testimonial-initials">JM</div>
+                        <img class="testimonial-avatar" src="/assets/testimonial-janelle-morris.jpg" alt="Janelle Morris">
                         <div><div class="testimonial-name">Janelle Morris</div><div class="testimonial-role">Team Lead, Scottsdale, AZ</div></div>
                     </div>
                     </div>
@@ -544,7 +544,7 @@
                         <li>Weekly reporting and workflow reminders</li>
                     </ul>
                     <div class="testimonial-author">
-                        <div class="testimonial-initials">AT</div>
+                        <img class="testimonial-avatar" src="/assets/testimonial-andre-taylor.jpg" alt="Andre Taylor">
                         <div><div class="testimonial-name">Andre Taylor</div><div class="testimonial-role">Founder, Atlanta, GA</div></div>
                     </div>
                     </div>
@@ -732,6 +732,15 @@
         <button data-action="send-chat">Send</button>
     </div>
 </div>
+<script>
+window.addEventListener('LC_chatWidgetLoaded', function(){
+  if (!window.leadConnector || !window.leadConnector.chatWidget) return;
+  window.leadConnector.chatWidget.localizeWidget({
+    phone: 'Phone number (+1 required)',
+    invalid_value: 'Use +1 and your 10-digit number, like +12107167522'
+  });
+});
+</script>
 <script src="https://widgets.leadconnectorhq.com/loader.js" data-resources-url="https://widgets.leadconnectorhq.com/chat-widget/loader.js" data-widget-id="6a026539e8fefa772e2eb8b9"></script>
 </body>
 </html>

@@ -128,6 +128,15 @@
     </div>
 
     <script src="https://link.msgsndr.com/js/form_embed.js"></script>
+    <script>
+    window.addEventListener('LC_chatWidgetLoaded', function(){
+      if (!window.leadConnector || !window.leadConnector.chatWidget) return;
+      window.leadConnector.chatWidget.localizeWidget({
+        phone: 'Phone number (+1 required)',
+        invalid_value: 'Use +1 and your 10-digit number, like +12107167522'
+      });
+    });
+    </script>
     <script src="https://widgets.leadconnectorhq.com/loader.js" data-resources-url="https://widgets.leadconnectorhq.com/chat-widget/loader.js" data-widget-id="6a026539e8fefa772e2eb8b9"></script>
 </body>
 </html>
