@@ -899,7 +899,19 @@ function site404Html() {
 
 function normalizeBloomiePageHtml(html) {
   if (!html || typeof html !== 'string') return html;
-  return html
+  const currentNav = `<nav>
+        <a href="/" class="logo">Bloomie <span>Staffing</span></a>
+        <ul>
+            <li><a href="/#roles">Our Roles</a></li>
+            <li><a href="/#roles">Meet the Team</a></li>
+            <li><a href="/p/blog">Blog</a></li>
+            <li><a href="/p/faq">FAQ</a></li>
+            <li><a href="/#pricing">Pricing</a></li>
+            <li><a href="/#benefits">Why Bloomie</a></li>
+            <li><a class="cta-button" href="/book-demo">Book a Demo</a></li>
+        </ul>
+    </nav>`;
+  let normalized = html
     .replaceAll('href="/p/bloomie-staffing-demo"', 'href="/"')
     .replaceAll("href='/p/bloomie-staffing-demo'", "href='/'")
     .replaceAll('href="/p/bloomie-staffing-meet-the-team"', 'href="/#roles"')
@@ -907,7 +919,13 @@ function normalizeBloomiePageHtml(html) {
     .replaceAll('href="/#demo"', 'href="/book-demo"')
     .replaceAll("href='/#demo'", "href='/book-demo'")
     .replaceAll('Start Your 30-Day Onboarding', 'Book a Demo')
-    .replaceAll('Schedule a Free Demo', 'Book a Bloomie Demo');
+    .replaceAll('Schedule a Free Demo', 'Book a Bloomie Demo')
+    .replaceAll('24/7 customer service support', 'daily customer service support')
+    .replaceAll('24/7 Support', '4-8 Hours/Day');
+  if (normalized.includes('profile-layout') || normalized.includes('Bloomie Staffing - Hire Your AI Employee')) {
+    normalized = normalized.replace(/<nav[\s\S]*?<\/nav>/, currentNav);
+  }
+  return normalized;
 }
 
 // Custom domain middleware — must be registered before /p/ routes
