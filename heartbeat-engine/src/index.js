@@ -1246,6 +1246,22 @@ app.get(['/ai-employee-vs-chatbot', '/ai-employee-vs-chatbots'], (req, res) => {
   res.sendFile(path.join(landingPageDir, 'ai-employee-vs-chatbot.html'));
 });
 
+app.get(['/ai-employee-for-financial-advisors', '/bloomie-for-financial-advisors'], (req, res) => {
+  res.sendFile(path.join(landingPageDir, 'ai-employee-for-financial-advisors.html'));
+});
+
+app.get(['/ai-employee-for-real-estate-agents', '/bloomie-for-real-estate-agents'], (req, res) => {
+  res.sendFile(path.join(landingPageDir, 'ai-employee-for-real-estate-agents.html'));
+});
+
+app.get(['/ai-employee-for-small-business', '/bloomie-for-small-business-owners'], (req, res) => {
+  res.sendFile(path.join(landingPageDir, 'ai-employee-for-small-business.html'));
+});
+
+app.get(['/ai-employee-for-ecommerce', '/bloomie-for-ecommerce-shop-owners'], (req, res) => {
+  res.sendFile(path.join(landingPageDir, 'ai-employee-for-ecommerce.html'));
+});
+
 app.use((req, res, next) => {
   if (req.hostname && req.hostname.startsWith('app.')) {
     express.static(dashboardDist)(req, res, next);
