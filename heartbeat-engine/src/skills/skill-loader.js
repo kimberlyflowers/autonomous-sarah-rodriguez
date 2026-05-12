@@ -128,6 +128,7 @@ const KEYWORD_SKILL_MAP = [
   { keywords: /\b(generate image|ai image|create image|image prompt|midjourney|dall-?e|stable diffusion|generate a photo|create a photo)\b/i, skill: 'image-generation' },
   { keywords: /\b(schedule|scheduled task|recurring task|automate task|cron|run daily|run weekly|run every)\b/i, skill: 'task-scheduling' },
   { keywords: /\b(draft an email|compose an email|write an email|cold email|outbound email|email template|email copy)\b/i, skill: 'email-creator' },
+  { keywords: /\b(elevenlabs|eleven labs|tts|text to speech|voiceover|voice over|audio script|generate audio|narration|ad read|voice id|voice settings)\b/i, skill: 'elevenlabs-audio' },
 ];
 
 // ── Companion skills — auto-loaded alongside a primary skill ──────────────
