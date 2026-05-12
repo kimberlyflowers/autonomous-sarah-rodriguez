@@ -904,6 +904,7 @@ function normalizeBloomiePageHtml(html) {
         <ul>
             <li><a href="/#roles">Our Roles</a></li>
             <li><a href="/#roles">Meet the Team</a></li>
+            <li><a href="/ai-employee-vs-chatbot">AI vs Chatbots</a></li>
             <li><a href="/p/blog">Blog</a></li>
             <li><a href="/p/faq">FAQ</a></li>
             <li><a href="/#pricing">Pricing</a></li>
@@ -1239,6 +1240,10 @@ const landingPageDir = path.join(__dirname, '../landing-page');
 
 app.get(['/book-demo', '/booking'], (req, res) => {
   res.sendFile(path.join(landingPageDir, 'book-demo.html'));
+});
+
+app.get(['/ai-employee-vs-chatbot', '/ai-employee-vs-chatbots'], (req, res) => {
+  res.sendFile(path.join(landingPageDir, 'ai-employee-vs-chatbot.html'));
 });
 
 app.use((req, res, next) => {
