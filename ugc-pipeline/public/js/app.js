@@ -3,6 +3,10 @@ const API = '';
 let currentVariants = null;
 let currentBatchId = null;
 let studioJobs = [];
+let authConfig = null;
+let supabaseClient = null;
+let authToken = localStorage.getItem('bloomStudioToken') || '';
+let currentTenant = JSON.parse(localStorage.getItem('bloomStudioTenant') || 'null');
 
 document.querySelectorAll('.nav-tab').forEach(tab => {
   tab.addEventListener('click', () => switchTab(tab.dataset.tab));
@@ -35,10 +39,124 @@ async function api(path, opts = {}) {
     ? (opts.headers || {})
     : { 'Content-Type': 'application/json', ...(opts.headers || {}) };
 
+  if (authToken) {
+    headers.Authorization = `Bearer ${authToken}`;
+  }
+  if (currentTenant?.slug || currentTenant?.id) {
+    headers['X-Tenant-Slug'] = currentTenant.slug || currentTenant.id;
+  }
+
   const res = await fetch(`${API}${path}`, { headers, ...opts });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.detail || data.error || `Request failed: ${res.status}`);
   return data;
+}
+
+async function initAuth() {
+  try {
+    authConfig = await fetch('/api/auth/config').then(res => res.json());
+    const isSupabase = authConfig.mode === 'supabase';
+    document.getElementById('workspaceGroup').style.display = isSupabase ? 'none' : '';
+    document.getElementById('loginEmailLabel').textContent = isSupabase ? 'Email' : 'Workspace';
+    document.getElementById('loginPasswordLabel').textContent = isSupabase ? 'Password' : 'Access key';
+    document.getElementById('loginEmail').type = isSupabase ? 'email' : 'text';
+    document.getElementById('loginEmail').placeholder = isSupabase ? 'you@example.com' : 'kimberly';
+    document.getElementById('authModeNote').textContent = isSupabase
+      ? 'Supabase Auth is enabled. Your files and jobs are isolated by tenant.'
+      : 'Local workspace-key mode is active until Supabase environment variables are set.';
+
+    if (isSupabase && window.supabase) {
+      supabaseClient = window.supabase.createClient(authConfig.supabaseUrl, authConfig.supabaseAnonKey);
+      const { data } = await supabaseClient.auth.getSession();
+      if (data?.session?.access_token) {
+        authToken = data.session.access_token;
+        await hydrateUser();
+        return;
+      }
+    }
+
+    if (authToken) {
+      await hydrateUser();
+      return;
+    }
+
+    showLogin();
+  } catch (error) {
+    showLogin();
+    document.getElementById('authModeNote').textContent = `Auth check failed: ${error.message}`;
+  }
+}
+
+function showLogin() {
+  document.getElementById('authScreen').classList.add('active');
+}
+
+function hideLogin() {
+  document.getElementById('authScreen').classList.remove('active');
+}
+
+async function login(e) {
+  e.preventDefault();
+  const button = document.getElementById('loginButton');
+  button.disabled = true;
+  button.textContent = 'Signing in...';
+  try {
+    if (authConfig?.mode === 'supabase') {
+      if (!supabaseClient) throw new Error('Supabase client is not ready.');
+      const { data, error } = await supabaseClient.auth.signInWithPassword({
+        email: document.getElementById('loginEmail').value.trim(),
+        password: document.getElementById('loginPassword').value
+      });
+      if (error) throw error;
+      authToken = data.session.access_token;
+      localStorage.setItem('bloomStudioToken', authToken);
+    } else {
+      const workspace = document.getElementById('loginWorkspace').value.trim() || document.getElementById('loginEmail').value.trim();
+      const data = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workspace,
+          accessKey: document.getElementById('loginPassword').value
+        })
+      }).then(async res => {
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(payload.error || 'Login failed');
+        return payload;
+      });
+      authToken = data.token;
+      currentTenant = data.tenant;
+      localStorage.setItem('bloomStudioToken', authToken);
+      localStorage.setItem('bloomStudioTenant', JSON.stringify(currentTenant));
+    }
+
+    await hydrateUser();
+    toast('Workspace opened.', 'success');
+  } catch (error) {
+    toast(error.message, 'error');
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Sign in';
+  }
+}
+
+async function hydrateUser() {
+  const data = await api('/api/auth/me');
+  currentTenant = data.tenant;
+  localStorage.setItem('bloomStudioTenant', JSON.stringify(currentTenant));
+  document.getElementById('tenantPill').textContent = currentTenant?.name || currentTenant?.slug || currentTenant?.id || 'Workspace';
+  hideLogin();
+  await Promise.all([loadDashboard(), loadStudioStatus()]);
+}
+
+async function logout() {
+  if (supabaseClient) await supabaseClient.auth.signOut();
+  authToken = '';
+  currentTenant = null;
+  localStorage.removeItem('bloomStudioToken');
+  localStorage.removeItem('bloomStudioTenant');
+  document.getElementById('tenantPill').textContent = 'No workspace';
+  showLogin();
 }
 
 async function loadDashboard() {
@@ -55,7 +173,13 @@ async function loadDashboard() {
 async function loadStudioStatus() {
   try {
     const data = await api('/api/studio/status');
-    setChip('comfyStatus', data.configured ? 'Connected' : 'Needs URL', data.configured ? 'green' : 'warn');
+    const comfyLabel = data.comfyReady
+      ? 'Connected'
+      : data.runpod?.autoStartConfigured
+        ? 'Auto-start ready'
+        : data.configured ? 'Pod offline' : 'Needs URL';
+    const comfyState = data.comfyReady ? 'green' : data.runpod?.autoStartConfigured ? 'warn' : 'red';
+    setChip('comfyStatus', comfyLabel, comfyState);
 
     const i2v = data.presets.find(p => p.id === 'sarah-i2v-lipsync');
     const v2v = data.presets.find(p => p.id === 'bloomies-v2v');
@@ -64,8 +188,24 @@ async function loadStudioStatus() {
 
     const qwen = data.audioProviders.find(p => p.id === 'qwen');
     setChip('qwenStatus', qwen?.available ? 'Ready' : 'Needs workflow', qwen?.available ? 'soft' : 'warn');
+    loadRunPodBalance();
   } catch (e) {
     setChip('comfyStatus', 'Error', 'red');
+  }
+}
+
+async function loadRunPodBalance() {
+  try {
+    const data = await api('/api/studio/runpod/balance');
+    const balance = data.balance || {};
+    const amount = Number(balance.balance);
+    const spend = Number(balance.currentSpendPerHr || 0);
+    const label = Number.isFinite(amount)
+      ? `$${amount.toFixed(2)} left${spend ? ` · $${spend.toFixed(2)}/hr` : ''}`
+      : 'Unavailable';
+    setChip('runpodBalance', label, balance.underBalance ? 'red' : 'green');
+  } catch (error) {
+    setChip('runpodBalance', 'Needs API key', 'warn');
   }
 }
 
@@ -120,6 +260,29 @@ function resetStudioForm() {
   setStudioAudio('upload');
 }
 
+async function startRunPod() {
+  try {
+    toast('Starting RunPod...', 'info');
+    await api('/api/studio/runpod/start', { method: 'POST' });
+    toast('RunPod start requested. It may take a few minutes to become ready.', 'success');
+    setTimeout(loadStudioStatus, 8000);
+  } catch (error) {
+    toast(error.message, 'error');
+  }
+}
+
+async function stopRunPod() {
+  if (!confirm('Stop the RunPod now? Any active generation may fail.')) return;
+  try {
+    toast('Stopping RunPod...', 'info');
+    await api('/api/studio/runpod/stop', { method: 'POST' });
+    toast('RunPod stop requested.', 'success');
+    setTimeout(loadStudioStatus, 8000);
+  } catch (error) {
+    toast(error.message, 'error');
+  }
+}
+
 async function submitStudioVideo(e) {
   e.preventDefault();
   const form = document.getElementById('studioForm');
@@ -136,6 +299,7 @@ async function submitStudioVideo(e) {
   button.disabled = true;
   button.textContent = 'Queuing video...';
   try {
+    toast('Queuing video. If the RunPod is asleep, Bloom Studio will wake it first.', 'info');
     const result = await api('/api/studio/generate', { method: 'POST', body: data });
     toast('Video job queued.', 'success');
     studioJobs.unshift(result.job);
@@ -446,6 +610,5 @@ function formatBytes(bytes) {
   return `${(bytes / Math.pow(1024, index)).toFixed(1)} ${units[index]}`;
 }
 
-loadDashboard();
-loadStudioStatus();
+initAuth();
 setInterval(loadDashboard, 30000);

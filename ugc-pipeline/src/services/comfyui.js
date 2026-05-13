@@ -33,7 +33,13 @@ const PRESETS = {
 const jobs = new Map();
 
 function getBaseUrl() {
-  return (process.env.COMFYUI_BASE_URL || process.env.RUNPOD_COMFYUI_URL || '').replace(/\/$/, '');
+  const configured = process.env.COMFYUI_BASE_URL || process.env.RUNPOD_COMFYUI_URL || '';
+  if (configured) return configured.replace(/\/$/, '');
+  if (process.env.RUNPOD_POD_ID) {
+    const port = process.env.RUNPOD_COMFYUI_PORT || '8188';
+    return `https://${process.env.RUNPOD_POD_ID}-${port}.proxy.runpod.net`;
+  }
+  return '';
 }
 
 function getPresets() {

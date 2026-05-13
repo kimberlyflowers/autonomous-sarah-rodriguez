@@ -48,11 +48,37 @@ button,input,select,textarea{font:inherit}
 .video-player{width:100%;aspect-ratio:9/16;max-height:360px;background:#111;object-fit:contain}.empty-state{text-align:center;padding:36px;color:var(--muted);border:1px dashed var(--line);border-radius:16px;background:rgba(255,255,255,.55)}
 .brand-profile,.gen-config{display:grid;grid-template-columns:1fr 1fr;gap:14px}.selling-points-list{padding-left:18px;color:var(--muted);font-size:13px}.toast-container{position:fixed;top:20px;right:20px;z-index:20;display:flex;flex-direction:column;gap:8px}.toast{padding:12px 14px;border-radius:12px;background:#fff;border:1px solid var(--line);box-shadow:var(--shadow);font-size:13px;font-weight:700;max-width:380px}.toast-error{border-color:#f1b4b4;color:#a63232}.toast-success{border-color:#aadfbe;color:#16794a}.toast-info{color:#76513e}
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:15;align-items:center;justify-content:center}.modal-overlay.active{display:flex}.modal{background:#fff;border-radius:18px;border:1px solid var(--line);box-shadow:var(--shadow);padding:22px;max-width:540px;width:min(92vw,540px)}.modal-title{font-size:18px;font-weight:800;margin-bottom:16px}.modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:16px}
+.auth-screen{position:fixed;inset:0;z-index:50;background:linear-gradient(135deg,rgba(244,162,97,.14),rgba(231,111,139,.11)),var(--bg);display:none;align-items:center;justify-content:center;padding:24px}.auth-screen.active{display:flex}.auth-card{width:min(96vw,460px);background:#fff;border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow);padding:28px}.auth-card .mark{margin-bottom:16px}.auth-title{font-size:28px;font-weight:800;letter-spacing:-.04em;line-height:1.08;margin-bottom:8px}.auth-copy{font-size:14px;color:var(--muted);margin-bottom:22px}.auth-meta{margin-top:14px;padding:12px;border-radius:14px;background:#fff7ef;border:1px solid #f3d7bf;color:#8a5530;font-size:12px}.user-menu{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}.tenant-pill{font-size:12px;font-weight:800;color:#8a5530;background:#fff7ef;border:1px solid #f3d7bf;border-radius:999px;padding:7px 10px}
 .advanced-box{opacity:.92}.format-checkboxes{display:flex;flex-wrap:wrap;gap:8px}.format-checkbox{display:none}.format-label{border:1px solid var(--line);border-radius:999px;padding:8px 12px;font-size:13px;font-weight:800;cursor:pointer}.format-checkbox:checked+.format-label{background:#fff1e6;border-color:var(--primary);color:#ad641e}.variant-item{border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px;background:#fff}.progress-bar{height:6px;background:var(--soft);border-radius:999px;overflow:hidden}.progress-fill{height:100%;background:var(--grad)}
 @media(max-width:920px){.app-shell{grid-template-columns:1fr}.sidebar{position:relative;height:auto}.nav{flex-direction:row;overflow-x:auto}.hero-grid,.form-grid,.brand-profile,.gen-config,.step-row{grid-template-columns:1fr}.main{padding:18px}.topbar{align-items:flex-start;flex-direction:column}}
   </style>
 </head>
 <body>
+<div class="auth-screen active" id="authScreen">
+  <div class="auth-card">
+    <div class="mark">B</div>
+    <h1 class="auth-title">Sign in to Bloom Studio</h1>
+    <p class="auth-copy">Each workspace has its own assets, brands, jobs, and generated videos. Log in to open your tenant.</p>
+    <form id="authForm" onsubmit="login(event)">
+      <div class="form-group" id="workspaceGroup">
+        <label class="form-label">Workspace</label>
+        <input class="form-input" id="loginWorkspace" value="kimberly" autocomplete="organization">
+      </div>
+      <div class="form-group">
+        <label class="form-label" id="loginEmailLabel">Email</label>
+        <input class="form-input" id="loginEmail" type="email" autocomplete="email" placeholder="you@example.com">
+      </div>
+      <div class="form-group">
+        <label class="form-label" id="loginPasswordLabel">Password</label>
+        <input class="form-input" id="loginPassword" type="password" autocomplete="current-password">
+      </div>
+      <div class="actions">
+        <button class="btn btn-primary" type="submit" id="loginButton">Sign in</button>
+      </div>
+      <div class="auth-meta" id="authModeNote">Checking auth mode...</div>
+    </form>
+  </div>
+</div>
 <div class="app-shell">
   <aside class="sidebar">
     <div class="brand">
@@ -79,7 +105,11 @@ button,input,select,textarea{font:inherit}
         <h1 class="page-title">Create a talking video</h1>
         <p class="page-desc">A simple creator flow for image-to-video, video-to-video, and voice-led shorts. Advanced testing tools are still here when you need them.</p>
       </div>
-      <div class="status-pill"><span class="dot" id="statusDot"></span><span id="statusText">Checking studio...</span></div>
+      <div class="user-menu">
+        <div class="tenant-pill" id="tenantPill">No workspace</div>
+        <button class="btn btn-secondary" type="button" onclick="logout()">Sign out</button>
+        <div class="status-pill"><span class="dot" id="statusDot"></span><span id="statusText">Checking studio...</span></div>
+      </div>
     </div>
 
     <section class="tab-content active" id="tab-studio">
@@ -99,10 +129,6 @@ button,input,select,textarea{font:inherit}
               <input type="hidden" id="studioMode" name="mode" value="i2v">
               <input type="hidden" id="studioPreset" name="presetId" value="sarah-i2v-lipsync">
               <div class="form-grid">
-                <div class="form-group">
-                  <label class="form-label">Workspace</label>
-                  <input class="form-input" id="studioTenant" name="tenantId" value="kimberly" placeholder="kimberly">
-                </div>
                 <div class="form-group">
                   <label class="form-label">Audio source</label>
                   <select class="form-select" id="studioAudioProvider" name="audioProvider" onchange="setStudioAudio(this.value)">
@@ -179,7 +205,13 @@ button,input,select,textarea{font:inherit}
               <div class="mini-row"><span>I2V preset</span><span class="chip chip-soft" id="i2vStatus">Ready</span></div>
               <div class="mini-row"><span>V2V preset</span><span class="chip chip-soft" id="v2vStatus">Ready</span></div>
               <div class="mini-row"><span>Qwen audio</span><span class="chip chip-warn" id="qwenStatus">Needs workflow</span></div>
+              <div class="mini-row"><span>RunPod credits</span><span class="chip chip-warn" id="runpodBalance">Checking</span></div>
             </div>
+            <div class="actions" style="margin-top:14px">
+              <button class="btn btn-secondary" type="button" onclick="startRunPod()">Start pod</button>
+              <button class="btn btn-secondary" type="button" onclick="stopRunPod()">Stop pod</button>
+            </div>
+            <p class="hint" style="margin-top:8px">Generate will also wake the pod automatically when RunPod is configured.</p>
           </div>
         </aside>
       </div>
@@ -260,6 +292,7 @@ button,input,select,textarea{font:inherit}
 </div>
 
 <div class="toast-container" id="toastContainer"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="/js/app.js"></script>
 </body>
 </html>

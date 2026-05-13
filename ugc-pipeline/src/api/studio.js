@@ -12,13 +12,14 @@ const {
   pollStudioJob,
   getStudioJobs
 } = require('../services/comfyui');
+const { ensureComfyReady, getAccountBalance, getRunPodConfig, isComfyReady, startPod, stopPod } = require('../services/runpod');
 
 const router = express.Router();
 const UPLOAD_DIR = path.join(__dirname, '..', '..', 'assets', 'studio-uploads');
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const tenantId = cleanSlug(req.body.tenantId || 'default');
+    const tenantId = req.tenant?.slug || req.tenant?.id || 'default';
     const dir = path.join(UPLOAD_DIR, tenantId, req.body.clientJobId || uuidv4());
     fs.mkdirSync(dir, { recursive: true });
     cb(null, dir);
@@ -42,16 +43,24 @@ function cleanSlug(value) {
     .replace(/^-+|-+$/g, '');
 }
 
-router.get('/status', (req, res) => {
+router.get('/status', async (req, res) => {
+  const runpod = getRunPodConfig();
+  const comfyReady = await isComfyReady(getBaseUrl() || runpod.baseUrl);
   res.json({
     provider: 'comfyui',
     configured: !!getBaseUrl(),
     baseUrlConfigured: !!getBaseUrl(),
+    comfyReady,
+    runpod: {
+      podIdConfigured: !!runpod.podId,
+      autoStartConfigured: runpod.autoStartConfigured,
+      port: runpod.port
+    },
     presets: getPresets(),
     audioProviders: [
       { id: 'upload', label: 'Uploaded audio', available: true },
       { id: 'elevenlabs', label: 'ElevenLabs', available: !!process.env.ELEVENLABS_API_KEY },
-      { id: 'qwen', label: 'Qwen audio workflow', available: false, note: 'Waiting on Qwen workflow API export' }
+      { id: 'qwen', label: 'Qwen audio workflow', available: false, note: 'Install ComfyUI-Qwen-TTS on RunPod and export a Qwen API workflow preset before enabling.' }
     ]
   });
 });
@@ -102,13 +111,82 @@ async function createElevenLabsAudio({ script, voiceId, tenantId }) {
 }
 
 router.get('/jobs', (req, res) => {
-  res.json({ jobs: getStudioJobs() });
+  if (!req.supabase) {
+    return res.json({ jobs: getStudioJobs().filter(job => job.tenantId === (req.tenant.slug || req.tenant.id)) });
+  }
+
+  req.supabase
+    .from('ugc_video_jobs')
+    .select('*')
+    .eq('tenant_id', req.tenant.id)
+    .order('created_at', { ascending: false })
+    .then(({ data, error }) => {
+      if (error) return res.status(500).json({ error: error.message });
+      res.json({
+        jobs: (data || []).map(job => ({
+          requestId: job.request_id || job.id,
+          jobId: job.id,
+          tenantId: job.tenant_id,
+          provider: job.provider,
+          presetId: job.workflow_preset,
+          mode: job.mode,
+          audioProvider: job.audio_provider,
+          status: job.status,
+          prompt: job.prompt,
+          script: job.script,
+          localPath: job.metadata?.localPath || null,
+          error: job.error,
+          createdAt: job.created_at,
+          completedAt: job.completed_at
+        }))
+      });
+    });
+});
+
+router.post('/runpod/start', async (req, res) => {
+  try {
+    await startPod();
+    res.json({ success: true, status: 'starting', message: 'RunPod start requested.' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/runpod/stop', async (req, res) => {
+  try {
+    await stopPod();
+    res.json({ success: true, status: 'stopping', message: 'RunPod stop requested.' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/runpod/balance', async (req, res) => {
+  try {
+    const balance = await getAccountBalance();
+    res.json({ success: true, balance });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 router.get('/jobs/:requestId', async (req, res) => {
   try {
     const job = await pollStudioJob(req.params.requestId);
     if (!job) return res.status(404).json({ error: 'Job not found' });
+    if (req.supabase) {
+      await req.supabase
+        .from('ugc_video_jobs')
+        .update({
+          status: job.status,
+          error: job.error,
+          completed_at: job.completedAt,
+          updated_at: new Date().toISOString(),
+          metadata: { localJobId: job.jobId, localPath: job.localPath }
+        })
+        .eq('tenant_id', req.tenant.id)
+        .eq('request_id', req.params.requestId);
+    }
     res.json(job);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -128,14 +206,16 @@ router.post('/generate', upload.fields([
       });
     }
 
+    await ensureComfyReady();
+
     const presetId = req.body.presetId || (req.body.mode === 'v2v' ? 'bloomies-v2v' : 'sarah-i2v-lipsync');
     const audioProvider = req.body.audioProvider || 'upload';
     const mode = req.body.mode || 'i2v';
 
     if (audioProvider === 'qwen') {
       return res.status(400).json({
-        error: 'Qwen audio workflow is not installed yet.',
-        detail: 'Send the Qwen audio workflow API export and this option can queue that preset too.'
+        error: 'Qwen audio workflow preset is not installed yet.',
+        detail: 'Install ComfyUI-Qwen-TTS on RunPod and export the Qwen TTS workflow in API format. Then this option can generate audio inside ComfyUI before video.'
       });
     }
 
@@ -157,7 +237,7 @@ router.post('/generate', upload.fields([
       audioPath = await createElevenLabsAudio({
         script: req.body.script,
         voiceId: req.body.voiceId,
-        tenantId: req.body.tenantId
+        tenantId: req.tenant.slug || req.tenant.id
       });
     }
     const audioName = audioPath ? await uploadInput(audioPath) : null;
@@ -166,7 +246,7 @@ router.post('/generate', upload.fields([
       presetId,
       mode,
       audioProvider,
-      tenantId: cleanSlug(req.body.tenantId || 'kimberly'),
+      tenantId: req.tenant.slug || req.tenant.id,
       script: req.body.script || '',
       prompt: req.body.prompt || '',
       negativePrompt: req.body.negativePrompt || '',
@@ -174,6 +254,23 @@ router.post('/generate', upload.fields([
       videoName,
       audioName
     });
+
+    if (req.supabase) {
+      await req.supabase.from('ugc_video_jobs').insert({
+        tenant_id: req.tenant.id,
+        created_by: req.user.id,
+        provider: 'comfyui',
+        workflow_preset: presetId,
+        mode,
+        audio_provider: audioProvider,
+        status: job.status,
+        request_id: job.requestId,
+        script: req.body.script || '',
+        prompt: req.body.prompt || '',
+        negative_prompt: req.body.negativePrompt || '',
+        metadata: { localJobId: job.jobId }
+      });
+    }
 
     res.json({ success: true, job });
   } catch (error) {

@@ -11,6 +11,10 @@ const videosRouter = require('./api/videos');
 const webhookRouter = require('./api/webhook');
 const analyzeRouter = require('./api/analyze');
 const studioRouter = require('./api/studio');
+const authRouter = require('./api/auth');
+const { requireTenant } = require('./services/auth');
+const { getSupabaseConfig } = require('./services/supabase');
+const { getRunPodConfig } = require('./services/runpod');
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -28,9 +32,10 @@ app.use('/assets', express.static(path.join(__dirname, '..', 'assets')));
 // Serve reference docs publicly (read by MCP connector + agents at runtime)
 app.use('/docs', express.static(path.join(__dirname, '..', 'docs')));
 
-// Optional API key auth — when UGC_API_KEYS is set (comma-separated), all
-// /api/* routes (except webhooks) require X-API-Key header. Unset = open.
+// Optional API key auth for backend/Bloomie calls. Browser workspace access uses
+// requireTenant below.
 const apiKeyAuth = (req, res, next) => {
+  if ((req.header('Authorization') || '').startsWith('Bearer ')) return next();
   const allowed = (process.env.UGC_API_KEYS || '').split(',').map(s => s.trim()).filter(Boolean);
   if (allowed.length === 0) return next();
   const provided = req.header('X-API-Key') || req.query.api_key;
@@ -42,14 +47,15 @@ const apiKeyAuth = (req, res, next) => {
 
 // Webhook is unauthenticated (called by Seedance/WaveSpeed)
 app.use('/api/webhook', webhookRouter);
+app.use('/api/auth', authRouter);
 
-// All other API routes use optional auth
-app.use('/api/assets', apiKeyAuth, assetsRouter);
-app.use('/api/brands', apiKeyAuth, brandsRouter);
-app.use('/api/generate', apiKeyAuth, generateRouter);
-app.use('/api/videos', apiKeyAuth, videosRouter);
-app.use('/api/analyze', apiKeyAuth, analyzeRouter);
-app.use('/api/studio', apiKeyAuth, studioRouter);
+// Tenant-scoped routes require a logged-in user/workspace.
+app.use('/api/assets', apiKeyAuth, requireTenant, assetsRouter);
+app.use('/api/brands', apiKeyAuth, requireTenant, brandsRouter);
+app.use('/api/generate', apiKeyAuth, requireTenant, generateRouter);
+app.use('/api/videos', apiKeyAuth, requireTenant, videosRouter);
+app.use('/api/analyze', apiKeyAuth, requireTenant, analyzeRouter);
+app.use('/api/studio', apiKeyAuth, requireTenant, studioRouter);
 
 // Health check
 app.get('/health', (req, res) => {
@@ -61,6 +67,8 @@ app.get('/health', (req, res) => {
     provider: 'wavespeed+comfyui',
     apiKeyConfigured: hasApiKey,
     comfyuiConfigured: !!(process.env.COMFYUI_BASE_URL || process.env.RUNPOD_COMFYUI_URL),
+    runpodAutoStartConfigured: getRunPodConfig().autoStartConfigured,
+    supabaseConfigured: getSupabaseConfig().configured,
     uptime: process.uptime()
   });
 });
@@ -86,6 +94,8 @@ app.get('/api/status', (req, res) => {
   res.json({
     apiKeyConfigured: !!(process.env.WAVESPEED_API_KEY || process.env.SEEDANCE_API_KEY),
     comfyuiConfigured: !!(process.env.COMFYUI_BASE_URL || process.env.RUNPOD_COMFYUI_URL),
+    runpodAutoStartConfigured: getRunPodConfig().autoStartConfigured,
+    supabaseConfigured: getSupabaseConfig().configured,
     provider: 'wavespeed+comfyui',
     brands: brandCount,
     videosGenerated: videoCount,
