@@ -34,6 +34,21 @@ For natural ad narration, default to:
 
 Save both the generated audio file and the cleaned ElevenLabs-ready script.
 
+## Approved Bloomie Voices
+
+Use these saved voices for character consistency unless Kimberly explicitly asks to audition or replace the voice.
+
+- **Sarah Rodriguez**
+  - `voice_id`: `TOhxx937tpk5BU3jtXir`
+  - delivery: warm conversationalist, sincere, emotionally aware, calm but persuasive
+  - default model/settings: `eleven_v3`, `stability: 0.45`, `similarity_boost: 0.85`, `style: 0.32-0.40`, `use_speaker_boost: true`, `speed: 0.95`
+- **Marcus Chen**
+  - approved voice: Chris - Charming, Down-to-Earth
+  - `voice_id`: `iP95p4xoKVk53GoZ742B`
+  - delivery: grounded, natural, warm, trustworthy, advisor-like, not announcer-y
+  - default model/settings: `eleven_v3`, `stability: 0.45`, `similarity_boost: 0.85`, `style: 0.32`, `use_speaker_boost: true`, `speed: 0.95`
+  - approved audition file: `/Users/kimberlyflowersmini2/Documents/Codex/2026-05-08/ok-the-omibrandkit-github-website-needs/generated-audio/marcus-voice-auditions/marcus-audition-chris.mp3`
+
 ## Script Cleanup Rules
 
 Transform rough stage directions into ElevenLabs-friendly delivery cues. Preserve the intent, not necessarily the literal tags.
@@ -103,4 +118,3 @@ After generating audio:
 - provide the cleaned script path
 - mention that official docs were checked
 - if the user reports an inflection problem, fix the script at the grammar/punctuation level first, then regenerate
-
