@@ -1271,6 +1271,11 @@ app.get(['/ai-employee-for-ecommerce', '/bloomie-for-ecommerce-shop-owners'], (r
   res.sendFile(path.join(landingPageDir, 'ai-employee-for-ecommerce.html'));
 });
 
+app.get('/assets/:filename.vtt', (req, res) => {
+  res.type('text/vtt');
+  res.sendFile(path.join(landingPageDir, 'assets', `${req.params.filename}.vtt`));
+});
+
 app.use((req, res, next) => {
   if (req.hostname && req.hostname.startsWith('app.')) {
     express.static(dashboardDist)(req, res, next);
