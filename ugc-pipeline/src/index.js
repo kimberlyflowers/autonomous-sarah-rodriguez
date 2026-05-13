@@ -10,6 +10,7 @@ const generateRouter = require('./api/generate');
 const videosRouter = require('./api/videos');
 const webhookRouter = require('./api/webhook');
 const analyzeRouter = require('./api/analyze');
+const studioRouter = require('./api/studio');
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -48,6 +49,7 @@ app.use('/api/brands', apiKeyAuth, brandsRouter);
 app.use('/api/generate', apiKeyAuth, generateRouter);
 app.use('/api/videos', apiKeyAuth, videosRouter);
 app.use('/api/analyze', apiKeyAuth, analyzeRouter);
+app.use('/api/studio', apiKeyAuth, studioRouter);
 
 // Health check
 app.get('/health', (req, res) => {
@@ -56,8 +58,9 @@ app.get('/health', (req, res) => {
     status: 'ok',
     service: 'ugc-pipeline',
     version: '1.0.0',
-    provider: 'wavespeed',
+    provider: 'wavespeed+comfyui',
     apiKeyConfigured: hasApiKey,
+    comfyuiConfigured: !!(process.env.COMFYUI_BASE_URL || process.env.RUNPOD_COMFYUI_URL),
     uptime: process.uptime()
   });
 });
@@ -82,7 +85,8 @@ app.get('/api/status', (req, res) => {
 
   res.json({
     apiKeyConfigured: !!(process.env.WAVESPEED_API_KEY || process.env.SEEDANCE_API_KEY),
-    provider: 'wavespeed',
+    comfyuiConfigured: !!(process.env.COMFYUI_BASE_URL || process.env.RUNPOD_COMFYUI_URL),
+    provider: 'wavespeed+comfyui',
     brands: brandCount,
     videosGenerated: videoCount,
     pricing: {
@@ -99,7 +103,7 @@ app.get('/api/status', (req, res) => {
 // Ensure directories exist
 const dirs = [
   'assets/products', 'assets/subjects', 'assets/audio', 'assets/generated',
-  'config', 'config/brands'
+  'assets/studio-uploads', 'config', 'config/brands', 'config/workflows'
 ];
 dirs.forEach(dir => {
   const fullPath = path.join(__dirname, '..', dir);

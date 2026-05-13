@@ -3,529 +3,263 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>UGC Pipeline - BLOOM</title>
-  <link rel="stylesheet" href="/css/style.css">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='url(%23g)'/><defs><linearGradient id='g' x1='0' y1='0' x2='32' y2='32'><stop stop-color='%23F4A261'/><stop offset='1' stop-color='%23E76F8B'/></linearGradient></defs><text x='16' y='22' font-size='16' text-anchor='middle' fill='white' font-weight='bold'>U</text></svg>">
+  <title>Bloom UGC Studio</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%23F4A261'/><text x='16' y='22' font-size='16' text-anchor='middle' fill='white' font-weight='bold'>B</text></svg>">
   <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-:root{--bg:#1a1a1a;--sf:#212121;--cd:#262626;--ac:#F4A261;--a2:#E76F8B;--gr:#34A853;--gf:#1a2b1a;--tx:#d4d4d4;--so:#a0a0a0;--fa:#5c5c5c;--ln:#353535;--bl:#5B8FF9;--pu:#A78BFA;--inp:#212121;--hv:#2f2f2f;--err:#ea4335;--warn:#FBBC04;--gradient:linear-gradient(135deg,#F4A261,#E76F8B);--radius-sm:8px;--radius-md:12px;--radius-lg:16px}
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--tx);line-height:1.5;min-height:100vh}
-.header{background:var(--sf);border-bottom:1px solid var(--ln);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
-.header-brand{display:flex;align-items:center;gap:12px}
-.header-logo{width:36px;height:36px;background:var(--gradient);border-radius:var(--radius-sm);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#fff}
-.header-title{font-size:18px;font-weight:700;color:var(--tx)}
-.header-subtitle{font-size:12px;color:var(--so);font-weight:500}
-.header-status{display:flex;align-items:center;gap:8px}
-.status-dot{width:8px;height:8px;border-radius:50%;background:var(--gr);animation:pulse 2s infinite}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
-.status-text{font-size:13px;color:var(--so)}
-.nav{background:var(--sf);border-bottom:1px solid var(--ln);padding:0 24px;display:flex;gap:4px;overflow-x:auto}
-.nav-tab{padding:12px 20px;background:none;border:none;color:var(--so);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;white-space:nowrap}
-.nav-tab:hover{color:var(--tx);background:var(--hv)}
-.nav-tab.active{color:var(--ac);border-bottom-color:var(--ac)}
-.main{max-width:1280px;margin:0 auto;padding:24px}
-.card{background:var(--cd);border:1px solid var(--ln);border-radius:var(--radius-md);padding:20px;margin-bottom:16px}
-.card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
-.card-title{font-size:15px;font-weight:700;color:var(--tx)}
-.card-subtitle{font-size:12px;color:var(--so);margin-top:2px}
-.metrics-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:24px}
-.metric-card{padding:16px;background:var(--bg);border-radius:var(--radius-sm);border:1px solid var(--ln);text-align:center}
-.metric-value{font-size:28px;font-weight:700;background:var(--gradient);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
-.metric-label{font-size:12px;color:var(--so);font-weight:500;margin-top:4px}
-.btn{padding:10px 20px;border-radius:var(--radius-sm);border:none;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;transition:all .15s;display:inline-flex;align-items:center;gap:8px}
-.btn-primary{background:var(--gradient);color:#fff}
-.btn-primary:hover{opacity:.9;transform:translateY(-1px)}
-.btn-secondary{background:var(--sf);color:var(--tx);border:1px solid var(--ln)}
-.btn-secondary:hover{background:var(--hv);border-color:var(--so)}
-.btn-danger{background:transparent;color:var(--err);border:1px solid var(--err)}
-.btn-danger:hover{background:rgba(234,67,53,.1)}
-.btn-sm{padding:6px 12px;font-size:12px}
-.btn:disabled{opacity:.5;cursor:not-allowed}
-.form-group{margin-bottom:16px}
-.form-label{display:block;font-size:13px;font-weight:600;color:var(--so);margin-bottom:6px}
-.form-input,.form-select,.form-textarea{width:100%;padding:12px 16px;border-radius:10px;border:1.5px solid var(--ln);font-size:14px;color:var(--tx);background:var(--inp);font-family:inherit;outline:none;transition:border-color .15s}
-.form-input:focus,.form-select:focus,.form-textarea:focus{border-color:#7c5cbf}
-.form-textarea{min-height:80px;resize:vertical}
-.form-select{cursor:pointer;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%23a0a0a0' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10l-5 5z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 16px center;padding-right:40px}
-.form-select option{background:var(--sf);color:var(--tx)}
-.chip{display:inline-block;padding:4px 12px;border-radius:12px;font-size:12px;font-weight:600}
-.chip-accent{background:rgba(244,162,97,.15);color:var(--ac)}
-.chip-pink{background:rgba(231,111,139,.15);color:var(--a2)}
-.chip-green{background:var(--gf);color:var(--gr)}
-.chip-blue{background:rgba(91,143,249,.15);color:var(--bl)}
-.chip-purple{background:rgba(167,139,250,.15);color:var(--pu)}
-.chip-red{background:rgba(234,67,53,.15);color:var(--err)}
-.upload-zone{border:2px dashed var(--ln);border-radius:var(--radius-md);padding:32px;text-align:center;cursor:pointer;transition:all .15s}
-.upload-zone:hover,.upload-zone.dragover{border-color:var(--ac);background:rgba(244,162,97,.05)}
-.upload-zone-icon{font-size:32px;margin-bottom:8px}
-.upload-zone-text{color:var(--so);font-size:14px}
-.upload-zone-hint{color:var(--fa);font-size:12px;margin-top:4px}
-.asset-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px}
-.asset-card{background:var(--bg);border:1px solid var(--ln);border-radius:var(--radius-sm);overflow:hidden;transition:border-color .15s}
-.asset-card:hover{border-color:var(--so)}
-.asset-thumb{width:100%;height:140px;object-fit:cover;background:var(--sf);display:flex;align-items:center;justify-content:center;color:var(--fa);font-size:32px}
-.asset-thumb img{width:100%;height:100%;object-fit:cover}
-.asset-info{padding:12px}
-.asset-name{font-size:14px;font-weight:600;color:var(--tx);margin-bottom:4px}
-.asset-meta{font-size:11px;color:var(--fa)}
-.asset-actions{padding:8px 12px;border-top:1px solid var(--ln);display:flex;gap:8px}
-.video-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
-.video-card{background:var(--bg);border:1px solid var(--ln);border-radius:var(--radius-md);overflow:hidden}
-.video-player{width:100%;aspect-ratio:9/16;max-height:320px;background:#000;object-fit:contain}
-.video-info{padding:12px 16px}
-.video-format{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
-.video-prompt{font-size:12px;color:var(--so);margin-top:6px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
-.video-cost{font-size:12px;color:var(--ac);font-weight:600;margin-top:6px}
-.brand-profile{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-@media(max-width:768px){.brand-profile{grid-template-columns:1fr}}
-.selling-points-list{list-style:none;padding:0}
-.selling-points-list li{padding:6px 0;font-size:13px;color:var(--tx);display:flex;align-items:center;gap:8px}
-.selling-points-list li::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--gradient);flex-shrink:0}
-.gen-config{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px}
-.format-checkboxes{display:flex;flex-wrap:wrap;gap:8px}
-.format-checkbox{display:none}
-.format-label{padding:8px 16px;border-radius:var(--radius-sm);border:1.5px solid var(--ln);font-size:13px;font-weight:500;cursor:pointer;transition:all .15s;color:var(--so)}
-.format-checkbox:checked+.format-label{border-color:var(--ac);background:rgba(244,162,97,.1);color:var(--ac)}
-.variant-list{display:flex;flex-direction:column;gap:12px}
-.variant-item{background:var(--bg);border:1px solid var(--ln);border-radius:var(--radius-sm);padding:16px}
-.variant-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
-.variant-num{font-size:13px;font-weight:700;color:var(--ac)}
-.variant-format{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--pu)}
-.variant-script{font-size:13px;color:var(--so);line-height:1.6;margin-bottom:8px}
-.variant-cost{font-size:12px;color:var(--ac);font-weight:600}
-.cost-summary{background:var(--bg);border:1px solid var(--ac);border-radius:var(--radius-md);padding:20px;text-align:center}
-.cost-total{font-size:36px;font-weight:700;background:var(--gradient);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
-.cost-detail{font-size:13px;color:var(--so);margin-top:4px}
-.progress-bar{width:100%;height:4px;background:var(--ln);border-radius:2px;overflow:hidden}
-.progress-fill{height:100%;background:var(--gradient);border-radius:2px;transition:width .3s}
-.empty-state{text-align:center;padding:48px 24px;color:var(--fa)}
-.empty-state-icon{font-size:48px;margin-bottom:12px}
-.empty-state-text{font-size:15px;font-weight:500;color:var(--so)}
-.empty-state-hint{font-size:13px;color:var(--fa);margin-top:8px}
-.pricing-table{width:100%;border-collapse:collapse;font-size:13px}
-.pricing-table th{text-align:left;padding:10px 16px;font-weight:600;color:var(--so);border-bottom:1px solid var(--ln);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
-.pricing-table td{padding:10px 16px;border-bottom:1px solid var(--ln);color:var(--tx)}
-.pricing-table tr:hover td{background:var(--hv)}
-.toast-container{position:fixed;top:24px;right:24px;z-index:1000;display:flex;flex-direction:column;gap:8px}
-.toast{padding:12px 20px;border-radius:var(--radius-sm);font-size:13px;font-weight:500;animation:slideIn .3s ease;max-width:400px}
-.toast-success{background:var(--gf);color:var(--gr);border:1px solid var(--gr)}
-.toast-error{background:rgba(234,67,53,.1);color:var(--err);border:1px solid var(--err)}
-.toast-info{background:rgba(91,143,249,.1);color:var(--bl);border:1px solid var(--bl)}
-@keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
-.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;align-items:center;justify-content:center}
-.modal-overlay.active{display:flex}
-.modal{background:var(--cd);border:1px solid var(--ln);border-radius:var(--radius-lg);padding:24px;max-width:560px;width:90%;max-height:80vh;overflow-y:auto}
-.modal-title{font-size:18px;font-weight:700;margin-bottom:16px}
-.modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:20px}
-.tab-content{display:none}
-.tab-content.active{display:block}
-.section-title{font-size:20px;font-weight:700;margin-bottom:4px}
-.section-desc{font-size:13px;color:var(--so);margin-bottom:20px}
-::-webkit-scrollbar{width:6px}
-::-webkit-scrollbar-track{background:var(--bg)}
-::-webkit-scrollbar-thumb{background:var(--ln);border-radius:3px}
-::-webkit-scrollbar-thumb:hover{background:var(--so)}
-.spinner{width:20px;height:20px;border:2px solid var(--ln);border-top-color:var(--ac);border-radius:50%;animation:spin .6s linear infinite;display:inline-block}
-@keyframes spin{to{transform:rotate(360deg)}}
-@media(max-width:640px){.main{padding:16px}.metrics-grid{grid-template-columns:repeat(2,1fr)}.asset-grid{grid-template-columns:1fr}.video-grid{grid-template-columns:1fr}.gen-config{grid-template-columns:1fr}}
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+:root{--bg:#f8f5f2;--surface:#fff;--ink:#272f31;--muted:#6d7477;--soft:#efe9e3;--line:#e7ded6;--primary:#F4A261;--pink:#E76F8B;--green:#2fb36d;--red:#d94f4f;--dark:#222829;--grad:linear-gradient(135deg,#F4A261,#E76F8B);--shadow:0 18px 60px rgba(45,52,54,.10);--r:18px;--rs:10px}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--ink);min-height:100vh;line-height:1.5}
+button,input,select,textarea{font:inherit}
+.app-shell{display:grid;grid-template-columns:240px 1fr;min-height:100vh}
+.sidebar{background:#181d1f;color:#fff;padding:22px 16px;position:sticky;top:0;height:100vh}
+.brand{display:flex;align-items:center;gap:12px;margin-bottom:30px;padding:0 6px}
+.mark{width:38px;height:38px;border-radius:12px;background:var(--grad);display:grid;place-items:center;font-weight:800}
+.brand-title{font-weight:800;letter-spacing:-.03em}.brand-sub{font-size:12px;color:rgba(255,255,255,.55);margin-top:1px}
+.nav{display:flex;flex-direction:column;gap:6px}
+.nav-tab{border:0;background:transparent;color:rgba(255,255,255,.64);padding:11px 12px;border-radius:12px;display:flex;align-items:center;gap:10px;cursor:pointer;font-weight:700;font-size:14px;text-align:left}
+.nav-tab:hover{background:rgba(255,255,255,.06);color:#fff}.nav-tab.active{background:#fff;color:var(--ink)}
+.nav-ico{width:22px;text-align:center}.side-card{margin-top:26px;padding:14px;border:1px solid rgba(255,255,255,.1);border-radius:16px;background:rgba(255,255,255,.05)}
+.side-card strong{font-size:13px}.side-card p{font-size:12px;color:rgba(255,255,255,.58);margin-top:5px}
+.main{padding:26px;max-width:1240px;width:100%;margin:0 auto}
+.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px;gap:16px}
+.kicker{font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#bd6a35}.page-title{font-size:30px;line-height:1.1;font-weight:800;letter-spacing:-.04em;margin-top:2px}.page-desc{color:var(--muted);font-size:14px;margin-top:8px;max-width:620px}
+.status-pill{display:inline-flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);box-shadow:0 8px 30px rgba(0,0,0,.04);border-radius:999px;padding:8px 12px;font-size:13px;font-weight:700;color:var(--muted);white-space:nowrap}.dot{width:8px;height:8px;border-radius:50%;background:var(--green)}
+.hero-grid{display:grid;grid-template-columns:minmax(0,1.1fr) 360px;gap:18px;align-items:start}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow)}
+.panel-pad{padding:22px}.panel-title{font-size:16px;font-weight:800;margin-bottom:4px}.panel-note{font-size:13px;color:var(--muted);margin-bottom:18px}
+.step-row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px}
+.choice{border:1.5px solid var(--line);background:#fff;border-radius:14px;padding:14px;cursor:pointer;transition:.18s;min-height:96px}
+.choice:hover{border-color:rgba(244,162,97,.55);transform:translateY(-1px)}.choice.active{border-color:var(--primary);box-shadow:0 0 0 4px rgba(244,162,97,.14)}
+.choice strong{display:block;font-size:14px}.choice span{display:block;font-size:12px;color:var(--muted);margin-top:5px}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.form-group{margin-bottom:14px}.full{grid-column:1/-1}
+.form-label{display:block;font-size:12px;font-weight:800;color:var(--muted);margin-bottom:7px;text-transform:uppercase;letter-spacing:.04em}
+.form-input,.form-select,.form-textarea{width:100%;border:1.5px solid var(--line);background:#fff;color:var(--ink);border-radius:12px;padding:12px 13px;outline:none;font-size:14px}
+.form-textarea{min-height:118px;resize:vertical}.form-input:focus,.form-select:focus,.form-textarea:focus{border-color:var(--primary);box-shadow:0 0 0 4px rgba(244,162,97,.12)}
+.file-drop{border:1.5px dashed #d8c9bd;background:#fffaf6;border-radius:14px;padding:18px;min-height:118px;display:flex;flex-direction:column;justify-content:center;gap:5px;cursor:pointer}
+.file-drop:hover{border-color:var(--primary);background:#fff7ef}.file-drop strong{font-size:14px}.file-drop span{font-size:12px;color:var(--muted)}.file-name{font-size:12px;color:#bf6a35;font-weight:700;margin-top:7px;word-break:break-word}
+.actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:6px}.btn{border:0;border-radius:12px;padding:12px 18px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:8px;transition:.18s;text-decoration:none}
+.btn-primary{background:var(--grad);color:#fff}.btn-primary:hover{transform:translateY(-1px);box-shadow:0 12px 24px rgba(231,111,139,.25)}.btn-secondary{background:#fff;color:var(--ink);border:1px solid var(--line)}.btn-secondary:hover{border-color:var(--primary)}
+.hint{font-size:12px;color:var(--muted)}.preview-card{overflow:hidden}.preview-frame{aspect-ratio:9/16;background:linear-gradient(160deg,#242a2c,#111);display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.58);text-align:center;padding:28px}
+.preview-frame video{width:100%;height:100%;object-fit:contain}.preview-body{padding:18px}.mini-list{display:flex;flex-direction:column;gap:10px}.mini-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);font-size:13px}.mini-row:last-child{border-bottom:0}.chip{display:inline-flex;align-items:center;border-radius:999px;padding:5px 10px;font-size:12px;font-weight:800}.chip-green{background:#e8f7ef;color:#16794a}.chip-warn{background:#fff3df;color:#ad641e}.chip-red{background:#fdecec;color:#b53c3c}.chip-soft{background:#f4ece6;color:#8b6450}
+.tab-content{display:none}.tab-content.active{display:block}.section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:16px}.section-title{font-size:24px;font-weight:800;letter-spacing:-.03em}.section-desc{font-size:14px;color:var(--muted);margin-top:4px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px;margin-bottom:14px}.card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}.card-title{font-weight:800}.card-subtitle{font-size:13px;color:var(--muted);margin-top:2px}
+.asset-grid,.video-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}.asset-card,.video-card{background:#fff;border:1px solid var(--line);border-radius:16px;overflow:hidden}.asset-thumb{height:150px;background:var(--soft);display:flex;align-items:center;justify-content:center;color:var(--muted)}.asset-thumb img{width:100%;height:100%;object-fit:cover}.asset-info,.video-info{padding:13px}.asset-name{font-weight:800}.asset-meta,.video-prompt{font-size:12px;color:var(--muted);margin-top:4px}.asset-actions{padding:10px 13px;border-top:1px solid var(--line);display:flex;gap:8px}
+.video-player{width:100%;aspect-ratio:9/16;max-height:360px;background:#111;object-fit:contain}.empty-state{text-align:center;padding:36px;color:var(--muted);border:1px dashed var(--line);border-radius:16px;background:rgba(255,255,255,.55)}
+.brand-profile,.gen-config{display:grid;grid-template-columns:1fr 1fr;gap:14px}.selling-points-list{padding-left:18px;color:var(--muted);font-size:13px}.toast-container{position:fixed;top:20px;right:20px;z-index:20;display:flex;flex-direction:column;gap:8px}.toast{padding:12px 14px;border-radius:12px;background:#fff;border:1px solid var(--line);box-shadow:var(--shadow);font-size:13px;font-weight:700;max-width:380px}.toast-error{border-color:#f1b4b4;color:#a63232}.toast-success{border-color:#aadfbe;color:#16794a}.toast-info{color:#76513e}
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:15;align-items:center;justify-content:center}.modal-overlay.active{display:flex}.modal{background:#fff;border-radius:18px;border:1px solid var(--line);box-shadow:var(--shadow);padding:22px;max-width:540px;width:min(92vw,540px)}.modal-title{font-size:18px;font-weight:800;margin-bottom:16px}.modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:16px}
+.advanced-box{opacity:.92}.format-checkboxes{display:flex;flex-wrap:wrap;gap:8px}.format-checkbox{display:none}.format-label{border:1px solid var(--line);border-radius:999px;padding:8px 12px;font-size:13px;font-weight:800;cursor:pointer}.format-checkbox:checked+.format-label{background:#fff1e6;border-color:var(--primary);color:#ad641e}.variant-item{border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px;background:#fff}.progress-bar{height:6px;background:var(--soft);border-radius:999px;overflow:hidden}.progress-fill{height:100%;background:var(--grad)}
+@media(max-width:920px){.app-shell{grid-template-columns:1fr}.sidebar{position:relative;height:auto}.nav{flex-direction:row;overflow-x:auto}.hero-grid,.form-grid,.brand-profile,.gen-config,.step-row{grid-template-columns:1fr}.main{padding:18px}.topbar{align-items:flex-start;flex-direction:column}}
   </style>
 </head>
 <body>
-
-<header class="header">
-  <div class="header-brand">
-    <div class="header-logo">U</div>
-    <div>
-      <div class="header-title">UGC Ad Pipeline</div>
-      <div class="header-subtitle">BLOOM Creative Engine</div>
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="mark">B</div>
+      <div><div class="brand-title">Bloom Studio</div><div class="brand-sub">UGC video creator</div></div>
     </div>
-  </div>
-  <div class="header-status">
-    <div class="status-dot" id="statusDot"></div>
-    <span class="status-text" id="statusText">Connecting...</span>
-  </div>
-</header>
+    <nav class="nav">
+      <button class="nav-tab active" data-tab="studio"><span class="nav-ico">▶</span>Create</button>
+      <button class="nav-tab" data-tab="videos"><span class="nav-ico">▥</span>Library</button>
+      <button class="nav-tab" data-tab="assets"><span class="nav-ico">◫</span>Assets</button>
+      <button class="nav-tab" data-tab="brands"><span class="nav-ico">✦</span>Brands</button>
+      <button class="nav-tab" data-tab="advanced"><span class="nav-ico">⚙</span>Advanced</button>
+    </nav>
+    <div class="side-card">
+      <strong>Built for shorts</strong>
+      <p>Upload a face, voice, source video, or script. Keep the hard workflow details behind the curtain.</p>
+    </div>
+  </aside>
 
-<nav class="nav">
-  <button class="nav-tab active" data-tab="dashboard">Dashboard</button>
-  <button class="nav-tab" data-tab="assets">Assets</button>
-  <button class="nav-tab" data-tab="brands">Brands</button>
-  <button class="nav-tab" data-tab="generate">Generate</button>
-  <button class="nav-tab" data-tab="videos">Videos</button>
-  <button class="nav-tab" data-tab="pricing">Pricing</button>
-</nav>
-
-<main class="main">
-
-  <!-- Dashboard Tab -->
-  <div class="tab-content active" id="tab-dashboard">
-    <h2 class="section-title">Control Center</h2>
-    <p class="section-desc">UGC ad testing pipeline powered by Seedance 2 API</p>
-
-    <div class="metrics-grid" id="dashboardMetrics">
-      <div class="metric-card">
-        <div class="metric-value" id="metricBrands">-</div>
-        <div class="metric-label">Brands</div>
+  <main class="main">
+    <div class="topbar">
+      <div>
+        <div class="kicker">Bloom UGC Pipeline</div>
+        <h1 class="page-title">Create a talking video</h1>
+        <p class="page-desc">A simple creator flow for image-to-video, video-to-video, and voice-led shorts. Advanced testing tools are still here when you need them.</p>
       </div>
-      <div class="metric-card">
-        <div class="metric-value" id="metricAssets">-</div>
-        <div class="metric-label">Assets</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-value" id="metricVideos">-</div>
-        <div class="metric-label">Videos</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-value" id="metricPending">-</div>
-        <div class="metric-label">Pending</div>
-      </div>
+      <div class="status-pill"><span class="dot" id="statusDot"></span><span id="statusText">Checking studio...</span></div>
     </div>
 
-    <div class="card" id="apiKeyCard">
-      <div class="card-header">
-        <div>
-          <div class="card-title">API Configuration</div>
-          <div class="card-subtitle">Seedance 2 API key status</div>
-        </div>
-        <span class="chip" id="apiKeyChip">Checking...</span>
-      </div>
-      <p style="font-size:13px;color:var(--so)">
-        Set your API key as the <code style="background:var(--bg);padding:2px 6px;border-radius:4px">WAVESPEED_API_KEY</code> environment variable on Railway.
-        Get your key from <a href="https://wavespeed.ai/accesskey" target="_blank" style="color:var(--ac)">WaveSpeed Access Keys</a>.
-      </p>
-    </div>
+    <section class="tab-content active" id="tab-studio">
+      <div class="hero-grid">
+        <div class="panel">
+          <div class="panel-pad">
+            <div class="panel-title">New video</div>
+            <p class="panel-note">Start with a person image for I2V, or a source video for V2V. Add audio or use a voice workflow when available.</p>
 
-    <div class="card">
-      <div class="card-header">
-        <div>
-          <div class="card-title">Quick Actions</div>
-          <div class="card-subtitle">Common pipeline operations</div>
-        </div>
-      </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn btn-primary" onclick="switchTab('brands')">Create Brand Profile</button>
-        <button class="btn btn-secondary" onclick="switchTab('assets')">Upload Assets</button>
-        <button class="btn btn-secondary" onclick="switchTab('generate')">Generate A/B Test</button>
-        <button class="btn btn-secondary" onclick="analyzeAssets()">Analyze Assets</button>
-        <button class="btn btn-secondary" onclick="pollAllJobs()">Poll All Jobs</button>
-      </div>
-    </div>
-  </div>
+            <div class="step-row">
+              <button class="choice active" type="button" data-mode-choice="i2v" onclick="setStudioMode('i2v')"><strong>Image to video</strong><span>Use a portrait and audio to animate a talking head.</span></button>
+              <button class="choice" type="button" data-mode-choice="v2v" onclick="setStudioMode('v2v')"><strong>Video to video</strong><span>Use a source video and replace or sync the audio.</span></button>
+              <button class="choice" type="button" data-mode-choice="qwen" onclick="setStudioAudio('qwen')"><strong>Qwen audio</strong><span>Reserved for the third workflow export.</span></button>
+            </div>
 
-  <!-- Assets Tab -->
-  <div class="tab-content" id="tab-assets">
-    <h2 class="section-title">Asset Manager</h2>
-    <p class="section-desc">Upload product images, subject photos, and audio clips</p>
+            <form id="studioForm" onsubmit="submitStudioVideo(event)">
+              <input type="hidden" id="studioMode" name="mode" value="i2v">
+              <input type="hidden" id="studioPreset" name="presetId" value="sarah-i2v-lipsync">
+              <div class="form-grid">
+                <div class="form-group">
+                  <label class="form-label">Workspace</label>
+                  <input class="form-input" id="studioTenant" name="tenantId" value="kimberly" placeholder="kimberly">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Audio source</label>
+                  <select class="form-select" id="studioAudioProvider" name="audioProvider" onchange="setStudioAudio(this.value)">
+                    <option value="upload">Upload MP3/WAV</option>
+                    <option value="elevenlabs">ElevenLabs voice</option>
+                    <option value="qwen">Qwen audio workflow</option>
+                  </select>
+                </div>
 
-    <!-- Product Upload -->
-    <div class="card">
-      <div class="card-header">
-        <div>
-          <div class="card-title">Product Images</div>
-          <div class="card-subtitle">Photos of the product being advertised</div>
-        </div>
-        <button class="btn btn-primary btn-sm" onclick="showUploadModal('products')">Upload</button>
-      </div>
-      <div class="asset-grid" id="productGrid"></div>
-    </div>
+                <div class="form-group" id="studioImageGroup">
+                  <label class="form-label">Avatar image</label>
+                  <label class="file-drop">
+                    <strong>Upload a portrait</strong><span>PNG, JPG, WEBP</span>
+                    <input id="studioImage" name="image" type="file" accept="image/*" hidden onchange="showStudioFileName('studioImage','studioImageName')">
+                  </label>
+                  <div class="file-name" id="studioImageName"></div>
+                </div>
 
-    <!-- Subject Upload -->
-    <div class="card">
-      <div class="card-header">
-        <div>
-          <div class="card-title">Subject Images</div>
-          <div class="card-subtitle">Spokesperson / actor face references</div>
-        </div>
-        <button class="btn btn-primary btn-sm" onclick="showUploadModal('subjects')">Upload</button>
-      </div>
-      <div class="asset-grid" id="subjectGrid"></div>
-    </div>
+                <div class="form-group" id="studioVideoGroup" style="display:none">
+                  <label class="form-label">Source video</label>
+                  <label class="file-drop">
+                    <strong>Upload source video</strong><span>MP4 or MOV</span>
+                    <input id="studioVideo" name="video" type="file" accept="video/*" hidden onchange="showStudioFileName('studioVideo','studioVideoName')">
+                  </label>
+                  <div class="file-name" id="studioVideoName"></div>
+                </div>
 
-    <!-- Audio Upload -->
-    <div class="card">
-      <div class="card-header">
-        <div>
-          <div class="card-title">Audio Clips</div>
-          <div class="card-subtitle">Voice reference for tone and pacing</div>
-        </div>
-        <button class="btn btn-primary btn-sm" onclick="showUploadModal('audio')">Upload</button>
-      </div>
-      <div class="asset-grid" id="audioGrid"></div>
-    </div>
-  </div>
+                <div class="form-group" id="studioAudioGroup">
+                  <label class="form-label">Voice audio</label>
+                  <label class="file-drop">
+                    <strong>Upload final voiceover</strong><span>MP3, WAV, M4A</span>
+                    <input id="studioAudio" name="audio" type="file" accept="audio/*" hidden onchange="showStudioFileName('studioAudio','studioAudioName')">
+                  </label>
+                  <div class="file-name" id="studioAudioName"></div>
+                </div>
 
-  <!-- Brands Tab -->
-  <div class="tab-content" id="tab-brands">
-    <h2 class="section-title">Brand Profiles</h2>
-    <p class="section-desc">Configure product details, selling points, and ad targeting</p>
+                <div class="form-group" id="studioVoiceGroup" style="display:none">
+                  <label class="form-label">ElevenLabs voice ID</label>
+                  <input class="form-input" id="studioVoiceId" name="voiceId" placeholder="Optional. Uses Sarah default if blank.">
+                </div>
 
-    <div class="card">
-      <div class="card-header">
-        <div class="card-title">Create / Edit Brand</div>
-      </div>
-      <form id="brandForm" onsubmit="saveBrand(event)">
-        <div class="brand-profile">
-          <div>
-            <div class="form-group">
-              <label class="form-label">Product Name *</label>
-              <input class="form-input" name="name" required placeholder="e.g. AG1">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Category</label>
-              <input class="form-input" name="category" placeholder="e.g. wellness, fitness, tech">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Description</label>
-              <textarea class="form-textarea" name="description" placeholder="What does it do?"></textarea>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Price Point</label>
-              <input class="form-input" name="pricePoint" placeholder="e.g. $99">
-            </div>
-          </div>
-          <div>
-            <div class="form-group">
-              <label class="form-label">Key Selling Points (one per line)</label>
-              <textarea class="form-textarea" name="sellingPoints" rows="4" placeholder="75 vitamins and minerals&#10;Clean ingredients&#10;All day energy&#10;Gut health support"></textarea>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Target Audience</label>
-              <input class="form-input" name="targetAudience" placeholder="e.g. health-conscious adults 25-45">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Platforms</label>
-              <input class="form-input" name="platforms" placeholder="e.g. tiktok, instagram, youtube">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Tone</label>
-              <select class="form-select" name="tone">
-                <option value="energetic">Energetic & Aspirational</option>
-                <option value="casual">Casual & Conversational</option>
-                <option value="professional">Professional & Authoritative</option>
-                <option value="humorous">Humorous & Relatable</option>
-                <option value="cinematic">Cinematic & Premium</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Discount Code</label>
-              <input class="form-input" name="discountCode" placeholder="e.g. SAVE25">
-            </div>
-            <div class="form-group">
-              <label class="form-label">CTA</label>
-              <input class="form-input" name="cta" placeholder="e.g. Link in bio">
-            </div>
+                <div class="form-group">
+                  <label class="form-label">Video style prompt</label>
+                  <textarea class="form-textarea" id="studioPrompt" name="prompt" placeholder="Professional talking head, natural speech, stable face, subtle hand movement, clean studio lighting."></textarea>
+                </div>
+
+                <div class="form-group full">
+                  <label class="form-label">Script or notes</label>
+                  <textarea class="form-textarea" id="studioScript" name="script" placeholder="Paste the narration script here so the job record keeps the creative direction with the video."></textarea>
+                </div>
+              </div>
+
+              <div class="actions">
+                <button class="btn btn-primary" type="submit">▶ Generate video</button>
+                <button class="btn btn-secondary" type="button" onclick="resetStudioForm()">Clear</button>
+                <span class="hint" id="studioSubmitHint">Uses the Sarah I2V workflow preset.</span>
+              </div>
+            </form>
           </div>
         </div>
-        <div style="margin-top:16px;display:flex;gap:8px">
-          <button type="submit" class="btn btn-primary">Save Brand Profile</button>
-          <button type="reset" class="btn btn-secondary">Clear</button>
-        </div>
-      </form>
-    </div>
 
-    <div class="card">
-      <div class="card-header">
-        <div class="card-title">Saved Brands</div>
+        <aside class="panel preview-card">
+          <div class="preview-frame" id="studioPreview">
+            <div>
+              <div style="font-size:34px;margin-bottom:10px">▶</div>
+              <strong>Your video preview appears here</strong>
+              <p style="font-size:13px;margin-top:6px;color:rgba(255,255,255,.45)">Generate a clip, then watch it from the library.</p>
+            </div>
+          </div>
+          <div class="preview-body">
+            <div class="panel-title">Studio status</div>
+            <div class="mini-list">
+              <div class="mini-row"><span>ComfyUI</span><span class="chip chip-warn" id="comfyStatus">Checking</span></div>
+              <div class="mini-row"><span>I2V preset</span><span class="chip chip-soft" id="i2vStatus">Ready</span></div>
+              <div class="mini-row"><span>V2V preset</span><span class="chip chip-soft" id="v2vStatus">Ready</span></div>
+              <div class="mini-row"><span>Qwen audio</span><span class="chip chip-warn" id="qwenStatus">Needs workflow</span></div>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <section class="tab-content" id="tab-videos">
+      <div class="section-head"><div><h2 class="section-title">Video library</h2><p class="section-desc">Generated clips and jobs in progress.</p></div><div class="actions"><button class="btn btn-secondary" onclick="loadVideos()">Refresh</button><button class="btn btn-secondary" onclick="pollAllJobs()">Poll Seedance</button></div></div>
+      <div id="videoProgress" style="display:none;margin-bottom:16px"><div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div><p class="hint" id="progressText"></p></div>
+      <div class="video-grid" id="videoGrid"></div>
+    </section>
+
+    <section class="tab-content" id="tab-assets">
+      <div class="section-head"><div><h2 class="section-title">Assets</h2><p class="section-desc">Reusable product images, avatars, and audio clips.</p></div><button class="btn btn-primary" onclick="showUploadModal('subjects')">Upload asset</button></div>
+      <div class="card"><div class="card-header"><div><div class="card-title">Subject images</div><div class="card-subtitle">Avatar and spokesperson references</div></div><button class="btn btn-secondary" onclick="showUploadModal('subjects')">Upload</button></div><div class="asset-grid" id="subjectGrid"></div></div>
+      <div class="card"><div class="card-header"><div><div class="card-title">Audio clips</div><div class="card-subtitle">Voiceovers and references</div></div><button class="btn btn-secondary" onclick="showUploadModal('audio')">Upload</button></div><div class="asset-grid" id="audioGrid"></div></div>
+      <div class="card"><div class="card-header"><div><div class="card-title">Product images</div><div class="card-subtitle">Products, screenshots, and props</div></div><button class="btn btn-secondary" onclick="showUploadModal('products')">Upload</button></div><div class="asset-grid" id="productGrid"></div></div>
+    </section>
+
+    <section class="tab-content" id="tab-brands">
+      <div class="section-head"><div><h2 class="section-title">Brands</h2><p class="section-desc">Save brand context for ad prompts and batches.</p></div></div>
+      <div class="card">
+        <form id="brandForm" onsubmit="saveBrand(event)">
+          <div class="brand-profile">
+            <div>
+              <div class="form-group"><label class="form-label">Brand or product name</label><input class="form-input" name="name" required placeholder="Bloomie Staffing"></div>
+              <div class="form-group"><label class="form-label">Category</label><input class="form-input" name="category" placeholder="AI employees, staffing, software"></div>
+              <div class="form-group"><label class="form-label">Description</label><textarea class="form-textarea" name="description" placeholder="What should the ad know?"></textarea></div>
+            </div>
+            <div>
+              <div class="form-group"><label class="form-label">Selling points</label><textarea class="form-textarea" name="sellingPoints" placeholder="One per line"></textarea></div>
+              <div class="form-group"><label class="form-label">Audience</label><input class="form-input" name="targetAudience" placeholder="Financial advisors, real estate agents"></div>
+              <div class="form-group"><label class="form-label">Tone</label><select class="form-select" name="tone"><option value="natural">Natural and conversational</option><option value="professional">Professional</option><option value="energetic">Energetic</option></select></div>
+              <input type="hidden" name="pricePoint"><input type="hidden" name="platforms"><input type="hidden" name="discountCode"><input type="hidden" name="cta">
+            </div>
+          </div>
+          <div class="actions"><button class="btn btn-primary" type="submit">Save brand</button><button class="btn btn-secondary" type="reset">Clear</button></div>
+        </form>
       </div>
       <div id="brandsList"></div>
-    </div>
-  </div>
+    </section>
 
-  <!-- Generate Tab -->
-  <div class="tab-content" id="tab-generate">
-    <h2 class="section-title">A/B Test Generator</h2>
-    <p class="section-desc">Configure and generate video ad variants for testing</p>
-
-    <div class="card">
-      <div class="card-header">
-        <div class="card-title">Generation Settings</div>
+    <section class="tab-content advanced-box" id="tab-advanced">
+      <div class="section-head"><div><h2 class="section-title">Advanced A/B testing</h2><p class="section-desc">The original Seedance batch generator is still here for ad variant testing.</p></div></div>
+      <div class="card">
+        <div class="gen-config">
+          <div class="form-group"><label class="form-label">Brand</label><select class="form-select" id="genBrand"></select></div>
+          <div class="form-group"><label class="form-label">Subject</label><select class="form-select" id="genSubject"><option value="">None</option></select></div>
+          <div class="form-group"><label class="form-label">Audio Reference</label><select class="form-select" id="genAudio"><option value="">None</option></select></div>
+          <div class="form-group"><label class="form-label">Duration</label><select class="form-select" id="genDuration"><option value="5">5s test</option><option value="10">10s</option><option value="15" selected>15s</option></select></div>
+          <div class="form-group"><label class="form-label">Resolution</label><select class="form-select" id="genResolution"><option value="480p">480p</option><option value="720p" selected>720p</option><option value="1080p">1080p</option></select></div>
+          <div class="form-group"><label class="form-label">Model</label><select class="form-select" id="genModel"><option value="seedance2-fast" selected>Fast</option><option value="seedance2-standard">Standard</option></select></div>
+          <div class="form-group"><label class="form-label">Aspect Ratio</label><select class="form-select" id="genAspect"><option value="9:16" selected>9:16</option><option value="16:9">16:9</option><option value="1:1">1:1</option></select></div>
+        </div>
+        <div class="form-group"><label class="form-label">Formats</label><div class="format-checkboxes">
+          <input type="checkbox" class="format-checkbox" id="fmt-ugc" value="ugc" checked><label class="format-label" for="fmt-ugc">UGC</label>
+          <input type="checkbox" class="format-checkbox" id="fmt-podcast" value="podcast" checked><label class="format-label" for="fmt-podcast">Podcast</label>
+          <input type="checkbox" class="format-checkbox" id="fmt-lifestyle" value="lifestyle" checked><label class="format-label" for="fmt-lifestyle">Lifestyle</label>
+          <input type="checkbox" class="format-checkbox" id="fmt-tiktok-greenscreen" value="tiktok-greenscreen"><label class="format-label" for="fmt-tiktok-greenscreen">Green screen</label>
+        </div></div>
+        <div class="actions"><button class="btn btn-primary" onclick="previewVariants()">Preview variants</button><button class="btn btn-secondary" onclick="estimateCost()">Estimate cost</button></div>
       </div>
+      <div class="card" id="variantPreviewCard" style="display:none"><div class="card-header"><div><div class="card-title">Variant Preview</div><div class="card-subtitle">Review before submitting to API</div></div><div id="costEstimate"></div></div><div id="variantList"></div><div class="actions"><button class="btn btn-primary" id="submitBtn" onclick="submitVariants()">Approve & Generate</button><span class="hint" id="submitStatus"></span></div></div>
+    </section>
+  </main>
+</div>
 
-      <div class="gen-config">
-        <div class="form-group">
-          <label class="form-label">Brand</label>
-          <select class="form-select" id="genBrand"></select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Subject</label>
-          <select class="form-select" id="genSubject">
-            <option value="">None</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Audio Reference</label>
-          <select class="form-select" id="genAudio">
-            <option value="">None</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Duration (seconds)</label>
-          <select class="form-select" id="genDuration">
-            <option value="5">5s (test)</option>
-            <option value="10">10s</option>
-            <option value="15" selected>15s</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Resolution</label>
-          <select class="form-select" id="genResolution">
-            <option value="480p">480p (cheapest)</option>
-            <option value="720p" selected>720p</option>
-            <option value="1080p">1080p (premium)</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Model</label>
-          <select class="form-select" id="genModel">
-            <option value="seedance2-fast" selected>Fast (recommended)</option>
-            <option value="seedance2-standard">Standard</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Aspect Ratio</label>
-          <select class="form-select" id="genAspect">
-            <option value="9:16" selected>9:16 (vertical)</option>
-            <option value="16:9">16:9 (horizontal)</option>
-            <option value="1:1">1:1 (square)</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="form-group" style="margin-top:16px">
-        <label class="form-label">Ad Formats</label>
-        <div class="format-checkboxes">
-          <input type="checkbox" class="format-checkbox" id="fmt-ugc" value="ugc" checked>
-          <label class="format-label" for="fmt-ugc">UGC Testimonial</label>
-          <input type="checkbox" class="format-checkbox" id="fmt-podcast" value="podcast" checked>
-          <label class="format-label" for="fmt-podcast">Podcast</label>
-          <input type="checkbox" class="format-checkbox" id="fmt-lifestyle" value="lifestyle" checked>
-          <label class="format-label" for="fmt-lifestyle">Lifestyle</label>
-          <input type="checkbox" class="format-checkbox" id="fmt-tiktok-greenscreen" value="tiktok-greenscreen" checked>
-          <label class="format-label" for="fmt-tiktok-greenscreen">TikTok Green Screen</label>
-          <input type="checkbox" class="format-checkbox" id="fmt-news-anchor" value="news-anchor">
-          <label class="format-label" for="fmt-news-anchor">News Anchor</label>
-          <input type="checkbox" class="format-checkbox" id="fmt-cinematic" value="cinematic">
-          <label class="format-label" for="fmt-cinematic">Cinematic</label>
-          <input type="checkbox" class="format-checkbox" id="fmt-asmr" value="asmr">
-          <label class="format-label" for="fmt-asmr">ASMR</label>
-          <input type="checkbox" class="format-checkbox" id="fmt-unboxing" value="unboxing">
-          <label class="format-label" for="fmt-unboxing">Unboxing</label>
-        </div>
-      </div>
-
-      <div style="margin-top:20px;display:flex;gap:8px">
-        <button class="btn btn-primary" onclick="previewVariants()">Preview Variants</button>
-        <button class="btn btn-secondary" onclick="estimateCost()">Estimate Cost</button>
-      </div>
-    </div>
-
-    <!-- Preview Section -->
-    <div class="card" id="variantPreviewCard" style="display:none">
-      <div class="card-header">
-        <div>
-          <div class="card-title">Variant Preview</div>
-          <div class="card-subtitle">Review before submitting to API</div>
-        </div>
-        <div id="costEstimate"></div>
-      </div>
-      <div class="variant-list" id="variantList"></div>
-      <div style="margin-top:20px;display:flex;gap:8px;align-items:center">
-        <button class="btn btn-primary" id="submitBtn" onclick="submitVariants()">Approve & Generate</button>
-        <span style="font-size:12px;color:var(--so)" id="submitStatus"></span>
-      </div>
-    </div>
-  </div>
-
-  <!-- Videos Tab -->
-  <div class="tab-content" id="tab-videos">
-    <h2 class="section-title">Generated Videos</h2>
-    <p class="section-desc">Preview, download, and manage your generated ad creatives</p>
-
-    <div style="display:flex;gap:8px;margin-bottom:20px">
-      <button class="btn btn-secondary btn-sm" onclick="loadVideos()">Refresh</button>
-      <button class="btn btn-secondary btn-sm" onclick="pollAllJobs()">Poll Pending</button>
-    </div>
-
-    <div id="videoProgress" style="display:none;margin-bottom:16px">
-      <div class="progress-bar">
-        <div class="progress-fill" id="progressFill" style="width:0%"></div>
-      </div>
-      <p style="font-size:12px;color:var(--so);margin-top:6px" id="progressText"></p>
-    </div>
-
-    <div class="video-grid" id="videoGrid"></div>
-  </div>
-
-  <!-- Pricing Tab -->
-  <div class="tab-content" id="tab-pricing">
-    <h2 class="section-title">Pricing Breakdown</h2>
-    <p class="section-desc">WaveSpeed Seedance 2.0 API costs by model and resolution</p>
-
-    <div class="card">
-      <table class="pricing-table">
-        <thead>
-          <tr>
-            <th>Model</th>
-            <th>Resolution</th>
-            <th>Per Second</th>
-            <th>5s Video</th>
-            <th>10s Video</th>
-            <th>15s Video</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr><td><span class="chip chip-green">Fast</span></td><td>480p</td><td>$0.10</td><td>$0.50</td><td>$1.00</td><td>$1.50</td></tr>
-          <tr><td><span class="chip chip-green">Fast</span></td><td>720p</td><td>$0.20</td><td>$1.00</td><td>$2.00</td><td>$3.00</td></tr>
-          <tr><td><span class="chip chip-green">Fast</span></td><td>1080p</td><td>$0.30</td><td>$1.50</td><td>$3.00</td><td>$4.50</td></tr>
-          <tr><td><span class="chip chip-blue">Standard</span></td><td>480p</td><td>$0.12</td><td>$0.60</td><td>$1.20</td><td>$1.80</td></tr>
-          <tr><td><span class="chip chip-blue">Standard</span></td><td>720p</td><td>$0.24</td><td>$1.20</td><td>$2.40</td><td>$3.60</td></tr>
-          <tr><td><span class="chip chip-blue">Standard</span></td><td>1080p</td><td>$0.36</td><td>$1.80</td><td>$3.60</td><td>$5.40</td></tr>
-        </tbody>
-      </table>
-    </div>
-
-    <div class="card">
-      <div class="card-title" style="margin-bottom:12px">Cost Tips</div>
-      <ul style="font-size:13px;color:var(--so);padding-left:20px;display:flex;flex-direction:column;gap:8px">
-        <li>Start with <strong style="color:var(--tx)">480p Fast @ 5 seconds</strong> to validate prompts before scaling</li>
-        <li>Fast mode is ~30% cheaper and nearly identical quality for social media</li>
-        <li>Only use Standard when you need maximum quality for final deliverables</li>
-        <li>Test first, iterate, then scale - that's how you avoid burning credits</li>
-      </ul>
-    </div>
-  </div>
-
-</main>
-
-<!-- Upload Modal -->
 <div class="modal-overlay" id="uploadModal">
   <div class="modal">
-    <div class="modal-title">Upload Asset</div>
+    <div class="modal-title">Upload asset</div>
     <form id="uploadForm" onsubmit="uploadAsset(event)">
       <input type="hidden" id="uploadType" value="">
-      <div class="form-group">
-        <label class="form-label">Name *</label>
-        <input class="form-input" id="uploadName" required placeholder="e.g. AG1, John, voiceover-1">
-      </div>
-      <div class="upload-zone" id="uploadZone" onclick="document.getElementById('uploadFile').click()">
-        <div class="upload-zone-icon">+</div>
-        <div class="upload-zone-text">Click to select file</div>
-        <div class="upload-zone-hint">Images, audio, or video files</div>
-      </div>
-      <input type="file" id="uploadFile" style="display:none" accept="image/*,audio/*,video/*" onchange="handleFileSelect(this)">
-      <div id="uploadFileName" style="font-size:13px;color:var(--ac);margin-top:8px"></div>
-      <div class="modal-actions">
-        <button type="button" class="btn btn-secondary" onclick="closeUploadModal()">Cancel</button>
-        <button type="submit" class="btn btn-primary">Upload</button>
-      </div>
+      <div class="form-group"><label class="form-label">Name</label><input class="form-input" id="uploadName" required placeholder="Sarah portrait, Marcus voiceover"></div>
+      <label class="file-drop"><strong>Choose file</strong><span>Images, audio, or video</span><input type="file" id="uploadFile" hidden accept="image/*,audio/*,video/*" onchange="handleFileSelect(this)"></label>
+      <div class="file-name" id="uploadFileName"></div>
+      <div class="modal-actions"><button class="btn btn-secondary" type="button" onclick="closeUploadModal()">Cancel</button><button class="btn btn-primary" type="submit">Upload</button></div>
     </form>
   </div>
 </div>
 
-<!-- Toast Container -->
 <div class="toast-container" id="toastContainer"></div>
-
 <script src="/js/app.js"></script>
 </body>
 </html>
