@@ -45,6 +45,7 @@ button,input,select,textarea{font:inherit}
 .tab-content{display:none}.tab-content.active{display:block}.section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:16px}.section-title{font-size:24px;font-weight:800;letter-spacing:-.03em}.section-desc{font-size:14px;color:var(--muted);margin-top:4px}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px;margin-bottom:14px}.card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}.card-title{font-weight:800}.card-subtitle{font-size:13px;color:var(--muted);margin-top:2px}
 .asset-grid,.video-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}.asset-card,.video-card{background:#fff;border:1px solid var(--line);border-radius:16px;overflow:hidden}.asset-thumb{height:150px;background:var(--soft);display:flex;align-items:center;justify-content:center;color:var(--muted)}.asset-thumb img{width:100%;height:100%;object-fit:cover}.asset-info,.video-info{padding:13px}.asset-name{font-weight:800}.asset-meta,.video-prompt{font-size:12px;color:var(--muted);margin-top:4px}.asset-actions{padding:10px 13px;border-top:1px solid var(--line);display:flex;gap:8px}
+.selected-character{display:none;align-items:center;gap:12px;padding:12px;border:1px solid rgba(244,162,97,.35);background:#fff8f1;border-radius:14px;margin-bottom:12px}.selected-character.active{display:flex}.selected-character img{width:52px;height:52px;border-radius:12px;object-fit:cover;background:var(--soft)}.selected-character strong{display:block;font-size:14px}.selected-character span{font-size:12px;color:var(--muted)}
 .video-player{width:100%;aspect-ratio:9/16;max-height:360px;background:#111;object-fit:contain}.empty-state{text-align:center;padding:36px;color:var(--muted);border:1px dashed var(--line);border-radius:16px;background:rgba(255,255,255,.55)}
 .brand-profile,.gen-config{display:grid;grid-template-columns:1fr 1fr;gap:14px}.selling-points-list{padding-left:18px;color:var(--muted);font-size:13px}.toast-container{position:fixed;top:20px;right:20px;z-index:20;display:flex;flex-direction:column;gap:8px}.toast{padding:12px 14px;border-radius:12px;background:#fff;border:1px solid var(--line);box-shadow:var(--shadow);font-size:13px;font-weight:700;max-width:380px}.toast-error{border-color:#f1b4b4;color:#a63232}.toast-success{border-color:#aadfbe;color:#16794a}.toast-info{color:#76513e}
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:15;align-items:center;justify-content:center}.modal-overlay.active{display:flex}.modal{background:#fff;border-radius:18px;border:1px solid var(--line);box-shadow:var(--shadow);padding:22px;max-width:540px;width:min(92vw,540px)}.modal-title{font-size:18px;font-weight:800;margin-bottom:16px}.modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:16px}
@@ -88,6 +89,7 @@ button,input,select,textarea{font:inherit}
     <nav class="nav">
       <button class="nav-tab active" data-tab="studio"><span class="nav-ico">▶</span>Create</button>
       <button class="nav-tab" data-tab="videos"><span class="nav-ico">▥</span>Library</button>
+      <button class="nav-tab" data-tab="characters"><span class="nav-ico">◉</span>Characters</button>
       <button class="nav-tab" data-tab="assets"><span class="nav-ico">◫</span>Assets</button>
       <button class="nav-tab" data-tab="brands"><span class="nav-ico">✦</span>Brands</button>
       <button class="nav-tab" data-tab="advanced"><span class="nav-ico">⚙</span>Advanced</button>
@@ -128,6 +130,7 @@ button,input,select,textarea{font:inherit}
             <form id="studioForm" onsubmit="submitStudioVideo(event)">
               <input type="hidden" id="studioMode" name="mode" value="i2v">
               <input type="hidden" id="studioPreset" name="presetId" value="sarah-i2v-lipsync">
+              <input type="hidden" id="studioImageAssetId" name="imageAssetId" value="">
               <div class="form-grid">
                 <div class="form-group">
                   <label class="form-label">Audio source</label>
@@ -138,8 +141,25 @@ button,input,select,textarea{font:inherit}
                   </select>
                 </div>
 
+                <div class="form-group">
+                  <label class="form-label">Aspect ratio</label>
+                  <select class="form-select" id="studioAspectRatio" name="aspectRatio">
+                    <option value="9:16">9:16 Short</option>
+                    <option value="16:9">16:9 Landscape</option>
+                    <option value="1:1">1:1 Square</option>
+                  </select>
+                </div>
+
                 <div class="form-group" id="studioImageGroup">
                   <label class="form-label">Avatar image</label>
+                  <div class="selected-character" id="selectedCharacter">
+                    <img id="selectedCharacterImg" alt="">
+                    <div style="flex:1">
+                      <strong id="selectedCharacterName">No character selected</strong>
+                      <span>Loaded from your Characters library.</span>
+                    </div>
+                    <button class="btn btn-secondary" type="button" onclick="clearSelectedCharacter()">Change</button>
+                  </div>
                   <label class="file-drop">
                     <strong>Upload a portrait</strong><span>PNG, JPG, WEBP</span>
                     <input id="studioImage" name="image" type="file" accept="image/*" hidden onchange="showStudioFileName('studioImage','studioImageName')">
@@ -223,9 +243,13 @@ button,input,select,textarea{font:inherit}
       <div class="video-grid" id="videoGrid"></div>
     </section>
 
+    <section class="tab-content" id="tab-characters">
+      <div class="section-head"><div><h2 class="section-title">Characters</h2><p class="section-desc">Store repeatable spokesperson portraits here. Pick one to load it directly into Create.</p></div><button class="btn btn-primary" onclick="showUploadModal('subjects')">Upload character</button></div>
+      <div class="asset-grid" id="characterGrid"></div>
+    </section>
+
     <section class="tab-content" id="tab-assets">
-      <div class="section-head"><div><h2 class="section-title">Assets</h2><p class="section-desc">Reusable product images, avatars, and audio clips.</p></div><button class="btn btn-primary" onclick="showUploadModal('subjects')">Upload asset</button></div>
-      <div class="card"><div class="card-header"><div><div class="card-title">Subject images</div><div class="card-subtitle">Avatar and spokesperson references</div></div><button class="btn btn-secondary" onclick="showUploadModal('subjects')">Upload</button></div><div class="asset-grid" id="subjectGrid"></div></div>
+      <div class="section-head"><div><h2 class="section-title">Assets</h2><p class="section-desc">Reusable audio clips, product shots, screenshots, and props.</p></div><button class="btn btn-primary" onclick="showUploadModal('products')">Upload asset</button></div>
       <div class="card"><div class="card-header"><div><div class="card-title">Audio clips</div><div class="card-subtitle">Voiceovers and references</div></div><button class="btn btn-secondary" onclick="showUploadModal('audio')">Upload</button></div><div class="asset-grid" id="audioGrid"></div></div>
       <div class="card"><div class="card-header"><div><div class="card-title">Product images</div><div class="card-subtitle">Products, screenshots, and props</div></div><button class="btn btn-secondary" onclick="showUploadModal('products')">Upload</button></div><div class="asset-grid" id="productGrid"></div></div>
     </section>
@@ -286,6 +310,10 @@ button,input,select,textarea{font:inherit}
       <div class="form-group"><label class="form-label">Name</label><input class="form-input" id="uploadName" required placeholder="Sarah portrait, Marcus voiceover"></div>
       <label class="file-drop"><strong>Choose file</strong><span>Images, audio, or video</span><input type="file" id="uploadFile" hidden accept="image/*,audio/*,video/*" onchange="handleFileSelect(this)"></label>
       <div class="file-name" id="uploadFileName"></div>
+      <div class="form-group" id="characterVoiceFields" style="display:none;margin-top:14px">
+        <label class="form-label">Default ElevenLabs voice ID</label>
+        <input class="form-input" id="uploadVoiceId" placeholder="Optional. Used when this character is selected.">
+      </div>
       <div class="modal-actions"><button class="btn btn-secondary" type="button" onclick="closeUploadModal()">Cancel</button><button class="btn btn-primary" type="submit">Upload</button></div>
     </form>
   </div>

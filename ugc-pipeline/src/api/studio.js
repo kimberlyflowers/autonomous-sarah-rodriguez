@@ -36,6 +36,47 @@ const upload = multer({
   limits: { fileSize: 500 * 1024 * 1024 }
 });
 
+async function getSupabaseAssetFile(req, assetId, type) {
+  const { getSignedUrl } = require('../services/supabase');
+  const { data: asset, error } = await req.supabase
+    .from('ugc_assets')
+    .select('*')
+    .eq('tenant_id', req.tenant.id)
+    .eq('id', assetId)
+    .eq('type', type)
+    .single();
+  if (error) throw error;
+  return {
+    asset,
+    url: await getSignedUrl(req.supabase, asset.storage_path, 10 * 60)
+  };
+}
+
+function getLocalAssetFile(req, slug, folder) {
+  const tenantSlug = req.tenant?.slug || req.tenant?.id || 'default';
+  const dir = path.join(__dirname, '..', '..', 'assets', 'tenants', tenantSlug, folder, slug);
+  if (!fs.existsSync(dir)) throw new Error(`Saved ${folder} asset was not found.`);
+  const file = fs.readdirSync(dir).find(name => !name.endsWith('.json'));
+  if (!file) throw new Error(`Saved ${folder} asset has no file.`);
+  return path.join(dir, file);
+}
+
+async function downloadTempFile(url, tenantId, filename) {
+  const dir = path.join(UPLOAD_DIR, cleanSlug(tenantId || 'default'), 'library-assets');
+  fs.mkdirSync(dir, { recursive: true });
+  const outputPath = path.join(dir, `${Date.now()}-${filename.replace(/[^a-zA-Z0-9._-]/g, '-')}`);
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Could not download saved asset: ${response.status}`);
+  await new Promise((resolve, reject) => {
+    const dest = fs.createWriteStream(outputPath);
+    response.body.pipe(dest);
+    response.body.on('error', reject);
+    dest.on('finish', resolve);
+    dest.on('error', reject);
+  });
+  return outputPath;
+}
+
 function cleanSlug(value) {
   return String(value || '')
     .toLowerCase()
@@ -133,6 +174,7 @@ router.get('/jobs', (req, res) => {
           audioProvider: job.audio_provider,
           status: job.status,
           prompt: job.prompt,
+          aspectRatio: job.metadata?.aspectRatio || '9:16',
           script: job.script,
           localPath: job.metadata?.localPath || null,
           error: job.error,
@@ -220,7 +262,7 @@ router.post('/generate', upload.fields([
     }
 
     const files = req.files || {};
-    if (mode === 'i2v' && !files.image?.[0]) {
+    if (mode === 'i2v' && !files.image?.[0] && !req.body.imageAssetId) {
       return res.status(400).json({ error: 'Upload a starting image for I2V.' });
     }
     if (mode === 'v2v' && !files.video?.[0]) {
@@ -230,13 +272,23 @@ router.post('/generate', upload.fields([
       return res.status(400).json({ error: 'Upload an audio file.' });
     }
 
-    const imageName = files.image?.[0] ? await uploadInput(files.image[0].path) : null;
+    let imagePath = files.image?.[0]?.path || null;
+    if (!imagePath && req.body.imageAssetId) {
+      if (req.supabase) {
+        const saved = await getSupabaseAssetFile(req, req.body.imageAssetId, 'subject');
+        imagePath = await downloadTempFile(saved.url, req.tenant.slug || req.tenant.id, path.basename(saved.asset.storage_path));
+      } else {
+        imagePath = getLocalAssetFile(req, req.body.imageAssetId, 'subjects');
+      }
+    }
+
+    const imageName = imagePath ? await uploadInput(imagePath) : null;
     const videoName = files.video?.[0] ? await uploadInput(files.video[0].path) : null;
     let audioPath = files.audio?.[0]?.path || null;
     if (audioProvider === 'elevenlabs') {
       audioPath = await createElevenLabsAudio({
         script: req.body.script,
-        voiceId: req.body.voiceId,
+      voiceId: req.body.voiceId,
         tenantId: req.tenant.slug || req.tenant.id
       });
     }
@@ -248,9 +300,10 @@ router.post('/generate', upload.fields([
       audioProvider,
       tenantId: req.tenant.slug || req.tenant.id,
       script: req.body.script || '',
-      prompt: req.body.prompt || '',
-      negativePrompt: req.body.negativePrompt || '',
-      imageName,
+        prompt: req.body.prompt || '',
+        negativePrompt: req.body.negativePrompt || '',
+        aspectRatio: req.body.aspectRatio || '9:16',
+        imageName,
       videoName,
       audioName
     });
@@ -268,7 +321,7 @@ router.post('/generate', upload.fields([
         script: req.body.script || '',
         prompt: req.body.prompt || '',
         negative_prompt: req.body.negativePrompt || '',
-        metadata: { localJobId: job.jobId }
+        metadata: { localJobId: job.jobId, aspectRatio: req.body.aspectRatio || '9:16', imageAssetId: req.body.imageAssetId || null }
       });
     }
 

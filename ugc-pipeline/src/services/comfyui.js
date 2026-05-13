@@ -108,7 +108,9 @@ function patchWorkflow(workflow, preset, input) {
   }
 
   if (preset.textNode && next[preset.textNode]) {
-    next[preset.textNode].inputs.positive_prompt = positivePrompt;
+    next[preset.textNode].inputs.positive_prompt = input.aspectRatio
+      ? `${positivePrompt}, ${input.aspectRatio} aspect ratio`
+      : positivePrompt;
     next[preset.textNode].inputs.negative_prompt = negativePrompt;
   }
 
@@ -234,6 +236,7 @@ async function submitStudioJob(input) {
     audioProvider: input.audioProvider,
     status: 'pending',
     prompt: input.prompt,
+    aspectRatio: input.aspectRatio || '9:16',
     script: input.script,
     createdAt: new Date().toISOString(),
     completedAt: null,

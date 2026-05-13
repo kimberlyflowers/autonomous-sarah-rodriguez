@@ -49,14 +49,17 @@ router.get('/', async (req, res) => {
         const typeKey = asset.type === 'product' ? 'products' : asset.type === 'subject' ? 'subjects' : asset.type;
         if (!result[typeKey]) continue;
         const signedUrl = await getSignedUrl(req.supabase, asset.storage_path);
-        result[typeKey].push({
+      result[typeKey].push({
           slug: asset.id,
           name: asset.name,
+          type: asset.type,
           files: [{
             name: path.basename(asset.storage_path),
             path: signedUrl,
             size: asset.size_bytes || 0
           }],
+          voiceId: asset.metadata?.voiceId || '',
+          voiceSampleAssetId: asset.metadata?.voiceSampleAssetId || '',
           aiContext: asset.metadata?.aiContext || null
         });
       }
@@ -93,7 +96,10 @@ router.get('/', async (req, res) => {
       result[type].push({
         slug: folder,
         name: folder.replace(/-/g, ' '),
+        type: type === 'subjects' ? 'subject' : type === 'products' ? 'product' : type,
         files: files.filter(f => !f.name.endsWith('.json')),
+        voiceId: aiContext?.voiceId || '',
+        voiceSampleAssetId: aiContext?.voiceSampleAssetId || '',
         aiContext
       });
     });
@@ -124,7 +130,10 @@ async function uploadToSupabase(req, file, type, slug) {
       storage_path: storagePath,
       mime_type: file.mimetype,
       size_bytes: file.size,
-      metadata: {}
+      metadata: {
+        voiceId: req.body.voiceId || '',
+        voiceSampleAssetId: req.body.voiceSampleAssetId || ''
+      }
     })
     .select('*')
     .single();
@@ -259,6 +268,55 @@ router.post('/host/:type/:slug', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+router.patch('/subjects/:slug', async (req, res) => {
+  const { slug } = req.params;
+  if (req.supabase) {
+    try {
+      const { data: existing, error: getError } = await req.supabase
+        .from('ugc_assets')
+        .select('metadata')
+        .eq('tenant_id', req.tenant.id)
+        .eq('id', slug)
+        .eq('type', 'subject')
+        .single();
+      if (getError) throw getError;
+
+      const metadata = {
+        ...(existing?.metadata || {}),
+        voiceId: req.body.voiceId || '',
+        voiceSampleAssetId: req.body.voiceSampleAssetId || ''
+      };
+      const { data, error } = await req.supabase
+        .from('ugc_assets')
+        .update({ metadata })
+        .eq('tenant_id', req.tenant.id)
+        .eq('id', slug)
+        .eq('type', 'subject')
+        .select('*')
+        .single();
+      if (error) throw error;
+      return res.json({ success: true, asset: data });
+    } catch (error) {
+      return res.status(500).json({ error: error.message });
+    }
+  }
+
+  const tenantSlug = req.tenant?.slug || req.tenant?.id || 'default';
+  const dir = path.join(ASSETS_DIR, 'tenants', tenantSlug, 'subjects', slug);
+  if (!fs.existsSync(dir)) return res.status(404).json({ error: 'Character not found' });
+  const contextPath = path.join(dir, 'ai-context.json');
+  const existing = fs.existsSync(contextPath)
+    ? JSON.parse(fs.readFileSync(contextPath, 'utf-8'))
+    : {};
+  const next = {
+    ...existing,
+    voiceId: req.body.voiceId || '',
+    voiceSampleAssetId: req.body.voiceSampleAssetId || ''
+  };
+  fs.writeFileSync(contextPath, JSON.stringify(next, null, 2));
+  res.json({ success: true, asset: { slug, metadata: next } });
 });
 
 module.exports = router;

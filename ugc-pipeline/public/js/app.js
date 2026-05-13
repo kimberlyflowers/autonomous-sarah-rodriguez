@@ -7,6 +7,7 @@ let authConfig = null;
 let supabaseClient = null;
 let authToken = localStorage.getItem('bloomStudioToken') || '';
 let currentTenant = JSON.parse(localStorage.getItem('bloomStudioTenant') || 'null');
+let selectedCharacter = null;
 
 document.querySelectorAll('.nav-tab').forEach(tab => {
   tab.addEventListener('click', () => switchTab(tab.dataset.tab));
@@ -18,7 +19,7 @@ function switchTab(tabId) {
   document.querySelector(`[data-tab="${tabId}"]`)?.classList.add('active');
   document.getElementById(`tab-${tabId}`)?.classList.add('active');
 
-  if (tabId === 'assets') loadAssets();
+  if (tabId === 'assets' || tabId === 'characters') loadAssets();
   if (tabId === 'brands') loadBrands();
   if (tabId === 'advanced') loadGenerateOptions();
   if (tabId === 'videos') loadVideos();
@@ -256,6 +257,7 @@ function resetStudioForm() {
   document.getElementById('studioImageName').textContent = '';
   document.getElementById('studioVideoName').textContent = '';
   document.getElementById('studioAudioName').textContent = '';
+  clearSelectedCharacter();
   setStudioMode('i2v');
   setStudioAudio('upload');
 }
@@ -290,7 +292,7 @@ async function submitStudioVideo(e) {
   data.append('clientJobId', crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
 
   const mode = document.getElementById('studioMode').value;
-  if (mode === 'i2v' && !document.getElementById('studioImage').files[0]) return toast('Upload a portrait image first.', 'error');
+  if (mode === 'i2v' && !document.getElementById('studioImage').files[0] && !document.getElementById('studioImageAssetId').value) return toast('Upload a portrait image or select a saved character first.', 'error');
   if (mode === 'v2v' && !document.getElementById('studioVideo').files[0]) return toast('Upload a source video first.', 'error');
   if (document.getElementById('studioAudioProvider').value === 'upload' && !document.getElementById('studioAudio').files[0]) return toast('Upload an audio file first.', 'error');
   if (document.getElementById('studioAudioProvider').value === 'elevenlabs' && !document.getElementById('studioScript').value.trim()) return toast('Paste a script for ElevenLabs audio.', 'error');
@@ -315,8 +317,69 @@ async function submitStudioVideo(e) {
 async function loadAssets() {
   const data = await api('/api/assets');
   renderAssetGrid('productGrid', data.products || [], 'products');
-  renderAssetGrid('subjectGrid', data.subjects || [], 'subjects');
+  renderCharacterGrid(data.subjects || []);
   renderAssetGrid('audioGrid', data.audio || [], 'audio');
+}
+
+function renderCharacterGrid(characters) {
+  const grid = document.getElementById('characterGrid');
+  if (!grid) return;
+  if (!characters.length) {
+    grid.innerHTML = '<div class="empty-state">No characters saved yet. Upload Sarah, Marcus, or any spokesperson portrait here.</div>';
+    return;
+  }
+
+  grid.innerHTML = characters.map(character => {
+    const file = character.files?.[0];
+    const voice = character.voiceId ? `<div class="asset-meta">Voice ID saved</div>` : '<div class="asset-meta">No default voice yet</div>';
+    const image = file ? `<div class="asset-thumb"><img src="${file.path}" alt="${character.name}"></div>` : '<div class="asset-thumb">Character</div>';
+    return `<div class="asset-card">
+      ${image}
+      <div class="asset-info">
+        <div class="asset-name">${character.name}</div>
+        ${voice}
+      </div>
+      <div class="asset-actions">
+        <button class="btn btn-primary" onclick='selectCharacter(${JSON.stringify(character).replace(/'/g, '&apos;')})'>Use</button>
+        <button class="btn btn-secondary" onclick="editCharacterVoice('${character.slug}', '${(character.voiceId || '').replace(/'/g, "\\'")}')">Voice</button>
+        <button class="btn btn-secondary" onclick="deleteAsset('subjects','${character.slug}')">Delete</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function selectCharacter(character) {
+  selectedCharacter = character;
+  const file = character.files?.[0];
+  document.getElementById('studioImageAssetId').value = character.slug;
+  document.getElementById('studioImage').value = '';
+  document.getElementById('studioImageName').textContent = '';
+  document.getElementById('selectedCharacterName').textContent = character.name;
+  document.getElementById('selectedCharacterImg').src = file?.path || '';
+  document.getElementById('selectedCharacter').classList.add('active');
+  if (character.voiceId) {
+    document.getElementById('studioVoiceId').value = character.voiceId;
+  }
+  setStudioMode('i2v');
+  switchTab('studio');
+  toast(`${character.name} loaded into Create.`, 'success');
+}
+
+function clearSelectedCharacter() {
+  selectedCharacter = null;
+  document.getElementById('studioImageAssetId').value = '';
+  document.getElementById('selectedCharacter').classList.remove('active');
+}
+
+async function editCharacterVoice(slug, currentVoiceId = '') {
+  const voiceId = prompt('Default ElevenLabs voice ID for this character:', currentVoiceId || '');
+  if (voiceId === null) return;
+  await api(`/api/assets/subjects/${slug}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ voiceId: voiceId.trim() })
+  });
+  toast('Character voice saved.', 'success');
+  loadAssets();
 }
 
 function renderAssetGrid(containerId, assets, type) {
@@ -353,7 +416,9 @@ function showUploadModal(type) {
   document.getElementById('uploadType').value = type;
   document.getElementById('uploadName').value = '';
   document.getElementById('uploadFile').value = '';
+  document.getElementById('uploadVoiceId').value = '';
   document.getElementById('uploadFileName').textContent = '';
+  document.getElementById('characterVoiceFields').style.display = type === 'subjects' ? '' : 'none';
   document.getElementById('uploadModal').classList.add('active');
 }
 
@@ -375,6 +440,9 @@ async function uploadAsset(e) {
   const formData = new FormData();
   formData.append('file', file);
   formData.append('name', name);
+  if (type === 'subjects') {
+    formData.append('voiceId', document.getElementById('uploadVoiceId').value.trim());
+  }
 
   try {
     const data = await api(`/api/assets/${type}`, { method: 'POST', body: formData });
@@ -382,6 +450,7 @@ async function uploadAsset(e) {
       toast(`${name} uploaded`, 'success');
       closeUploadModal();
       loadAssets();
+      if (type === 'subjects') switchTab('characters');
     }
   } catch (err) {
     toast(err.message, 'error');
