@@ -2,8 +2,7 @@
 # BLOOM Ollama Startup Script
 # Model is pre-baked into the image during docker build.
 # This script just starts Ollama and waits for it to be ready.
-
-set -e
+Fix Ollama start.sh: pull model at runtime instead of assuming baked imageset -e
 
 echo "BLOOM Ollama Service — FREE LLM Fallback"
 echo "Starting Ollama server..."
@@ -25,6 +24,12 @@ while ! curl -sf http://localhost:11434/api/tags > /dev/null 2>&1; do
   sleep 1
 done
 echo "Ollama server is ready!"
+
+# Pull primary model at runtime
+MODEL=${OLLAMA_MODEL:-llama3.2}
+echo "Pulling model: $MODEL..."
+ollama pull "$MODEL"
+echo "Model $MODEL ready!"
 
 # Pull any additional model if requested (already have llama3.2 baked in)
 if [ -n "${OLLAMA_MODEL_2}" ]; then
