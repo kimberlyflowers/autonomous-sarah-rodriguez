@@ -11,6 +11,7 @@ let assetsCache = { products: [], subjects: [], audio: [], outputs: [], videos: 
 let selectedCharacter = null;
 let currentCharacterTab = 'library';
 let currentCharacterRatio = 'portrait';
+let currentLibraryImageRatio = 'portrait';
 let currentLibraryVideoRatio = 'portrait';
 let productPlacementCharacter = null;
 let productPlacementProduct = null;
@@ -837,6 +838,7 @@ async function loadAssets() {
   assetsCache = data;
   renderAssetGrid('productGrid', data.products || [], 'products');
   renderAssetGrid('generatedImageGrid', data.outputs || [], 'outputs');
+  setLibraryImageRatio(currentLibraryImageRatio);
   renderAgentLibrary();
   renderMyAgents(data.subjects || []);
   renderAssetGrid('audioGrid', data.audio || [], 'audio');
@@ -868,6 +870,13 @@ function setLibraryVideoRatio(ratio) {
   currentLibraryVideoRatio = ratio;
   document.querySelectorAll('[data-video-ratio]').forEach(btn => btn.classList.toggle('active', btn.dataset.videoRatio === ratio));
   const grid = document.getElementById('videoGrid');
+  if (grid) grid.classList.toggle('landscape', ratio === 'landscape');
+}
+
+function setLibraryImageRatio(ratio) {
+  currentLibraryImageRatio = ratio;
+  document.querySelectorAll('[data-image-ratio]').forEach(btn => btn.classList.toggle('active', btn.dataset.imageRatio === ratio));
+  const grid = document.getElementById('generatedImageGrid');
   if (grid) grid.classList.toggle('landscape', ratio === 'landscape');
 }
 
@@ -1606,11 +1615,12 @@ async function loadVideos() {
     const statusChip = v.status === 'completed' ? '<span class="chip chip-green">Completed</span>' : v.status === 'failed' ? '<span class="chip chip-red">Failed</span>' : '<span class="chip chip-warn">Processing</span>';
     const mediaUrl = authenticatedMediaUrl(v.localPath || '');
     const posterId = `poster-${String(v.requestId || v.jobId || Math.random()).replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+    const videoPreviewUrl = mediaUrl ? `${mediaUrl}#t=0.1` : '';
     const videoEl = mediaUrl
       ? `<div class="video-thumb-wrap">
           <img class="video-poster" id="${posterId}" alt="Video preview">
-          <video class="video-player" controls preload="metadata" muted playsinline onloadeddata="captureVideoPoster(this,'${posterId}')" onseeked="captureVideoPoster(this,'${posterId}')" onplay="markVideoPlaying(this,true)" onpause="markVideoPlaying(this,false)">
-            <source src="${mediaUrl}" type="video/mp4">
+          <video class="video-player" controls preload="auto" muted playsinline onloadeddata="captureVideoPoster(this,'${posterId}')" onseeked="captureVideoPoster(this,'${posterId}')" onplay="markVideoPlaying(this,true)" onpause="markVideoPlaying(this,false)">
+            <source src="${videoPreviewUrl}" type="video/mp4">
           </video>
           <div class="video-play-badge">▶ Preview</div>
         </div>`
@@ -1618,7 +1628,7 @@ async function loadVideos() {
     const actions = v.status === 'completed' && mediaUrl
       ? `<div class="actions"><button class="btn btn-primary" onclick="openPublishModal('${mediaUrl.replace(/'/g, "\\'")}','video')">Post</button><a class="btn btn-secondary" href="${mediaUrl}" download>Download</a></div>`
       : '';
-    return `<div class="video-card">${videoEl}<div class="video-info"><div style="display:flex;justify-content:space-between;gap:8px"><span class="chip chip-soft">${v.format || 'custom'}</span>${statusChip}</div><div class="video-prompt">${v.prompt || ''}</div>${v.error ? `<div class="video-prompt" style="color:var(--red)">${v.error}</div>` : ''}${actions}</div></div>`;
+    return `<div class="video-card">${videoEl}<div class="video-info"><div style="display:flex;justify-content:space-between;gap:8px"><span class="chip chip-soft">${v.format || 'custom'}</span>${statusChip}</div><div class="video-prompt">${v.prompt || v.localPath || ''}</div>${v.error ? `<div class="video-prompt" style="color:var(--red)">${v.error}</div>` : ''}${actions}</div></div>`;
   }).join('');
 }
 
