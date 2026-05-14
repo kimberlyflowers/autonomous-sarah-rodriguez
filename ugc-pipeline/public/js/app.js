@@ -20,6 +20,8 @@ let studioCrop = { x: 50, y: 50 };
 let cropDrag = null;
 let previewAudioAsset = null;
 let voicePreviewTimer = null;
+let generationTimer = null;
+let generationStartedAt = 0;
 
 const starterCharacters = [
   { slug: 'library-financial-advisor', name: 'Financial Advisor', role: 'Advisor specialist', imageUrl: '/agent-library/financial-advisor.png' },
@@ -79,6 +81,64 @@ function toast(message, type = 'info') {
   el.textContent = message;
   container.appendChild(el);
   setTimeout(() => el.remove(), 4800);
+}
+
+function startGenerationOverlay({ engine = 'wan-comfy', mode = 'i2v' } = {}) {
+  const overlay = document.getElementById('generationOverlay');
+  if (!overlay) return;
+  generationStartedAt = Date.now();
+  overlay.classList.add('active');
+  const label = engine === 'meigen' ? 'Meigen lip sync' : mode === 'v2v' ? 'WAN V2V' : 'WAN ComfyUI';
+  document.getElementById('generationEngine').textContent = label;
+  updateGenerationOverlay(engine, mode);
+  clearInterval(generationTimer);
+  generationTimer = setInterval(() => updateGenerationOverlay(engine, mode), 1000);
+}
+
+function updateGenerationOverlay(engine = 'wan-comfy', mode = 'i2v') {
+  const elapsed = Math.max(0, Math.round((Date.now() - generationStartedAt) / 1000));
+  const estimate = engine === 'meigen' ? 180 : mode === 'v2v' ? 300 : 240;
+  const progress = Math.min(96, Math.max(3, Math.round((elapsed / estimate) * 92)));
+  const stages = engine === 'meigen'
+    ? [
+        [10, 'Uploading references', 'Sending your selected image and voiceover to the lip sync endpoint.'],
+        [35, 'Building the face track', 'Matching the speaker motion to the audio.'],
+        [70, 'Rendering video', 'Generating the final talking-head clip.'],
+        [96, 'Saving to Library', 'Almost there. Bloom Studio is collecting the finished video.']
+      ]
+    : [
+        [10, 'Waking the workflow', 'Preparing the ComfyUI video workflow.'],
+        [35, 'Loading media', 'Sending the selected image, video, and audio into the workflow.'],
+        [75, 'Rendering frames', 'Generating the video frames and syncing motion.'],
+        [96, 'Finalizing output', 'Almost there. Bloom Studio is waiting for the final file.']
+      ];
+  const stage = stages.find(item => progress <= item[0]) || stages[stages.length - 1];
+  document.getElementById('generationTitle').textContent = `${stage[1]}...`;
+  document.getElementById('generationDetail').textContent = stage[2];
+  document.getElementById('generationElapsed').textContent = `${elapsed}s elapsed`;
+  document.getElementById('generationPercent').textContent = `${progress}% estimated`;
+  document.getElementById('generationProgressFill').style.width = `${progress}%`;
+}
+
+function stopGenerationOverlay({ success = false } = {}) {
+  clearInterval(generationTimer);
+  generationTimer = null;
+  const overlay = document.getElementById('generationOverlay');
+  if (!overlay) return;
+  if (success) {
+    document.getElementById('generationTitle').textContent = 'Video ready';
+    document.getElementById('generationDetail').textContent = 'Saved to your Library.';
+    document.getElementById('generationPercent').textContent = '100%';
+    document.getElementById('generationProgressFill').style.width = '100%';
+    setTimeout(() => overlay.classList.remove('active'), 900);
+    return;
+  }
+  overlay.classList.remove('active');
+}
+
+function dismissGenerationOverlay() {
+  const overlay = document.getElementById('generationOverlay');
+  if (overlay) overlay.classList.remove('active');
 }
 
 function toggleTheme() {
@@ -610,13 +670,16 @@ async function submitStudioVideo(e) {
   const button = form.querySelector('button[type="submit"]');
   button.disabled = true;
   button.textContent = 'Queuing video...';
+  startGenerationOverlay({ engine: videoEngine, mode });
   try {
     toast(videoEngine === 'meigen' ? 'Generating Meigen lip sync video...' : 'Queuing video. If the RunPod is asleep, Bloom Studio will wake it first.', 'info');
     const result = await api('/api/studio/generate', { method: 'POST', body: data });
+    stopGenerationOverlay({ success: true });
     toast(videoEngine === 'meigen' ? 'Meigen video generated and saved to Library.' : 'Video job queued.', 'success');
     studioJobs.unshift(result.job);
     switchTab('videos');
   } catch (err) {
+    stopGenerationOverlay();
     toast(err.message, 'error');
   } finally {
     button.disabled = false;
