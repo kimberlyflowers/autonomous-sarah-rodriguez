@@ -681,6 +681,7 @@ async function submitStudioVideo(e) {
     stopGenerationOverlay({ success: true });
     toast(videoEngine === 'meigen' ? 'Meigen video generated and saved to Library.' : 'Video job queued.', 'success');
     studioJobs.unshift(result.job);
+    await loadAssets();
     switchTab('videos');
   } catch (err) {
     stopGenerationOverlay();

@@ -550,6 +550,7 @@ router.post('/generate', upload.fields([
         aspectRatio: req.body.aspectRatio || '9:16',
         durationSeconds,
         localPath: savedVideo.path,
+        asset: savedVideo,
         cost: meigen.cost,
         createdAt: new Date().toISOString(),
         completedAt: new Date().toISOString()
