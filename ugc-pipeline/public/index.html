@@ -664,6 +664,7 @@ button,input,select,textarea{font:inherit}
 
 <div class="media-lightbox" id="libraryLightbox" onclick="if(event.target.id==='libraryLightbox')closeLibraryLightbox()">
   <div class="lightbox-shell">
+    <button class="lightbox-close-x" type="button" onclick="closeLibraryLightbox()" aria-label="Close">×</button>
     <div class="lightbox-top">
       <div>
         <div class="lightbox-title" id="lightboxTitle">Library preview</div>
@@ -672,7 +673,6 @@ button,input,select,textarea{font:inherit}
       <div class="lightbox-actions">
         <button class="btn btn-secondary" type="button" id="lightboxPost">Post</button>
         <a class="btn btn-secondary" id="lightboxDownload" href="#" download>Save</a>
-        <button class="btn btn-secondary" type="button" onclick="closeLibraryLightbox()">Close</button>
       </div>
     </div>
     <div class="lightbox-body" id="lightboxBody">
