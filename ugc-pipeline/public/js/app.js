@@ -10,6 +10,8 @@ let currentTenant = JSON.parse(localStorage.getItem('bloomStudioTenant') || 'nul
 let selectedCharacter = null;
 let currentCharacterTab = 'library';
 let currentCharacterRatio = 'portrait';
+let productPlacementCharacter = null;
+let productPlacementProduct = null;
 
 const starterCharacters = [
   { slug: 'library-financial-advisor', name: 'Financial Advisor', role: 'Advisor specialist', imageUrl: '/agent-library/financial-advisor.png' },
@@ -49,12 +51,13 @@ function switchTab(tabId) {
   document.querySelector(`[data-tab="${tabId}"]`)?.classList.add('active');
   document.getElementById(`tab-${tabId}`)?.classList.add('active');
 
-  if (tabId === 'assets' || tabId === 'characters') loadAssets();
+  if (tabId === 'assets' || tabId === 'characters' || tabId === 'products') loadAssets();
   if (tabId === 'brands') loadBrands();
   if (tabId === 'billing') loadBilling();
   if (tabId === 'advanced') loadGenerateOptions();
   if (tabId === 'videos') loadVideos();
   if (tabId === 'studio') loadStudioStatus();
+  if (tabId === 'products') loadProductPlacementStatus();
 }
 
 function toast(message, type = 'info') {
@@ -446,6 +449,7 @@ async function loadAssets() {
   renderAgentLibrary();
   renderMyAgents(data.subjects || []);
   renderAssetGrid('audioGrid', data.audio || [], 'audio');
+  renderProductPlacementPickers(data);
 }
 
 function setCharacterTab(tab) {
@@ -524,6 +528,155 @@ function selectCharacter(character) {
   setStudioMode('i2v');
   switchTab('studio');
   toast(`${character.name} loaded into Create.`, 'success');
+}
+
+function renderProductPlacementPickers(data = {}) {
+  renderProductCharacterPicker([...(starterCharacters || []), ...(data.subjects || [])]);
+  renderProductAssetPicker(data.products || []);
+}
+
+function renderProductCharacterPicker(characters) {
+  const grid = document.getElementById('productCharacterGrid');
+  if (!grid) return;
+  grid.innerHTML = characters.map(character => {
+    const file = character.files?.[0];
+    const imageUrl = character.imageUrl || file?.path || '';
+    const payload = JSON.stringify({ ...character, imageUrl }).replace(/'/g, '&apos;');
+    return `<div class="mini-pick" onclick='selectProductPlacementCharacter(${payload})'>
+      <img src="${imageUrl}" alt="${character.name}" loading="lazy">
+      <span>${character.name}</span>
+    </div>`;
+  }).join('');
+}
+
+function renderProductAssetPicker(products) {
+  const grid = document.getElementById('productAssetGrid');
+  if (!grid) return;
+  if (!products.length) {
+    grid.innerHTML = '<div class="character-empty">No product assets yet. Upload a product image to use it here.</div>';
+    return;
+  }
+  grid.innerHTML = products.map(product => {
+    const file = product.files?.[0];
+    const imageUrl = file?.path || '';
+    const payload = JSON.stringify({ ...product, imageUrl }).replace(/'/g, '&apos;');
+    return `<div class="mini-pick" onclick='selectProductPlacementProduct(${payload})'>
+      <img src="${imageUrl}" alt="${product.name}" loading="lazy">
+      <span>${product.name}</span>
+    </div>`;
+  }).join('');
+}
+
+function selectProductPlacementCharacter(character) {
+  const file = character.files?.[0];
+  const imageUrl = character.imageUrl || file?.path || '';
+  const isLibrary = character.slug?.startsWith('library-');
+  productPlacementCharacter = {
+    slug: character.slug,
+    name: character.name,
+    imageUrl,
+    assetId: isLibrary ? '' : character.slug,
+    file: null
+  };
+  document.getElementById('productCharacterName').textContent = character.name;
+  document.getElementById('productCharacterPreview').innerHTML = `<img src="${imageUrl}" alt="${character.name}">`;
+}
+
+function selectProductPlacementProduct(product) {
+  const file = product.files?.[0];
+  const imageUrl = product.imageUrl || file?.path || '';
+  productPlacementProduct = {
+    slug: product.slug,
+    name: product.name,
+    imageUrl,
+    assetId: product.slug,
+    file: null
+  };
+  document.getElementById('productImageName').textContent = product.name;
+  document.getElementById('productImagePreview').innerHTML = `<img src="${imageUrl}" alt="${product.name}">`;
+}
+
+function previewProductPlacementUpload(type, file) {
+  if (!file) return;
+  const url = URL.createObjectURL(file);
+  if (type === 'character') {
+    productPlacementCharacter = { name: file.name, imageUrl: url, assetId: '', file };
+    document.getElementById('productCharacterName').textContent = file.name;
+    document.getElementById('productCharacterPreview').innerHTML = `<img src="${url}" alt="${file.name}">`;
+  } else {
+    productPlacementProduct = { name: file.name, imageUrl: url, assetId: '', file };
+    document.getElementById('productImageName').textContent = file.name;
+    document.getElementById('productImagePreview').innerHTML = `<img src="${url}" alt="${file.name}">`;
+  }
+}
+
+async function loadProductPlacementStatus() {
+  try {
+    const status = await api('/api/product-placement/status');
+    setChip('nanoStatus', status.configured ? 'Nano ready' : 'Needs key', status.configured ? 'green' : 'warn');
+    const note = document.getElementById('nanoEndpointNote');
+    if (note) note.textContent = status.configured
+      ? `Connected to ${status.endpointId || 'Nano Banana endpoint'}.`
+      : 'Add the RunPod API key/endpoint on Railway before generation.';
+  } catch (error) {
+    setChip('nanoStatus', 'Endpoint error', 'red');
+  }
+}
+
+function resetProductPlacement() {
+  productPlacementCharacter = null;
+  productPlacementProduct = null;
+  document.getElementById('productCharacterName').textContent = 'No character selected';
+  document.getElementById('productImageName').textContent = 'No product selected';
+  document.getElementById('productCharacterPreview').textContent = 'Choose a character';
+  document.getElementById('productImagePreview').textContent = 'Choose a product';
+  document.getElementById('productCharacterUpload').value = '';
+  document.getElementById('productImageUpload').value = '';
+  document.getElementById('productPlacementResult').innerHTML = '<div><strong>Preview idle</strong><p class="hint">Choose a character, product, and prompt.</p></div>';
+  document.getElementById('productResultActions').style.display = 'none';
+}
+
+async function generateProductPlacement() {
+  if (!productPlacementCharacter) return toast('Choose or upload a character first.', 'error');
+  if (!productPlacementProduct) return toast('Choose or upload a product first.', 'error');
+  const button = document.getElementById('productGenerateButton');
+  const resultFrame = document.getElementById('productPlacementResult');
+  const aspectRatio = document.getElementById('productPlacementAspect').value;
+  resultFrame.classList.toggle('ratio-portrait', aspectRatio === '9:16');
+  button.disabled = true;
+  button.textContent = 'Running Nano...';
+  resultFrame.innerHTML = '<div><strong>Generating...</strong><p class="hint">Nano Banana is combining your character and product.</p></div>';
+  try {
+    const data = new FormData();
+    data.append('prompt', document.getElementById('productPlacementPrompt').value.trim());
+    data.append('aspectRatio', aspectRatio);
+    data.append('size', document.getElementById('productPlacementSize').value);
+    if (productPlacementCharacter.file) data.append('character', productPlacementCharacter.file);
+    else if (productPlacementCharacter.assetId) data.append('characterAssetId', productPlacementCharacter.assetId);
+    else data.append('characterUrl', productPlacementCharacter.imageUrl);
+    if (productPlacementProduct.file) data.append('product', productPlacementProduct.file);
+    else if (productPlacementProduct.assetId) data.append('productAssetId', productPlacementProduct.assetId);
+    else data.append('productUrl', productPlacementProduct.imageUrl);
+
+    const response = await api('/api/product-placement/generate', { method: 'POST', body: data });
+    const image = response.result?.image;
+    if (image) {
+      resultFrame.innerHTML = `<img src="${image}" alt="Generated product placement">`;
+      const link = document.getElementById('productResultDownload');
+      link.href = image;
+      document.getElementById('productResultActions').style.display = '';
+      toast('Product image generated.', 'success');
+    } else {
+      resultFrame.innerHTML = '<div><strong>Job queued</strong><p class="hint">The endpoint accepted the request but did not return an image yet.</p></div>';
+      toast('Nano job queued. Check the RunPod endpoint logs if it does not return.', 'info');
+    }
+  } catch (error) {
+    resultFrame.innerHTML = '<div><strong>Generation failed</strong><p class="hint">Check endpoint settings or prompt inputs.</p></div>';
+    toast(error.message, 'error');
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Run Nano Banana';
+  }
 }
 
 function clearSelectedCharacter() {

@@ -49,13 +49,14 @@ button,input,select,textarea{font:inherit}
 .asset-grid,.video-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}.asset-card,.video-card{background:var(--surface);border:1px solid var(--line);border-radius:16px;overflow:hidden}.asset-thumb{height:150px;background:var(--soft);display:flex;align-items:center;justify-content:center;color:var(--muted)}.asset-thumb img{width:100%;height:100%;object-fit:cover}.asset-info,.video-info{padding:13px}.asset-name{font-weight:800}.asset-meta,.video-prompt{font-size:12px;color:var(--muted);margin-top:4px}.asset-actions{padding:10px 13px;border-top:1px solid var(--line);display:flex;gap:8px}
 .character-page{background:var(--bg);border:1px solid var(--line);border-radius:18px;padding:14px;box-shadow:none;min-height:calc(100vh - 150px)}.character-head{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:14px}.character-head h2{color:var(--ink);font-size:22px;letter-spacing:-.03em}.character-head p{color:var(--muted);font-size:13px;margin-top:3px}.character-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.character-tabs,.ratio-tabs{display:flex;gap:4px;background:var(--dark);border:1px solid var(--line);border-radius:12px;padding:4px}.character-tab,.ratio-tab{border:1px solid transparent;background:transparent;color:var(--muted);border-radius:9px;padding:9px 18px;font-weight:800;font-size:13px;cursor:pointer}.character-tab.active,.ratio-tab.active{background:var(--surface);color:var(--ink);border-color:var(--line)}.character-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(245px,1fr));gap:18px;align-items:start}.character-grid.landscape{grid-template-columns:repeat(auto-fill,minmax(390px,1fr))}.character-card{position:relative;aspect-ratio:9/16;border-radius:13px;overflow:hidden;background:#222;border:1px solid var(--line);cursor:pointer;min-height:440px}.character-grid.landscape .character-card{aspect-ratio:16/9;min-height:250px}.character-card:hover{border-color:rgba(244,162,97,.65);transform:translateY(-1px)}.character-card img{width:100%;height:100%;object-fit:cover;object-position:center;display:block}.character-overlay{position:absolute;inset:auto 0 0;background:linear-gradient(transparent,rgba(0,0,0,.78));padding:72px 14px 14px;color:#fff}.character-title{font-size:15px;font-weight:800}.character-meta{font-size:12px;color:rgba(255,255,255,.72);margin-top:2px}.character-menu{position:absolute;top:8px;right:8px;color:#fff;background:rgba(0,0,0,.38);border-radius:999px;padding:2px 8px;font-weight:800}.character-actions{position:absolute;right:12px;bottom:12px;display:flex;gap:6px;margin-top:0;opacity:0;transform:translateY(6px);transition:.16s}.character-card:hover .character-actions{opacity:1;transform:translateY(0)}.character-actions .btn{padding:7px 9px;border-radius:8px;font-size:11px}.character-empty{color:var(--muted);border:1px dashed var(--line);border-radius:14px;padding:36px;text-align:center}
 .selected-character{display:none;align-items:center;gap:12px;padding:12px;border:1px solid rgba(244,162,97,.35);background:#fff8f1;border-radius:14px;margin-bottom:12px}.selected-character.active{display:flex}.selected-character img{width:52px;height:52px;border-radius:12px;object-fit:cover;background:var(--soft)}.selected-character strong{display:block;font-size:14px}.selected-character span{font-size:12px;color:var(--muted)}
+.product-lab{display:grid;grid-template-columns:minmax(0,1fr) minmax(360px,.72fr);gap:18px;align-items:start}.product-drop-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.pick-card{border:1.5px solid var(--line);border-radius:16px;overflow:hidden;background:var(--surface)}.pick-preview{aspect-ratio:16/9;background:var(--soft);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:13px;overflow:hidden}.pick-preview img{width:100%;height:100%;object-fit:cover;object-position:center}.pick-body{padding:12px}.pick-body strong{display:block;font-size:14px}.pick-body span{display:block;color:var(--muted);font-size:12px;margin-top:3px}.mini-pick-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:10px;max-height:360px;overflow:auto;padding-right:4px}.mini-pick{position:relative;aspect-ratio:16/9;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--soft);cursor:pointer}.mini-pick:hover{border-color:var(--primary)}.mini-pick img{width:100%;height:100%;object-fit:cover;display:block}.mini-pick span{position:absolute;inset:auto 0 0;background:linear-gradient(transparent,rgba(0,0,0,.78));color:#fff;font-size:11px;font-weight:800;padding:24px 8px 8px}.result-frame{aspect-ratio:16/9;background:linear-gradient(160deg,#242a2c,#111);border-radius:16px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;overflow:hidden;color:rgba(255,255,255,.55);text-align:center}.result-frame.ratio-portrait{aspect-ratio:9/16;max-height:640px;margin:0 auto}.result-frame img{width:100%;height:100%;object-fit:cover;display:block}.endpoint-note{font-size:12px;color:var(--muted);margin-top:10px}
 .workflow-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-top:12px}.workflow-card{border:1px solid var(--line);border-radius:14px;padding:13px;background:var(--surface)}.workflow-card strong{font-size:13px}.workflow-card p{font-size:12px;color:var(--muted);margin-top:4px}.billing-hero{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px;align-items:stretch}.price-card{background:linear-gradient(135deg,#242a2c,#16191a);color:#fff;border-radius:20px;padding:24px;box-shadow:var(--shadow)}.price-card .price{font-size:42px;font-weight:800;letter-spacing:-.05em;margin:12px 0}.price-card .price span{font-size:15px;color:rgba(255,255,255,.55);letter-spacing:0}.plan-list{display:flex;flex-direction:column;gap:10px;margin:16px 0}.plan-list div{display:flex;gap:9px;font-size:14px;color:rgba(255,255,255,.82)}.audit-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.audit-item{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px}.audit-item strong{font-size:14px}.audit-item p{font-size:12px;color:var(--muted);margin-top:5px}
 .video-player{width:100%;aspect-ratio:9/16;max-height:360px;background:#111;object-fit:contain}.empty-state{text-align:center;padding:36px;color:var(--muted);border:1px dashed var(--line);border-radius:16px;background:rgba(255,255,255,.55)}
 .brand-profile,.gen-config{display:grid;grid-template-columns:1fr 1fr;gap:14px}.selling-points-list{padding-left:18px;color:var(--muted);font-size:13px}.toast-container{position:fixed;top:20px;right:20px;z-index:20;display:flex;flex-direction:column;gap:8px}.toast{padding:12px 14px;border-radius:12px;background:#fff;border:1px solid var(--line);box-shadow:var(--shadow);font-size:13px;font-weight:700;max-width:380px}.toast-error{border-color:#f1b4b4;color:#a63232}.toast-success{border-color:#aadfbe;color:#16794a}.toast-info{color:#76513e}
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:15;align-items:center;justify-content:center}.modal-overlay.active{display:flex}.modal{background:#fff;border-radius:18px;border:1px solid var(--line);box-shadow:var(--shadow);padding:22px;max-width:540px;width:min(92vw,540px)}.modal-title{font-size:18px;font-weight:800;margin-bottom:16px}.modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:16px}
 .auth-screen{position:fixed;inset:0;z-index:50;background:linear-gradient(135deg,rgba(244,162,97,.14),rgba(231,111,139,.11)),var(--bg);display:none;align-items:center;justify-content:center;padding:24px}.auth-screen.active{display:flex}.auth-card{width:min(96vw,460px);background:var(--surface);border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow);padding:28px}.auth-card .mark{margin-bottom:16px}.auth-title{font-size:28px;font-weight:800;letter-spacing:-.04em;line-height:1.08;margin-bottom:8px}.auth-copy{font-size:14px;color:var(--muted);margin-bottom:22px}.auth-meta{margin-top:14px;padding:12px;border-radius:14px;background:rgba(244,162,97,.1);border:1px solid rgba(244,162,97,.25);color:var(--primary);font-size:12px}.user-menu{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}.tenant-pill{font-size:12px;font-weight:800;color:var(--primary);background:rgba(244,162,97,.1);border:1px solid rgba(244,162,97,.25);border-radius:999px;padding:7px 10px}
 .advanced-box{opacity:.92}.format-checkboxes{display:flex;flex-wrap:wrap;gap:8px}.format-checkbox{display:none}.format-label{border:1px solid var(--line);border-radius:999px;padding:8px 12px;font-size:13px;font-weight:800;cursor:pointer}.format-checkbox:checked+.format-label{background:#fff1e6;border-color:var(--primary);color:#ad641e}.variant-item{border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px;background:#fff}.progress-bar{height:6px;background:var(--soft);border-radius:999px;overflow:hidden}.progress-fill{height:100%;background:var(--grad)}
-@media(max-width:920px){.app-shell{grid-template-columns:1fr}.sidebar{position:relative;height:auto}.nav{flex-direction:row;overflow-x:auto}.hero-grid,.form-grid,.brand-profile,.gen-config,.step-row{grid-template-columns:1fr}.main{padding:18px}.topbar{align-items:flex-start;flex-direction:column}}
+@media(max-width:920px){.app-shell{grid-template-columns:1fr}.sidebar{position:relative;height:auto}.nav{flex-direction:row;overflow-x:auto}.hero-grid,.form-grid,.brand-profile,.gen-config,.step-row,.product-lab,.product-drop-grid{grid-template-columns:1fr}.main{padding:18px}.topbar{align-items:flex-start;flex-direction:column}}
 @media(max-width:720px){.character-grid,.character-grid.landscape{grid-template-columns:1fr}.character-card{min-height:520px}.character-grid.landscape .character-card{min-height:210px}.billing-hero{grid-template-columns:1fr}}
   </style>
 </head>
@@ -94,6 +95,7 @@ button,input,select,textarea{font:inherit}
     <nav class="nav">
       <button class="nav-tab active" data-tab="characters"><span class="nav-ico">◉</span>Characters</button>
       <button class="nav-tab" data-tab="studio"><span class="nav-ico">▶</span>Create</button>
+      <button class="nav-tab" data-tab="products"><span class="nav-ico">✦</span>Products</button>
       <button class="nav-tab" data-tab="videos"><span class="nav-ico">▥</span>Library</button>
       <button class="nav-tab" data-tab="assets"><span class="nav-ico">◫</span>Assets</button>
       <button class="nav-tab" data-tab="brands"><span class="nav-ico">✦</span>Brands</button>
@@ -293,6 +295,91 @@ button,input,select,textarea{font:inherit}
         </div>
         <div class="character-grid" id="agentLibraryGrid"></div>
         <div class="character-grid" id="myAgentsGrid" style="display:none"></div>
+      </div>
+    </section>
+
+    <section class="tab-content" id="tab-products">
+      <div class="section-head">
+        <div>
+          <h2 class="section-title">Product placement</h2>
+          <p class="section-desc">Upload or select a character, upload or select a product, then generate one production-ready image with Nano Banana.</p>
+        </div>
+        <span class="chip chip-warn" id="nanoStatus">Checking endpoint</span>
+      </div>
+      <div class="product-lab">
+        <div class="panel">
+          <div class="panel-pad">
+            <div class="form-group">
+              <label class="form-label">Prompt</label>
+              <textarea class="form-textarea" id="productPlacementPrompt" placeholder="Have the character naturally hold and present the product in a clean creator-style scene. Keep the face identity consistent, make the product clear, realistic, and correctly scaled."></textarea>
+            </div>
+            <div class="form-grid">
+              <div class="form-group">
+                <label class="form-label">Aspect ratio</label>
+                <select class="form-select" id="productPlacementAspect">
+                  <option value="9:16" selected>9:16 Short</option>
+                  <option value="16:9">16:9 Landscape</option>
+                  <option value="1:1">1:1 Square</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Output size</label>
+                <select class="form-select" id="productPlacementSize">
+                  <option value="1k" selected>1K test</option>
+                  <option value="2k">2K</option>
+                  <option value="4k">4K</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="product-drop-grid">
+              <div>
+                <div class="pick-card">
+                  <div class="pick-preview" id="productCharacterPreview">Choose a character</div>
+                  <div class="pick-body"><strong id="productCharacterName">No character selected</strong><span>Select from your library or upload a new image.</span></div>
+                </div>
+                <div class="actions">
+                  <button class="btn btn-secondary" onclick="document.getElementById('productCharacterUpload').click()">Upload character</button>
+                  <input id="productCharacterUpload" type="file" accept="image/*" hidden onchange="previewProductPlacementUpload('character', this.files?.[0])">
+                </div>
+                <div class="mini-pick-grid" id="productCharacterGrid"></div>
+              </div>
+
+              <div>
+                <div class="pick-card">
+                  <div class="pick-preview" id="productImagePreview">Choose a product</div>
+                  <div class="pick-body"><strong id="productImageName">No product selected</strong><span>Select from product assets or upload a prop/product shot.</span></div>
+                </div>
+                <div class="actions">
+                  <button class="btn btn-secondary" onclick="document.getElementById('productImageUpload').click()">Upload product</button>
+                  <button class="btn btn-secondary" onclick="showUploadModal('products')">Save product asset</button>
+                  <input id="productImageUpload" type="file" accept="image/*" hidden onchange="previewProductPlacementUpload('product', this.files?.[0])">
+                </div>
+                <div class="mini-pick-grid" id="productAssetGrid"></div>
+              </div>
+            </div>
+
+            <div class="actions" style="margin-top:18px">
+              <button class="btn btn-primary" id="productGenerateButton" onclick="generateProductPlacement()">Run Nano Banana</button>
+              <button class="btn btn-secondary" onclick="resetProductPlacement()">Reset</button>
+              <span class="hint">No Comfy workflow required. This calls the Nano Banana endpoint directly.</span>
+            </div>
+          </div>
+        </div>
+
+        <aside class="panel">
+          <div class="panel-pad">
+            <div class="panel-title">Result</div>
+            <p class="panel-note">The generated production image will appear here.</p>
+            <div class="result-frame ratio-portrait" id="productPlacementResult">
+              <div><strong>Preview idle</strong><p class="hint">Choose a character, product, and prompt.</p></div>
+            </div>
+            <div class="actions" id="productResultActions" style="display:none">
+              <a class="btn btn-secondary" id="productResultDownload" href="#" download="product-placement.png">Download image</a>
+            </div>
+            <p class="endpoint-note" id="nanoEndpointNote"></p>
+          </div>
+        </aside>
       </div>
     </section>
 
