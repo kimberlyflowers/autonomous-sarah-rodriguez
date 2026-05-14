@@ -2,6 +2,7 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const fetch = require('node-fetch');
+const { downloadSourceVideo, getRunpodToolConfig, transcribeAudio } = require('../services/runpodTools');
 
 const router = express.Router();
 const TRENDS_PATH = path.join(__dirname, '..', '..', 'data', 'viral-hooks.json');
@@ -85,6 +86,41 @@ router.get('/thumbnail', async (req, res) => {
     res.set('Content-Type', contentType);
     res.set('Cache-Control', 'public, max-age=900');
     return res.send(buffer);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/extract-script', async (req, res) => {
+  try {
+    const sourceUrl = String(req.body.url || '').trim();
+    if (!sourceUrl) return res.status(400).json({ error: 'A source video URL is required.' });
+
+    let mediaUrl = sourceUrl;
+    let download = null;
+    if (getRunpodToolConfig('DOWNLOADER').apiKey && (getRunpodToolConfig('DOWNLOADER').endpointId || getRunpodToolConfig('DOWNLOADER').endpointUrl)) {
+      download = await downloadSourceVideo(sourceUrl, { audioOnly: true, maxDuration: Number(req.body.maxDuration || 180) });
+      mediaUrl = download.url;
+    }
+
+    const transcript = await transcribeAudio(mediaUrl, {
+      model: req.body.model || 'turbo',
+      transcription: req.body.transcription || 'plain_text',
+      language: req.body.language || null,
+      enableVad: true
+    });
+
+    return res.json({
+      success: true,
+      sourceUrl,
+      mediaUrl,
+      text: transcript.text,
+      downloaded: !!download,
+      raw: {
+        downloader: download?.raw || null,
+        transcription: transcript.raw
+      }
+    });
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }

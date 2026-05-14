@@ -461,6 +461,33 @@ async function showTrendRemixOptions() {
   await renderTrendLightbox();
 }
 
+async function extractTrendScript() {
+  const trend = trendsCache[trendIndex];
+  if (!trend?.url) return toast('Choose a trend first.', 'error');
+  const button = document.getElementById('extractTrendScriptButton');
+  const output = document.getElementById('trendSourceScript');
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Extracting...';
+  }
+  try {
+    toast('Extracting source script from the trend...', 'info');
+    const result = await api('/api/trends/extract-script', {
+      method: 'POST',
+      body: JSON.stringify({ url: trend.url, maxDuration: 180 })
+    });
+    if (output) output.value = result.text || '';
+    toast('Source script extracted. Review it, then confirm remix.', 'success');
+  } catch (error) {
+    toast(`Could not extract script yet: ${error.message}`, 'error');
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = 'Extract script';
+    }
+  }
+}
+
 async function renderTrendLightbox() {
   const trend = trendsCache[trendIndex];
   const body = document.getElementById('trendLightboxBody');
@@ -489,7 +516,10 @@ async function renderTrendLightbox() {
         <div class="form-group">
           <label class="form-label">Source hook / script structure</label>
           <textarea class="form-textarea" id="trendSourceScript" style="min-height:96px">${escapeHtml(trend.hook || '')}</textarea>
-          <div class="hint" style="margin-top:7px;color:rgba(255,255,255,.55)">Automatic transcript extraction can be added after we wire a source-video transcription endpoint. For now, this uses the hook/caption from the trend library.</div>
+          <div class="actions" style="margin-top:10px">
+            <button class="btn btn-secondary" id="extractTrendScriptButton" type="button" onclick="extractTrendScript()">Extract script</button>
+          </div>
+          <div class="hint" style="margin-top:7px;color:rgba(255,255,255,.55)">If the platform blocks downloading, use the hook here or upload the source video as the reference motion clip in Create.</div>
         </div>
         <div class="form-group">
           <label class="form-label">Character</label>
@@ -553,9 +583,10 @@ async function remixCurrentTrend() {
   document.getElementById('studioScript').value = script;
   document.getElementById('studioPrompt').value = prompt;
   document.getElementById('studioNegativePrompt').value ||= 'subtitles, watermark, distorted hands, extra fingers, low quality, random nail color, camera shake';
-  document.getElementById('studioVideoEngine').value = 'meigen';
+  document.getElementById('studioVideoEngine').value = 'wan-animate';
+  document.getElementById('studioReferenceVideoUrl').value = trend.url || '';
   setStudioMode('i2v');
-  setStudioVideoEngine('meigen');
+  setStudioVideoEngine('wan-animate');
   if (character) selectCharacter(character);
   closeTrendLightbox();
   switchTab('studio');
