@@ -153,6 +153,31 @@ function openGeneratedLibrary() {
   loadVideos();
 }
 
+function captureVideoPoster(video, imgId) {
+  const img = document.getElementById(imgId);
+  const wrap = video.closest('.video-thumb-wrap');
+  if (!img || !wrap || img.dataset.ready === '1') return;
+  try {
+    const canvas = document.createElement('canvas');
+    const width = video.videoWidth || 640;
+    const height = video.videoHeight || 360;
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, width, height);
+    img.src = canvas.toDataURL('image/jpeg', 0.72);
+    img.dataset.ready = '1';
+    wrap.classList.add('ready');
+  } catch (error) {
+    wrap.classList.add('no-poster');
+  }
+}
+
+function markVideoPlaying(video, isPlaying) {
+  const wrap = video.closest('.video-thumb-wrap');
+  if (wrap) wrap.classList.toggle('playing', isPlaying);
+}
+
 function toggleTheme() {
   const next = document.body.dataset.theme === 'light' ? 'dark' : 'light';
   document.body.dataset.theme = next;
@@ -490,10 +515,11 @@ function updatePreviewRatio() {
 function setPreviewImage(src, title = 'Selected character') {
   const frame = document.getElementById('studioPreview');
   if (!frame || !src) return;
+  const displaySrc = authenticatedMediaUrl(src);
   updatePreviewRatio();
   resetStudioCrop();
   frame.classList.add('has-media');
-  frame.innerHTML = `<img src="${src}" alt="${title}">`;
+  frame.innerHTML = `<img src="${displaySrc}" alt="${title}">`;
   frame.onpointerdown = startPreviewDrag;
   document.getElementById('cropHint').style.display = '';
   applyStudioCrop();
@@ -859,6 +885,7 @@ function renderMyAgents(characters) {
 function renderCharacterCard(character, isLibrary) {
   const file = character.files?.[0];
   const imageUrl = character.imageUrl || file?.path || '';
+  const displayUrl = authenticatedMediaUrl(imageUrl);
   const payload = JSON.stringify({ ...character, imageUrl }).replace(/'/g, '&apos;');
   const voice = character.voiceId ? 'Voice saved' : isLibrary ? character.role : 'No default voice';
   const manage = isLibrary
@@ -866,7 +893,7 @@ function renderCharacterCard(character, isLibrary) {
     : `<button class="btn btn-secondary" onclick="event.stopPropagation();editCharacterVoice('${character.slug}', '${(character.voiceId || '').replace(/'/g, "\\'")}')">Voice</button>
        <button class="btn btn-secondary" onclick="event.stopPropagation();deleteAsset('subjects','${character.slug}')">Delete</button>`;
   return `<div class="character-card" onclick='selectCharacter(${payload})'>
-    <img src="${imageUrl}" alt="${character.name}" loading="lazy">
+    <img src="${displayUrl}" alt="${character.name}" loading="lazy">
     <div class="character-menu">⋮</div>
     <div class="character-overlay">
       <div class="character-title">${character.name}</div>
@@ -889,7 +916,7 @@ function selectCharacter(character) {
   document.getElementById('studioImage').value = '';
   document.getElementById('studioImageName').textContent = '';
   document.getElementById('selectedCharacterName').textContent = character.name;
-  document.getElementById('selectedCharacterImg').src = imageUrl;
+  document.getElementById('selectedCharacterImg').src = authenticatedMediaUrl(imageUrl);
   document.getElementById('selectedCharacter').classList.add('active');
   setPreviewImage(imageUrl, character.name);
   if (character.voiceId) {
@@ -925,9 +952,10 @@ function renderProductCharacterPicker(characters) {
   grid.innerHTML = characters.map(character => {
     const file = character.files?.[0];
     const imageUrl = character.imageUrl || file?.path || '';
+    const displayUrl = authenticatedMediaUrl(imageUrl);
     const payload = JSON.stringify({ ...character, imageUrl }).replace(/'/g, '&apos;');
     return `<div class="mini-pick" onclick='selectProductPlacementCharacter(${payload})'>
-      <img src="${imageUrl}" alt="${character.name}" loading="lazy">
+      <img src="${displayUrl}" alt="${character.name}" loading="lazy">
       <span>${character.name}</span>
     </div>`;
   }).join('');
@@ -943,9 +971,10 @@ function renderProductAssetPicker(products) {
   grid.innerHTML = products.map(product => {
     const file = product.files?.[0];
     const imageUrl = file?.path || '';
+    const displayUrl = authenticatedMediaUrl(imageUrl);
     const payload = JSON.stringify({ ...product, imageUrl }).replace(/'/g, '&apos;');
     return `<div class="mini-pick" onclick='selectProductPlacementProduct(${payload})'>
-      <img src="${imageUrl}" alt="${product.name}" loading="lazy">
+      <img src="${displayUrl}" alt="${product.name}" loading="lazy">
       <span>${product.name}</span>
     </div>`;
   }).join('');
@@ -963,7 +992,7 @@ function selectProductPlacementCharacter(character) {
     file: null
   };
   document.getElementById('productCharacterName').textContent = character.name;
-  document.getElementById('productCharacterPreview').innerHTML = `<img src="${imageUrl}" alt="${character.name}">`;
+  document.getElementById('productCharacterPreview').innerHTML = `<img src="${authenticatedMediaUrl(imageUrl)}" alt="${character.name}">`;
 }
 
 function selectProductPlacementProduct(product) {
@@ -1025,13 +1054,13 @@ function renderProductPlacementReferences() {
   if (name) name.textContent = `${productPlacementReferences.length} reference image${productPlacementReferences.length === 1 ? '' : 's'} selected`;
   if (preview) {
     preview.innerHTML = productPlacementReferences[0]
-      ? `<img src="${productPlacementReferences[0].imageUrl}" alt="${productPlacementReferences[0].name || 'Reference image'}">`
+      ? `<img src="${authenticatedMediaUrl(productPlacementReferences[0].imageUrl)}" alt="${productPlacementReferences[0].name || 'Reference image'}">`
       : 'Optional references';
   }
   if (!strip) return;
   strip.innerHTML = productPlacementReferences.map((reference, index) => `
     <div class="reference-chip">
-      <img src="${reference.imageUrl}" alt="${reference.name || `Reference ${index + 1}`}">
+      <img src="${authenticatedMediaUrl(reference.imageUrl)}" alt="${reference.name || `Reference ${index + 1}`}">
       <button type="button" onclick="removeProductPlacementReference(${index})" aria-label="Remove reference">×</button>
     </div>
   `).join('');
@@ -1227,8 +1256,9 @@ function renderAssetGrid(containerId, assets, type) {
     const file = asset.files[0];
     const isImage = file && /\.(jpg|jpeg|png|webp|gif)$/i.test(file.name);
     const isAudio = file && /\.(mp3|wav|m4a|ogg|aac)$/i.test(file.name);
+    const filePath = file?.path ? authenticatedMediaUrl(file.path) : '';
     const thumb = isImage
-      ? `<div class="asset-thumb"><img src="${file.path}" alt="${asset.name}"></div>`
+      ? `<div class="asset-thumb"><img src="${filePath}" alt="${asset.name}" loading="lazy"></div>`
       : `<div class="asset-thumb">${isAudio ? 'Audio' : 'File'}</div>`;
 
     return `<div class="asset-card">
@@ -1240,7 +1270,7 @@ function renderAssetGrid(containerId, assets, type) {
       <div class="asset-actions">
         <button class="btn btn-secondary" onclick="viewContext('${type}','${asset.slug}')">Context</button>
         ${type === 'audio' ? `<button class="btn btn-secondary" onclick="copyAudioTempUrl('${asset.slug}')">Copy voice URL</button>` : ''}
-        ${type === 'outputs' && file?.path ? `<button class="btn btn-secondary" onclick="addImageUrlAsCharacter('${file.path.replace(/'/g, "\\'")}')">Add as character</button><button class="btn btn-primary" onclick="openPublishModal('${file.path.replace(/'/g, "\\'")}','image')">Post</button>` : ''}
+        ${type === 'outputs' && file?.path ? `<button class="btn btn-secondary" onclick="addImageUrlAsCharacter('${file.path.replace(/'/g, "\\'")}')">Add as character</button><button class="btn btn-primary" onclick="openPublishModal('${filePath.replace(/'/g, "\\'")}','image')">Post</button>` : ''}
         <button class="btn btn-secondary" onclick="deleteAsset('${type}','${asset.slug}')">Delete</button>
       </div>
     </div>`;
@@ -1566,8 +1596,17 @@ async function loadVideos() {
   grid.innerHTML = combined.map(v => {
     const statusChip = v.status === 'completed' ? '<span class="chip chip-green">Completed</span>' : v.status === 'failed' ? '<span class="chip chip-red">Failed</span>' : '<span class="chip chip-warn">Processing</span>';
     const mediaUrl = authenticatedMediaUrl(v.localPath || '');
+    const ratio = v.aspectRatio || v.aiContext?.aspectRatio || '9:16';
+    const ratioClass = ratio === '16:9' ? 'landscape' : ratio === '1:1' ? 'square' : '';
+    const posterId = `poster-${String(v.requestId || v.jobId || Math.random()).replace(/[^a-zA-Z0-9_-]/g, '-')}`;
     const videoEl = mediaUrl
-      ? `<video class="video-player" controls preload="metadata"><source src="${mediaUrl}" type="video/mp4"></video>`
+      ? `<div class="video-thumb-wrap ${ratioClass}">
+          <img class="video-poster" id="${posterId}" alt="Video preview">
+          <video class="video-player" controls preload="metadata" muted playsinline onloadeddata="captureVideoPoster(this,'${posterId}')" onseeked="captureVideoPoster(this,'${posterId}')" onplay="markVideoPlaying(this,true)" onpause="markVideoPlaying(this,false)">
+            <source src="${mediaUrl}" type="video/mp4">
+          </video>
+          <div class="video-play-badge">▶ Preview</div>
+        </div>`
       : `<div class="video-player" style="display:flex;align-items:center;justify-content:center;color:#999">Processing</div>`;
     const actions = v.status === 'completed' && mediaUrl
       ? `<div class="actions"><button class="btn btn-primary" onclick="openPublishModal('${mediaUrl.replace(/'/g, "\\'")}','video')">Post</button><a class="btn btn-secondary" href="${mediaUrl}" download>Download</a></div>`

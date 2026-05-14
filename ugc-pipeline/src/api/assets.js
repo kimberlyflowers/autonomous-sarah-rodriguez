@@ -52,16 +52,13 @@ function mimeToExt(mimeType = '') {
 }
 
 function fileToAsset(row) {
-  const dataUrl = row.mime_type?.startsWith('image/')
-    ? `data:${row.mime_type};base64,${Buffer.from(row.file_data).toString('base64')}`
-    : '';
   return {
     slug: row.id,
     name: row.name,
     type: row.type,
     files: [{
       name: row.file_name,
-      path: dataUrl || `/api/assets/file/${row.id}`,
+      path: `/api/assets/file/${row.id}`,
       size: Number(row.size_bytes || 0),
       mimeType: row.mime_type
     }],
