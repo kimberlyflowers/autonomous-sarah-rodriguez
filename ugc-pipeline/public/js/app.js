@@ -19,6 +19,7 @@ let latestProductPlacementImage = '';
 let studioCrop = { x: 50, y: 50 };
 let cropDrag = null;
 let previewAudioAsset = null;
+let voicePreviewTimer = null;
 
 const starterCharacters = [
   { slug: 'library-financial-advisor', name: 'Financial Advisor', role: 'Advisor specialist', imageUrl: '/agent-library/financial-advisor.png' },
@@ -493,10 +494,43 @@ function resetStudioForm() {
   if (voiceSampleName) voiceSampleName.textContent = '';
   previewAudioAsset = null;
   document.getElementById('studioVoicePreview').style.display = 'none';
+  setVoicePreviewLoading(false);
   clearSelectedCharacter();
   resetPreview();
   setStudioMode('i2v');
   setStudioAudio('upload');
+}
+
+function setVoicePreviewLoading(isLoading, provider = 'voice') {
+  const panel = document.getElementById('studioVoicePreview');
+  const loader = document.getElementById('studioVoicePreviewLoading');
+  const audio = document.getElementById('studioVoicePreviewAudio');
+  const title = document.getElementById('studioVoicePreviewTitle');
+  const loadingTitle = document.getElementById('studioVoiceLoadingTitle');
+  const loadingHint = document.getElementById('studioVoiceLoadingHint');
+  const timer = document.getElementById('studioVoiceLoadingTimer');
+  if (!panel || !loader || !audio) return;
+  clearInterval(voicePreviewTimer);
+  voicePreviewTimer = null;
+  if (!isLoading) {
+    loader.style.display = 'none';
+    audio.style.display = '';
+    return;
+  }
+  panel.style.display = '';
+  title.textContent = 'Creating preview';
+  audio.pause();
+  audio.removeAttribute('src');
+  audio.load();
+  audio.style.display = 'none';
+  loader.style.display = '';
+  loadingTitle.textContent = `Generating ${provider} voice preview`;
+  loadingHint.textContent = 'This can take a little bit while the voice endpoint starts and renders the audio.';
+  const started = Date.now();
+  timer.textContent = '0s elapsed';
+  voicePreviewTimer = setInterval(() => {
+    timer.textContent = `${Math.max(1, Math.round((Date.now() - started) / 1000))}s elapsed`;
+  }, 1000);
 }
 
 async function startRunPod() {
@@ -588,6 +622,7 @@ async function previewChatterboxVoice(saveOnly = false) {
     button.disabled = true;
     button.textContent = 'Creating preview...';
   }
+  setVoicePreviewLoading(true, 'Chatterbox');
   try {
     const data = new FormData();
     data.append('script', script);
@@ -601,12 +636,14 @@ async function previewChatterboxVoice(saveOnly = false) {
     previewAudioAsset = response.result?.asset || null;
     const url = response.result?.asset?.files?.[0]?.path || response.result?.audioUrl;
     if (!url) throw new Error('Chatterbox did not return audio.');
+    setVoicePreviewLoading(false);
     document.getElementById('studioVoicePreview').style.display = '';
     document.getElementById('studioVoicePreviewTitle').textContent = saveOnly ? 'Audio generated and saved' : 'Voice preview saved';
     document.getElementById('studioVoicePreviewAudio').src = await playableMediaUrl(url);
     toast('Voiceover generated and saved to audio Library.', 'success');
     await loadAssets();
   } catch (error) {
+    setVoicePreviewLoading(false);
     toast(error.message, 'error');
   } finally {
     if (button) {
@@ -624,6 +661,7 @@ async function previewElevenLabsVoice(saveOnly = false) {
     button.disabled = true;
     button.textContent = 'Creating preview...';
   }
+  setVoicePreviewLoading(true, 'ElevenLabs');
   try {
     const response = await api('/api/tts/elevenlabs', {
       method: 'POST',
@@ -636,12 +674,14 @@ async function previewElevenLabsVoice(saveOnly = false) {
     previewAudioAsset = response.result?.asset || null;
     const url = response.result?.asset?.files?.[0]?.path;
     if (!url) throw new Error('ElevenLabs did not return saved audio.');
+    setVoicePreviewLoading(false);
     document.getElementById('studioVoicePreview').style.display = '';
     document.getElementById('studioVoicePreviewTitle').textContent = saveOnly ? 'Audio generated and saved' : 'Voice preview saved';
     document.getElementById('studioVoicePreviewAudio').src = await playableMediaUrl(url);
     toast('Voiceover generated and saved to audio Library.', 'success');
     await loadAssets();
   } catch (error) {
+    setVoicePreviewLoading(false);
     toast(error.message, 'error');
   } finally {
     if (button) {

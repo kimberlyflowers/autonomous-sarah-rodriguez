@@ -6,6 +6,7 @@ const { v4: uuidv4 } = require('uuid');
 const { CHATTERBOX_VOICES, createChatterboxAudio, getChatterboxConfig } = require('../services/chatterbox');
 const { hasDatabase, initUgcStore, query } = require('../services/postgres');
 const fetch = require('node-fetch');
+const { logger } = require('../services/logger');
 
 const router = express.Router();
 const ROOT_DIR = path.join(__dirname, '..', '..');
@@ -47,6 +48,7 @@ router.get('/providers', (req, res) => {
 });
 
 router.post('/chatterbox', upload.single('voiceSample'), async (req, res) => {
+  const started = Date.now();
   try {
     const dir = path.join(UPLOAD_DIR, req.tenant?.slug || req.tenant?.id || 'default', 'generated');
     const result = await createChatterboxAudio({
@@ -63,13 +65,16 @@ router.post('/chatterbox', upload.single('voiceSample'), async (req, res) => {
       voice: result.voice,
       script: req.body.script || ''
     });
+    logger.info('Chatterbox preview generated', { tenant: req.tenant?.slug || req.tenant?.id, durationMs: Date.now() - started, voice: result.voice });
     res.json({ success: true, result: { ...result, asset } });
   } catch (error) {
+    logger.error('Chatterbox preview failed', { tenant: req.tenant?.slug || req.tenant?.id, durationMs: Date.now() - started, error: error.message });
     res.status(500).json({ error: error.message });
   }
 });
 
 router.post('/elevenlabs', async (req, res) => {
+  const started = Date.now();
   try {
     const dir = path.join(UPLOAD_DIR, req.tenant?.slug || req.tenant?.id || 'default', 'generated');
     const result = await createElevenLabsAudio({
@@ -83,8 +88,10 @@ router.post('/elevenlabs', async (req, res) => {
       voice: result.voice,
       script: req.body.script || ''
     });
+    logger.info('ElevenLabs preview generated', { tenant: req.tenant?.slug || req.tenant?.id, durationMs: Date.now() - started, voice: result.voice });
     res.json({ success: true, result: { ...result, asset } });
   } catch (error) {
+    logger.error('ElevenLabs preview failed', { tenant: req.tenant?.slug || req.tenant?.id, durationMs: Date.now() - started, error: error.message });
     res.status(500).json({ error: error.message });
   }
 });
