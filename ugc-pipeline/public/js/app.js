@@ -106,7 +106,13 @@ function startGenerationOverlay({ engine = 'wan-comfy', mode = 'i2v' } = {}) {
   document.getElementById('generationSuccessActions').style.display = 'none';
   document.getElementById('generationDismissButton').textContent = 'Hide';
   document.getElementById('generationNote').textContent = 'Progress is estimated while the video endpoint renders.';
-  const label = engine === 'meigen' ? 'Meigen lip sync' : mode === 'v2v' ? 'WAN V2V' : 'WAN ComfyUI';
+  const label = engine === 'meigen'
+    ? 'Meigen lip sync'
+    : engine === 'wan22-serverless'
+      ? 'Wan 2.2 Serverless'
+      : engine === 'wan-animate'
+        ? 'Wan Animate motion remix'
+        : mode === 'v2v' ? 'WAN V2V' : 'WAN ComfyUI';
   document.getElementById('generationEngine').textContent = label;
   updateGenerationOverlay(engine, mode);
   clearInterval(generationTimer);
@@ -115,7 +121,7 @@ function startGenerationOverlay({ engine = 'wan-comfy', mode = 'i2v' } = {}) {
 
 function updateGenerationOverlay(engine = 'wan-comfy', mode = 'i2v') {
   const elapsed = Math.max(0, Math.round((Date.now() - generationStartedAt) / 1000));
-  const estimate = engine === 'meigen' ? 180 : mode === 'v2v' ? 300 : 240;
+  const estimate = engine === 'meigen' ? 180 : engine === 'wan22-serverless' ? 260 : engine === 'wan-animate' ? 420 : mode === 'v2v' ? 300 : 240;
   const progress = Math.min(96, Math.max(3, Math.round((elapsed / estimate) * 92)));
   const stages = engine === 'meigen'
     ? [
@@ -124,6 +130,20 @@ function updateGenerationOverlay(engine = 'wan-comfy', mode = 'i2v') {
         [70, 'Rendering video', 'Generating the final talking-head clip.'],
         [96, 'Saving to Library', 'Almost there. Bloom Studio is collecting the finished video.']
       ]
+    : engine === 'wan22-serverless'
+      ? [
+          [10, 'Uploading character image', 'Sending the selected image to the Wan 2.2 serverless endpoint.'],
+          [35, 'Building motion plan', 'Wan 2.2 is interpreting the prompt and image.'],
+          [76, 'Rendering video', 'Generating natural motion from the still image.'],
+          [96, 'Saving to Library', 'Almost there. Bloom Studio is collecting the finished video.']
+        ]
+      : engine === 'wan-animate'
+        ? [
+            [10, 'Uploading references', 'Sending the character image and source movement video.'],
+            [32, 'Reading motion', 'Wan Animate is estimating pose and facial movement from the reference.'],
+            [74, 'Rendering motion remix', 'Generating your character with the source movement.'],
+            [96, 'Saving to Library', 'Almost there. Bloom Studio is collecting the finished video.']
+          ]
     : [
         [10, 'Waking the workflow', 'Preparing the ComfyUI video workflow.'],
         [35, 'Loading media', 'Sending the selected image, video, and audio into the workflow.'],
@@ -465,7 +485,12 @@ async function renderTrendLightbox() {
         <button class="btn btn-primary" type="button" onclick="showTrendRemixOptions()">Remix this trend</button>
       </div>
       <div class="trend-remix-fields">
-        <p>Choose the character, brand, and product first. Then confirm remix to load the adapted hook and prompt into Create.</p>
+        <p>Choose the character, brand, and product first. The source hook/script will load into Create as the remix structure.</p>
+        <div class="form-group">
+          <label class="form-label">Source hook / script structure</label>
+          <textarea class="form-textarea" id="trendSourceScript" style="min-height:96px">${escapeHtml(trend.hook || '')}</textarea>
+          <div class="hint" style="margin-top:7px;color:rgba(255,255,255,.55)">Automatic transcript extraction can be added after we wire a source-video transcription endpoint. For now, this uses the hook/caption from the trend library.</div>
+        </div>
         <div class="form-group">
           <label class="form-label">Character</label>
           <select class="form-select" id="trendCharacterSelect">
@@ -514,14 +539,17 @@ async function remixCurrentTrend() {
   const character = options.characters.find(item => item.slug === document.getElementById('trendCharacterSelect')?.value);
   const brand = options.brands.find(item => item.slug === document.getElementById('trendBrandSelect')?.value) || {};
   const product = options.products.find(item => item.slug === document.getElementById('trendProductSelect')?.value) || {};
-  const script = fillTrendHook(trend.hook, brand, product);
+  const sourceScript = document.getElementById('trendSourceScript')?.value?.trim() || trend.hook || '';
+  const script = fillTrendHook(sourceScript, brand, product);
   const prompt = [
     `Remix source trend: ${trend.url}`,
-    trend.remixPrompt || 'Keep the same pacing and hook structure, but make it original for this brand.',
+    `Use the source hook/script as the structure, but make the words original for this brand.`,
+    trend.remixPrompt || 'Match the pacing, visual setup, and creator energy of the source trend without copying the creator identity.',
     brand.description ? `Brand context: ${brand.description}` : '',
     product.name ? `Feature product: ${product.name}` : ''
   ].filter(Boolean).join('\n');
 
+  setRemixContext({ url: trend.url || '', sourceScript });
   document.getElementById('studioScript').value = script;
   document.getElementById('studioPrompt').value = prompt;
   document.getElementById('studioNegativePrompt').value ||= 'subtitles, watermark, distorted hands, extra fingers, low quality, random nail color, camera shake';
@@ -714,8 +742,11 @@ async function loadStudioStatus() {
     const qwen = data.audioProviders.find(p => p.id === 'qwen');
     const chatterbox = data.audioProviders.find(p => p.id === 'chatterbox');
     const meigen = data.videoEngines?.find(p => p.id === 'meigen');
+    const wan22 = data.videoEngines?.find(p => p.id === 'wan22-serverless');
+    const wanAnimate = data.videoEngines?.find(p => p.id === 'wan-animate');
     setChip('qwenStatus', qwen?.available ? 'Ready' : 'Needs workflow', qwen?.available ? 'soft' : 'warn');
-    setChip('meigenStatus', meigen?.available ? 'Ready' : 'Needs key', meigen?.available ? 'green' : 'warn');
+    const serverlessReady = [meigen, wan22, wanAnimate].filter(Boolean).filter(engine => engine.available).length;
+    setChip('meigenStatus', serverlessReady ? `${serverlessReady} ready` : 'Needs keys', serverlessReady ? 'green' : 'warn');
     const qwenNote = document.getElementById('qwenNote');
     if (qwenNote) qwenNote.textContent = chatterbox?.available
       ? 'Chatterbox Turbo is ready for preset voices and custom voice_url samples.'
@@ -789,6 +820,43 @@ function setChip(id, label, state) {
   el.className = `chip chip-${state}`;
 }
 
+function setCreateType(type) {
+  const selected = type || 'shorts';
+  document.getElementById('studioCreateType').value = selected;
+  document.querySelectorAll('[data-create-type]').forEach(btn => btn.classList.toggle('active', btn.dataset.createType === selected));
+  const note = document.querySelector('#tab-studio .panel-note');
+  if (note) {
+    const copy = {
+      shorts: 'Build short talking-head videos from a character, script, and approved voice.',
+      remix: 'Remix a proven trend by loading the source hook, choosing a character, brand, product, and voice.',
+      'long-form': 'Create longer videos from a full script or approved voiceover. Best when audio is already final.',
+      webinar: 'Build webinar-style videos from a structured talk track, slides, or long-form source audio.',
+      course: 'Create course lessons from lesson scripts, scene notes, and approved narration.'
+    };
+    note.textContent = copy[selected] || copy.shorts;
+  }
+  if (selected === 'remix') {
+    document.getElementById('studioRemixContext')?.classList.add('active');
+    setStudioMode('i2v');
+  }
+}
+
+function setRemixContext({ url = '', sourceScript = '' } = {}) {
+  document.getElementById('studioRemixSourceUrl').value = url;
+  document.getElementById('studioRemixSourceScript').value = sourceScript;
+  document.getElementById('studioRemixSourceLabel').textContent = url || 'No source selected yet.';
+  document.getElementById('studioRemixContext')?.classList.add('active');
+  setCreateType('remix');
+}
+
+function clearRemixContext() {
+  document.getElementById('studioRemixSourceUrl').value = '';
+  document.getElementById('studioRemixSourceScript').value = '';
+  document.getElementById('studioRemixSourceLabel').textContent = 'No source selected yet.';
+  document.getElementById('studioRemixContext')?.classList.remove('active');
+  if (document.getElementById('studioCreateType')?.value === 'remix') setCreateType('shorts');
+}
+
 function setStudioMode(mode) {
   const actualMode = mode;
 
@@ -800,13 +868,12 @@ function setStudioMode(mode) {
   document.getElementById('studioVideoGroup').style.display = actualMode === 'v2v' ? '' : 'none';
   const submitButton = document.getElementById('studioSubmitButton');
   submitButton.textContent = actualMode === 'audio' ? 'Generate audio' : '▶ Generate video';
+  const currentEngine = document.getElementById('studioVideoEngine')?.value;
   document.getElementById('studioSubmitHint').textContent = actualMode === 'audio'
     ? 'Creates and saves an approved voiceover before video generation.'
     : actualMode === 'v2v'
       ? 'Uses the Bloomies V2V workflow preset.'
-      : document.getElementById('studioVideoEngine')?.value === 'meigen'
-        ? 'Uses Meigen lip sync through the RunPod public endpoint.'
-        : 'Uses the Sarah I2V lip-sync workflow preset.';
+      : getStudioEngineHint(currentEngine);
   if (actualMode !== 'i2v') {
     document.getElementById('studioVideoEngine').value = 'wan-comfy';
     setStudioVideoEngine('wan-comfy');
@@ -821,17 +888,20 @@ function setStudioMode(mode) {
 function setStudioVideoEngine(engine) {
   const hint = document.getElementById('studioVideoEngineHint');
   const quality = document.getElementById('studioMeigenQualityGroup');
+  const reference = document.getElementById('studioReferenceVideoGroup');
   if (quality) quality.style.display = engine === 'meigen' ? '' : 'none';
-  if (hint) {
-    hint.textContent = engine === 'meigen'
-      ? 'Uses MeiGen-AI InfiniteTalk through the RunPod public endpoint. No ComfyUI pod required.'
-      : 'Uses the installed WAN/ComfyUI workflow and RunPod pod.';
-  }
+  if (reference) reference.style.display = engine === 'wan-animate' ? '' : 'none';
+  if (hint) hint.textContent = getStudioEngineHint(engine);
   if (document.getElementById('studioMode').value === 'i2v') {
-    document.getElementById('studioSubmitHint').textContent = engine === 'meigen'
-      ? 'Uses Meigen lip sync through the RunPod public endpoint.'
-      : 'Uses the Sarah I2V lip-sync workflow preset.';
+    document.getElementById('studioSubmitHint').textContent = getStudioEngineHint(engine);
   }
+}
+
+function getStudioEngineHint(engine) {
+  if (engine === 'meigen') return 'Uses MeiGen-AI InfiniteTalk through the RunPod public endpoint. No ComfyUI pod required.';
+  if (engine === 'wan22-serverless') return 'Uses the Wan 2.2 RunPod serverless endpoint for image-to-video. No ComfyUI pod required.';
+  if (engine === 'wan-animate') return 'Uses Wan Animate serverless with a reference video to mimic motion. No ComfyUI pod required.';
+  return 'Uses the installed WAN/ComfyUI workflow and RunPod pod.';
 }
 
 function setStudioAudio(provider) {
@@ -1058,11 +1128,15 @@ async function submitStudioVideo(e) {
 
   if (mode === 'i2v' && !document.getElementById('studioImage').files[0] && !document.getElementById('studioImageAssetId').value && !document.getElementById('studioImageUrl').value) return toast('Upload a portrait image or select a saved character first.', 'error');
   if (mode === 'v2v' && !document.getElementById('studioVideo').files[0]) return toast('Upload a source video first.', 'error');
-  if (document.getElementById('studioAudioProvider').value === 'upload' && !document.getElementById('studioAudio').files[0]) return toast('Upload an audio file first.', 'error');
-  if (document.getElementById('studioAudioProvider').value === 'asset' && !document.getElementById('studioAudioAssetId').value) return toast('Choose saved audio first.', 'error');
-  if (document.getElementById('studioAudioProvider').value === 'elevenlabs' && !document.getElementById('studioScript').value.trim()) return toast('Paste a script for ElevenLabs audio.', 'error');
-  if (document.getElementById('studioAudioProvider').value === 'chatterbox' && !document.getElementById('studioScript').value.trim()) return toast('Paste a script for Chatterbox audio.', 'error');
-  if (videoEngine === 'meigen' && mode !== 'i2v') return toast('Meigen is only available for image-to-video lip sync.', 'error');
+  const engineNeedsAudio = !['wan22-serverless', 'wan-animate'].includes(videoEngine);
+  if (engineNeedsAudio && document.getElementById('studioAudioProvider').value === 'upload' && !document.getElementById('studioAudio').files[0]) return toast('Upload an audio file first.', 'error');
+  if (engineNeedsAudio && document.getElementById('studioAudioProvider').value === 'asset' && !document.getElementById('studioAudioAssetId').value) return toast('Choose saved audio first.', 'error');
+  if (engineNeedsAudio && document.getElementById('studioAudioProvider').value === 'elevenlabs' && !document.getElementById('studioScript').value.trim()) return toast('Paste a script for ElevenLabs audio.', 'error');
+  if (engineNeedsAudio && document.getElementById('studioAudioProvider').value === 'chatterbox' && !document.getElementById('studioScript').value.trim()) return toast('Paste a script for Chatterbox audio.', 'error');
+  if (['meigen', 'wan22-serverless', 'wan-animate'].includes(videoEngine) && mode !== 'i2v') return toast('Serverless video engines are available in Image to video mode right now.', 'error');
+  if (videoEngine === 'wan-animate' && !document.getElementById('studioReferenceVideo').files[0] && !document.getElementById('studioReferenceVideoUrl').value.trim() && !document.getElementById('studioRemixSourceUrl').value.trim()) {
+    return toast('Wan Animate needs a reference motion video upload or URL.', 'error');
+  }
   if (!confirm('Video generation starts immediately and uses processing time. Make sure your audio and visual are final before continuing.')) return;
 
   const button = form.querySelector('button[type="submit"]');
@@ -1070,9 +1144,9 @@ async function submitStudioVideo(e) {
   button.textContent = 'Queuing video...';
   startGenerationOverlay({ engine: videoEngine, mode });
   try {
-    toast(videoEngine === 'meigen' ? 'Generating Meigen lip sync video...' : 'Queuing video. If the RunPod is asleep, Bloom Studio will wake it first.', 'info');
+    toast(['meigen', 'wan22-serverless', 'wan-animate'].includes(videoEngine) ? `Generating with ${getStudioEngineName(videoEngine)}...` : 'Queuing video. If the RunPod is asleep, Bloom Studio will wake it first.', 'info');
     const result = await api('/api/studio/generate', { method: 'POST', body: data });
-    toast(videoEngine === 'meigen' ? 'Meigen video generated and saved to Library.' : 'Video job queued.', 'success');
+    toast(['meigen', 'wan22-serverless', 'wan-animate'].includes(videoEngine) ? `${getStudioEngineName(videoEngine)} video generated and saved to Library.` : 'Video job queued.', 'success');
     studioJobs.unshift(result.job);
     await loadAssets();
     await loadVideos();
@@ -1084,6 +1158,13 @@ async function submitStudioVideo(e) {
     button.disabled = false;
     button.textContent = '▶ Generate video';
   }
+}
+
+function getStudioEngineName(engine) {
+  if (engine === 'meigen') return 'Meigen';
+  if (engine === 'wan22-serverless') return 'Wan 2.2 Serverless';
+  if (engine === 'wan-animate') return 'Wan Animate';
+  return 'WAN ComfyUI';
 }
 
 async function submitAudioOnly(form) {

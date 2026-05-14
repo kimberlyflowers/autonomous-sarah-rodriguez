@@ -33,6 +33,7 @@ button,input,select,textarea{font:inherit}
 .choice{border:1.5px solid var(--line);background:var(--surface);color:var(--ink);border-radius:14px;padding:14px;cursor:pointer;transition:.18s;min-height:96px}
 .choice:hover{border-color:rgba(244,162,97,.55);transform:translateY(-1px)}.choice.active{border-color:var(--primary);box-shadow:0 0 0 4px rgba(244,162,97,.14)}
 .choice strong{display:block;font-size:14px}.choice span{display:block;font-size:12px;color:var(--muted);margin-top:5px}
+.create-lanes{display:flex;gap:7px;flex-wrap:wrap;margin:14px 0 16px}.create-lane{border:1px solid var(--line);background:var(--surface);color:var(--muted);border-radius:999px;padding:8px 12px;font-size:12px;font-weight:900;cursor:pointer}.create-lane:hover{border-color:rgba(244,162,97,.55);color:var(--ink)}.create-lane.active{background:rgba(244,162,97,.12);border-color:var(--primary);color:var(--primary)}.remix-context{display:none;grid-column:1/-1;border:1px solid rgba(244,162,97,.35);background:rgba(244,162,97,.09);border-radius:16px;padding:14px;margin-bottom:8px}.remix-context.active{display:block}.remix-context-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:10px}.remix-context-title{font-size:14px;font-weight:900}.remix-context-url{font-size:12px;color:var(--muted);word-break:break-all}.remix-context .form-textarea{min-height:82px;background:var(--surface)}
 .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.form-group{margin-bottom:14px}.full{grid-column:1/-1}
 .form-label{display:block;font-size:12px;font-weight:800;color:var(--muted);margin-bottom:7px;text-transform:uppercase;letter-spacing:.04em}
 .form-input,.form-select,.form-textarea{width:100%;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);border-radius:12px;padding:12px 13px;outline:none;font-size:14px}
@@ -139,6 +140,14 @@ button,input,select,textarea{font:inherit}
             <div class="panel-title">New video</div>
             <p class="panel-note">Start with a person image for I2V, or a source video for V2V. Add audio or use a voice workflow when available.</p>
 
+            <div class="create-lanes" aria-label="Create type">
+              <button class="create-lane active" type="button" data-create-type="shorts" onclick="setCreateType('shorts')">Shorts</button>
+              <button class="create-lane" type="button" data-create-type="remix" onclick="setCreateType('remix')">Remix videos</button>
+              <button class="create-lane" type="button" data-create-type="long-form" onclick="setCreateType('long-form')">Long form</button>
+              <button class="create-lane" type="button" data-create-type="webinar" onclick="setCreateType('webinar')">Webinars</button>
+              <button class="create-lane" type="button" data-create-type="course" onclick="setCreateType('course')">Courses</button>
+            </div>
+
             <div class="step-row">
               <button class="choice active" type="button" data-mode-choice="i2v" onclick="setStudioMode('i2v')"><strong>Image to video</strong><span>Use a portrait and audio to animate a talking head.</span></button>
               <button class="choice" type="button" data-mode-choice="v2v" onclick="setStudioMode('v2v')"><strong>Video to video</strong><span>Use a source video and replace or sync the audio.</span></button>
@@ -152,7 +161,22 @@ button,input,select,textarea{font:inherit}
               <input type="hidden" id="studioImageUrl" name="imageUrl" value="">
               <input type="hidden" id="studioCropX" name="cropX" value="50">
               <input type="hidden" id="studioCropY" name="cropY" value="50">
+              <input type="hidden" id="studioCreateType" name="createType" value="shorts">
+              <input type="hidden" id="studioRemixSourceUrl" name="remixSourceUrl" value="">
               <div class="form-grid">
+                <div class="remix-context" id="studioRemixContext">
+                  <div class="remix-context-head">
+                    <div>
+                      <div class="remix-context-title">Remix source loaded</div>
+                      <div class="remix-context-url" id="studioRemixSourceLabel">No source selected yet.</div>
+                    </div>
+                    <button class="btn btn-secondary" type="button" onclick="clearRemixContext()">Clear</button>
+                  </div>
+                  <label class="form-label">Source hook or extracted script</label>
+                  <textarea class="form-textarea" id="studioRemixSourceScript" name="remixSourceScript" placeholder="When automatic transcription is connected, the extracted source script lands here. For now the viral hook/caption is used as the remix structure."></textarea>
+                  <div class="hint">Remix uses this as the structure, then adapts it with the selected brand, product, character, and voice.</div>
+                </div>
+
                 <div class="form-group">
                   <label class="form-label">Audio source</label>
                   <select class="form-select" id="studioAudioProvider" name="audioProvider" onchange="setStudioAudio(this.value)">
@@ -168,7 +192,9 @@ button,input,select,textarea{font:inherit}
                   <label class="form-label">I2V engine</label>
                   <select class="form-select" id="studioVideoEngine" name="videoEngine" onchange="setStudioVideoEngine(this.value)">
                     <option value="wan-comfy" selected>WAN (ComfyUI)</option>
+                    <option value="wan22-serverless">Wan 2.2 Serverless</option>
                     <option value="meigen">Meigen lip sync</option>
+                    <option value="wan-animate">Wan Animate motion remix</option>
                   </select>
                   <div class="hint" id="studioVideoEngineHint">Uses the installed WAN/ComfyUI workflow and RunPod pod.</div>
                 </div>
@@ -180,6 +206,16 @@ button,input,select,textarea{font:inherit}
                     <option value="720p">720p - sharper, slower</option>
                   </select>
                   <div class="hint">480p is best for testing. 720p can take longer and may fail more often on the public endpoint.</div>
+                </div>
+
+                <div class="form-group" id="studioReferenceVideoGroup" style="display:none">
+                  <label class="form-label">Reference motion video</label>
+                  <label class="file-drop">
+                    <strong>Upload source movement</strong><span>MP4 or MOV. Used by Wan Animate to mimic motion.</span>
+                    <input id="studioReferenceVideo" name="referenceVideo" type="file" accept="video/*" hidden onchange="showStudioFileName('studioReferenceVideo','studioReferenceVideoName')">
+                  </label>
+                  <div class="file-name" id="studioReferenceVideoName"></div>
+                  <input class="form-input" id="studioReferenceVideoUrl" name="referenceVideoUrl" placeholder="Or paste a public reference video URL" style="margin-top:10px">
                 </div>
 
                 <div class="form-group">
@@ -729,6 +765,6 @@ button,input,select,textarea{font:inherit}
 
 <div class="toast-container" id="toastContainer"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="/js/app.js?v=trends-8"></script>
+<script src="/js/app.js?v=serverless-1"></script>
 </body>
 </html>

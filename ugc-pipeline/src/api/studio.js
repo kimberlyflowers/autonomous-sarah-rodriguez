@@ -18,6 +18,7 @@ const { ensureComfyReady, getAccountBalance, getPodStatus, getRunPodConfig, isCo
 const { getAssetFile, hasDatabase, initUgcStore, query } = require('../services/postgres');
 const { CHATTERBOX_VOICES, createChatterboxAudio, getChatterboxConfig } = require('../services/chatterbox');
 const { createMeigenVideo, getMeigenConfig } = require('../services/meigen');
+const { createWan22Video, createWanAnimateVideo, getRunpodVideoConfig } = require('../services/runpodVideo');
 
 const router = express.Router();
 const UPLOAD_DIR = path.join(__dirname, '..', '..', 'assets', 'studio-uploads');
@@ -359,10 +360,22 @@ router.get('/status', async (req, res) => {
         note: 'Uses the installed ComfyUI I2V workflow and the active RunPod pod.'
       },
       {
+        id: 'wan22-serverless',
+        label: 'Wan 2.2 Serverless',
+        available: !!getRunpodVideoConfig('WAN22').apiKey && !!(getRunpodVideoConfig('WAN22').endpointId || getRunpodVideoConfig('WAN22').endpointUrl),
+        note: 'RunPod serverless Wan 2.2 image-to-video. No ComfyUI pod required.'
+      },
+      {
         id: 'meigen',
         label: 'Meigen lip sync',
         available: !!getMeigenConfig().apiKey,
         note: 'Uses RunPod InfiniteTalk public endpoint; does not require the ComfyUI pod.'
+      },
+      {
+        id: 'wan-animate',
+        label: 'Wan Animate motion remix',
+        available: !!getRunpodVideoConfig('WAN_ANIMATE').apiKey && !!(getRunpodVideoConfig('WAN_ANIMATE').endpointId || getRunpodVideoConfig('WAN_ANIMATE').endpointUrl),
+        note: 'RunPod serverless character image + reference video motion transfer.'
       }
     ]
   });
@@ -502,6 +515,7 @@ router.get('/jobs/:requestId', async (req, res) => {
 router.post('/generate', upload.fields([
   { name: 'image', maxCount: 1 },
   { name: 'video', maxCount: 1 },
+  { name: 'referenceVideo', maxCount: 1 },
   { name: 'audio', maxCount: 1 },
   { name: 'voiceSample', maxCount: 1 }
 ]), async (req, res) => {
@@ -511,18 +525,20 @@ router.post('/generate', upload.fields([
     const mode = req.body.mode || 'i2v';
     const videoEngine = req.body.videoEngine || 'wan-comfy';
 
-    if (mode !== 'i2v' && videoEngine === 'meigen') {
-      return res.status(400).json({ error: 'Meigen is only available for image-to-video lip sync right now.' });
+    if (mode !== 'i2v' && ['meigen', 'wan22-serverless', 'wan-animate'].includes(videoEngine)) {
+      return res.status(400).json({ error: `${videoEngine} is only available for image-to-video style generation right now.` });
     }
 
-    if (videoEngine !== 'meigen' && !getBaseUrl()) {
+    const serverlessEngine = ['meigen', 'wan22-serverless', 'wan-animate'].includes(videoEngine);
+
+    if (!serverlessEngine && !getBaseUrl()) {
       return res.status(400).json({
         error: 'COMFYUI_BASE_URL is not configured on Railway yet.',
         detail: 'The studio UI is ready, but the service needs the public RunPod/ComfyUI API URL before it can queue jobs.'
       });
     }
 
-    if (videoEngine !== 'meigen') {
+    if (!serverlessEngine) {
       await ensureComfyReady();
     }
 
@@ -540,10 +556,11 @@ router.post('/generate', upload.fields([
     if (mode === 'v2v' && !files.video?.[0]) {
       return res.status(400).json({ error: 'Upload a source video for V2V.' });
     }
-    if (audioProvider === 'upload' && !files.audio?.[0]) {
+    const engineNeedsAudio = !['wan22-serverless', 'wan-animate'].includes(videoEngine);
+    if (engineNeedsAudio && audioProvider === 'upload' && !files.audio?.[0]) {
       return res.status(400).json({ error: 'Upload an audio file.' });
     }
-    if (audioProvider === 'asset' && !req.body.audioAssetId) {
+    if (engineNeedsAudio && audioProvider === 'asset' && !req.body.audioAssetId) {
       return res.status(400).json({ error: 'Choose a saved audio file.' });
     }
 
@@ -571,7 +588,7 @@ router.post('/generate', upload.fields([
     }
 
     let audioPath = files.audio?.[0]?.path || null;
-    if (audioProvider === 'asset') {
+    if (engineNeedsAudio && audioProvider === 'asset') {
       if (req.supabase) {
         const saved = await getSupabaseAssetFile(req, req.body.audioAssetId, 'audio');
         audioPath = await downloadTempFile(saved.url, req.tenant.slug || req.tenant.id, path.basename(saved.asset.storage_path));
@@ -581,14 +598,14 @@ router.post('/generate', upload.fields([
         audioPath = getLocalAssetFile(req, req.body.audioAssetId, 'audio');
       }
     }
-    if (audioProvider === 'elevenlabs') {
+    if (engineNeedsAudio && audioProvider === 'elevenlabs') {
       audioPath = await createElevenLabsAudio({
         script: req.body.script,
         voiceId: req.body.voiceId,
         tenantId: req.tenant.slug || req.tenant.id
       });
     }
-    if (audioProvider === 'chatterbox') {
+    if (engineNeedsAudio && audioProvider === 'chatterbox') {
       const dir = path.join(UPLOAD_DIR, cleanSlug(req.tenant.slug || req.tenant.id || 'default'), 'chatterbox');
       const chatterbox = await createChatterboxAudio({
         script: req.body.script,
@@ -605,8 +622,8 @@ router.post('/generate', upload.fields([
     if (!req.supabase && hasDatabase()) {
       await createLocalVideoJob(req, {
         requestId: clientRequestId,
-        provider: videoEngine === 'meigen' ? 'meigen' : 'comfyui',
-        presetId: videoEngine === 'meigen' ? 'meigen-infinitetalk' : presetId,
+        provider: serverlessEngine ? videoEngine : 'comfyui',
+        presetId: serverlessEngine ? videoEngine : presetId,
         mode,
         audioProvider,
         status: 'processing',
@@ -621,6 +638,118 @@ router.post('/generate', upload.fields([
           videoEngine
         }
       });
+    }
+
+    if (videoEngine === 'wan22-serverless') {
+      try {
+        const dir = path.join(UPLOAD_DIR, cleanSlug(req.tenant.slug || req.tenant.id || 'default'), 'wan22');
+        const wan22 = await createWan22Video({
+          imagePath,
+          imageUrl: '',
+          prompt: req.body.prompt,
+          negativePrompt: req.body.negativePrompt,
+          aspectRatio: req.body.aspectRatio || '9:16',
+          outputDir: dir,
+          length: req.body.wanLength,
+          steps: req.body.wanSteps,
+          seed: req.body.wanSeed,
+          cfg: req.body.wanCfg
+        });
+        const savedVideo = await saveGeneratedVideoAsset(req, wan22.localPath, {
+          name: `Wan 2.2 video ${new Date().toLocaleString('en-US')}`,
+          provider: 'wan22-serverless',
+          source: 'wan22-lora-runpod',
+          prompt: req.body.prompt || '',
+          aspectRatio: req.body.aspectRatio || '9:16',
+          rawRequestId: wan22.id
+        });
+        const job = {
+          requestId: clientRequestId,
+          jobId: clientRequestId,
+          tenantId: req.tenant.slug || req.tenant.id,
+          provider: 'wan22-serverless',
+          presetId: 'wan22-serverless',
+          mode,
+          audioProvider,
+          status: 'completed',
+          prompt: req.body.prompt || '',
+          aspectRatio: req.body.aspectRatio || '9:16',
+          durationSeconds,
+          localPath: savedVideo.path,
+          asset: savedVideo,
+          createdAt: new Date().toISOString(),
+          completedAt: new Date().toISOString()
+        };
+        if (!req.supabase && hasDatabase()) {
+          await updateLocalVideoJob(req, clientRequestId, {
+            status: 'completed',
+            metadata: { localPath: savedVideo.path, assetId: savedVideo.id, rawRequestId: wan22.id }
+          });
+        }
+        return res.json({ success: true, job });
+      } catch (error) {
+        if (!req.supabase && hasDatabase()) await updateLocalVideoJob(req, clientRequestId, { status: 'failed', error: error.message });
+        throw error;
+      }
+    }
+
+    if (videoEngine === 'wan-animate') {
+      try {
+        const referenceVideoPath = files.referenceVideo?.[0]?.path || files.video?.[0]?.path || null;
+        const referenceVideoUrl = req.body.referenceVideoUrl || req.body.remixSourceUrl || '';
+        if (!referenceVideoPath && !referenceVideoUrl) {
+          return res.status(400).json({ error: 'Wan Animate needs a source/reference video to mimic.' });
+        }
+        const dir = path.join(UPLOAD_DIR, cleanSlug(req.tenant.slug || req.tenant.id || 'default'), 'wan-animate');
+        const motion = await createWanAnimateVideo({
+          imagePath,
+          imageUrl: '',
+          videoPath: referenceVideoPath,
+          videoUrl: referenceVideoUrl,
+          prompt: req.body.prompt,
+          negativePrompt: req.body.negativePrompt,
+          aspectRatio: req.body.aspectRatio || '9:16',
+          outputDir: dir,
+          steps: req.body.wanSteps,
+          seed: req.body.wanSeed,
+          cfg: req.body.wanCfg
+        });
+        const savedVideo = await saveGeneratedVideoAsset(req, motion.localPath, {
+          name: `Wan Animate remix ${new Date().toLocaleString('en-US')}`,
+          provider: 'wan-animate',
+          source: 'wan-animate-runpod',
+          prompt: req.body.prompt || '',
+          aspectRatio: req.body.aspectRatio || '9:16',
+          rawRequestId: motion.id
+        });
+        const job = {
+          requestId: clientRequestId,
+          jobId: clientRequestId,
+          tenantId: req.tenant.slug || req.tenant.id,
+          provider: 'wan-animate',
+          presetId: 'wan-animate',
+          mode,
+          audioProvider,
+          status: 'completed',
+          prompt: req.body.prompt || '',
+          aspectRatio: req.body.aspectRatio || '9:16',
+          durationSeconds,
+          localPath: savedVideo.path,
+          asset: savedVideo,
+          createdAt: new Date().toISOString(),
+          completedAt: new Date().toISOString()
+        };
+        if (!req.supabase && hasDatabase()) {
+          await updateLocalVideoJob(req, clientRequestId, {
+            status: 'completed',
+            metadata: { localPath: savedVideo.path, assetId: savedVideo.id, rawRequestId: motion.id, referenceVideoUrl }
+          });
+        }
+        return res.json({ success: true, job });
+      } catch (error) {
+        if (!req.supabase && hasDatabase()) await updateLocalVideoJob(req, clientRequestId, { status: 'failed', error: error.message });
+        throw error;
+      }
     }
 
     if (videoEngine === 'meigen') {
