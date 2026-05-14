@@ -16,6 +16,10 @@ let libraryImageItems = [];
 let libraryVideoItems = [];
 let lightboxCollection = [];
 let lightboxIndex = 0;
+let trendsCache = [];
+let trendIndex = 0;
+let trendsTimer = null;
+let remixOptionsCache = { brands: [], products: [], characters: [] };
 let currentLibraryVideoRatio = 'portrait';
 let productPlacementCharacter = null;
 let productPlacementProduct = null;
@@ -79,6 +83,7 @@ function switchTab(tabId) {
   if (tabId === 'videos') loadVideos();
   if (tabId === 'studio') loadStudioStatus();
   if (tabId === 'products') loadProductPlacementStatus();
+  if (tabId === 'trends') loadTrends();
 }
 
 function toast(message, type = 'info') {
@@ -222,6 +227,218 @@ function renderLibraryLightbox() {
   const post = document.getElementById('lightboxPost');
   if (download) download.href = item.url;
   if (post) post.onclick = () => openPublishModal(item.url, item.type);
+}
+
+function trendEmbedUrl(url = '') {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.replace(/^www\./, '');
+    if (host.includes('instagram.com')) {
+      const parts = parsed.pathname.split('/').filter(Boolean);
+      const type = parts[0];
+      const code = parts[1];
+      if (['p', 'reel', 'tv'].includes(type) && code) {
+        return `https://www.instagram.com/${type}/${code}/embed`;
+      }
+    }
+    if (host.includes('tiktok.com')) {
+      const match = parsed.pathname.match(/\/video\/(\d+)/);
+      if (match) return `https://www.tiktok.com/embed/v2/${match[1]}`;
+    }
+  } catch (error) {
+    return '';
+  }
+  return '';
+}
+
+function debouncedLoadTrends() {
+  clearTimeout(trendsTimer);
+  trendsTimer = setTimeout(loadTrends, 260);
+}
+
+async function loadTrends() {
+  const grid = document.getElementById('trendGrid');
+  const count = document.getElementById('trendCount');
+  if (!grid || !count) return;
+  count.textContent = 'Loading trends...';
+  grid.innerHTML = '<div class="empty-state">Loading trending hook library...</div>';
+  try {
+    const params = new URLSearchParams({
+      q: document.getElementById('trendSearch')?.value || '',
+      industry: document.getElementById('trendIndustry')?.value || 'All',
+      platform: document.getElementById('trendPlatform')?.value || 'All',
+      limit: '96'
+    });
+    const data = await api(`/api/trends?${params.toString()}`);
+    trendsCache = data.trends || [];
+    hydrateTrendFilters(data);
+    count.textContent = `${data.total || trendsCache.length} matching trend hooks. Views are not imported from the PDF yet.`;
+    renderTrends();
+  } catch (error) {
+    count.textContent = 'Could not load trends.';
+    grid.innerHTML = `<div class="empty-state">Trend library failed to load: ${escapeHtml(error.message)}</div>`;
+  }
+}
+
+function hydrateTrendFilters(data = {}) {
+  const industry = document.getElementById('trendIndustry');
+  const platform = document.getElementById('trendPlatform');
+  if (industry && industry.options.length <= 1) {
+    industry.innerHTML = (data.industries || ['All']).map(value => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join('');
+  }
+  if (platform && platform.options.length <= 1) {
+    platform.innerHTML = (data.platforms || ['All']).map(value => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join('');
+  }
+}
+
+function renderTrendFrame(trend, large = false) {
+  const embed = trendEmbedUrl(trend.url);
+  if (embed) {
+    return `<iframe ${large ? 'class="trend-lightbox-frame"' : ''} src="${embed}" loading="lazy" allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share" allowfullscreen></iframe>`;
+  }
+  return `<div class="trend-fallback">
+    <div>
+      <strong>${escapeHtml(trend.platform || 'Trend')}</strong>
+      <p style="margin-top:8px">${escapeHtml(trend.hook || 'Open source to view this trend.')}</p>
+    </div>
+  </div>`;
+}
+
+function renderTrends() {
+  const grid = document.getElementById('trendGrid');
+  if (!grid) return;
+  if (!trendsCache.length) {
+    grid.innerHTML = '<div class="empty-state">No trends match that search yet.</div>';
+    return;
+  }
+  grid.innerHTML = trendsCache.map((trend, index) => `
+    <article class="trend-card" onclick="openTrendLightbox(${index})">
+      <div class="trend-preview">${renderTrendFrame(trend)}</div>
+      <div class="trend-body">
+        <div class="trend-hook">${escapeHtml(trend.hook || 'Untitled hook')}</div>
+        <div class="trend-meta">
+          <span class="chip chip-soft">${escapeHtml(trend.platform || 'Web')}</span>
+          <span class="chip chip-soft">${trend.views ? escapeHtml(trend.views) : 'Views not imported'}</span>
+          ${(trend.industries || []).slice(0, 2).map(industry => `<span class="chip chip-warn">${escapeHtml(industry)}</span>`).join('')}
+        </div>
+      </div>
+    </article>
+  `).join('');
+}
+
+async function ensureRemixOptions() {
+  if (remixOptionsCache.loaded) return remixOptionsCache;
+  const [brands, assets] = await Promise.all([api('/api/brands'), api('/api/assets')]);
+  remixOptionsCache = {
+    loaded: true,
+    brands: brands || [],
+    products: assets.products || [],
+    characters: [...starterCharacters, ...(assets.subjects || [])]
+  };
+  return remixOptionsCache;
+}
+
+async function openTrendLightbox(index) {
+  trendIndex = Number(index) || 0;
+  await renderTrendLightbox();
+  document.getElementById('trendLightbox')?.classList.add('active');
+}
+
+function closeTrendLightbox() {
+  document.getElementById('trendLightbox')?.classList.remove('active');
+}
+
+async function moveTrendLightbox(direction) {
+  if (!trendsCache.length) return;
+  trendIndex = (trendIndex + direction + trendsCache.length) % trendsCache.length;
+  await renderTrendLightbox();
+}
+
+async function renderTrendLightbox() {
+  const trend = trendsCache[trendIndex];
+  const body = document.getElementById('trendLightboxBody');
+  if (!trend || !body) return;
+  document.getElementById('trendLightboxTitle').textContent = trend.hook || 'Trend preview';
+  document.getElementById('trendLightboxMeta').textContent = `${trendIndex + 1} of ${trendsCache.length} · ${trend.platform || 'Web'} · ${trend.views || 'Views not imported'}`;
+  document.getElementById('trendSourceLink').href = trend.url || '#';
+
+  let options = { brands: [], products: [], characters: [] };
+  try {
+    options = await ensureRemixOptions();
+  } catch (error) {
+    toast(`Remix options could not load: ${error.message}`, 'error');
+  }
+
+  body.innerHTML = `
+    <div>${renderTrendFrame(trend, true)}</div>
+    <div class="trend-remix-panel">
+      <h3>Remix this trend</h3>
+      <p>Use the hook structure, then adapt it to one of your brands, products, and characters. Bloom Studio will move the script and prompt into Create so you can generate with Meigen or WAN.</p>
+      <div class="form-group">
+        <label class="form-label">Character</label>
+        <select class="form-select" id="trendCharacterSelect">
+          ${options.characters.map(character => `<option value="${escapeHtml(character.slug)}">${escapeHtml(character.name)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Brand</label>
+        <select class="form-select" id="trendBrandSelect">
+          <option value="">No brand selected</option>
+          ${options.brands.map(brand => `<option value="${escapeHtml(brand.slug)}">${escapeHtml(brand.name)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Product</label>
+        <select class="form-select" id="trendProductSelect">
+          <option value="">No product selected</option>
+          ${options.products.map(product => `<option value="${escapeHtml(product.slug)}">${escapeHtml(product.name)}</option>`).join('')}
+        </select>
+      </div>
+      <button class="btn btn-primary" type="button" onclick="remixCurrentTrend()">Remix into Create</button>
+      <p class="hint" style="margin-top:10px;color:rgba(255,255,255,.55)">Tip: select a saved brand first so the hook fills in with the right offer, audience, and CTA.</p>
+    </div>
+  `;
+}
+
+function fillTrendHook(hook, brand = {}, product = {}) {
+  const brandName = brand.name || 'your brand';
+  const productName = product.name || brand.category || 'your offer';
+  const audience = brand.targetAudience || 'your audience';
+  const cta = brand.cta || 'try it today';
+  return String(hook || '')
+    .replace(/\bX\b/g, productName)
+    .replace(/\[product\]/gi, productName)
+    .replace(/\[brand\]/gi, brandName)
+    .replace(/\[audience\]/gi, audience)
+    .trim()
+    .concat(`\n\nAdapt this for ${brandName}. Audience: ${audience}. Product or offer: ${productName}. End with: ${cta}.`);
+}
+
+async function remixCurrentTrend() {
+  const trend = trendsCache[trendIndex];
+  if (!trend) return toast('Choose a trend first.', 'error');
+  const options = await ensureRemixOptions();
+  const character = options.characters.find(item => item.slug === document.getElementById('trendCharacterSelect')?.value);
+  const brand = options.brands.find(item => item.slug === document.getElementById('trendBrandSelect')?.value) || {};
+  const product = options.products.find(item => item.slug === document.getElementById('trendProductSelect')?.value) || {};
+  const script = fillTrendHook(trend.hook, brand, product);
+  const prompt = [
+    `Remix source trend: ${trend.url}`,
+    trend.remixPrompt || 'Keep the same pacing and hook structure, but make it original for this brand.',
+    brand.description ? `Brand context: ${brand.description}` : '',
+    product.name ? `Feature product: ${product.name}` : ''
+  ].filter(Boolean).join('\n');
+
+  document.getElementById('studioScript').value = script;
+  document.getElementById('studioPrompt').value = prompt;
+  document.getElementById('studioNegativePrompt').value ||= 'subtitles, watermark, distorted hands, extra fingers, low quality, random nail color, camera shake';
+  document.getElementById('studioVideoEngine').value = 'meigen';
+  setStudioMode('i2v');
+  setStudioVideoEngine('meigen');
+  if (character) selectCharacter(character);
+  closeTrendLightbox();
+  switchTab('studio');
+  toast('Trend remix loaded into Create. Review the script, choose voice/audio, then generate.', 'success');
 }
 
 function toggleTheme() {

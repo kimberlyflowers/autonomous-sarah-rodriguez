@@ -102,7 +102,7 @@ function cleanSlug(value) {
 function parseDurationSeconds(value) {
   const seconds = Number(value);
   if (!Number.isFinite(seconds) || seconds <= 0) return null;
-  return Math.min(Math.max(seconds, 1), 300);
+  return Math.min(Math.max(seconds, 1), 4 * 60 * 60);
 }
 
 function parseCropPercent(value) {

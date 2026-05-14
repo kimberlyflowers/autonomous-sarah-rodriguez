@@ -8,7 +8,7 @@ function getMeigenConfig() {
     endpointId: process.env.RUNPOD_MEIGEN_ENDPOINT_ID || process.env.RUNPOD_INFINITETALK_ENDPOINT_ID || 'infinitetalk',
     endpointUrl: process.env.RUNPOD_MEIGEN_ENDPOINT_URL || process.env.RUNPOD_INFINITETALK_ENDPOINT_URL || '',
     apiKey: process.env.RUNPOD_MEIGEN_API_KEY || process.env.RUNPOD_INFINITETALK_API_KEY || '',
-    timeoutMs: Number(process.env.MEIGEN_TIMEOUT_MS || 900000),
+    timeoutMs: Number(process.env.MEIGEN_TIMEOUT_MS || 14400000),
     pollIntervalMs: Number(process.env.MEIGEN_POLL_INTERVAL_MS || 5000)
   };
 }
