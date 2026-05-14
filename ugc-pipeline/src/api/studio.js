@@ -373,6 +373,9 @@ router.post('/generate', upload.fields([
     if (audioProvider === 'upload' && !files.audio?.[0]) {
       return res.status(400).json({ error: 'Upload an audio file.' });
     }
+    if (audioProvider === 'asset' && !req.body.audioAssetId) {
+      return res.status(400).json({ error: 'Choose a saved audio file.' });
+    }
 
     let imagePath = files.image?.[0]?.path || null;
     if (!imagePath && req.body.imageAssetId) {
@@ -400,6 +403,16 @@ router.post('/generate', upload.fields([
     const imageName = imagePath ? await uploadInput(imagePath) : null;
     const videoName = files.video?.[0] ? await uploadInput(files.video[0].path) : null;
     let audioPath = files.audio?.[0]?.path || null;
+    if (audioProvider === 'asset') {
+      if (req.supabase) {
+        const saved = await getSupabaseAssetFile(req, req.body.audioAssetId, 'audio');
+        audioPath = await downloadTempFile(saved.url, req.tenant.slug || req.tenant.id, path.basename(saved.asset.storage_path));
+      } else if (hasDatabase()) {
+        audioPath = await writeDatabaseAssetTemp(req, req.body.audioAssetId, 'audio');
+      } else {
+        audioPath = getLocalAssetFile(req, req.body.audioAssetId, 'audio');
+      }
+    }
     if (audioProvider === 'elevenlabs') {
       audioPath = await createElevenLabsAudio({
         script: req.body.script,

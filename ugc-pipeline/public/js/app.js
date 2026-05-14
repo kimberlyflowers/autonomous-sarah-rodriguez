@@ -18,6 +18,7 @@ let productPlacementTimedOut = false;
 let latestProductPlacementImage = '';
 let studioCrop = { x: 50, y: 50 };
 let cropDrag = null;
+let previewAudioAsset = null;
 
 const starterCharacters = [
   { slug: 'library-financial-advisor', name: 'Financial Advisor', role: 'Advisor specialist', imageUrl: '/agent-library/financial-advisor.png' },
@@ -107,6 +108,16 @@ async function api(path, opts = {}) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.detail || data.error || `Request failed: ${res.status}`);
   return data;
+}
+
+async function playableMediaUrl(path) {
+  if (!path || !path.startsWith('/api/')) return path;
+  const headers = {};
+  if (authToken) headers.Authorization = `Bearer ${authToken}`;
+  if (currentTenant?.slug || currentTenant?.id) headers['X-Tenant-Slug'] = currentTenant.slug || currentTenant.id;
+  const res = await fetch(path, { headers });
+  if (!res.ok) throw new Error(`Could not load media preview: ${res.status}`);
+  return URL.createObjectURL(await res.blob());
 }
 
 async function initAuth() {
@@ -323,27 +334,33 @@ function setChip(id, label, state) {
 }
 
 function setStudioMode(mode) {
-  const actualMode = mode === 'qwen' ? document.getElementById('studioMode').value : mode;
-  if (mode === 'qwen') {
-    setStudioAudio('qwen');
-    return;
-  }
+  const actualMode = mode;
 
   document.getElementById('studioMode').value = actualMode;
   document.getElementById('studioPreset').value = actualMode === 'v2v' ? 'bloomies-v2v' : 'sarah-i2v-lipsync';
   document.querySelectorAll('[data-mode-choice]').forEach(btn => btn.classList.toggle('active', btn.dataset.modeChoice === actualMode));
   document.getElementById('studioImageGroup').style.display = actualMode === 'i2v' ? '' : 'none';
   document.getElementById('studioVideoGroup').style.display = actualMode === 'v2v' ? '' : 'none';
-  document.getElementById('studioSubmitHint').textContent = actualMode === 'v2v'
-    ? 'Uses the Bloomies V2V workflow preset.'
-    : 'Uses the Sarah I2V lip-sync workflow preset.';
+  const submitButton = document.getElementById('studioSubmitButton');
+  submitButton.textContent = actualMode === 'audio' ? 'Generate audio' : '▶ Generate video';
+  document.getElementById('studioSubmitHint').textContent = actualMode === 'audio'
+    ? 'Creates and saves an approved voiceover before video generation.'
+    : actualMode === 'v2v'
+      ? 'Uses the Bloomies V2V workflow preset.'
+      : 'Uses the Sarah I2V lip-sync workflow preset.';
+  if (actualMode === 'audio' && ['upload', 'asset'].includes(document.getElementById('studioAudioProvider').value)) {
+    setStudioAudio('chatterbox');
+  }
 }
 
 function setStudioAudio(provider) {
   document.getElementById('studioAudioProvider').value = provider;
   document.getElementById('studioAudioGroup').style.display = provider === 'upload' ? '' : 'none';
+  document.getElementById('studioAudioAssetGroup').style.display = provider === 'asset' ? '' : 'none';
   document.getElementById('studioVoiceGroup').style.display = provider === 'elevenlabs' ? '' : 'none';
   document.getElementById('studioChatterboxGroup').style.display = provider === 'chatterbox' ? '' : 'none';
+  document.getElementById('studioPreviewVoiceButton').style.display = ['chatterbox', 'elevenlabs'].includes(provider) ? '' : 'none';
+  document.getElementById('studioPreviewVoiceButton').textContent = provider === 'elevenlabs' ? 'Preview ElevenLabs voice' : 'Preview Chatterbox voice';
   if (provider === 'qwen') {
     toast('Qwen audio is visible but needs the third workflow API export before it can run.', 'info');
   }
@@ -474,6 +491,8 @@ function resetStudioForm() {
   document.getElementById('studioAudioName').textContent = '';
   const voiceSampleName = document.getElementById('studioVoiceSampleName');
   if (voiceSampleName) voiceSampleName.textContent = '';
+  previewAudioAsset = null;
+  document.getElementById('studioVoicePreview').style.display = 'none';
   clearSelectedCharacter();
   resetPreview();
   setStudioMode('i2v');
@@ -515,15 +534,19 @@ async function stopRunPod() {
 async function submitStudioVideo(e) {
   e.preventDefault();
   const form = document.getElementById('studioForm');
+  const mode = document.getElementById('studioMode').value;
+  if (mode === 'audio') return submitAudioOnly(form);
+
   const data = new FormData(form);
   data.append('clientJobId', crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
 
-  const mode = document.getElementById('studioMode').value;
   if (mode === 'i2v' && !document.getElementById('studioImage').files[0] && !document.getElementById('studioImageAssetId').value && !document.getElementById('studioImageUrl').value) return toast('Upload a portrait image or select a saved character first.', 'error');
   if (mode === 'v2v' && !document.getElementById('studioVideo').files[0]) return toast('Upload a source video first.', 'error');
   if (document.getElementById('studioAudioProvider').value === 'upload' && !document.getElementById('studioAudio').files[0]) return toast('Upload an audio file first.', 'error');
+  if (document.getElementById('studioAudioProvider').value === 'asset' && !document.getElementById('studioAudioAssetId').value) return toast('Choose saved audio first.', 'error');
   if (document.getElementById('studioAudioProvider').value === 'elevenlabs' && !document.getElementById('studioScript').value.trim()) return toast('Paste a script for ElevenLabs audio.', 'error');
   if (document.getElementById('studioAudioProvider').value === 'chatterbox' && !document.getElementById('studioScript').value.trim()) return toast('Paste a script for Chatterbox audio.', 'error');
+  if (!confirm('Video generation starts immediately and uses processing time. Make sure your audio and visual are final before continuing.')) return;
 
   const button = form.querySelector('button[type="submit"]');
   button.disabled = true;
@@ -542,6 +565,101 @@ async function submitStudioVideo(e) {
   }
 }
 
+async function submitAudioOnly(form) {
+  const provider = document.getElementById('studioAudioProvider').value;
+  if (provider === 'qwen') return toast('Qwen audio is not wired yet. Use Chatterbox or ElevenLabs for now.', 'error');
+  if (!['chatterbox', 'elevenlabs'].includes(provider)) return toast('Choose Chatterbox or ElevenLabs to generate audio from script.', 'error');
+  if (!document.getElementById('studioScript').value.trim()) return toast('Paste a script first.', 'error');
+  return provider === 'elevenlabs' ? previewElevenLabsVoice(true) : previewChatterboxVoice(true);
+}
+
+function previewCurrentVoice() {
+  const provider = document.getElementById('studioAudioProvider').value;
+  if (provider === 'elevenlabs') return previewElevenLabsVoice(false);
+  if (provider === 'chatterbox') return previewChatterboxVoice(false);
+  return toast('Choose Chatterbox or ElevenLabs to preview a generated voice.', 'error');
+}
+
+async function previewChatterboxVoice(saveOnly = false) {
+  const script = document.getElementById('studioScript').value.trim();
+  if (!script) return toast('Paste a script first.', 'error');
+  const button = document.getElementById('studioPreviewVoiceButton');
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Creating preview...';
+  }
+  try {
+    const data = new FormData();
+    data.append('script', script);
+    data.append('voice', document.getElementById('studioChatterboxVoice').value);
+    data.append('format', document.getElementById('studioChatterboxFormat').value);
+    data.append('voiceUrl', document.getElementById('studioChatterboxVoiceUrl').value.trim());
+    data.append('name', `Voiceover ${new Date().toLocaleString()}`);
+    const sample = document.getElementById('studioVoiceSample')?.files?.[0];
+    if (sample) data.append('voiceSample', sample);
+    const response = await api('/api/tts/chatterbox', { method: 'POST', body: data });
+    previewAudioAsset = response.result?.asset || null;
+    const url = response.result?.asset?.files?.[0]?.path || response.result?.audioUrl;
+    if (!url) throw new Error('Chatterbox did not return audio.');
+    document.getElementById('studioVoicePreview').style.display = '';
+    document.getElementById('studioVoicePreviewTitle').textContent = saveOnly ? 'Audio generated and saved' : 'Voice preview saved';
+    document.getElementById('studioVoicePreviewAudio').src = await playableMediaUrl(url);
+    toast('Voiceover generated and saved to audio Library.', 'success');
+    await loadAssets();
+  } catch (error) {
+    toast(error.message, 'error');
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = 'Preview Chatterbox voice';
+    }
+  }
+}
+
+async function previewElevenLabsVoice(saveOnly = false) {
+  const script = document.getElementById('studioScript').value.trim();
+  if (!script) return toast('Paste a script first.', 'error');
+  const button = document.getElementById('studioPreviewVoiceButton');
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Creating preview...';
+  }
+  try {
+    const response = await api('/api/tts/elevenlabs', {
+      method: 'POST',
+      body: JSON.stringify({
+        script,
+        voiceId: document.getElementById('studioVoiceId').value.trim(),
+        name: `Voiceover ${new Date().toLocaleString()}`
+      })
+    });
+    previewAudioAsset = response.result?.asset || null;
+    const url = response.result?.asset?.files?.[0]?.path;
+    if (!url) throw new Error('ElevenLabs did not return saved audio.');
+    document.getElementById('studioVoicePreview').style.display = '';
+    document.getElementById('studioVoicePreviewTitle').textContent = saveOnly ? 'Audio generated and saved' : 'Voice preview saved';
+    document.getElementById('studioVoicePreviewAudio').src = await playableMediaUrl(url);
+    toast('Voiceover generated and saved to audio Library.', 'success');
+    await loadAssets();
+  } catch (error) {
+    toast(error.message, 'error');
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = 'Preview ElevenLabs voice';
+    }
+  }
+}
+
+function usePreviewAudioForVideo() {
+  if (!previewAudioAsset?.slug) return toast('Generate a voice preview first.', 'error');
+  document.getElementById('studioAudioProvider').value = 'asset';
+  setStudioAudio('asset');
+  document.getElementById('studioAudioAssetId').value = previewAudioAsset.slug;
+  if (document.getElementById('studioMode').value === 'audio') setStudioMode('i2v');
+  toast('Preview audio selected for video.', 'success');
+}
+
 async function loadAssets() {
   const data = await api('/api/assets');
   assetsCache = data;
@@ -550,6 +668,12 @@ async function loadAssets() {
   renderAgentLibrary();
   renderMyAgents(data.subjects || []);
   renderAssetGrid('audioGrid', data.audio || [], 'audio');
+  const studioAudioSelect = document.getElementById('studioAudioAssetId');
+  if (studioAudioSelect) {
+    const current = studioAudioSelect.value;
+    studioAudioSelect.innerHTML = '<option value="">Choose saved audio</option>' + (data.audio || []).map(a => `<option value="${a.slug}">${a.name}</option>`).join('');
+    studioAudioSelect.value = current;
+  }
   renderProductPlacementPickers(data);
 }
 

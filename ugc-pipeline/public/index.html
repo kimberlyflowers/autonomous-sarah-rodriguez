@@ -134,7 +134,7 @@ button,input,select,textarea{font:inherit}
             <div class="step-row">
               <button class="choice active" type="button" data-mode-choice="i2v" onclick="setStudioMode('i2v')"><strong>Image to video</strong><span>Use a portrait and audio to animate a talking head.</span></button>
               <button class="choice" type="button" data-mode-choice="v2v" onclick="setStudioMode('v2v')"><strong>Video to video</strong><span>Use a source video and replace or sync the audio.</span></button>
-              <button class="choice" type="button" data-mode-choice="qwen" onclick="setStudioAudio('qwen')"><strong>Qwen audio</strong><span>Reserved for the third workflow export.</span></button>
+              <button class="choice" type="button" data-mode-choice="audio" onclick="setStudioMode('audio')"><strong>Audio voiceover</strong><span>Create the voice first, then approve it for video.</span></button>
             </div>
 
             <form id="studioForm" onsubmit="submitStudioVideo(event)">
@@ -148,9 +148,10 @@ button,input,select,textarea{font:inherit}
                 <div class="form-group">
                   <label class="form-label">Audio source</label>
                   <select class="form-select" id="studioAudioProvider" name="audioProvider" onchange="setStudioAudio(this.value)">
+                    <option value="asset">Saved audio from Library</option>
                     <option value="upload">Upload MP3/WAV</option>
-                    <option value="elevenlabs">ElevenLabs voice</option>
                     <option value="chatterbox">Chatterbox Turbo</option>
+                    <option value="elevenlabs">ElevenLabs voice</option>
                     <option value="qwen">Qwen audio workflow</option>
                   </select>
                 </div>
@@ -194,13 +195,21 @@ button,input,select,textarea{font:inherit}
                   <div class="file-name" id="studioVideoName"></div>
                 </div>
 
-                <div class="form-group" id="studioAudioGroup">
+                <div class="form-group" id="studioAudioGroup" style="display:none">
                   <label class="form-label">Voice audio</label>
                   <label class="file-drop">
                     <strong>Upload final voiceover</strong><span>MP3, WAV, M4A</span>
                     <input id="studioAudio" name="audio" type="file" accept="audio/*" hidden onchange="showStudioFileName('studioAudio','studioAudioName')">
                   </label>
                   <div class="file-name" id="studioAudioName"></div>
+                </div>
+
+                <div class="form-group" id="studioAudioAssetGroup">
+                  <label class="form-label">Saved audio</label>
+                  <select class="form-select" id="studioAudioAssetId" name="audioAssetId">
+                    <option value="">Choose saved audio</option>
+                  </select>
+                  <div class="hint">Use an approved voiceover from Library.</div>
                 </div>
 
                 <div class="form-group" id="studioVoiceGroup" style="display:none">
@@ -278,10 +287,22 @@ button,input,select,textarea{font:inherit}
                   <label class="form-label">Script or notes</label>
                   <textarea class="form-textarea" id="studioScript" name="script" placeholder="Paste the narration script here so the job record keeps the creative direction with the video."></textarea>
                 </div>
+
+                <div class="form-group full" id="studioVoicePreview" style="display:none">
+                  <label class="form-label">Voice preview</label>
+                  <div class="card" style="margin-bottom:0">
+                    <div class="card-title" id="studioVoicePreviewTitle">Preview ready</div>
+                    <audio id="studioVoicePreviewAudio" controls style="width:100%;margin-top:10px"></audio>
+                    <div class="actions">
+                      <button class="btn btn-secondary" type="button" onclick="usePreviewAudioForVideo()">Use this audio for video</button>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               <div class="actions">
-                <button class="btn btn-primary" type="submit">▶ Generate video</button>
+                <button class="btn btn-secondary" id="studioPreviewVoiceButton" type="button" onclick="previewCurrentVoice()" style="display:none">Preview Chatterbox voice</button>
+                <button class="btn btn-primary" id="studioSubmitButton" type="submit">▶ Generate video</button>
                 <button class="btn btn-secondary" type="button" onclick="resetStudioForm()">Clear</button>
                 <span class="hint" id="studioSubmitHint">Uses the Sarah I2V workflow preset.</span>
               </div>
