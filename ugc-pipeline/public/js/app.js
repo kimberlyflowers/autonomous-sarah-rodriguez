@@ -255,6 +255,25 @@ function trendEmbedUrl(url = '') {
   return '';
 }
 
+function trendThumbnailUrl(url = '') {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.replace(/^www\./, '');
+    if (host.includes('instagram.com')) {
+      const parts = parsed.pathname.split('/').filter(Boolean);
+      const typeIndex = parts.findIndex(part => ['p', 'reel', 'tv'].includes(part));
+      const type = parts[typeIndex];
+      const code = parts[typeIndex + 1];
+      if (typeIndex !== -1 && code) {
+        return `https://www.instagram.com/${type}/${code}/media/?size=l`;
+      }
+    }
+  } catch (error) {
+    return '';
+  }
+  return '';
+}
+
 function debouncedLoadTrends() {
   clearTimeout(trendsTimer);
   trendsTimer = setTimeout(loadTrends, 260);
@@ -330,8 +349,10 @@ function renderTrendFrame(trend, large = false) {
 function renderTrendCardPreview(trend) {
   const industries = (trend.industries || []).filter(item => item !== 'General');
   const label = industries[0] || trend.platform || 'Viral format';
-  return `<div class="trend-preview">
+  const thumb = trendThumbnailUrl(trend.url);
+  return `<div class="trend-preview ${thumb ? 'has-thumb' : ''}">
     <div class="trend-art"></div>
+    ${thumb ? `<img class="trend-thumb-img" src="${thumb}" alt="${escapeHtml(trend.hook || 'Trend preview')}" loading="lazy" onerror="this.remove();this.closest('.trend-preview')?.classList.remove('has-thumb')">` : ''}
     <div class="trend-play">▶</div>
     <span class="chip chip-warn trend-platform">${escapeHtml(trend.platform || 'Web')}</span>
     <div class="trend-preview-copy">
