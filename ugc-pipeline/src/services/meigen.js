@@ -8,15 +8,18 @@ function getMeigenConfig() {
     endpointId: process.env.RUNPOD_MEIGEN_ENDPOINT_ID || process.env.RUNPOD_INFINITETALK_ENDPOINT_ID || 'infinitetalk',
     endpointUrl: process.env.RUNPOD_MEIGEN_ENDPOINT_URL || process.env.RUNPOD_INFINITETALK_ENDPOINT_URL || '',
     apiKey: process.env.RUNPOD_MEIGEN_API_KEY || process.env.RUNPOD_INFINITETALK_API_KEY || '',
-    timeoutMs: Number(process.env.MEIGEN_RUNSYNC_TIMEOUT_MS || 300000)
+    timeoutMs: Number(process.env.MEIGEN_TIMEOUT_MS || 900000),
+    pollIntervalMs: Number(process.env.MEIGEN_POLL_INTERVAL_MS || 5000)
   };
 }
 
-function buildRunSyncUrl(config) {
-  const baseUrl = config.endpointUrl || `https://api.runpod.ai/v2/${config.endpointId}/runsync`;
-  const url = new URL(baseUrl);
-  if (!url.searchParams.has('wait')) url.searchParams.set('wait', String(config.timeoutMs));
-  return url.toString();
+function getEndpointRoot(config) {
+  if (!config.endpointUrl) return `https://api.runpod.ai/v2/${config.endpointId}`;
+  return config.endpointUrl
+    .replace(/\/runsync(?:\?.*)?$/i, '')
+    .replace(/\/run(?:\?.*)?$/i, '')
+    .replace(/\/status\/?[^/?]*(?:\?.*)?$/i, '')
+    .replace(/\/$/, '');
 }
 
 function normalizeSize(value = '480p') {
@@ -32,6 +35,51 @@ function normalizeResult(data) {
     cost: output.cost || null,
     raw: data
   };
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function runEndpoint(config, body) {
+  const root = getEndpointRoot(config);
+  const response = await fetch(`${root}/run`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body),
+    timeout: 45000
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || data.detail || `Meigen run request failed: ${response.status}`);
+  if (!data.id) throw new Error(`Meigen /run did not return a job id: ${JSON.stringify(data)}`);
+  return data;
+}
+
+async function pollEndpoint(config, jobId) {
+  const root = getEndpointRoot(config);
+  const startedAt = Date.now();
+  let lastStatus = 'IN_QUEUE';
+
+  while (Date.now() - startedAt < config.timeoutMs) {
+    const response = await fetch(`${root}/status/${jobId}`, {
+      headers: { Authorization: `Bearer ${config.apiKey}` },
+      timeout: 45000
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || data.detail || `Meigen status request failed: ${response.status}`);
+
+    lastStatus = data.status || lastStatus;
+    if (lastStatus === 'COMPLETED') return data;
+    if (['FAILED', 'ERROR', 'CANCELLED', 'TIMED_OUT'].includes(lastStatus)) {
+      throw new Error(data.error || data.detail || `Meigen job ${jobId} ended with ${lastStatus}`);
+    }
+    await sleep(config.pollIntervalMs);
+  }
+
+  throw new Error(`Meigen job ${jobId} timed out after ${Math.round(config.timeoutMs / 1000)}s. Last status: ${lastStatus}`);
 }
 
 async function resolvePublicUrl(value, filePath) {
@@ -73,30 +121,17 @@ async function createMeigenVideo({ imagePath, audioPath, imageUrl, audioUrl, pro
     }
   };
 
-  const response = await fetch(buildRunSyncUrl(config), {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${config.apiKey}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(body),
-    timeout: config.timeoutMs
-  });
-
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || data.detail || `Meigen request failed: ${response.status}`);
-  if (data.status && data.status !== 'COMPLETED') {
-    throw new Error(`Meigen returned ${data.status}. The /runsync endpoint did not return completed video.`);
-  }
+  const run = await runEndpoint(config, body);
+  const data = run.status === 'COMPLETED' ? run : await pollEndpoint(config, run.id);
 
   const result = normalizeResult(data);
-  if (!result.videoUrl) throw new Error('Meigen completed but did not return output.video_url.');
+  if (!result.videoUrl) throw new Error(`Meigen completed but did not return a video URL. Job id: ${run.id}`);
 
   const localPath = outputDir
     ? await downloadVideo(result.videoUrl, path.join(outputDir, `meigen-${Date.now()}.mp4`))
     : '';
 
-  return { ...result, localPath, provider: 'meigen' };
+  return { ...result, id: run.id || result.id, localPath, provider: 'meigen' };
 }
 
 module.exports = {
