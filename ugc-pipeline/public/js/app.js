@@ -9,19 +9,23 @@ let authToken = localStorage.getItem('bloomStudioToken') || '';
 let currentTenant = JSON.parse(localStorage.getItem('bloomStudioTenant') || 'null');
 let selectedCharacter = null;
 let currentCharacterTab = 'library';
+let currentCharacterRatio = 'landscape';
 
 const starterCharacters = [
-  { slug: 'library-financial-advisor', name: 'Financial Advisor', role: 'Professional advisor', imageUrl: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&w=900&q=85' },
-  { slug: 'library-real-estate-agent', name: 'Real Estate Agent', role: 'Listing specialist', imageUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=900&q=85' },
-  { slug: 'library-business-coach', name: 'Business Coach', role: 'Executive coach', imageUrl: 'https://images.unsplash.com/photo-1568602471122-7832951cc4c5?auto=format&fit=crop&w=900&q=85' },
-  { slug: 'library-podcast-host', name: 'Podcast Host', role: 'Studio narrator', imageUrl: 'https://images.unsplash.com/photo-1590602847861-f357a9332bbc?auto=format&fit=crop&w=900&q=85' },
-  { slug: 'library-customer-support', name: 'Customer Support', role: 'Service guide', imageUrl: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&w=900&q=85' },
-  { slug: 'library-marketing-lead', name: 'Marketing Lead', role: 'Campaign strategist', imageUrl: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=900&q=85' },
-  { slug: 'library-operations-manager', name: 'Operations Manager', role: 'Process trainer', imageUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=900&q=85' },
-  { slug: 'library-ecommerce-founder', name: 'Ecommerce Founder', role: 'Product seller', imageUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=900&q=85' },
-  { slug: 'library-medical-training', name: 'Medical Training', role: 'Training presenter', imageUrl: 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&w=900&q=85' },
-  { slug: 'library-career-coach', name: 'Career Coach', role: 'Interview mentor', imageUrl: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=900&q=85' }
+  { slug: 'library-financial-advisor', name: 'Financial Advisor', role: 'Advisor specialist', imageUrl: '/agent-library/financial-advisor.png' },
+  { slug: 'library-real-estate-agent', name: 'Real Estate Agent', role: 'Listing specialist', imageUrl: '/agent-library/real-estate-agent.png' },
+  { slug: 'library-small-business', name: 'Small Business Owner', role: 'Founder presenter', imageUrl: '/agent-library/small-business-owner.png' },
+  { slug: 'library-ecommerce-founder', name: 'Ecommerce Founder', role: 'Product seller', imageUrl: '/agent-library/ecommerce-founder.png' },
+  { slug: 'library-sarah-studio', name: 'Sarah Studio', role: 'Bloomie narrator', imageUrl: '/agent-library/sarah-studio.png' },
+  { slug: 'library-rebecca-advisor', name: 'Rebecca Advisor', role: 'Finance narrator', imageUrl: '/agent-library/rebecca-advisor.jpg' },
+  { slug: 'library-janelle-real-estate', name: 'Janelle Real Estate', role: 'Market narrator', imageUrl: '/agent-library/janelle-real-estate.jpg' },
+  { slug: 'library-andre-founder', name: 'Andre Founder', role: 'Business owner', imageUrl: '/agent-library/andre-founder.jpg' },
+  { slug: 'library-studio-presenter', name: 'Studio Presenter', role: 'Podcast host', imageUrl: '/agent-library/studio-presenter.png' },
+  { slug: 'library-coach-presenter', name: 'Coach Presenter', role: 'Training coach', imageUrl: '/agent-library/coach-presenter.png' }
 ];
+
+const savedTheme = localStorage.getItem('bloomStudioTheme') || 'dark';
+document.body.dataset.theme = savedTheme;
 
 document.querySelectorAll('.nav-tab').forEach(tab => {
   tab.addEventListener('click', () => switchTab(tab.dataset.tab));
@@ -60,6 +64,18 @@ function toast(message, type = 'info') {
   el.textContent = message;
   container.appendChild(el);
   setTimeout(() => el.remove(), 4800);
+}
+
+function toggleTheme() {
+  const next = document.body.dataset.theme === 'light' ? 'dark' : 'light';
+  document.body.dataset.theme = next;
+  localStorage.setItem('bloomStudioTheme', next);
+  updateThemeButton();
+}
+
+function updateThemeButton() {
+  const button = document.getElementById('themeButton');
+  if (button) button.textContent = document.body.dataset.theme === 'light' ? 'Dark mode' : 'Light mode';
 }
 
 async function api(path, opts = {}) {
@@ -438,15 +454,23 @@ function setCharacterTab(tab) {
   if (mine) mine.style.display = tab === 'mine' ? '' : 'none';
 }
 
+function setCharacterRatio(ratio) {
+  currentCharacterRatio = ratio;
+  document.querySelectorAll('[data-character-ratio]').forEach(btn => btn.classList.toggle('active', btn.dataset.characterRatio === ratio));
+  document.querySelectorAll('.character-grid').forEach(grid => grid.classList.toggle('portrait', ratio === 'portrait'));
+}
+
 function renderAgentLibrary() {
   const grid = document.getElementById('agentLibraryGrid');
   if (!grid) return;
+  grid.classList.toggle('portrait', currentCharacterRatio === 'portrait');
   grid.innerHTML = starterCharacters.map(character => renderCharacterCard(character, true)).join('');
 }
 
 function renderMyAgents(characters) {
   const grid = document.getElementById('myAgentsGrid');
   if (!grid) return;
+  grid.classList.toggle('portrait', currentCharacterRatio === 'portrait');
   if (!characters.length) {
     grid.innerHTML = '<div class="character-empty">No agents uploaded yet. Click + New agent to add Sarah, Marcus, or any spokesperson portrait.</div>';
     return;
@@ -571,10 +595,16 @@ function handleFileSelect(input) {
 
 async function uploadAsset(e) {
   e.preventDefault();
+  if (window.location.protocol === 'file:') {
+    return toast('Open the live app URL before uploading. Files cannot persist from a file:// preview.', 'error');
+  }
   const type = document.getElementById('uploadType').value;
   const name = document.getElementById('uploadName').value;
   const files = Array.from(document.getElementById('uploadFile').files || []);
   if (!files.length) return toast('Please select a file', 'error');
+  const button = document.querySelector('#uploadForm button[type="submit"]');
+  button.disabled = true;
+  button.textContent = 'Uploading...';
 
   try {
     for (let index = 0; index < files.length; index++) {
@@ -593,6 +623,9 @@ async function uploadAsset(e) {
     if (type === 'subjects') switchTab('characters');
   } catch (err) {
     toast(err.message, 'error');
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Upload';
   }
 }
 
@@ -865,4 +898,5 @@ function formatBytes(bytes) {
 
 initAuth();
 updatePreviewRatio();
+updateThemeButton();
 setInterval(loadDashboard, 30000);

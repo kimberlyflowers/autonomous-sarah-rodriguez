@@ -13,6 +13,7 @@ const {
   getStudioJobs
 } = require('../services/comfyui');
 const { ensureComfyReady, getAccountBalance, getPodStatus, getRunPodConfig, isComfyReady, normalizePodState, startPod, stopPod } = require('../services/runpod');
+const { getAssetFile, hasDatabase } = require('../services/postgres');
 
 const router = express.Router();
 const UPLOAD_DIR = path.join(__dirname, '..', '..', 'assets', 'studio-uploads');
@@ -74,6 +75,16 @@ async function downloadTempFile(url, tenantId, filename) {
     dest.on('finish', resolve);
     dest.on('error', reject);
   });
+  return outputPath;
+}
+
+async function writeDatabaseAssetTemp(req, assetId, type) {
+  const asset = await getAssetFile(req.tenant.slug || req.tenant.id, assetId, type);
+  if (!asset) throw new Error(`Saved ${type} asset was not found.`);
+  const dir = path.join(UPLOAD_DIR, cleanSlug(req.tenant.slug || req.tenant.id || 'default'), 'database-assets');
+  fs.mkdirSync(dir, { recursive: true });
+  const outputPath = path.join(dir, `${Date.now()}-${asset.file_name.replace(/[^a-zA-Z0-9._-]/g, '-')}`);
+  fs.writeFileSync(outputPath, asset.file_data);
   return outputPath;
 }
 
@@ -292,6 +303,8 @@ router.post('/generate', upload.fields([
       if (req.supabase) {
         const saved = await getSupabaseAssetFile(req, req.body.imageAssetId, 'subject');
         imagePath = await downloadTempFile(saved.url, req.tenant.slug || req.tenant.id, path.basename(saved.asset.storage_path));
+      } else if (hasDatabase()) {
+        imagePath = await writeDatabaseAssetTemp(req, req.body.imageAssetId, 'subject');
       } else {
         imagePath = getLocalAssetFile(req, req.body.imageAssetId, 'subjects');
       }

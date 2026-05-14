@@ -16,6 +16,7 @@ const billingRouter = require('./api/billing');
 const { requireTenant } = require('./services/auth');
 const { getSupabaseConfig } = require('./services/supabase');
 const { getRunPodConfig } = require('./services/runpod');
+const { hasDatabase, initUgcStore } = require('./services/postgres');
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -70,6 +71,7 @@ app.get('/health', (req, res) => {
     apiKeyConfigured: hasApiKey,
     comfyuiConfigured: !!(process.env.COMFYUI_BASE_URL || process.env.RUNPOD_COMFYUI_URL),
     runpodAutoStartConfigured: getRunPodConfig().autoStartConfigured,
+    databaseConfigured: hasDatabase(),
     supabaseConfigured: getSupabaseConfig().configured,
     supabaseAvailable: getSupabaseConfig().available,
     uptime: process.uptime()
@@ -98,6 +100,7 @@ app.get('/api/status', (req, res) => {
     apiKeyConfigured: !!(process.env.WAVESPEED_API_KEY || process.env.SEEDANCE_API_KEY),
     comfyuiConfigured: !!(process.env.COMFYUI_BASE_URL || process.env.RUNPOD_COMFYUI_URL),
     runpodAutoStartConfigured: getRunPodConfig().autoStartConfigured,
+    databaseConfigured: hasDatabase(),
     supabaseConfigured: getSupabaseConfig().configured,
     provider: 'wavespeed+comfyui',
     brands: brandCount,
@@ -124,6 +127,12 @@ dirs.forEach(dir => {
     fs.mkdirSync(fullPath, { recursive: true });
   }
 });
+
+initUgcStore()
+  .then((ready) => {
+    if (ready) logger.info('UGC database-backed asset storage ready');
+  })
+  .catch((error) => logger.warn(`UGC database storage unavailable: ${error.message}`));
 
 app.listen(PORT, () => {
   logger.info(`UGC Pipeline running on port ${PORT}`);
