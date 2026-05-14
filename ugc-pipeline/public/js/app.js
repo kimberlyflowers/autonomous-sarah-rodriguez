@@ -294,12 +294,31 @@ function hydrateTrendFilters(data = {}) {
 function renderTrendFrame(trend, large = false) {
   const embed = trendEmbedUrl(trend.url);
   if (embed) {
-    return `<iframe ${large ? 'class="trend-lightbox-frame"' : ''} src="${embed}" loading="lazy" allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share" allowfullscreen></iframe>`;
+    const frame = `<iframe ${large ? 'class="trend-lightbox-frame"' : ''} src="${embed}" loading="lazy" scrolling="no" allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share" allowfullscreen></iframe>`;
+    if (large) {
+      return `<div class="trend-watch-shell">${frame}<div class="trend-watch-overlay"><span>Use Source if Instagram blocks playback</span></div></div>`;
+    }
+    return frame;
   }
-  return `<div class="trend-fallback">
+  const fallback = `<div class="trend-fallback">
     <div>
       <strong>${escapeHtml(trend.platform || 'Trend')}</strong>
       <p style="margin-top:8px">${escapeHtml(trend.hook || 'Open source to view this trend.')}</p>
+    </div>
+  </div>`;
+  return large ? `<div class="trend-watch-shell">${fallback}</div>` : fallback;
+}
+
+function renderTrendCardPreview(trend) {
+  const industries = (trend.industries || []).filter(item => item !== 'General');
+  const label = industries[0] || trend.platform || 'Viral format';
+  return `<div class="trend-preview">
+    <div class="trend-art"></div>
+    <div class="trend-play">▶</div>
+    <span class="chip chip-warn trend-platform">${escapeHtml(trend.platform || 'Web')}</span>
+    <div class="trend-preview-copy">
+      <strong>${escapeHtml(label)}</strong>
+      <span>Click to preview source video</span>
     </div>
   </div>`;
 }
@@ -313,13 +332,17 @@ function renderTrends() {
   }
   grid.innerHTML = trendsCache.map((trend, index) => `
     <article class="trend-card" onclick="openTrendLightbox(${index})">
-      <div class="trend-preview">${renderTrendFrame(trend)}</div>
+      ${renderTrendCardPreview(trend)}
       <div class="trend-body">
         <div class="trend-hook">${escapeHtml(trend.hook || 'Untitled hook')}</div>
         <div class="trend-meta">
           <span class="chip chip-soft">${escapeHtml(trend.platform || 'Web')}</span>
           <span class="chip chip-soft">${trend.views ? escapeHtml(trend.views) : 'Views not imported'}</span>
           ${(trend.industries || []).slice(0, 2).map(industry => `<span class="chip chip-warn">${escapeHtml(industry)}</span>`).join('')}
+        </div>
+        <div class="trend-card-actions">
+          <button class="btn btn-secondary" type="button" onclick="event.stopPropagation();openTrendLightbox(${index})">Preview</button>
+          <button class="btn btn-primary" type="button" onclick="event.stopPropagation();openTrendLightbox(${index})">Remix</button>
         </div>
       </div>
     </article>
