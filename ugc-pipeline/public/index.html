@@ -396,6 +396,9 @@ button,input,select,textarea{font:inherit}
         <div class="hint" id="trendCount">Loading trends...</div>
       </div>
       <div class="trend-grid" id="trendGrid"></div>
+      <div class="actions" style="justify-content:center;margin-top:16px">
+        <button class="btn btn-secondary" id="trendLoadMore" type="button" onclick="loadMoreTrends()" style="display:none">Load more trends</button>
+      </div>
     </section>
 
     <section class="tab-content" id="tab-videos">
@@ -726,6 +729,6 @@ button,input,select,textarea{font:inherit}
 
 <div class="toast-container" id="toastContainer"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="/js/app.js?v=trends-5"></script>
+<script src="/js/app.js?v=trends-6"></script>
 </body>
 </html>

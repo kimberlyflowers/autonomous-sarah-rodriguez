@@ -21,6 +21,8 @@ let trendIndex = 0;
 let trendsTimer = null;
 let remixOptionsCache = { brands: [], products: [], characters: [] };
 let trendRemixMode = false;
+let visibleTrendCount = 100;
+let trendScrollWatcherAttached = false;
 let currentLibraryVideoRatio = 'portrait';
 let productPlacementCharacter = null;
 let productPlacementProduct = null;
@@ -264,6 +266,7 @@ async function loadTrends() {
   if (!grid || !count) return;
   count.textContent = 'Loading trends...';
   grid.innerHTML = '<div class="empty-state">Loading trending hook library...</div>';
+  visibleTrendCount = 100;
   try {
     const params = new URLSearchParams({
       q: document.getElementById('trendSearch')?.value || '',
@@ -274,12 +277,25 @@ async function loadTrends() {
     const data = await api(`/api/trends?${params.toString()}`);
     trendsCache = data.trends || [];
     hydrateTrendFilters(data);
-    count.textContent = `Showing ${trendsCache.length} of ${data.total || trendsCache.length} matching trend hooks. Views are not imported from the PDF yet.`;
+    count.textContent = `Showing ${Math.min(visibleTrendCount, trendsCache.length)} of ${trendsCache.length} matching trend hooks. Views are not imported from the PDF yet.`;
     renderTrends();
+    attachTrendScrollWatcher();
   } catch (error) {
     count.textContent = 'Could not load trends.';
     grid.innerHTML = `<div class="empty-state">Trend library failed to load: ${escapeHtml(error.message)}</div>`;
   }
+}
+
+function attachTrendScrollWatcher() {
+  if (trendScrollWatcherAttached) return;
+  trendScrollWatcherAttached = true;
+  window.addEventListener('scroll', () => {
+    const active = document.getElementById('tab-trends')?.classList.contains('active');
+    if (!active || visibleTrendCount >= trendsCache.length) return;
+    if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 900) {
+      loadMoreTrends(false);
+    }
+  }, { passive: true });
 }
 
 function hydrateTrendFilters(data = {}) {
@@ -332,7 +348,8 @@ function renderTrends() {
     grid.innerHTML = '<div class="empty-state">No trends match that search yet.</div>';
     return;
   }
-  grid.innerHTML = trendsCache.map((trend, index) => `
+  const visible = trendsCache.slice(0, visibleTrendCount);
+  grid.innerHTML = visible.map((trend, index) => `
     <article class="trend-card" onclick="openTrendLightbox(${index})">
       ${renderTrendCardPreview(trend)}
       <div class="trend-body">
@@ -349,6 +366,22 @@ function renderTrends() {
       </div>
     </article>
   `).join('');
+  const count = document.getElementById('trendCount');
+  if (count) count.textContent = `Showing ${visible.length} of ${trendsCache.length} matching trend hooks. Views are not imported from the PDF yet.`;
+  const more = document.getElementById('trendLoadMore');
+  if (more) {
+    more.style.display = visible.length < trendsCache.length ? '' : 'none';
+    more.textContent = visible.length < trendsCache.length ? `Load more (${trendsCache.length - visible.length} left)` : 'All trends loaded';
+  }
+}
+
+function loadMoreTrends(scrollAfter = true) {
+  if (visibleTrendCount >= trendsCache.length) return;
+  visibleTrendCount = Math.min(visibleTrendCount + 100, trendsCache.length);
+  renderTrends();
+  if (scrollAfter) {
+    document.getElementById('trendLoadMore')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
 }
 
 async function ensureRemixOptions() {
