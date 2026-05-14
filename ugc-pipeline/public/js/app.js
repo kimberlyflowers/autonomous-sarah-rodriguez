@@ -269,12 +269,12 @@ async function loadTrends() {
       q: document.getElementById('trendSearch')?.value || '',
       industry: document.getElementById('trendIndustry')?.value || 'All',
       platform: document.getElementById('trendPlatform')?.value || 'All',
-      limit: '96'
+      limit: '1200'
     });
     const data = await api(`/api/trends?${params.toString()}`);
     trendsCache = data.trends || [];
     hydrateTrendFilters(data);
-    count.textContent = `${data.total || trendsCache.length} matching trend hooks. Views are not imported from the PDF yet.`;
+    count.textContent = `Showing ${trendsCache.length} of ${data.total || trendsCache.length} matching trend hooks. Views are not imported from the PDF yet.`;
     renderTrends();
   } catch (error) {
     count.textContent = 'Could not load trends.';

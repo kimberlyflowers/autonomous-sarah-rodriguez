@@ -14,7 +14,7 @@ router.get('/', (req, res) => {
   const q = String(req.query.q || '').trim().toLowerCase();
   const industry = String(req.query.industry || '').trim();
   const platform = String(req.query.platform || '').trim();
-  const limit = Math.min(Number(req.query.limit || 72), 200);
+  const limit = Math.min(Number(req.query.limit || 1200), 1200);
   let trends = loadTrends();
 
   if (industry && industry !== 'All') {
