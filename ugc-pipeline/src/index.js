@@ -14,6 +14,7 @@ const studioRouter = require('./api/studio');
 const authRouter = require('./api/auth');
 const billingRouter = require('./api/billing');
 const productPlacementRouter = require('./api/product-placement');
+const ttsRouter = require('./api/tts');
 const { requireTenant } = require('./services/auth');
 const { getSupabaseConfig } = require('./services/supabase');
 const { getRunPodConfig } = require('./services/runpod');
@@ -61,6 +62,7 @@ app.use('/api/analyze', apiKeyAuth, requireTenant, analyzeRouter);
 app.use('/api/studio', apiKeyAuth, requireTenant, studioRouter);
 app.use('/api/billing', apiKeyAuth, requireTenant, billingRouter);
 app.use('/api/product-placement', apiKeyAuth, requireTenant, productPlacementRouter);
+app.use('/api/tts', apiKeyAuth, requireTenant, ttsRouter);
 
 // Health check
 app.get('/health', (req, res) => {

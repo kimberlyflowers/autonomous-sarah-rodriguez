@@ -150,6 +150,7 @@ button,input,select,textarea{font:inherit}
                   <select class="form-select" id="studioAudioProvider" name="audioProvider" onchange="setStudioAudio(this.value)">
                     <option value="upload">Upload MP3/WAV</option>
                     <option value="elevenlabs">ElevenLabs voice</option>
+                    <option value="chatterbox">Chatterbox Turbo</option>
                     <option value="qwen">Qwen audio workflow</option>
                   </select>
                 </div>
@@ -205,6 +206,56 @@ button,input,select,textarea{font:inherit}
                 <div class="form-group" id="studioVoiceGroup" style="display:none">
                   <label class="form-label">ElevenLabs voice ID</label>
                   <input class="form-input" id="studioVoiceId" name="voiceId" placeholder="Optional. Uses Sarah default if blank.">
+                </div>
+
+                <div class="form-group full" id="studioChatterboxGroup" style="display:none">
+                  <label class="form-label">Chatterbox voice</label>
+                  <div class="form-grid">
+                    <div class="form-group">
+                      <select class="form-select" id="studioChatterboxVoice" name="chatterboxVoice">
+                        <option value="lucy" selected>Lucy</option>
+                        <option value="laura">Laura</option>
+                        <option value="madison">Madison</option>
+                        <option value="marisol">Marisol</option>
+                        <option value="meera">Meera</option>
+                        <option value="chloe">Chloe</option>
+                        <option value="abigail">Abigail</option>
+                        <option value="anaya">Anaya</option>
+                        <option value="aaron">Aaron</option>
+                        <option value="andy">Andy</option>
+                        <option value="archer">Archer</option>
+                        <option value="brian">Brian</option>
+                        <option value="dylan">Dylan</option>
+                        <option value="emmanuel">Emmanuel</option>
+                        <option value="ethan">Ethan</option>
+                        <option value="gavin">Gavin</option>
+                        <option value="gordon">Gordon</option>
+                        <option value="ivan">Ivan</option>
+                        <option value="walter">Walter</option>
+                        <option value="evelyn">Evelyn</option>
+                      </select>
+                      <div class="hint">Preset voice. Ignored when a custom voice URL or sample is provided.</div>
+                    </div>
+                    <div class="form-group">
+                      <select class="form-select" id="studioChatterboxFormat" name="chatterboxFormat">
+                        <option value="wav" selected>WAV</option>
+                        <option value="flac">FLAC</option>
+                        <option value="ogg">OGG</option>
+                      </select>
+                      <div class="hint">WAV is best for ComfyUI lip sync.</div>
+                    </div>
+                    <div class="form-group">
+                      <input class="form-input" id="studioChatterboxVoiceUrl" name="chatterboxVoiceUrl" placeholder="Optional public custom voice URL">
+                      <div class="hint">RunPod calls this <code>voice_url</code>. It should be a public audio URL.</div>
+                    </div>
+                    <div class="form-group">
+                      <label class="file-drop">
+                        <strong>Upload custom voice sample</strong><span>Optional WAV/MP3 reference voice</span>
+                        <input id="studioVoiceSample" name="voiceSample" type="file" accept="audio/*" hidden onchange="showStudioFileName('studioVoiceSample','studioVoiceSampleName')">
+                      </label>
+                      <div class="file-name" id="studioVoiceSampleName"></div>
+                    </div>
+                  </div>
                 </div>
 
                 <div class="form-group">
@@ -274,9 +325,12 @@ button,input,select,textarea{font:inherit}
     </section>
 
     <section class="tab-content" id="tab-videos">
-      <div class="section-head"><div><h2 class="section-title">Video library</h2><p class="section-desc">Generated clips and jobs in progress.</p></div><div class="actions"><button class="btn btn-secondary" onclick="loadVideos()">Refresh</button><button class="btn btn-secondary" onclick="pollAllJobs()">Poll Seedance</button></div></div>
+      <div class="section-head"><div><h2 class="section-title">Library</h2><p class="section-desc">Generated images, completed videos, and jobs in progress.</p></div><div class="actions"><button class="btn btn-secondary" onclick="loadVideos();loadAssets()">Refresh</button><button class="btn btn-secondary" onclick="pollAllJobs()">Poll Seedance</button></div></div>
       <div id="videoProgress" style="display:none;margin-bottom:16px"><div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div><p class="hint" id="progressText"></p></div>
+      <div class="card"><div class="card-header"><div><div class="card-title">Generated images</div><div class="card-subtitle">Nano Banana outputs and approved production stills</div></div></div><div class="asset-grid" id="generatedImageGrid"></div></div>
+      <div class="card"><div class="card-header"><div><div class="card-title">Generated videos</div><div class="card-subtitle">Completed clips and processing jobs</div></div></div>
       <div class="video-grid" id="videoGrid"></div>
+      </div>
     </section>
 
     <section class="tab-content active" id="tab-characters">
@@ -381,6 +435,8 @@ button,input,select,textarea{font:inherit}
             </div>
             <div class="actions" id="productResultActions" style="display:none">
               <a class="btn btn-secondary" id="productResultDownload" href="#" download="product-placement.png">Download image</a>
+              <button class="btn btn-secondary" type="button" onclick="addLatestImageAsCharacter()">Add as character</button>
+              <button class="btn btn-primary" type="button" onclick="openPublishModal(latestProductPlacementImage,'image')">Post</button>
             </div>
             <p class="endpoint-note" id="nanoEndpointNote"></p>
           </div>
@@ -502,9 +558,29 @@ button,input,select,textarea{font:inherit}
       <div class="form-group" id="characterVoiceFields" style="display:none;margin-top:14px">
         <label class="form-label">Default ElevenLabs voice ID</label>
         <input class="form-input" id="uploadVoiceId" placeholder="Optional. Used when this character is selected.">
+        <label class="form-label" style="margin-top:12px">Default Chatterbox voice sample</label>
+        <select class="form-select" id="uploadVoiceSampleAssetId">
+          <option value="">None</option>
+        </select>
+        <div class="hint">Choose a saved audio asset. When this character is selected, Bloom Studio can turn it into a temporary Chatterbox voice_url.</div>
       </div>
       <div class="modal-actions"><button class="btn btn-secondary" type="button" onclick="closeUploadModal()">Cancel</button><button class="btn btn-primary" type="submit">Upload</button></div>
     </form>
+  </div>
+</div>
+
+<div class="modal-overlay" id="publishModal">
+  <div class="modal">
+    <div class="modal-title">Post to socials</div>
+    <p class="hint" style="margin-bottom:14px">Direct API posting needs connected YouTube, TikTok, and Instagram accounts. For now, open the upload page and use the generated media URL.</p>
+    <input class="form-input" id="publishMediaUrl" readonly>
+    <div class="actions" style="margin-top:14px">
+      <button class="btn btn-secondary" type="button" onclick="copyPublishUrl()">Copy media URL</button>
+      <button class="btn btn-secondary" type="button" onclick="openPlatformUpload('youtube')">YouTube</button>
+      <button class="btn btn-secondary" type="button" onclick="openPlatformUpload('tiktok')">TikTok</button>
+      <button class="btn btn-secondary" type="button" onclick="openPlatformUpload('instagram')">Instagram</button>
+    </div>
+    <div class="modal-actions"><button class="btn btn-secondary" type="button" onclick="closePublishModal()">Close</button></div>
   </div>
 </div>
 

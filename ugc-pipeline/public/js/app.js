@@ -7,6 +7,7 @@ let authConfig = null;
 let supabaseClient = null;
 let authToken = localStorage.getItem('bloomStudioToken') || '';
 let currentTenant = JSON.parse(localStorage.getItem('bloomStudioTenant') || 'null');
+let assetsCache = { products: [], subjects: [], audio: [], outputs: [] };
 let selectedCharacter = null;
 let currentCharacterTab = 'library';
 let currentCharacterRatio = 'portrait';
@@ -14,6 +15,7 @@ let productPlacementCharacter = null;
 let productPlacementProduct = null;
 let productPlacementRequest = null;
 let productPlacementTimedOut = false;
+let latestProductPlacementImage = '';
 let studioCrop = { x: 50, y: 50 };
 let cropDrag = null;
 
@@ -245,9 +247,12 @@ async function loadStudioStatus() {
     setWorkflowChip('v2vStatus', 'v2vNote', v2v, data.comfyReady, 'Bloomies video-to-video workflow is installed and ready to queue.');
 
     const qwen = data.audioProviders.find(p => p.id === 'qwen');
+    const chatterbox = data.audioProviders.find(p => p.id === 'chatterbox');
     setChip('qwenStatus', qwen?.available ? 'Ready' : 'Needs workflow', qwen?.available ? 'soft' : 'warn');
     const qwenNote = document.getElementById('qwenNote');
-    if (qwenNote) qwenNote.textContent = qwen?.available ? 'Qwen TTS workflow is ready.' : qwen?.note || 'Waiting for Qwen TTS API workflow export.';
+    if (qwenNote) qwenNote.textContent = chatterbox?.available
+      ? 'Chatterbox Turbo is ready for preset voices and custom voice_url samples.'
+      : qwen?.note || 'Waiting for Qwen TTS API workflow export.';
     loadRunPodBalance();
   } catch (e) {
     setChip('comfyStatus', 'Error', 'red');
@@ -338,11 +343,15 @@ function setStudioAudio(provider) {
   document.getElementById('studioAudioProvider').value = provider;
   document.getElementById('studioAudioGroup').style.display = provider === 'upload' ? '' : 'none';
   document.getElementById('studioVoiceGroup').style.display = provider === 'elevenlabs' ? '' : 'none';
+  document.getElementById('studioChatterboxGroup').style.display = provider === 'chatterbox' ? '' : 'none';
   if (provider === 'qwen') {
     toast('Qwen audio is visible but needs the third workflow API export before it can run.', 'info');
   }
   if (provider === 'elevenlabs') {
     toast('ElevenLabs will generate audio from the script before queuing the video.', 'info');
+  }
+  if (provider === 'chatterbox') {
+    toast('Chatterbox will generate audio from the script before queuing the video.', 'info');
   }
 }
 
@@ -463,6 +472,8 @@ function resetStudioForm() {
   document.getElementById('studioImageName').textContent = '';
   document.getElementById('studioVideoName').textContent = '';
   document.getElementById('studioAudioName').textContent = '';
+  const voiceSampleName = document.getElementById('studioVoiceSampleName');
+  if (voiceSampleName) voiceSampleName.textContent = '';
   clearSelectedCharacter();
   resetPreview();
   setStudioMode('i2v');
@@ -512,6 +523,7 @@ async function submitStudioVideo(e) {
   if (mode === 'v2v' && !document.getElementById('studioVideo').files[0]) return toast('Upload a source video first.', 'error');
   if (document.getElementById('studioAudioProvider').value === 'upload' && !document.getElementById('studioAudio').files[0]) return toast('Upload an audio file first.', 'error');
   if (document.getElementById('studioAudioProvider').value === 'elevenlabs' && !document.getElementById('studioScript').value.trim()) return toast('Paste a script for ElevenLabs audio.', 'error');
+  if (document.getElementById('studioAudioProvider').value === 'chatterbox' && !document.getElementById('studioScript').value.trim()) return toast('Paste a script for Chatterbox audio.', 'error');
 
   const button = form.querySelector('button[type="submit"]');
   button.disabled = true;
@@ -532,7 +544,9 @@ async function submitStudioVideo(e) {
 
 async function loadAssets() {
   const data = await api('/api/assets');
+  assetsCache = data;
   renderAssetGrid('productGrid', data.products || [], 'products');
+  renderAssetGrid('generatedImageGrid', data.outputs || [], 'outputs');
   renderAgentLibrary();
   renderMyAgents(data.subjects || []);
   renderAssetGrid('audioGrid', data.audio || [], 'audio');
@@ -612,9 +626,23 @@ function selectCharacter(character) {
   if (character.voiceId) {
     document.getElementById('studioVoiceId').value = character.voiceId;
   }
+  if (character.voiceSampleAssetId) {
+    hydrateChatterboxVoiceUrl(character.voiceSampleAssetId);
+  }
   setStudioMode('i2v');
   switchTab('studio');
   toast(`${character.name} loaded into Create.`, 'success');
+}
+
+async function hydrateChatterboxVoiceUrl(audioAssetId) {
+  try {
+    const data = await api(`/api/assets/audio/${audioAssetId}/temp-url`, { method: 'POST' });
+    const input = document.getElementById('studioChatterboxVoiceUrl');
+    if (input) input.value = data.url;
+    toast('Default Chatterbox voice URL loaded for this character.', 'success');
+  } catch (error) {
+    toast(`Could not load character voice sample: ${error.message}`, 'error');
+  }
 }
 
 function renderProductPlacementPickers(data = {}) {
@@ -766,10 +794,12 @@ async function generateProductPlacement() {
     const response = await api('/api/product-placement/generate', { method: 'POST', body: data, signal: controller.signal });
     const image = response.result?.image;
     if (image) {
+      latestProductPlacementImage = image;
       resultFrame.innerHTML = `<img src="${image}" alt="Generated product placement">`;
       const link = document.getElementById('productResultDownload');
       link.href = image;
       document.getElementById('productResultActions').style.display = '';
+      saveGeneratedImageToLibrary(image);
       toast('Product image generated.', 'success');
     } else {
       resultFrame.innerHTML = '<div><strong>No image returned</strong><p class="hint">Nano Banana completed but the response did not include an image URL.</p></div>';
@@ -791,6 +821,41 @@ async function generateProductPlacement() {
     productPlacementTimedOut = false;
     button.disabled = false;
     button.textContent = 'Run Nano Banana';
+  }
+}
+
+async function saveGeneratedImageToLibrary(imageUrl) {
+  try {
+    const prompt = document.getElementById('productPlacementPrompt').value.trim();
+    await api('/api/assets/generated-image', {
+      method: 'POST',
+      body: JSON.stringify({
+        imageUrl,
+        name: `Nano Banana ${new Date().toLocaleString()}`,
+        prompt
+      })
+    });
+    loadAssets();
+  } catch (error) {
+    toast(`Generated image saved for preview, but not Library: ${error.message}`, 'error');
+  }
+}
+
+async function addLatestImageAsCharacter() {
+  if (!latestProductPlacementImage) return toast('Generate an image first.', 'error');
+  const name = prompt('Name this new agent:', 'New generated agent');
+  if (!name) return;
+  try {
+    await api('/api/assets/subjects/from-image-url', {
+      method: 'POST',
+      body: JSON.stringify({ imageUrl: latestProductPlacementImage, name })
+    });
+    toast('Generated image added to My agents.', 'success');
+    await loadAssets();
+    switchTab('characters');
+    setCharacterTab('mine');
+  } catch (error) {
+    toast(error.message, 'error');
   }
 }
 
@@ -837,10 +902,17 @@ function renderAssetGrid(containerId, assets, type) {
       </div>
       <div class="asset-actions">
         <button class="btn btn-secondary" onclick="viewContext('${type}','${asset.slug}')">Context</button>
+        ${type === 'audio' ? `<button class="btn btn-secondary" onclick="copyAudioTempUrl('${asset.slug}')">Copy voice URL</button>` : ''}
+        ${type === 'outputs' && file?.path ? `<button class="btn btn-secondary" onclick="addImageUrlAsCharacter('${file.path.replace(/'/g, "\\'")}')">Add as character</button><button class="btn btn-primary" onclick="openPublishModal('${file.path.replace(/'/g, "\\'")}','image')">Post</button>` : ''}
         <button class="btn btn-secondary" onclick="deleteAsset('${type}','${asset.slug}')">Delete</button>
       </div>
     </div>`;
   }).join('');
+}
+
+async function addImageUrlAsCharacter(imageUrl) {
+  latestProductPlacementImage = imageUrl;
+  return addLatestImageAsCharacter();
 }
 
 function showUploadModal(type) {
@@ -848,6 +920,11 @@ function showUploadModal(type) {
   document.getElementById('uploadName').value = '';
   document.getElementById('uploadFile').value = '';
   document.getElementById('uploadVoiceId').value = '';
+  const sampleSelect = document.getElementById('uploadVoiceSampleAssetId');
+  if (sampleSelect) {
+    sampleSelect.innerHTML = '<option value="">None</option>' + (assetsCache.audio || []).map(a => `<option value="${a.slug}">${a.name}</option>`).join('');
+    sampleSelect.value = '';
+  }
   document.getElementById('uploadFileName').textContent = '';
   document.getElementById('characterVoiceFields').style.display = type === 'subjects' ? '' : 'none';
   document.getElementById('uploadModal').classList.add('active');
@@ -885,6 +962,7 @@ async function uploadAsset(e) {
       formData.append('name', files.length > 1 ? `${name} ${index + 1}` : name);
       if (type === 'subjects') {
         formData.append('voiceId', document.getElementById('uploadVoiceId').value.trim());
+        formData.append('voiceSampleAssetId', document.getElementById('uploadVoiceSampleAssetId').value);
       }
       await api(`/api/assets/${type}`, { method: 'POST', body: formData });
     }
@@ -897,6 +975,16 @@ async function uploadAsset(e) {
   } finally {
     button.disabled = false;
     button.textContent = 'Upload';
+  }
+}
+
+async function copyAudioTempUrl(slug) {
+  try {
+    const data = await api(`/api/assets/audio/${slug}/temp-url`, { method: 'POST' });
+    await navigator.clipboard.writeText(data.url);
+    toast('Temporary voice URL copied. Paste it into Chatterbox custom voice URL.', 'success');
+  } catch (error) {
+    toast(error.message, 'error');
   }
 }
 
@@ -1113,8 +1201,37 @@ async function loadVideos() {
     const videoEl = v.localPath
       ? `<video class="video-player" controls preload="metadata"><source src="${v.localPath}" type="video/mp4"></video>`
       : `<div class="video-player" style="display:flex;align-items:center;justify-content:center;color:#999">Processing</div>`;
-    return `<div class="video-card">${videoEl}<div class="video-info"><div style="display:flex;justify-content:space-between;gap:8px"><span class="chip chip-soft">${v.format || 'custom'}</span>${statusChip}</div><div class="video-prompt">${v.prompt || ''}</div>${v.error ? `<div class="video-prompt" style="color:var(--red)">${v.error}</div>` : ''}</div></div>`;
+    const actions = v.status === 'completed' && v.localPath
+      ? `<div class="actions"><button class="btn btn-primary" onclick="openPublishModal('${v.localPath.replace(/'/g, "\\'")}','video')">Post</button><a class="btn btn-secondary" href="${v.localPath}" download>Download</a></div>`
+      : '';
+    return `<div class="video-card">${videoEl}<div class="video-info"><div style="display:flex;justify-content:space-between;gap:8px"><span class="chip chip-soft">${v.format || 'custom'}</span>${statusChip}</div><div class="video-prompt">${v.prompt || ''}</div>${v.error ? `<div class="video-prompt" style="color:var(--red)">${v.error}</div>` : ''}${actions}</div></div>`;
   }).join('');
+}
+
+function openPublishModal(mediaUrl, mediaType = 'video') {
+  const input = document.getElementById('publishMediaUrl');
+  input.value = new URL(mediaUrl, window.location.origin).href;
+  input.dataset.mediaType = mediaType;
+  document.getElementById('publishModal').classList.add('active');
+}
+
+function closePublishModal() {
+  document.getElementById('publishModal').classList.remove('active');
+}
+
+async function copyPublishUrl() {
+  const url = document.getElementById('publishMediaUrl').value;
+  await navigator.clipboard.writeText(url);
+  toast('Media URL copied.', 'success');
+}
+
+function openPlatformUpload(platform) {
+  const urls = {
+    youtube: 'https://studio.youtube.com/',
+    tiktok: 'https://www.tiktok.com/upload',
+    instagram: 'https://business.facebook.com/latest/reels_composer'
+  };
+  window.open(urls[platform], '_blank', 'noopener');
 }
 
 async function pollAllJobs() {

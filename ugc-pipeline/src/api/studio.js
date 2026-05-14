@@ -16,6 +16,7 @@ const {
 } = require('../services/comfyui');
 const { ensureComfyReady, getAccountBalance, getPodStatus, getRunPodConfig, isComfyReady, normalizePodState, startPod, stopPod } = require('../services/runpod');
 const { getAssetFile, hasDatabase } = require('../services/postgres');
+const { CHATTERBOX_VOICES, createChatterboxAudio, getChatterboxConfig } = require('../services/chatterbox');
 
 const router = express.Router();
 const UPLOAD_DIR = path.join(__dirname, '..', '..', 'assets', 'studio-uploads');
@@ -194,6 +195,13 @@ router.get('/status', async (req, res) => {
     audioProviders: [
       { id: 'upload', label: 'Uploaded audio', available: true },
       { id: 'elevenlabs', label: 'ElevenLabs', available: !!process.env.ELEVENLABS_API_KEY },
+      {
+        id: 'chatterbox',
+        label: 'Chatterbox Turbo',
+        available: !!getChatterboxConfig().apiKey,
+        voices: CHATTERBOX_VOICES,
+        note: 'RunPod public Chatterbox Turbo endpoint. Preset voices or custom voice_url reference audio.'
+      },
       { id: 'qwen', label: 'Qwen audio workflow', available: false, note: 'Install ComfyUI-Qwen-TTS on RunPod and export a Qwen API workflow preset before enabling.' }
     ]
   });
@@ -331,7 +339,8 @@ router.get('/jobs/:requestId', async (req, res) => {
 router.post('/generate', upload.fields([
   { name: 'image', maxCount: 1 },
   { name: 'video', maxCount: 1 },
-  { name: 'audio', maxCount: 1 }
+  { name: 'audio', maxCount: 1 },
+  { name: 'voiceSample', maxCount: 1 }
 ]), async (req, res) => {
   try {
     if (!getBaseUrl()) {
@@ -397,6 +406,18 @@ router.post('/generate', upload.fields([
         voiceId: req.body.voiceId,
         tenantId: req.tenant.slug || req.tenant.id
       });
+    }
+    if (audioProvider === 'chatterbox') {
+      const dir = path.join(UPLOAD_DIR, cleanSlug(req.tenant.slug || req.tenant.id || 'default'), 'chatterbox');
+      const chatterbox = await createChatterboxAudio({
+        script: req.body.script,
+        voice: req.body.chatterboxVoice,
+        voiceUrl: req.body.chatterboxVoiceUrl,
+        voiceSamplePath: files.voiceSample?.[0]?.path || null,
+        format: req.body.chatterboxFormat,
+        outputDir: dir
+      });
+      audioPath = chatterbox.localPath;
     }
     const durationSeconds = parseDurationSeconds(req.body.durationSeconds) || await getAudioDurationSeconds(audioPath);
     const audioName = audioPath ? await uploadInput(audioPath) : null;

@@ -7,6 +7,7 @@ const { logger } = require('../services/logger');
 const { uploadToTempHost } = require('../services/seedance');
 const { getSignedUrl } = require('../services/supabase');
 const { getAssetFile, hasDatabase, initUgcStore, query } = require('../services/postgres');
+const fetch = require('node-fetch');
 
 const router = express.Router();
 
@@ -39,7 +40,7 @@ function singularType(type) {
 }
 
 function pluralType(type) {
-  return type === 'product' ? 'products' : type === 'subject' ? 'subjects' : type;
+  return type === 'product' ? 'products' : type === 'subject' ? 'subjects' : type === 'output' ? 'outputs' : type;
 }
 
 function fileToAsset(row) {
@@ -96,7 +97,7 @@ router.get('/', async (req, res) => {
         'select * from public.ugc_asset_files where tenant_slug = $1 order by created_at desc',
         [req.tenant.slug || req.tenant.id]
       );
-      const result = { products: [], subjects: [], audio: [] };
+      const result = { products: [], subjects: [], audio: [], outputs: [] };
       for (const row of rows) {
         const key = pluralType(row.type);
         if (result[key]) result[key].push(fileToAsset(row));
@@ -116,9 +117,9 @@ router.get('/', async (req, res) => {
         .order('created_at', { ascending: false });
       if (error) throw error;
 
-      const result = { products: [], subjects: [], audio: [] };
+      const result = { products: [], subjects: [], audio: [], outputs: [] };
       for (const asset of data || []) {
-        const typeKey = asset.type === 'product' ? 'products' : asset.type === 'subject' ? 'subjects' : asset.type;
+        const typeKey = pluralType(asset.type);
         if (!result[typeKey]) continue;
         const signedUrl = await getSignedUrl(req.supabase, asset.storage_path);
       result[typeKey].push({
@@ -141,10 +142,10 @@ router.get('/', async (req, res) => {
     }
   }
 
-  const result = { products: [], subjects: [], audio: [] };
+  const result = { products: [], subjects: [], audio: [], outputs: [] };
   const tenantSlug = req.tenant?.slug || req.tenant?.id || 'default';
 
-  ['products', 'subjects', 'audio'].forEach(type => {
+  ['products', 'subjects', 'audio', 'outputs'].forEach(type => {
     const dir = path.join(ASSETS_DIR, 'tenants', tenantSlug, type);
     if (!fs.existsSync(dir)) return;
 
@@ -192,6 +193,135 @@ router.get('/file/:id', async (req, res) => {
     res.status(500).send(error.message);
   }
 });
+
+router.post('/audio/:slug/temp-url', async (req, res) => {
+  try {
+    let filePath = '';
+    if (!req.supabase && hasDatabase()) {
+      const asset = await getAssetFile(req.tenant.slug || req.tenant.id, req.params.slug, 'audio');
+      if (!asset) return res.status(404).json({ error: 'Audio asset not found.' });
+      const dir = path.join(ASSETS_DIR, 'temp-voice-url', req.tenant.slug || req.tenant.id);
+      fs.mkdirSync(dir, { recursive: true });
+      filePath = path.join(dir, `${Date.now()}-${asset.file_name.replace(/[^a-zA-Z0-9._-]/g, '-')}`);
+      fs.writeFileSync(filePath, asset.file_data);
+    } else if (req.supabase) {
+      const { data: asset, error } = await req.supabase
+        .from('ugc_assets')
+        .select('*')
+        .eq('tenant_id', req.tenant.id)
+        .eq('id', req.params.slug)
+        .eq('type', 'audio')
+        .single();
+      if (error) throw error;
+      const signedUrl = await getSignedUrl(req.supabase, asset.storage_path, 10 * 60);
+      return res.json({ success: true, url: signedUrl, expiresIn: '10 minutes' });
+    } else {
+      filePath = getLocalAudioFile(req, req.params.slug);
+    }
+    const url = await uploadToTempHost(filePath);
+    res.json({ success: true, url, expiresIn: 'temporary' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/generated-image', async (req, res) => {
+  try {
+    const { imageUrl, name, prompt } = req.body || {};
+    if (!/^https?:\/\//i.test(imageUrl || '')) return res.status(400).json({ error: 'A generated image URL is required.' });
+    const file = await downloadRemoteImage(req, imageUrl, name || 'Generated image');
+    const slug = cleanSlug(name || 'generated-image') || `generated-${Date.now()}`;
+
+    if (!req.supabase && hasDatabase()) {
+      const asset = await uploadToDatabase(req, {
+        ...file,
+        path: file.path,
+        originalname: file.originalname,
+        mimetype: file.mimetype,
+        size: file.size
+      }, 'output', slug);
+      return res.json({ success: true, asset: fileToAsset(asset) });
+    }
+
+    if (req.supabase) {
+      const asset = await uploadToSupabase(req, file, 'output', slug);
+      const signedUrl = await getSignedUrl(req.supabase, asset.storage_path);
+      return res.json({ success: true, asset: { type: 'output', slug: asset.id, name: asset.name, files: [{ name: path.basename(asset.storage_path), path: signedUrl, size: asset.size_bytes || 0 }] } });
+    }
+
+    const tenantSlug = req.tenant?.slug || req.tenant?.id || 'default';
+    const outDir = path.join(ASSETS_DIR, 'tenants', tenantSlug, 'outputs', slug);
+    fs.mkdirSync(outDir, { recursive: true });
+    const finalPath = path.join(outDir, file.originalname);
+    fs.copyFileSync(file.path, finalPath);
+    fs.writeFileSync(path.join(outDir, 'ai-context.json'), JSON.stringify({ prompt: prompt || '', source: 'nano-banana' }, null, 2));
+    res.json({ success: true, asset: { type: 'output', slug, name: name || 'Generated image', files: [{ name: file.originalname, path: `/assets/tenants/${tenantSlug}/outputs/${slug}/${file.originalname}`, size: file.size }] } });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/subjects/from-image-url', async (req, res) => {
+  try {
+    const { imageUrl, name, voiceId, voiceSampleAssetId } = req.body || {};
+    if (!/^https?:\/\//i.test(imageUrl || '')) return res.status(400).json({ error: 'Image URL is required.' });
+    const file = await downloadRemoteImage(req, imageUrl, name || 'New agent');
+    const slug = cleanSlug(name || 'new-agent') || `agent-${Date.now()}`;
+    req.body.voiceId = voiceId || '';
+    req.body.voiceSampleAssetId = voiceSampleAssetId || '';
+
+    if (!req.supabase && hasDatabase()) {
+      const asset = await uploadToDatabase(req, file, 'subject', slug);
+      return res.json({ success: true, asset: fileToAsset(asset) });
+    }
+    if (req.supabase) {
+      const asset = await uploadToSupabase(req, file, 'subject', slug);
+      const signedUrl = await getSignedUrl(req.supabase, asset.storage_path);
+      return res.json({ success: true, asset: { type: 'subject', slug: asset.id, name: asset.name, path: signedUrl } });
+    }
+
+    const tenantSlug = req.tenant?.slug || req.tenant?.id || 'default';
+    const outDir = path.join(ASSETS_DIR, 'tenants', tenantSlug, 'subjects', slug);
+    fs.mkdirSync(outDir, { recursive: true });
+    fs.copyFileSync(file.path, path.join(outDir, file.originalname));
+    fs.writeFileSync(path.join(outDir, 'ai-context.json'), JSON.stringify({ voiceId: voiceId || '', voiceSampleAssetId: voiceSampleAssetId || '' }, null, 2));
+    res.json({ success: true, asset: { type: 'subject', slug, name: name || 'New agent', path: `/assets/tenants/${tenantSlug}/subjects/${slug}/${file.originalname}` } });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+async function downloadRemoteImage(req, imageUrl, name) {
+  const response = await fetch(imageUrl, { timeout: 45000 });
+  if (!response.ok) throw new Error(`Could not download generated image: ${response.status}`);
+  const contentType = response.headers.get('content-type') || 'image/png';
+  if (!contentType.startsWith('image/')) throw new Error('Generated URL did not return an image.');
+  const ext = contentType.includes('jpeg') ? '.jpg' : contentType.includes('webp') ? '.webp' : '.png';
+  const tenantSlug = req.tenant?.slug || req.tenant?.id || 'default';
+  const dir = path.join(ASSETS_DIR, 'remote-downloads', tenantSlug);
+  fs.mkdirSync(dir, { recursive: true });
+  const originalname = `${cleanSlug(name) || 'generated'}-${Date.now()}${ext}`;
+  const filePath = path.join(dir, originalname);
+  const buffer = await response.buffer();
+  fs.writeFileSync(filePath, buffer);
+  return { path: filePath, originalname, mimetype: contentType, size: buffer.length };
+}
+
+function cleanSlug(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function getLocalAudioFile(req, slug) {
+  const tenantSlug = req.tenant?.slug || req.tenant?.id || 'default';
+  const dir = path.join(ASSETS_DIR, 'tenants', tenantSlug, 'audio', slug);
+  if (!fs.existsSync(dir)) throw new Error('Audio asset not found.');
+  const file = fs.readdirSync(dir).find(name => !name.endsWith('.json'));
+  if (!file) throw new Error('Audio asset has no file.');
+  return path.join(dir, file);
+}
 
 async function uploadToSupabase(req, file, type, slug) {
   const tenantSlug = req.tenant.slug || req.tenant.id;
@@ -316,7 +446,7 @@ router.post('/audio', uploadAudio.single('file'), async (req, res) => {
 // Delete an asset folder
 router.delete('/:type/:slug', async (req, res) => {
   const { type, slug } = req.params;
-  if (!['products', 'subjects', 'audio'].includes(type)) {
+  if (!['products', 'subjects', 'audio', 'outputs'].includes(type)) {
     return res.status(400).json({ error: 'Invalid asset type' });
   }
   if (!req.supabase && hasDatabase()) {
