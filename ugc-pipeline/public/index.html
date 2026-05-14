@@ -33,7 +33,7 @@ button,input,select,textarea{font:inherit}
 .choice{border:1.5px solid var(--line);background:var(--surface);color:var(--ink);border-radius:14px;padding:14px;cursor:pointer;transition:.18s;min-height:96px}
 .choice:hover{border-color:rgba(244,162,97,.55);transform:translateY(-1px)}.choice.active{border-color:var(--primary);box-shadow:0 0 0 4px rgba(244,162,97,.14)}
 .choice strong{display:block;font-size:14px}.choice span{display:block;font-size:12px;color:var(--muted);margin-top:5px}
-.create-lanes{display:flex;gap:7px;flex-wrap:wrap;margin:14px 0 16px}.create-lane{border:1px solid var(--line);background:var(--surface);color:var(--muted);border-radius:999px;padding:8px 12px;font-size:12px;font-weight:900;cursor:pointer}.create-lane:hover{border-color:rgba(244,162,97,.55);color:var(--ink)}.create-lane.active{background:rgba(244,162,97,.12);border-color:var(--primary);color:var(--primary)}.remix-context{display:none;grid-column:1/-1;border:1px solid rgba(244,162,97,.35);background:rgba(244,162,97,.09);border-radius:16px;padding:14px;margin-bottom:8px}.remix-context.active{display:block}.remix-context-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:10px}.remix-context-title{font-size:14px;font-weight:900}.remix-context-url{font-size:12px;color:var(--muted);word-break:break-all}.remix-context .form-textarea{min-height:82px;background:var(--surface)}
+.create-tool-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin:14px 0 18px}.create-tool{border:1px solid var(--line);background:var(--soft);color:var(--muted);border-radius:12px;padding:10px 12px;text-align:left;font-weight:900;cursor:pointer}.create-tool b{display:block;font-size:13px;color:var(--ink)}.create-tool span{display:block;font-size:11px;margin-top:2px}.create-tool.active{background:var(--surface);border-color:var(--primary);box-shadow:0 0 0 4px rgba(244,162,97,.10)}.create-folder-label{font-size:12px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:var(--primary);margin:18px 0 10px}.create-lanes{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin:0 0 16px}.create-lane{position:relative;overflow:hidden;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:16px;padding:0;cursor:pointer;text-align:left;min-height:164px;box-shadow:0 10px 26px rgba(0,0,0,.06);transition:transform .16s,border-color .16s,box-shadow .16s}.create-lane-preview{height:94px;background:linear-gradient(135deg,#242a2c,#111);position:relative;overflow:hidden}.create-lane-preview:before{content:"";position:absolute;inset:14px;border-radius:14px;background:linear-gradient(135deg,rgba(244,162,97,.92),rgba(231,111,139,.78));filter:blur(18px);opacity:.55}.create-lane-preview:after{content:"";position:absolute;inset:auto 13px 13px;height:30px;border-radius:10px;background:rgba(255,255,255,.13);border:1px solid rgba(255,255,255,.16);box-shadow:0 -34px 0 -10px rgba(255,255,255,.10)}.create-lane[data-create-type="remix"] .create-lane-preview{background:linear-gradient(145deg,#181818,#4a2930)}.create-lane[data-create-type="long-form"] .create-lane-preview{background:linear-gradient(145deg,#222829,#583a28)}.create-lane[data-create-type="webinar"] .create-lane-preview{background:linear-gradient(145deg,#171717,#31414a)}.create-lane[data-create-type="course"] .create-lane-preview{background:linear-gradient(145deg,#171717,#3d354d)}.create-lane-body{padding:12px}.create-lane b{display:block;font-size:14px;line-height:1.15;letter-spacing:-.02em}.create-lane span{display:block;color:var(--muted);font-size:11px;font-weight:700;margin-top:5px;line-height:1.3}.create-lane-badge{position:absolute;top:10px;right:10px;z-index:2;background:rgba(255,255,255,.9);color:#9a5526;border-radius:999px;padding:4px 8px;font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.03em}.create-lane:hover{border-color:rgba(244,162,97,.62);transform:translateY(-2px);box-shadow:0 18px 38px rgba(0,0,0,.10)}.create-lane.active{border-color:var(--primary);box-shadow:0 0 0 4px rgba(244,162,97,.12),0 18px 38px rgba(0,0,0,.10)}.create-lane.active .create-lane-body{background:linear-gradient(135deg,rgba(244,162,97,.12),rgba(231,111,139,.08))}.create-flow-panel{border:1px solid var(--line);background:linear-gradient(135deg,rgba(244,162,97,.08),rgba(231,111,139,.06)),var(--surface);border-radius:16px;padding:15px;margin:0 0 18px}.create-flow-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px}.create-flow-title{font-weight:900;font-size:15px}.create-flow-desc{font-size:12px;color:var(--muted);margin-top:3px;line-height:1.45}.create-flow-chip{border-radius:999px;background:rgba(244,162,97,.16);color:var(--primary);border:1px solid rgba(244,162,97,.28);padding:5px 9px;font-size:11px;font-weight:900;white-space:nowrap}.create-flow-steps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.create-flow-step{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px}.create-flow-step strong{display:block;font-size:12px}.create-flow-step span{display:block;font-size:11px;color:var(--muted);margin-top:3px;line-height:1.35}.create-flow-status-row{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px}.create-flow-status{border-radius:999px;border:1px solid var(--line);background:var(--surface);padding:5px 8px;font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.03em}.create-flow-status.ready{border-color:rgba(47,179,109,.42);color:var(--green);background:rgba(47,179,109,.08)}.create-flow-status.missing{border-color:rgba(217,79,79,.42);color:var(--red);background:rgba(217,79,79,.08)}.remix-context{display:none;grid-column:1/-1;border:1px solid rgba(244,162,97,.35);background:rgba(244,162,97,.09);border-radius:16px;padding:14px;margin-bottom:8px}.remix-context.active{display:block}.remix-context-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:10px}.remix-context-title{font-size:14px;font-weight:900}.remix-context-url{font-size:12px;color:var(--muted);word-break:break-all}.remix-context .form-textarea{min-height:82px;background:var(--surface)}
 .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.form-group{margin-bottom:14px}.full{grid-column:1/-1}
 .form-label{display:block;font-size:12px;font-weight:800;color:var(--muted);margin-bottom:7px;text-transform:uppercase;letter-spacing:.04em}
 .form-input,.form-select,.form-textarea{width:100%;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);border-radius:12px;padding:12px 13px;outline:none;font-size:14px}
@@ -65,8 +65,43 @@ button,input,select,textarea{font:inherit}
 .generation-overlay{display:none;position:fixed;inset:0;z-index:45;background:rgba(0,0,0,.72);backdrop-filter:blur(8px);align-items:center;justify-content:center;padding:24px}.generation-overlay.active{display:flex}.generation-card{width:min(94vw,720px);background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);overflow:hidden}.generation-top{display:flex;justify-content:center;padding:18px;border-bottom:1px solid var(--line);font-size:13px;color:var(--muted)}.generation-top strong{color:var(--primary)}.generation-stage{min-height:230px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:15px;padding:32px}.generation-mark{width:58px;height:58px;position:relative;display:grid;place-items:center}.generation-mark:before{content:"";position:absolute;inset:0;border-radius:18px;background:conic-gradient(from 0deg,var(--primary),var(--pink),var(--primary));animation:cookspin 1.1s linear infinite;filter:drop-shadow(0 0 16px rgba(244,162,97,.32))}.generation-mark:after{content:"B";position:absolute;inset:8px;border-radius:13px;background:var(--surface);display:grid;place-items:center;color:var(--primary);font-weight:900}.generation-title{font-size:17px;font-weight:800}.generation-detail{font-size:13px;color:var(--muted);text-align:center;max-width:430px}.generation-meta{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;font-size:12px;color:var(--muted)}.generation-pill{padding:6px 10px;border-radius:999px;background:rgba(244,162,97,.10);border:1px solid rgba(244,162,97,.24);color:var(--primary);font-weight:800}.generation-progress{height:7px;background:var(--soft);overflow:hidden}.generation-progress-fill{height:100%;width:2%;background:var(--grad);transition:width .45s ease}.generation-actions{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 18px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}.generation-actions .btn{padding:8px 12px;font-size:12px}
 .auth-screen{position:fixed;inset:0;z-index:50;background:linear-gradient(135deg,rgba(244,162,97,.14),rgba(231,111,139,.11)),var(--bg);display:none;align-items:center;justify-content:center;padding:24px}.auth-screen.active{display:flex}.auth-card{width:min(96vw,460px);background:var(--surface);border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow);padding:28px}.auth-card .mark{margin-bottom:16px}.auth-title{font-size:28px;font-weight:800;letter-spacing:-.04em;line-height:1.08;margin-bottom:8px}.auth-copy{font-size:14px;color:var(--muted);margin-bottom:22px}.auth-meta{margin-top:14px;padding:12px;border-radius:14px;background:rgba(244,162,97,.1);border:1px solid rgba(244,162,97,.25);color:var(--primary);font-size:12px}.user-menu{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}.tenant-pill{font-size:12px;font-weight:800;color:var(--primary);background:rgba(244,162,97,.1);border:1px solid rgba(244,162,97,.25);border-radius:999px;padding:7px 10px}
 .advanced-box{opacity:.92}.format-checkboxes{display:flex;flex-wrap:wrap;gap:8px}.format-checkbox{display:none}.format-label{border:1px solid var(--line);border-radius:999px;padding:8px 12px;font-size:13px;font-weight:800;cursor:pointer}.format-checkbox:checked+.format-label{background:rgba(244,162,97,.13);border-color:var(--primary);color:var(--primary)}.variant-item{border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px;background:var(--surface);color:var(--ink)}.progress-bar{height:6px;background:var(--soft);border-radius:999px;overflow:hidden}.progress-fill{height:100%;background:var(--grad)}
-@media(max-width:920px){.app-shell{grid-template-columns:1fr}.sidebar{position:relative;height:auto}.nav{flex-direction:row;overflow-x:auto}.hero-grid,.form-grid,.brand-profile,.gen-config,.step-row,.product-lab,.product-drop-grid{grid-template-columns:1fr}.main{padding:18px}.topbar{align-items:flex-start;flex-direction:column}}
+@media(max-width:1100px){.create-lanes{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:920px){.app-shell{grid-template-columns:1fr}.sidebar{position:relative;height:auto}.nav{flex-direction:row;overflow-x:auto}.hero-grid,.form-grid,.brand-profile,.gen-config,.step-row,.product-lab,.product-drop-grid,.create-flow-steps{grid-template-columns:1fr}.main{padding:18px}.topbar{align-items:flex-start;flex-direction:column}}
+@media(max-width:560px){.create-lanes{grid-template-columns:1fr}}
 @media(max-width:720px){.character-grid,.character-grid.landscape{grid-template-columns:1fr}.character-card{min-height:520px}.character-grid.landscape .character-card{min-height:210px}.billing-hero{grid-template-columns:1fr}}
+/* OpenArt-style creator workbench overrides */
+#tab-studio .hero-grid,#tab-products .product-lab{grid-template-columns:480px minmax(520px,1fr);align-items:stretch;min-height:calc(100vh - 150px)}
+#tab-studio .panel:first-child,#tab-products .panel:first-child{max-height:calc(100vh - 150px);overflow:auto}
+#tab-studio .preview-card,#tab-products .product-lab>aside{display:flex;flex-direction:column;background:#111}
+#tab-studio .preview-frame{flex:1;min-height:620px;aspect-ratio:auto;max-height:none;background:#111;margin:0;padding:24px;position:relative}
+#tab-studio .preview-frame:before,#tab-products .result-frame:before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 48% 44%,rgba(244,162,97,.13),transparent 29%),radial-gradient(circle at 66% 58%,rgba(231,111,139,.13),transparent 25%);pointer-events:none}
+#tab-studio .preview-frame.has-media{padding:24px}
+#tab-studio .preview-frame img,#tab-studio .preview-frame video{position:relative;z-index:1;width:100%;height:auto;max-height:88%;object-fit:cover;border-radius:16px;box-shadow:0 18px 60px rgba(0,0,0,.45)}
+#tab-studio .preview-frame.ratio-portrait img,#tab-studio .preview-frame.ratio-portrait video{max-width:min(42vh,430px);aspect-ratio:9/16}
+#tab-studio .preview-frame.ratio-landscape img,#tab-studio .preview-frame.ratio-landscape video{max-width:86%;aspect-ratio:16/9}
+#tab-studio .preview-frame.ratio-square img,#tab-studio .preview-frame.ratio-square video{max-width:min(58vh,560px);aspect-ratio:1/1}
+#tab-studio .preview-body{border-top:1px solid var(--line);padding:14px 18px;background:var(--surface)}
+#tab-studio .mini-list{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+#tab-studio .mini-row{border:1px solid var(--line);border-radius:10px;background:var(--soft);padding:8px 10px;font-size:12px}
+#tab-studio .workflow-grid,#tab-studio .preview-body .actions,#tab-studio .preview-body>p.hint:last-child{display:none}
+#tab-studio .create-tool-grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
+#tab-studio .create-tool{min-height:58px}
+#tab-studio .create-lanes{grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
+#tab-studio .create-lane{min-height:76px;border-radius:12px}
+#tab-studio .create-lane-preview,.create-lane-badge{display:none}
+#tab-studio .create-lane-body{padding:11px}
+#tab-studio .create-flow-panel{padding:13px;margin-bottom:14px}
+#tab-studio .create-flow-steps{grid-template-columns:repeat(2,minmax(0,1fr))}
+#tab-products .section-head{display:none}
+#tab-products .product-drop-grid{grid-template-columns:1fr;gap:12px}
+#tab-products .mini-pick-grid{max-height:230px;grid-template-columns:repeat(auto-fill,minmax(120px,1fr))}
+#tab-products .result-frame{flex:1;min-height:620px;height:100%;aspect-ratio:auto;max-height:none;background:#111;border-radius:18px;position:relative}
+#tab-products .result-frame img{position:relative;z-index:1;width:100%;height:auto;max-height:88%;object-fit:cover;border-radius:16px;box-shadow:0 18px 60px rgba(0,0,0,.45)}
+#tab-products .result-frame.ratio-portrait img{max-width:min(42vh,430px);aspect-ratio:9/16}
+#tab-products .result-frame:not(.ratio-portrait) img{max-width:86%;aspect-ratio:16/9}
+#tab-products .product-lab>aside .panel-pad{display:flex;flex-direction:column;height:100%}
+#tab-products .product-lab>aside .panel-title,#tab-products .product-lab>aside .panel-note,#tab-products .endpoint-note{display:none}
+@media(max-width:1100px){#tab-studio .hero-grid,#tab-products .product-lab{grid-template-columns:1fr}#tab-studio .panel:first-child,#tab-products .panel:first-child{max-height:none}#tab-studio .preview-frame,#tab-products .result-frame{min-height:520px}#tab-studio .mini-list,#tab-studio .create-lanes,#tab-studio .create-tool-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
   </style>
 </head>
 <body>
@@ -140,13 +175,24 @@ button,input,select,textarea{font:inherit}
             <div class="panel-title">New video</div>
             <p class="panel-note">Start with a person image for I2V, or a source video for V2V. Add audio or use a voice workflow when available.</p>
 
-            <div class="create-lanes" aria-label="Create type">
-              <button class="create-lane active" type="button" data-create-type="shorts" onclick="setCreateType('shorts')">Shorts</button>
-              <button class="create-lane" type="button" data-create-type="remix" onclick="setCreateType('remix')">Remix videos</button>
-              <button class="create-lane" type="button" data-create-type="long-form" onclick="setCreateType('long-form')">Long form</button>
-              <button class="create-lane" type="button" data-create-type="webinar" onclick="setCreateType('webinar')">Webinars</button>
-              <button class="create-lane" type="button" data-create-type="course" onclick="setCreateType('course')">Courses</button>
+            <div class="create-folder-label">Create tools</div>
+            <div class="create-tool-grid">
+              <button class="create-tool active" type="button"><b>Video</b><span>Animate, remix, publish</span></button>
+              <button class="create-tool" type="button" onclick="switchTab('products')"><b>Image</b><span>Composite product shots</span></button>
+              <button class="create-tool" type="button" onclick="switchTab('characters')"><b>Character</b><span>Agents and looks</span></button>
+              <button class="create-tool" type="button" onclick="setCreateType('shorts');setStudioMode('audio')"><b>Audio</b><span>Voiceovers first</span></button>
+              <button class="create-tool" type="button" onclick="switchTab('trends')"><b>Trends</b><span>Find remix sources</span></button>
             </div>
+
+            <div class="create-folder-label">Video subfolders</div>
+            <div class="create-lanes" aria-label="Create folders">
+              <button class="create-lane active" type="button" data-create-type="shorts" onclick="setCreateType('shorts')"><div class="create-lane-badge">Core</div><div class="create-lane-preview"></div><div class="create-lane-body"><b>Shorts</b><span>Fast talking-head posts</span></div></button>
+              <button class="create-lane" type="button" data-create-type="remix" onclick="setCreateType('remix')"><div class="create-lane-badge">Viral</div><div class="create-lane-preview"></div><div class="create-lane-body"><b>Remix videos</b><span>Rebuild a viral source</span></div></button>
+              <button class="create-lane" type="button" data-create-type="long-form" onclick="setCreateType('long-form')"><div class="create-lane-badge">Script</div><div class="create-lane-preview"></div><div class="create-lane-body"><b>Long form</b><span>Longer scripts and edits</span></div></button>
+              <button class="create-lane" type="button" data-create-type="webinar" onclick="setCreateType('webinar')"><div class="create-lane-badge">Live</div><div class="create-lane-preview"></div><div class="create-lane-body"><b>Webinars</b><span>Recorded training style</span></div></button>
+              <button class="create-lane" type="button" data-create-type="course" onclick="setCreateType('course')"><div class="create-lane-badge">Lesson</div><div class="create-lane-preview"></div><div class="create-lane-body"><b>Courses</b><span>Lesson-based content</span></div></button>
+            </div>
+            <div class="create-flow-panel" id="createFlowPanel"></div>
 
             <div class="step-row">
               <button class="choice active" type="button" data-mode-choice="i2v" onclick="setStudioMode('i2v')"><strong>Image to video</strong><span>Use a portrait and audio to animate a talking head.</span></button>
@@ -182,7 +228,7 @@ button,input,select,textarea{font:inherit}
                   <select class="form-select" id="studioAudioProvider" name="audioProvider" onchange="setStudioAudio(this.value)">
                     <option value="asset">Saved audio from Library</option>
                     <option value="upload">Upload MP3/WAV</option>
-                    <option value="chatterbox">Chatterbox Turbo</option>
+                    <option value="chatterbox" selected>Chatterbox Turbo</option>
                     <option value="elevenlabs">ElevenLabs voice</option>
                     <option value="qwen">Qwen audio workflow</option>
                   </select>
@@ -191,9 +237,9 @@ button,input,select,textarea{font:inherit}
                 <div class="form-group" id="studioVideoEngineGroup">
                   <label class="form-label">I2V engine</label>
                   <select class="form-select" id="studioVideoEngine" name="videoEngine" onchange="setStudioVideoEngine(this.value)">
-                    <option value="wan-comfy" selected>WAN (ComfyUI)</option>
+                    <option value="wan-comfy">WAN (ComfyUI)</option>
                     <option value="wan22-serverless">Wan 2.2 Serverless</option>
-                    <option value="meigen">Meigen lip sync</option>
+                    <option value="meigen" selected>Meigen lip sync</option>
                     <option value="wan-animate">Wan Animate motion remix</option>
                   </select>
                   <div class="hint" id="studioVideoEngineHint">Uses the installed WAN/ComfyUI workflow and RunPod pod.</div>

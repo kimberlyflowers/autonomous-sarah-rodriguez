@@ -36,6 +36,7 @@ let previewAudioAsset = null;
 let voicePreviewTimer = null;
 let generationTimer = null;
 let generationStartedAt = 0;
+let studioStatusCache = null;
 
 const starterCharacters = [
   { slug: 'library-financial-advisor', name: 'Financial Advisor', role: 'Advisor specialist', imageUrl: '/agent-library/financial-advisor.png' },
@@ -729,6 +730,7 @@ async function hydrateUser() {
   localStorage.setItem('bloomStudioTenant', JSON.stringify(currentTenant));
   document.getElementById('tenantPill').textContent = currentTenant?.name || currentTenant?.slug || currentTenant?.id || 'Workspace';
   hideLogin();
+  setCreateType(document.getElementById('studioCreateType')?.value || 'shorts');
   await Promise.all([loadDashboard(), loadStudioStatus(), loadAssets()]);
 }
 
@@ -756,6 +758,7 @@ async function loadDashboard() {
 async function loadStudioStatus() {
   try {
     const data = await api('/api/studio/status');
+    studioStatusCache = data;
     const comfyLabel = data.comfyReady
       ? 'Connected'
       : data.runpod?.autoStartConfigured
@@ -782,6 +785,8 @@ async function loadStudioStatus() {
     if (qwenNote) qwenNote.textContent = chatterbox?.available
       ? 'Chatterbox Turbo is ready for preset voices and custom voice_url samples.'
       : qwen?.note || 'Waiting for Qwen TTS API workflow export.';
+    const currentCreateType = document.getElementById('studioCreateType')?.value;
+    if (currentCreateType) setCreateType(currentCreateType, { preserveToast: true });
     loadRunPodBalance();
   } catch (e) {
     setChip('comfyStatus', 'Error', 'red');
@@ -851,25 +856,161 @@ function setChip(id, label, state) {
   el.className = `chip chip-${state}`;
 }
 
-function setCreateType(type) {
+function flowStatusChip(label, available, note = '') {
+  return `<span class="create-flow-status ${available ? 'ready' : 'missing'}" title="${note || label}">${label}: ${available ? 'Ready' : 'Missing'}</span>`;
+}
+
+function renderFlowStatus(selected) {
+  const data = studioStatusCache;
+  if (!data) return '';
+  const engine = id => data.videoEngines?.find(item => item.id === id);
+  const tool = id => data.remixTools?.find(item => item.id === id);
+  const audio = id => data.audioProviders?.find(item => item.id === id);
+  const statusSets = {
+    shorts: [
+      flowStatusChip('Meigen', engine('meigen')?.available, engine('meigen')?.note),
+      flowStatusChip('Chatterbox', audio('chatterbox')?.available, audio('chatterbox')?.note)
+    ],
+    remix: [
+      flowStatusChip('Wan Animate', engine('wan-animate')?.available, engine('wan-animate')?.note),
+      flowStatusChip('Faster Whisper', tool('faster-whisper')?.available, tool('faster-whisper')?.note),
+      flowStatusChip('Downloader', tool('downloader')?.available, tool('downloader')?.note)
+    ],
+    'long-form': [
+      flowStatusChip('Wan 2.2', engine('wan22-serverless')?.available, engine('wan22-serverless')?.note),
+      flowStatusChip('Chatterbox', audio('chatterbox')?.available, audio('chatterbox')?.note)
+    ],
+    webinar: [
+      flowStatusChip('WAN/ComfyUI', engine('wan-comfy')?.available, engine('wan-comfy')?.note),
+      flowStatusChip('Uploaded audio', true, 'Upload final webinar audio or source video.')
+    ],
+    course: [
+      flowStatusChip('Wan 2.2', engine('wan22-serverless')?.available, engine('wan22-serverless')?.note),
+      flowStatusChip('Chatterbox', audio('chatterbox')?.available, audio('chatterbox')?.note)
+    ]
+  };
+  return `<div class="create-flow-status-row">${(statusSets[selected] || statusSets.shorts).join('')}</div>`;
+}
+
+function setCreateType(type, options = {}) {
   const selected = type || 'shorts';
+  const flows = {
+    shorts: {
+      title: 'Shorts workflow',
+      badge: 'Talking-head',
+      desc: 'Create a short creator video from a character, script or approved audio, then save it to Library for posting.',
+      mode: 'i2v',
+      engine: 'meigen',
+      audio: 'chatterbox',
+      aspect: '9:16',
+      steps: [
+        ['Choose character', 'Select an influencer or upload a portrait.'],
+        ['Create audio', 'Upload audio or generate a voice preview.'],
+        ['Lip sync', 'Use Meigen for fast talking-head output.'],
+        ['Save + post', 'Review in Library, then publish.']
+      ]
+    },
+    remix: {
+      title: 'Remix videos workflow',
+      badge: 'Motion mimic',
+      desc: 'Start from a viral source, extract the script, choose your character/product/voice, then use Wan Animate to mimic the reference movement.',
+      mode: 'i2v',
+      engine: 'wan-animate',
+      audio: 'chatterbox',
+      aspect: '9:16',
+      steps: [
+        ['Pick trend', 'Choose a source from Trends or paste/upload one.'],
+        ['Extract script', 'Use Faster Whisper when media is available.'],
+        ['Choose creator', 'Select character, product, brand, and voice.'],
+        ['Motion remix', 'Wan Animate rebuilds the movement with your character.']
+      ]
+    },
+    'long-form': {
+      title: 'Long form workflow',
+      badge: 'Script led',
+      desc: 'Use a longer script or finished voiceover, then generate presenter sections so the output does not depend on one giant render.',
+      mode: 'i2v',
+      engine: 'wan22-serverless',
+      audio: 'chatterbox',
+      aspect: '16:9',
+      steps: [
+        ['Write script', 'Paste the full script or outline.'],
+        ['Approve audio', 'Upload or generate voiceover before rendering.'],
+        ['Generate sections', 'Use Wan 2.2 by segment for steadier output.'],
+        ['Assemble', 'Save each section to Library for editing.']
+      ]
+    },
+    webinar: {
+      title: 'Webinar workflow',
+      badge: 'Training',
+      desc: 'Build webinar-style content from a teaching script, slides, or long source audio. Best for 16:9 output.',
+      mode: 'v2v',
+      engine: 'wan-comfy',
+      audio: 'upload',
+      aspect: '16:9',
+      steps: [
+        ['Upload source', 'Use a webinar clip, slide recording, or host video.'],
+        ['Add narration', 'Upload final audio or use saved audio.'],
+        ['Render V2V', 'Use the Bloomies video-to-video path.'],
+        ['Review', 'Save finished sections to Library.']
+      ]
+    },
+    course: {
+      title: 'Course workflow',
+      badge: 'Lessons',
+      desc: 'Create lesson videos from structured scripts and approved narration. Works best as repeatable lesson modules.',
+      mode: 'i2v',
+      engine: 'wan22-serverless',
+      audio: 'chatterbox',
+      aspect: '16:9',
+      steps: [
+        ['Lesson script', 'Paste one lesson at a time.'],
+        ['Approve voice', 'Preview or upload clean narration.'],
+        ['Generate lesson', 'Use a presenter or course scene in 16:9.'],
+        ['Library', 'Store each lesson as a reusable asset.']
+      ]
+    }
+  };
+  const flow = flows[selected] || flows.shorts;
   document.getElementById('studioCreateType').value = selected;
   document.querySelectorAll('[data-create-type]').forEach(btn => btn.classList.toggle('active', btn.dataset.createType === selected));
   const note = document.querySelector('#tab-studio .panel-note');
-  if (note) {
-    const copy = {
-      shorts: 'Build short talking-head videos from a character, script, and approved voice.',
-      remix: 'Remix a proven trend by loading the source hook, choosing a character, brand, product, and voice.',
-      'long-form': 'Create longer videos from a full script or approved voiceover. Best when audio is already final.',
-      webinar: 'Build webinar-style videos from a structured talk track, slides, or long-form source audio.',
-      course: 'Create course lessons from lesson scripts, scene notes, and approved narration.'
-    };
-    note.textContent = copy[selected] || copy.shorts;
+  if (note) note.textContent = flow.desc;
+
+  const flowPanel = document.getElementById('createFlowPanel');
+  if (flowPanel) {
+    flowPanel.innerHTML = `
+      <div class="create-flow-head">
+        <div>
+          <div class="create-flow-title">${flow.title}</div>
+          <div class="create-flow-desc">${flow.desc}</div>
+        </div>
+        <div class="create-flow-chip">${flow.badge}</div>
+      </div>
+      <div class="create-flow-steps">
+        ${flow.steps.map(step => `<div class="create-flow-step"><strong>${step[0]}</strong><span>${step[1]}</span></div>`).join('')}
+      </div>
+      ${renderFlowStatus(selected)}
+    `;
   }
+
+  if (document.getElementById('studioAspectRatio')) {
+    document.getElementById('studioAspectRatio').value = flow.aspect;
+    updatePreviewRatio();
+  }
+
   if (selected === 'remix') {
     document.getElementById('studioRemixContext')?.classList.add('active');
-    setStudioMode('i2v');
+  } else {
+    document.getElementById('studioRemixContext')?.classList.remove('active');
   }
+
+  setStudioMode(flow.mode);
+  if (flow.mode === 'i2v') {
+    document.getElementById('studioVideoEngine').value = flow.engine;
+    setStudioVideoEngine(flow.engine);
+  }
+  setStudioAudio(flow.audio, { preserveToast: true });
 }
 
 function setRemixContext({ url = '', sourceScript = '' } = {}) {
@@ -935,7 +1076,7 @@ function getStudioEngineHint(engine) {
   return 'Uses the installed WAN/ComfyUI workflow and RunPod pod.';
 }
 
-function setStudioAudio(provider) {
+function setStudioAudio(provider, options = {}) {
   document.getElementById('studioAudioProvider').value = provider;
   document.getElementById('studioAudioGroup').style.display = provider === 'upload' ? '' : 'none';
   document.getElementById('studioAudioAssetGroup').style.display = provider === 'asset' ? '' : 'none';
@@ -943,6 +1084,7 @@ function setStudioAudio(provider) {
   document.getElementById('studioChatterboxGroup').style.display = provider === 'chatterbox' ? '' : 'none';
   document.getElementById('studioPreviewVoiceButton').style.display = ['chatterbox', 'elevenlabs'].includes(provider) ? '' : 'none';
   document.getElementById('studioPreviewVoiceButton').textContent = provider === 'elevenlabs' ? 'Preview ElevenLabs voice' : 'Preview Chatterbox voice';
+  if (options.preserveToast) return;
   if (provider === 'qwen') {
     toast('Qwen audio is visible but needs the third workflow API export before it can run.', 'info');
   }
@@ -1079,8 +1221,7 @@ function resetStudioForm() {
   setVoicePreviewLoading(false);
   clearSelectedCharacter();
   resetPreview();
-  setStudioMode('i2v');
-  setStudioAudio('upload');
+  setCreateType('shorts');
 }
 
 function setVoicePreviewLoading(isLoading, provider = 'voice') {
