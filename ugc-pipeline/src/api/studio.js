@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const fetch = require('node-fetch');
 const { v4: uuidv4 } = require('uuid');
+const { parseFile } = require('music-metadata');
 const {
   getBaseUrl,
   getPresets,
@@ -93,6 +94,22 @@ function cleanSlug(value) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
+}
+
+function parseDurationSeconds(value) {
+  const seconds = Number(value);
+  if (!Number.isFinite(seconds) || seconds <= 0) return null;
+  return Math.min(Math.max(seconds, 1), 300);
+}
+
+async function getAudioDurationSeconds(filePath) {
+  if (!filePath) return null;
+  try {
+    const metadata = await parseFile(filePath);
+    return parseDurationSeconds(metadata?.format?.duration);
+  } catch (error) {
+    return null;
+  }
 }
 
 router.get('/status', async (req, res) => {
@@ -319,10 +336,11 @@ router.post('/generate', upload.fields([
     if (audioProvider === 'elevenlabs') {
       audioPath = await createElevenLabsAudio({
         script: req.body.script,
-      voiceId: req.body.voiceId,
+        voiceId: req.body.voiceId,
         tenantId: req.tenant.slug || req.tenant.id
       });
     }
+    const durationSeconds = parseDurationSeconds(req.body.durationSeconds) || await getAudioDurationSeconds(audioPath);
     const audioName = audioPath ? await uploadInput(audioPath) : null;
 
     const job = await submitStudioJob({
@@ -331,10 +349,11 @@ router.post('/generate', upload.fields([
       audioProvider,
       tenantId: req.tenant.slug || req.tenant.id,
       script: req.body.script || '',
-        prompt: req.body.prompt || '',
-        negativePrompt: req.body.negativePrompt || '',
-        aspectRatio: req.body.aspectRatio || '16:9',
-        imageName,
+      prompt: req.body.prompt || '',
+      negativePrompt: req.body.negativePrompt || '',
+      aspectRatio: req.body.aspectRatio || '16:9',
+      durationSeconds,
+      imageName,
       videoName,
       audioName
     });
@@ -355,6 +374,7 @@ router.post('/generate', upload.fields([
         metadata: {
           localJobId: job.jobId,
           aspectRatio: req.body.aspectRatio || '16:9',
+          durationSeconds,
           imageAssetId: req.body.imageAssetId || null,
           imageUrl: req.body.imageUrl || null
         }

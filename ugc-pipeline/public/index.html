@@ -41,13 +41,13 @@ button,input,select,textarea{font:inherit}
 .file-drop:hover{border-color:var(--primary);background:#fff7ef}.file-drop strong{font-size:14px}.file-drop span{font-size:12px;color:var(--muted)}.file-name{font-size:12px;color:#bf6a35;font-weight:700;margin-top:7px;word-break:break-word}
 .actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:6px}.btn{border:0;border-radius:12px;padding:12px 18px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:8px;transition:.18s;text-decoration:none}
 .btn-primary{background:var(--grad);color:#fff}.btn-primary:hover{transform:translateY(-1px);box-shadow:0 12px 24px rgba(231,111,139,.25)}.btn-secondary{background:var(--surface);color:var(--ink);border:1px solid var(--line)}.btn-secondary:hover{border-color:var(--primary)}
-.hint{font-size:12px;color:var(--muted)}.preview-card{overflow:hidden}.preview-frame{aspect-ratio:16/9;background:linear-gradient(160deg,#242a2c,#111);display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.58);text-align:center;padding:18px;transition:.2s}
-.preview-frame.ratio-portrait{aspect-ratio:9/16;max-height:560px;margin:0 auto}.preview-frame.ratio-square{aspect-ratio:1/1}.preview-frame img{width:100%;height:100%;object-fit:contain;border-radius:12px}
+.hint{font-size:12px;color:var(--muted)}.preview-card{overflow:hidden}.preview-frame{aspect-ratio:9/16;background:linear-gradient(160deg,#242a2c,#111);display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.58);text-align:center;padding:18px;transition:.2s;max-height:560px;margin:0 auto}
+.preview-frame.ratio-landscape{aspect-ratio:16/9;max-height:none}.preview-frame.ratio-square{aspect-ratio:1/1}.preview-frame.has-media{padding:0}.preview-frame img{width:100%;height:100%;object-fit:cover;object-position:center;display:block;border-radius:0}
 .preview-frame video{width:100%;height:100%;object-fit:contain}.preview-body{padding:18px}.mini-list{display:flex;flex-direction:column;gap:10px}.mini-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);font-size:13px}.mini-row:last-child{border-bottom:0}.chip{display:inline-flex;align-items:center;border-radius:999px;padding:5px 10px;font-size:12px;font-weight:800}.chip-green{background:#e8f7ef;color:#16794a}.chip-warn{background:#fff3df;color:#ad641e}.chip-red{background:#fdecec;color:#b53c3c}.chip-soft{background:#f4ece6;color:#8b6450}
 .tab-content{display:none}.tab-content.active{display:block}.section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:16px}.section-title{font-size:24px;font-weight:800;letter-spacing:-.03em}.section-desc{font-size:14px;color:var(--muted);margin-top:4px}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px;margin-bottom:14px}.card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}.card-title{font-weight:800}.card-subtitle{font-size:13px;color:var(--muted);margin-top:2px}
 .asset-grid,.video-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}.asset-card,.video-card{background:var(--surface);border:1px solid var(--line);border-radius:16px;overflow:hidden}.asset-thumb{height:150px;background:var(--soft);display:flex;align-items:center;justify-content:center;color:var(--muted)}.asset-thumb img{width:100%;height:100%;object-fit:cover}.asset-info,.video-info{padding:13px}.asset-name{font-weight:800}.asset-meta,.video-prompt{font-size:12px;color:var(--muted);margin-top:4px}.asset-actions{padding:10px 13px;border-top:1px solid var(--line);display:flex;gap:8px}
-.character-page{background:var(--bg);border:1px solid var(--line);border-radius:18px;padding:14px;box-shadow:none;min-height:calc(100vh - 150px)}.character-head{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:14px}.character-head h2{color:var(--ink);font-size:22px;letter-spacing:-.03em}.character-head p{color:var(--muted);font-size:13px;margin-top:3px}.character-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.character-tabs,.ratio-tabs{display:flex;gap:4px;background:var(--dark);border:1px solid var(--line);border-radius:12px;padding:4px}.character-tab,.ratio-tab{border:1px solid transparent;background:transparent;color:var(--muted);border-radius:9px;padding:9px 18px;font-weight:800;font-size:13px;cursor:pointer}.character-tab.active,.ratio-tab.active{background:var(--surface);color:var(--ink);border-color:var(--line)}.character-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(390px,1fr));gap:18px;align-items:start}.character-grid.portrait{grid-template-columns:repeat(auto-fill,minmax(245px,1fr))}.character-card{position:relative;aspect-ratio:16/9;border-radius:13px;overflow:hidden;background:#222;border:1px solid var(--line);cursor:pointer;min-height:250px}.character-grid.portrait .character-card{aspect-ratio:9/16;min-height:440px}.character-card:hover{border-color:rgba(244,162,97,.65);transform:translateY(-1px)}.character-card img{width:100%;height:100%;object-fit:cover;object-position:center;display:block}.character-overlay{position:absolute;inset:auto 0 0;background:linear-gradient(transparent,rgba(0,0,0,.78));padding:72px 14px 14px;color:#fff}.character-title{font-size:15px;font-weight:800}.character-meta{font-size:12px;color:rgba(255,255,255,.72);margin-top:2px}.character-menu{position:absolute;top:8px;right:8px;color:#fff;background:rgba(0,0,0,.38);border-radius:999px;padding:2px 8px;font-weight:800}.character-actions{position:absolute;right:12px;bottom:12px;display:flex;gap:6px;margin-top:0;opacity:0;transform:translateY(6px);transition:.16s}.character-card:hover .character-actions{opacity:1;transform:translateY(0)}.character-actions .btn{padding:7px 9px;border-radius:8px;font-size:11px}.character-empty{color:var(--muted);border:1px dashed var(--line);border-radius:14px;padding:36px;text-align:center}
+.character-page{background:var(--bg);border:1px solid var(--line);border-radius:18px;padding:14px;box-shadow:none;min-height:calc(100vh - 150px)}.character-head{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:14px}.character-head h2{color:var(--ink);font-size:22px;letter-spacing:-.03em}.character-head p{color:var(--muted);font-size:13px;margin-top:3px}.character-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.character-tabs,.ratio-tabs{display:flex;gap:4px;background:var(--dark);border:1px solid var(--line);border-radius:12px;padding:4px}.character-tab,.ratio-tab{border:1px solid transparent;background:transparent;color:var(--muted);border-radius:9px;padding:9px 18px;font-weight:800;font-size:13px;cursor:pointer}.character-tab.active,.ratio-tab.active{background:var(--surface);color:var(--ink);border-color:var(--line)}.character-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(245px,1fr));gap:18px;align-items:start}.character-grid.landscape{grid-template-columns:repeat(auto-fill,minmax(390px,1fr))}.character-card{position:relative;aspect-ratio:9/16;border-radius:13px;overflow:hidden;background:#222;border:1px solid var(--line);cursor:pointer;min-height:440px}.character-grid.landscape .character-card{aspect-ratio:16/9;min-height:250px}.character-card:hover{border-color:rgba(244,162,97,.65);transform:translateY(-1px)}.character-card img{width:100%;height:100%;object-fit:cover;object-position:center;display:block}.character-overlay{position:absolute;inset:auto 0 0;background:linear-gradient(transparent,rgba(0,0,0,.78));padding:72px 14px 14px;color:#fff}.character-title{font-size:15px;font-weight:800}.character-meta{font-size:12px;color:rgba(255,255,255,.72);margin-top:2px}.character-menu{position:absolute;top:8px;right:8px;color:#fff;background:rgba(0,0,0,.38);border-radius:999px;padding:2px 8px;font-weight:800}.character-actions{position:absolute;right:12px;bottom:12px;display:flex;gap:6px;margin-top:0;opacity:0;transform:translateY(6px);transition:.16s}.character-card:hover .character-actions{opacity:1;transform:translateY(0)}.character-actions .btn{padding:7px 9px;border-radius:8px;font-size:11px}.character-empty{color:var(--muted);border:1px dashed var(--line);border-radius:14px;padding:36px;text-align:center}
 .selected-character{display:none;align-items:center;gap:12px;padding:12px;border:1px solid rgba(244,162,97,.35);background:#fff8f1;border-radius:14px;margin-bottom:12px}.selected-character.active{display:flex}.selected-character img{width:52px;height:52px;border-radius:12px;object-fit:cover;background:var(--soft)}.selected-character strong{display:block;font-size:14px}.selected-character span{font-size:12px;color:var(--muted)}
 .workflow-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-top:12px}.workflow-card{border:1px solid var(--line);border-radius:14px;padding:13px;background:var(--surface)}.workflow-card strong{font-size:13px}.workflow-card p{font-size:12px;color:var(--muted);margin-top:4px}.billing-hero{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px;align-items:stretch}.price-card{background:linear-gradient(135deg,#242a2c,#16191a);color:#fff;border-radius:20px;padding:24px;box-shadow:var(--shadow)}.price-card .price{font-size:42px;font-weight:800;letter-spacing:-.05em;margin:12px 0}.price-card .price span{font-size:15px;color:rgba(255,255,255,.55);letter-spacing:0}.plan-list{display:flex;flex-direction:column;gap:10px;margin:16px 0}.plan-list div{display:flex;gap:9px;font-size:14px;color:rgba(255,255,255,.82)}.audit-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.audit-item{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px}.audit-item strong{font-size:14px}.audit-item p{font-size:12px;color:var(--muted);margin-top:5px}
 .video-player{width:100%;aspect-ratio:9/16;max-height:360px;background:#111;object-fit:contain}.empty-state{text-align:center;padding:36px;color:var(--muted);border:1px dashed var(--line);border-radius:16px;background:rgba(255,255,255,.55)}
@@ -56,7 +56,7 @@ button,input,select,textarea{font:inherit}
 .auth-screen{position:fixed;inset:0;z-index:50;background:linear-gradient(135deg,rgba(244,162,97,.14),rgba(231,111,139,.11)),var(--bg);display:none;align-items:center;justify-content:center;padding:24px}.auth-screen.active{display:flex}.auth-card{width:min(96vw,460px);background:var(--surface);border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow);padding:28px}.auth-card .mark{margin-bottom:16px}.auth-title{font-size:28px;font-weight:800;letter-spacing:-.04em;line-height:1.08;margin-bottom:8px}.auth-copy{font-size:14px;color:var(--muted);margin-bottom:22px}.auth-meta{margin-top:14px;padding:12px;border-radius:14px;background:rgba(244,162,97,.1);border:1px solid rgba(244,162,97,.25);color:var(--primary);font-size:12px}.user-menu{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}.tenant-pill{font-size:12px;font-weight:800;color:var(--primary);background:rgba(244,162,97,.1);border:1px solid rgba(244,162,97,.25);border-radius:999px;padding:7px 10px}
 .advanced-box{opacity:.92}.format-checkboxes{display:flex;flex-wrap:wrap;gap:8px}.format-checkbox{display:none}.format-label{border:1px solid var(--line);border-radius:999px;padding:8px 12px;font-size:13px;font-weight:800;cursor:pointer}.format-checkbox:checked+.format-label{background:#fff1e6;border-color:var(--primary);color:#ad641e}.variant-item{border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px;background:#fff}.progress-bar{height:6px;background:var(--soft);border-radius:999px;overflow:hidden}.progress-fill{height:100%;background:var(--grad)}
 @media(max-width:920px){.app-shell{grid-template-columns:1fr}.sidebar{position:relative;height:auto}.nav{flex-direction:row;overflow-x:auto}.hero-grid,.form-grid,.brand-profile,.gen-config,.step-row{grid-template-columns:1fr}.main{padding:18px}.topbar{align-items:flex-start;flex-direction:column}}
-@media(max-width:720px){.character-grid,.character-grid.portrait{grid-template-columns:1fr}.character-card{min-height:210px}.character-grid.portrait .character-card{min-height:520px}.billing-hero{grid-template-columns:1fr}}
+@media(max-width:720px){.character-grid,.character-grid.landscape{grid-template-columns:1fr}.character-card{min-height:520px}.character-grid.landscape .character-card{min-height:210px}.billing-hero{grid-template-columns:1fr}}
   </style>
 </head>
 <body>
@@ -92,9 +92,9 @@ button,input,select,textarea{font:inherit}
       <div><div class="brand-title">Bloom Studio</div><div class="brand-sub">UGC video creator</div></div>
     </div>
     <nav class="nav">
-      <button class="nav-tab active" data-tab="studio"><span class="nav-ico">▶</span>Create</button>
+      <button class="nav-tab active" data-tab="characters"><span class="nav-ico">◉</span>Characters</button>
+      <button class="nav-tab" data-tab="studio"><span class="nav-ico">▶</span>Create</button>
       <button class="nav-tab" data-tab="videos"><span class="nav-ico">▥</span>Library</button>
-      <button class="nav-tab" data-tab="characters"><span class="nav-ico">◉</span>Characters</button>
       <button class="nav-tab" data-tab="assets"><span class="nav-ico">◫</span>Assets</button>
       <button class="nav-tab" data-tab="brands"><span class="nav-ico">✦</span>Brands</button>
       <button class="nav-tab" data-tab="billing"><span class="nav-ico">$</span>Billing</button>
@@ -121,7 +121,7 @@ button,input,select,textarea{font:inherit}
       </div>
     </div>
 
-    <section class="tab-content active" id="tab-studio">
+    <section class="tab-content" id="tab-studio">
       <div class="hero-grid">
         <div class="panel">
           <div class="panel-pad">
@@ -152,8 +152,8 @@ button,input,select,textarea{font:inherit}
                 <div class="form-group">
                   <label class="form-label">Aspect ratio</label>
                   <select class="form-select" id="studioAspectRatio" name="aspectRatio">
+                    <option value="9:16" selected>9:16 Short</option>
                     <option value="16:9">16:9 Landscape</option>
-                    <option value="9:16">9:16 Short</option>
                     <option value="1:1">1:1 Square</option>
                   </select>
                 </div>
@@ -205,6 +205,17 @@ button,input,select,textarea{font:inherit}
                 <div class="form-group">
                   <label class="form-label">Video style prompt</label>
                   <textarea class="form-textarea" id="studioPrompt" name="prompt" placeholder="Professional talking head, natural speech, stable face, subtle hand movement, clean studio lighting."></textarea>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label">Negative prompt</label>
+                  <textarea class="form-textarea" id="studioNegativePrompt" name="negativePrompt" placeholder="singing, dancing, subtitles, text, watermark, extra fingers, deformed hands, blue nails, changing nail color, dramatic gestures, camera movement, low quality"></textarea>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label">Duration seconds</label>
+                  <input class="form-input" id="studioDurationSeconds" name="durationSeconds" type="number" min="1" max="300" step="0.1" placeholder="Auto from audio">
+                  <div class="hint">Leave blank to match the uploaded or generated voiceover length.</div>
                 </div>
 
                 <div class="form-group full">
@@ -261,7 +272,7 @@ button,input,select,textarea{font:inherit}
       <div class="video-grid" id="videoGrid"></div>
     </section>
 
-    <section class="tab-content" id="tab-characters">
+    <section class="tab-content active" id="tab-characters">
       <div class="character-page">
         <div class="character-head">
           <div>
@@ -274,8 +285,8 @@ button,input,select,textarea{font:inherit}
               <button class="character-tab" type="button" data-character-tab="mine" onclick="setCharacterTab('mine')">My agents</button>
             </div>
             <div class="ratio-tabs">
-              <button class="ratio-tab active" type="button" data-character-ratio="landscape" onclick="setCharacterRatio('landscape')">16:9</button>
-              <button class="ratio-tab" type="button" data-character-ratio="portrait" onclick="setCharacterRatio('portrait')">9:16 crop</button>
+              <button class="ratio-tab active" type="button" data-character-ratio="portrait" onclick="setCharacterRatio('portrait')">9:16 crop</button>
+              <button class="ratio-tab" type="button" data-character-ratio="landscape" onclick="setCharacterRatio('landscape')">16:9 source</button>
             </div>
             <button class="btn btn-primary" onclick="showUploadModal('subjects')">+ New agent</button>
           </div>

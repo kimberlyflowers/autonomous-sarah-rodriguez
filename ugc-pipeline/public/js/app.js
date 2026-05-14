@@ -9,7 +9,7 @@ let authToken = localStorage.getItem('bloomStudioToken') || '';
 let currentTenant = JSON.parse(localStorage.getItem('bloomStudioTenant') || 'null');
 let selectedCharacter = null;
 let currentCharacterTab = 'library';
-let currentCharacterRatio = 'landscape';
+let currentCharacterRatio = 'portrait';
 
 const starterCharacters = [
   { slug: 'library-financial-advisor', name: 'Financial Advisor', role: 'Advisor specialist', imageUrl: '/agent-library/financial-advisor.png' },
@@ -192,7 +192,7 @@ async function hydrateUser() {
   localStorage.setItem('bloomStudioTenant', JSON.stringify(currentTenant));
   document.getElementById('tenantPill').textContent = currentTenant?.name || currentTenant?.slug || currentTenant?.id || 'Workspace';
   hideLogin();
-  await Promise.all([loadDashboard(), loadStudioStatus()]);
+  await Promise.all([loadDashboard(), loadStudioStatus(), loadAssets()]);
 }
 
 async function logout() {
@@ -344,7 +344,8 @@ function showStudioFileName(inputId, targetId) {
 function updatePreviewRatio() {
   const frame = document.getElementById('studioPreview');
   if (!frame) return;
-  const ratio = document.getElementById('studioAspectRatio')?.value || '16:9';
+  const ratio = document.getElementById('studioAspectRatio')?.value || '9:16';
+  frame.classList.toggle('ratio-landscape', ratio === '16:9');
   frame.classList.toggle('ratio-portrait', ratio === '9:16');
   frame.classList.toggle('ratio-square', ratio === '1:1');
 }
@@ -353,6 +354,7 @@ function setPreviewImage(src, title = 'Selected character') {
   const frame = document.getElementById('studioPreview');
   if (!frame || !src) return;
   updatePreviewRatio();
+  frame.classList.add('has-media');
   frame.innerHTML = `<img src="${src}" alt="${title}">`;
 }
 
@@ -360,6 +362,7 @@ function resetPreview() {
   const frame = document.getElementById('studioPreview');
   if (!frame) return;
   updatePreviewRatio();
+  frame.classList.remove('has-media');
   frame.innerHTML = `<div><div style="font-size:34px;margin-bottom:10px">▶</div><strong id="previewTitle">Your video preview appears here</strong><p id="previewHint" style="font-size:13px;margin-top:6px;color:rgba(255,255,255,.45)">Select a character or upload an image to preview the frame.</p></div>`;
 }
 
@@ -457,20 +460,20 @@ function setCharacterTab(tab) {
 function setCharacterRatio(ratio) {
   currentCharacterRatio = ratio;
   document.querySelectorAll('[data-character-ratio]').forEach(btn => btn.classList.toggle('active', btn.dataset.characterRatio === ratio));
-  document.querySelectorAll('.character-grid').forEach(grid => grid.classList.toggle('portrait', ratio === 'portrait'));
+  document.querySelectorAll('.character-grid').forEach(grid => grid.classList.toggle('landscape', ratio === 'landscape'));
 }
 
 function renderAgentLibrary() {
   const grid = document.getElementById('agentLibraryGrid');
   if (!grid) return;
-  grid.classList.toggle('portrait', currentCharacterRatio === 'portrait');
+  grid.classList.toggle('landscape', currentCharacterRatio === 'landscape');
   grid.innerHTML = starterCharacters.map(character => renderCharacterCard(character, true)).join('');
 }
 
 function renderMyAgents(characters) {
   const grid = document.getElementById('myAgentsGrid');
   if (!grid) return;
-  grid.classList.toggle('portrait', currentCharacterRatio === 'portrait');
+  grid.classList.toggle('landscape', currentCharacterRatio === 'landscape');
   if (!characters.length) {
     grid.innerHTML = '<div class="character-empty">No agents uploaded yet. Click + New agent to add Sarah, Marcus, or any spokesperson portrait.</div>';
     return;

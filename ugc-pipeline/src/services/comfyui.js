@@ -114,12 +114,40 @@ function patchWorkflow(workflow, preset, input) {
     next[preset.textNode].inputs.negative_prompt = negativePrompt;
   }
 
+  const size = getOutputSize(input.aspectRatio);
+  if (next['245']?.inputs && typeof next['245'].inputs.value !== 'undefined') {
+    next['245'].inputs.value = size.width;
+  }
+  if (next['246']?.inputs && typeof next['246'].inputs.value !== 'undefined') {
+    next['246'].inputs.value = size.height;
+  }
+
+  const frameCount = getFrameCount(input.durationSeconds);
+  if (frameCount && next['270']?.inputs && typeof next['270'].inputs.value !== 'undefined') {
+    next['270'].inputs.value = frameCount;
+  }
+
   if (preset.outputNode && next[preset.outputNode]) {
     const prefix = `UGC/${input.tenantId || 'default'}/${input.jobId}`;
     next[preset.outputNode].inputs.filename_prefix = prefix;
+    if (typeof next[preset.outputNode].inputs.trim_to_audio !== 'undefined') {
+      next[preset.outputNode].inputs.trim_to_audio = true;
+    }
   }
 
   return next;
+}
+
+function getOutputSize(aspectRatio = '9:16') {
+  if (aspectRatio === '16:9') return { width: 1280, height: 720 };
+  if (aspectRatio === '1:1') return { width: 1024, height: 1024 };
+  return { width: 720, height: 1280 };
+}
+
+function getFrameCount(durationSeconds, fps = 25) {
+  const seconds = Number(durationSeconds);
+  if (!Number.isFinite(seconds) || seconds <= 0) return null;
+  return Math.ceil((Math.min(seconds, 300) + 0.2) * fps);
 }
 
 function getDefaultPrompt(mode) {
@@ -237,6 +265,7 @@ async function submitStudioJob(input) {
     status: 'pending',
     prompt: input.prompt,
     aspectRatio: input.aspectRatio || '16:9',
+    durationSeconds: input.durationSeconds || null,
     script: input.script,
     createdAt: new Date().toISOString(),
     completedAt: null,
