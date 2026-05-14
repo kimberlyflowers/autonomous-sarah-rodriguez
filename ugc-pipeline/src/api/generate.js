@@ -264,4 +264,67 @@ router.post('/single', async (req, res) => {
   }
 });
 
+// Wan 2.5 clip endpoint for Remotion pipelines.
+// Remotion should call this per scene/clip, then assemble returned request IDs
+// or downloaded clips into the final edited video.
+router.post('/wan25/remotion-clip', async (req, res) => {
+  try {
+    const {
+      prompt,
+      imageUrl,
+      audioUrl,
+      duration,
+      resolution,
+      aspectRatio,
+      negativePrompt,
+      sceneId,
+      size,
+      webhookUrl
+    } = req.body;
+
+    if (!prompt) return res.status(400).json({ error: 'prompt required' });
+
+    const model = imageUrl ? 'wan25-i2v' : 'wan25-t2v';
+    const dur = Number(duration || (imageUrl ? 5 : 10));
+    const payload = {
+      model,
+      prompt,
+      negative_prompt: negativePrompt || '',
+      image: imageUrl || undefined,
+      audio: audioUrl || undefined,
+      duration: dur,
+      resolution: resolution || '720p',
+      aspect_ratio: aspectRatio || '16:9',
+      size,
+      webhookUrl
+    };
+
+    const result = await submitGeneration(payload);
+    const cost = estimateCost(model, resolution || '720p', dur);
+    addJob(result.request_id, {
+      batchId: 'remotion-wan25',
+      brandSlug: req.body.brandSlug || 'remotion',
+      variant: sceneId || 'scene',
+      format: 'wan25-remotion-clip',
+      prompt,
+      estimatedCost: cost,
+      tenantId: req.tenant?.slug || req.tenant?.id || 'default'
+    });
+
+    res.json({
+      provider: 'wavespeed',
+      model,
+      sceneId: sceneId || null,
+      requestId: result.request_id,
+      estimatedCost: `$${cost}`,
+      status: 'submitted',
+      constraints: imageUrl
+        ? 'Wan 2.5 image-to-video clips support 3-10 seconds.'
+        : 'Wan 2.5 text-to-video clips support 5 or 10 seconds.'
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

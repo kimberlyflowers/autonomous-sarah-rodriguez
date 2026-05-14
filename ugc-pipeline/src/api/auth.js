@@ -5,11 +5,12 @@ const { getTenants, login, requireTenant } = require('../services/auth');
 const router = express.Router();
 
 router.get('/config', (req, res) => {
-  const { url, anonKey, configured } = getSupabaseConfig();
+  const { url, anonKey, configured, available } = getSupabaseConfig();
   res.json({
     mode: configured ? 'supabase' : 'access-key',
     supabaseUrl: configured ? url : null,
     supabaseAnonKey: configured ? anonKey : null,
+    supabaseAvailable: available,
     localTenants: configured ? [] : getTenants().map((tenant) => ({ id: tenant.id, name: tenant.name }))
   });
 });

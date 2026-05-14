@@ -9,9 +9,17 @@ create table if not exists public.ugc_tenants (
   name text not null,
   owner_user_id uuid references auth.users(id) on delete set null,
   plan text not null default 'internal',
+  stripe_customer_id text,
+  stripe_subscription_id text,
+  subscription_status text not null default 'internal',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.ugc_tenants
+  add column if not exists stripe_customer_id text,
+  add column if not exists stripe_subscription_id text,
+  add column if not exists subscription_status text not null default 'internal';
 
 create table if not exists public.ugc_tenant_members (
   tenant_id uuid not null references public.ugc_tenants(id) on delete cascade,
@@ -74,11 +82,21 @@ create table if not exists public.ugc_video_jobs (
   completed_at timestamptz
 );
 
+create table if not exists public.ugc_billing_events (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid references public.ugc_tenants(id) on delete set null,
+  stripe_event_id text unique,
+  event_type text not null,
+  payload jsonb not null default '{}',
+  created_at timestamptz not null default now()
+);
+
 create index if not exists idx_ugc_tenant_members_user on public.ugc_tenant_members(user_id);
 create index if not exists idx_ugc_assets_tenant on public.ugc_assets(tenant_id, created_at desc);
 create index if not exists idx_ugc_brands_tenant on public.ugc_brands(tenant_id, updated_at desc);
 create index if not exists idx_ugc_video_jobs_tenant on public.ugc_video_jobs(tenant_id, created_at desc);
 create index if not exists idx_ugc_video_jobs_request on public.ugc_video_jobs(request_id);
+create index if not exists idx_ugc_billing_events_tenant on public.ugc_billing_events(tenant_id, created_at desc);
 
 create or replace function public.ugc_is_tenant_member(target_tenant_id uuid)
 returns boolean
@@ -100,6 +118,7 @@ alter table public.ugc_tenant_members enable row level security;
 alter table public.ugc_assets enable row level security;
 alter table public.ugc_brands enable row level security;
 alter table public.ugc_video_jobs enable row level security;
+alter table public.ugc_billing_events enable row level security;
 
 drop policy if exists "UGC members can view tenants" on public.ugc_tenants;
 create policy "UGC members can view tenants"
@@ -128,6 +147,11 @@ create policy "UGC members can manage own jobs"
   on public.ugc_video_jobs for all
   using (public.ugc_is_tenant_member(tenant_id))
   with check (public.ugc_is_tenant_member(tenant_id));
+
+drop policy if exists "UGC members can view own billing events" on public.ugc_billing_events;
+create policy "UGC members can view own billing events"
+  on public.ugc_billing_events for select
+  using (public.ugc_is_tenant_member(tenant_id));
 
 insert into storage.buckets (id, name, public)
 values ('ugc-assets', 'ugc-assets', false)

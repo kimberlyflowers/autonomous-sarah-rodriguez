@@ -8,9 +8,35 @@ let supabaseClient = null;
 let authToken = localStorage.getItem('bloomStudioToken') || '';
 let currentTenant = JSON.parse(localStorage.getItem('bloomStudioTenant') || 'null');
 let selectedCharacter = null;
+let currentCharacterTab = 'library';
+
+const starterCharacters = [
+  { slug: 'library-financial-advisor', name: 'Financial Advisor', role: 'Professional advisor', imageUrl: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&w=900&q=85' },
+  { slug: 'library-real-estate-agent', name: 'Real Estate Agent', role: 'Listing specialist', imageUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=900&q=85' },
+  { slug: 'library-business-coach', name: 'Business Coach', role: 'Executive coach', imageUrl: 'https://images.unsplash.com/photo-1568602471122-7832951cc4c5?auto=format&fit=crop&w=900&q=85' },
+  { slug: 'library-podcast-host', name: 'Podcast Host', role: 'Studio narrator', imageUrl: 'https://images.unsplash.com/photo-1590602847861-f357a9332bbc?auto=format&fit=crop&w=900&q=85' },
+  { slug: 'library-customer-support', name: 'Customer Support', role: 'Service guide', imageUrl: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&w=900&q=85' },
+  { slug: 'library-marketing-lead', name: 'Marketing Lead', role: 'Campaign strategist', imageUrl: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=900&q=85' },
+  { slug: 'library-operations-manager', name: 'Operations Manager', role: 'Process trainer', imageUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=900&q=85' },
+  { slug: 'library-ecommerce-founder', name: 'Ecommerce Founder', role: 'Product seller', imageUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=900&q=85' },
+  { slug: 'library-medical-training', name: 'Medical Training', role: 'Training presenter', imageUrl: 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&w=900&q=85' },
+  { slug: 'library-career-coach', name: 'Career Coach', role: 'Interview mentor', imageUrl: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=900&q=85' }
+];
 
 document.querySelectorAll('.nav-tab').forEach(tab => {
   tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+});
+
+document.addEventListener('change', (event) => {
+  if (event.target?.id === 'genDuration') {
+    document.getElementById('genCustomDurationGroup').style.display = event.target.value === 'custom' ? '' : 'none';
+  }
+  if (event.target?.id === 'studioAspectRatio') {
+    updatePreviewRatio();
+  }
+  if (event.target?.id === 'studioImage') {
+    previewUploadedImage(event.target.files?.[0]);
+  }
 });
 
 function switchTab(tabId) {
@@ -21,6 +47,7 @@ function switchTab(tabId) {
 
   if (tabId === 'assets' || tabId === 'characters') loadAssets();
   if (tabId === 'brands') loadBrands();
+  if (tabId === 'billing') loadBilling();
   if (tabId === 'advanced') loadGenerateOptions();
   if (tabId === 'videos') loadVideos();
   if (tabId === 'studio') loadStudioStatus();
@@ -64,7 +91,9 @@ async function initAuth() {
     document.getElementById('loginEmail').placeholder = isSupabase ? 'you@example.com' : 'kimberly';
     document.getElementById('authModeNote').textContent = isSupabase
       ? 'Supabase Auth is enabled. Your files and jobs are isolated by tenant.'
-      : 'Local workspace-key mode is active until Supabase environment variables are set.';
+      : authConfig.supabaseAvailable
+        ? 'Workspace-key mode is active. Supabase is available but stays off until the UGC tables and tenant login are enabled.'
+        : 'Workspace-key mode is active until Supabase storage and auth are enabled.';
 
     if (isSupabase && window.supabase) {
       supabaseClient = window.supabase.createClient(authConfig.supabaseUrl, authConfig.supabaseAnonKey);
@@ -181,18 +210,62 @@ async function loadStudioStatus() {
         : data.configured ? 'Pod offline' : 'Needs URL';
     const comfyState = data.comfyReady ? 'green' : data.runpod?.autoStartConfigured ? 'warn' : 'red';
     setChip('comfyStatus', comfyLabel, comfyState);
+    updateRunPodStatus(data.runpod, data.comfyReady);
 
     const i2v = data.presets.find(p => p.id === 'sarah-i2v-lipsync');
     const v2v = data.presets.find(p => p.id === 'bloomies-v2v');
-    setChip('i2vStatus', i2v?.available ? 'Ready' : 'Missing', i2v?.available ? 'soft' : 'red');
-    setChip('v2vStatus', v2v?.available ? 'Ready' : 'Missing', v2v?.available ? 'soft' : 'red');
+    setWorkflowChip('i2vStatus', 'i2vNote', i2v, data.comfyReady, 'Sarah image-to-video workflow is installed and ready to queue.');
+    setWorkflowChip('v2vStatus', 'v2vNote', v2v, data.comfyReady, 'Bloomies video-to-video workflow is installed and ready to queue.');
 
     const qwen = data.audioProviders.find(p => p.id === 'qwen');
     setChip('qwenStatus', qwen?.available ? 'Ready' : 'Needs workflow', qwen?.available ? 'soft' : 'warn');
+    const qwenNote = document.getElementById('qwenNote');
+    if (qwenNote) qwenNote.textContent = qwen?.available ? 'Qwen TTS workflow is ready.' : qwen?.note || 'Waiting for Qwen TTS API workflow export.';
     loadRunPodBalance();
   } catch (e) {
     setChip('comfyStatus', 'Error', 'red');
+    setChip('runpodStatus', 'Unknown', 'red');
   }
+}
+
+function updateRunPodStatus(runpod, comfyReady) {
+  if (!runpod?.autoStartConfigured) {
+    setChip('runpodStatus', 'Not configured', 'warn');
+    return;
+  }
+  const state = runpod.state || 'unknown';
+  const labels = {
+    running: comfyReady ? 'Running + ready' : 'Running, Comfy loading',
+    starting: 'Starting',
+    booting: 'Booting',
+    stopped: 'Stopped',
+    error: 'Status error',
+    unknown: 'Unknown'
+  };
+  const chipState = state === 'running' && comfyReady
+    ? 'green'
+    : ['starting', 'booting', 'running', 'stopped'].includes(state)
+      ? 'warn'
+      : 'red';
+  setChip('runpodStatus', labels[state] || state, chipState);
+}
+
+function setWorkflowChip(chipId, noteId, preset, comfyReady, readyText) {
+  if (!preset?.available) {
+    setChip(chipId, 'Missing', 'red');
+    const note = document.getElementById(noteId);
+    if (note) note.textContent = 'Workflow API export is missing from the server config.';
+    return;
+  }
+  if (!comfyReady) {
+    setChip(chipId, 'Installed', 'soft');
+    const note = document.getElementById(noteId);
+    if (note) note.textContent = 'Installed, but waiting for the RunPod and ComfyUI API to become ready.';
+    return;
+  }
+  setChip(chipId, 'Ready', 'green');
+  const note = document.getElementById(noteId);
+  if (note) note.textContent = readyText;
 }
 
 async function loadRunPodBalance() {
@@ -252,12 +325,44 @@ function showStudioFileName(inputId, targetId) {
   target.textContent = input.files?.[0]?.name || '';
 }
 
+function updatePreviewRatio() {
+  const frame = document.getElementById('studioPreview');
+  if (!frame) return;
+  const ratio = document.getElementById('studioAspectRatio')?.value || '16:9';
+  frame.classList.toggle('ratio-portrait', ratio === '9:16');
+  frame.classList.toggle('ratio-square', ratio === '1:1');
+}
+
+function setPreviewImage(src, title = 'Selected character') {
+  const frame = document.getElementById('studioPreview');
+  if (!frame || !src) return;
+  updatePreviewRatio();
+  frame.innerHTML = `<img src="${src}" alt="${title}">`;
+}
+
+function resetPreview() {
+  const frame = document.getElementById('studioPreview');
+  if (!frame) return;
+  updatePreviewRatio();
+  frame.innerHTML = `<div><div style="font-size:34px;margin-bottom:10px">▶</div><strong id="previewTitle">Your video preview appears here</strong><p id="previewHint" style="font-size:13px;margin-top:6px;color:rgba(255,255,255,.45)">Select a character or upload an image to preview the frame.</p></div>`;
+}
+
+function previewUploadedImage(file) {
+  if (!file) return;
+  const url = URL.createObjectURL(file);
+  document.getElementById('studioImageAssetId').value = '';
+  document.getElementById('studioImageUrl').value = '';
+  document.getElementById('selectedCharacter').classList.remove('active');
+  setPreviewImage(url, file.name);
+}
+
 function resetStudioForm() {
   document.getElementById('studioForm').reset();
   document.getElementById('studioImageName').textContent = '';
   document.getElementById('studioVideoName').textContent = '';
   document.getElementById('studioAudioName').textContent = '';
   clearSelectedCharacter();
+  resetPreview();
   setStudioMode('i2v');
   setStudioAudio('upload');
 }
@@ -265,6 +370,7 @@ function resetStudioForm() {
 async function startRunPod() {
   try {
     toast('Starting RunPod...', 'info');
+    setChip('runpodStatus', 'Starting', 'warn');
     await api('/api/studio/runpod/start', { method: 'POST' });
     toast('RunPod start requested. It may take a few minutes to become ready.', 'success');
     setTimeout(loadStudioStatus, 8000);
@@ -277,6 +383,7 @@ async function stopRunPod() {
   if (!confirm('Stop the RunPod now? Any active generation may fail.')) return;
   try {
     toast('Stopping RunPod...', 'info');
+    setChip('runpodStatus', 'Stopping', 'warn');
     await api('/api/studio/runpod/stop', { method: 'POST' });
     toast('RunPod stop requested.', 'success');
     setTimeout(loadStudioStatus, 8000);
@@ -292,7 +399,7 @@ async function submitStudioVideo(e) {
   data.append('clientJobId', crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
 
   const mode = document.getElementById('studioMode').value;
-  if (mode === 'i2v' && !document.getElementById('studioImage').files[0] && !document.getElementById('studioImageAssetId').value) return toast('Upload a portrait image or select a saved character first.', 'error');
+  if (mode === 'i2v' && !document.getElementById('studioImage').files[0] && !document.getElementById('studioImageAssetId').value && !document.getElementById('studioImageUrl').value) return toast('Upload a portrait image or select a saved character first.', 'error');
   if (mode === 'v2v' && !document.getElementById('studioVideo').files[0]) return toast('Upload a source video first.', 'error');
   if (document.getElementById('studioAudioProvider').value === 'upload' && !document.getElementById('studioAudio').files[0]) return toast('Upload an audio file first.', 'error');
   if (document.getElementById('studioAudioProvider').value === 'elevenlabs' && !document.getElementById('studioScript').value.trim()) return toast('Paste a script for ElevenLabs audio.', 'error');
@@ -317,46 +424,73 @@ async function submitStudioVideo(e) {
 async function loadAssets() {
   const data = await api('/api/assets');
   renderAssetGrid('productGrid', data.products || [], 'products');
-  renderCharacterGrid(data.subjects || []);
+  renderAgentLibrary();
+  renderMyAgents(data.subjects || []);
   renderAssetGrid('audioGrid', data.audio || [], 'audio');
 }
 
-function renderCharacterGrid(characters) {
-  const grid = document.getElementById('characterGrid');
+function setCharacterTab(tab) {
+  currentCharacterTab = tab;
+  document.querySelectorAll('[data-character-tab]').forEach(btn => btn.classList.toggle('active', btn.dataset.characterTab === tab));
+  const library = document.getElementById('agentLibraryGrid');
+  const mine = document.getElementById('myAgentsGrid');
+  if (library) library.style.display = tab === 'library' ? '' : 'none';
+  if (mine) mine.style.display = tab === 'mine' ? '' : 'none';
+}
+
+function renderAgentLibrary() {
+  const grid = document.getElementById('agentLibraryGrid');
+  if (!grid) return;
+  grid.innerHTML = starterCharacters.map(character => renderCharacterCard(character, true)).join('');
+}
+
+function renderMyAgents(characters) {
+  const grid = document.getElementById('myAgentsGrid');
   if (!grid) return;
   if (!characters.length) {
-    grid.innerHTML = '<div class="empty-state">No characters saved yet. Upload Sarah, Marcus, or any spokesperson portrait here.</div>';
+    grid.innerHTML = '<div class="character-empty">No agents uploaded yet. Click + New agent to add Sarah, Marcus, or any spokesperson portrait.</div>';
     return;
   }
 
-  grid.innerHTML = characters.map(character => {
-    const file = character.files?.[0];
-    const voice = character.voiceId ? `<div class="asset-meta">Voice ID saved</div>` : '<div class="asset-meta">No default voice yet</div>';
-    const image = file ? `<div class="asset-thumb"><img src="${file.path}" alt="${character.name}"></div>` : '<div class="asset-thumb">Character</div>';
-    return `<div class="asset-card">
-      ${image}
-      <div class="asset-info">
-        <div class="asset-name">${character.name}</div>
-        ${voice}
+  grid.innerHTML = characters.map(character => renderCharacterCard(character, false)).join('');
+}
+
+function renderCharacterCard(character, isLibrary) {
+  const file = character.files?.[0];
+  const imageUrl = character.imageUrl || file?.path || '';
+  const payload = JSON.stringify({ ...character, imageUrl }).replace(/'/g, '&apos;');
+  const voice = character.voiceId ? 'Voice saved' : isLibrary ? character.role : 'No default voice';
+  const manage = isLibrary
+    ? ''
+    : `<button class="btn btn-secondary" onclick="event.stopPropagation();editCharacterVoice('${character.slug}', '${(character.voiceId || '').replace(/'/g, "\\'")}')">Voice</button>
+       <button class="btn btn-secondary" onclick="event.stopPropagation();deleteAsset('subjects','${character.slug}')">Delete</button>`;
+  return `<div class="character-card" onclick='selectCharacter(${payload})'>
+    <img src="${imageUrl}" alt="${character.name}" loading="lazy">
+    <div class="character-menu">⋮</div>
+    <div class="character-overlay">
+      <div class="character-title">${character.name}</div>
+      <div class="character-meta">${voice}</div>
+      <div class="character-actions">
+        <button class="btn btn-primary" onclick='event.stopPropagation();selectCharacter(${payload})'>Use</button>
+        ${manage}
       </div>
-      <div class="asset-actions">
-        <button class="btn btn-primary" onclick='selectCharacter(${JSON.stringify(character).replace(/'/g, '&apos;')})'>Use</button>
-        <button class="btn btn-secondary" onclick="editCharacterVoice('${character.slug}', '${(character.voiceId || '').replace(/'/g, "\\'")}')">Voice</button>
-        <button class="btn btn-secondary" onclick="deleteAsset('subjects','${character.slug}')">Delete</button>
-      </div>
-    </div>`;
-  }).join('');
+    </div>
+  </div>`;
 }
 
 function selectCharacter(character) {
   selectedCharacter = character;
   const file = character.files?.[0];
-  document.getElementById('studioImageAssetId').value = character.slug;
+  const imageUrl = character.imageUrl || file?.path || '';
+  const isLibrary = character.slug?.startsWith('library-');
+  document.getElementById('studioImageAssetId').value = isLibrary ? '' : character.slug;
+  document.getElementById('studioImageUrl').value = isLibrary ? imageUrl : '';
   document.getElementById('studioImage').value = '';
   document.getElementById('studioImageName').textContent = '';
   document.getElementById('selectedCharacterName').textContent = character.name;
-  document.getElementById('selectedCharacterImg').src = file?.path || '';
+  document.getElementById('selectedCharacterImg').src = imageUrl;
   document.getElementById('selectedCharacter').classList.add('active');
+  setPreviewImage(imageUrl, character.name);
   if (character.voiceId) {
     document.getElementById('studioVoiceId').value = character.voiceId;
   }
@@ -368,7 +502,9 @@ function selectCharacter(character) {
 function clearSelectedCharacter() {
   selectedCharacter = null;
   document.getElementById('studioImageAssetId').value = '';
+  document.getElementById('studioImageUrl').value = '';
   document.getElementById('selectedCharacter').classList.remove('active');
+  resetPreview();
 }
 
 async function editCharacterVoice(slug, currentVoiceId = '') {
@@ -427,31 +563,34 @@ function closeUploadModal() {
 }
 
 function handleFileSelect(input) {
-  document.getElementById('uploadFileName').textContent = input.files[0]?.name || '';
+  const files = Array.from(input.files || []);
+  document.getElementById('uploadFileName').textContent = files.length > 1
+    ? `${files.length} files selected`
+    : files[0]?.name || '';
 }
 
 async function uploadAsset(e) {
   e.preventDefault();
   const type = document.getElementById('uploadType').value;
   const name = document.getElementById('uploadName').value;
-  const file = document.getElementById('uploadFile').files[0];
-  if (!file) return toast('Please select a file', 'error');
-
-  const formData = new FormData();
-  formData.append('file', file);
-  formData.append('name', name);
-  if (type === 'subjects') {
-    formData.append('voiceId', document.getElementById('uploadVoiceId').value.trim());
-  }
+  const files = Array.from(document.getElementById('uploadFile').files || []);
+  if (!files.length) return toast('Please select a file', 'error');
 
   try {
-    const data = await api(`/api/assets/${type}`, { method: 'POST', body: formData });
-    if (data.success) {
-      toast(`${name} uploaded`, 'success');
-      closeUploadModal();
-      loadAssets();
-      if (type === 'subjects') switchTab('characters');
+    for (let index = 0; index < files.length; index++) {
+      const file = files[index];
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('name', files.length > 1 ? `${name} ${index + 1}` : name);
+      if (type === 'subjects') {
+        formData.append('voiceId', document.getElementById('uploadVoiceId').value.trim());
+      }
+      await api(`/api/assets/${type}`, { method: 'POST', body: formData });
     }
+    toast(`${files.length} ${files.length === 1 ? 'file' : 'files'} uploaded`, 'success');
+    closeUploadModal();
+    loadAssets();
+    if (type === 'subjects') switchTab('characters');
   } catch (err) {
     toast(err.message, 'error');
   }
@@ -558,13 +697,21 @@ function getSelectedFormats() {
   return Array.from(document.querySelectorAll('.format-checkbox:checked')).map(cb => cb.value);
 }
 
+function getAdvancedDuration() {
+  const value = document.getElementById('genDuration').value;
+  const seconds = value === 'custom'
+    ? Number(document.getElementById('genCustomDuration').value)
+    : Number(value);
+  return Math.max(1, Math.min(300, Math.round(seconds || 30)));
+}
+
 async function estimateCost() {
   const formats = getSelectedFormats();
   const data = await api('/api/generate/estimate', {
     method: 'POST',
     body: JSON.stringify({
       variants: formats.length * 2,
-      duration: parseInt(document.getElementById('genDuration').value),
+      duration: getAdvancedDuration(),
       resolution: document.getElementById('genResolution').value,
       model: document.getElementById('genModel').value
     })
@@ -583,7 +730,7 @@ async function previewVariants() {
       subjectSlug: document.getElementById('genSubject').value || undefined,
       audioSlug: document.getElementById('genAudio').value || undefined,
       formats: getSelectedFormats(),
-      duration: parseInt(document.getElementById('genDuration').value),
+      duration: getAdvancedDuration(),
       resolution: document.getElementById('genResolution').value,
       model: document.getElementById('genModel').value,
       aspectRatio: document.getElementById('genAspect').value
@@ -672,6 +819,43 @@ async function pollAllJobs() {
   loadVideos();
 }
 
+async function loadBilling() {
+  try {
+    const config = await api('/api/billing/config');
+    setChip('stripeSecretStatus', config.stripeConfigured ? 'Connected' : 'Needs key', config.stripeConfigured ? 'green' : 'warn');
+    setChip('stripePriceStatus', `$${config.amountMonthly}/mo`, config.priceConfigured ? 'green' : 'soft');
+    setChip('billingModeStatus', config.mode === 'test-ready' ? 'Test ready' : 'Setup mode', config.mode === 'test-ready' ? 'green' : 'warn');
+    const button = document.getElementById('checkoutButton');
+    const status = document.getElementById('billingStatus');
+    if (button) button.disabled = !config.stripeConfigured;
+    if (status) {
+      status.textContent = config.stripeConfigured
+        ? 'Stripe test checkout is ready.'
+        : 'Add Stripe test keys before checkout can open.';
+    }
+  } catch (error) {
+    setChip('stripeSecretStatus', 'Error', 'red');
+    const status = document.getElementById('billingStatus');
+    if (status) status.textContent = error.message;
+  }
+}
+
+async function startCheckout() {
+  const button = document.getElementById('checkoutButton');
+  button.disabled = true;
+  button.textContent = 'Opening checkout...';
+  try {
+    const result = await api('/api/billing/checkout', { method: 'POST' });
+    window.location.href = result.url;
+  } catch (error) {
+    toast(error.message, 'error');
+    loadBilling();
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Start checkout';
+  }
+}
+
 function formatBytes(bytes) {
   if (!bytes) return '0 B';
   const units = ['B', 'KB', 'MB', 'GB'];
@@ -680,4 +864,5 @@ function formatBytes(bytes) {
 }
 
 initAuth();
+updatePreviewRatio();
 setInterval(loadDashboard, 30000);

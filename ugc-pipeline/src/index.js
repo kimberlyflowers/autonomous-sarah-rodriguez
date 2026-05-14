@@ -12,6 +12,7 @@ const webhookRouter = require('./api/webhook');
 const analyzeRouter = require('./api/analyze');
 const studioRouter = require('./api/studio');
 const authRouter = require('./api/auth');
+const billingRouter = require('./api/billing');
 const { requireTenant } = require('./services/auth');
 const { getSupabaseConfig } = require('./services/supabase');
 const { getRunPodConfig } = require('./services/runpod');
@@ -56,6 +57,7 @@ app.use('/api/generate', apiKeyAuth, requireTenant, generateRouter);
 app.use('/api/videos', apiKeyAuth, requireTenant, videosRouter);
 app.use('/api/analyze', apiKeyAuth, requireTenant, analyzeRouter);
 app.use('/api/studio', apiKeyAuth, requireTenant, studioRouter);
+app.use('/api/billing', apiKeyAuth, requireTenant, billingRouter);
 
 // Health check
 app.get('/health', (req, res) => {
@@ -69,6 +71,7 @@ app.get('/health', (req, res) => {
     comfyuiConfigured: !!(process.env.COMFYUI_BASE_URL || process.env.RUNPOD_COMFYUI_URL),
     runpodAutoStartConfigured: getRunPodConfig().autoStartConfigured,
     supabaseConfigured: getSupabaseConfig().configured,
+    supabaseAvailable: getSupabaseConfig().available,
     uptime: process.uptime()
   });
 });

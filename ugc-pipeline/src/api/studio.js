@@ -12,7 +12,7 @@ const {
   pollStudioJob,
   getStudioJobs
 } = require('../services/comfyui');
-const { ensureComfyReady, getAccountBalance, getRunPodConfig, isComfyReady, startPod, stopPod } = require('../services/runpod');
+const { ensureComfyReady, getAccountBalance, getPodStatus, getRunPodConfig, isComfyReady, normalizePodState, startPod, stopPod } = require('../services/runpod');
 
 const router = express.Router();
 const UPLOAD_DIR = path.join(__dirname, '..', '..', 'assets', 'studio-uploads');
@@ -87,6 +87,18 @@ function cleanSlug(value) {
 router.get('/status', async (req, res) => {
   const runpod = getRunPodConfig();
   const comfyReady = await isComfyReady(getBaseUrl() || runpod.baseUrl);
+  let podStatus = { configured: runpod.autoStartConfigured, desiredStatus: 'unknown' };
+  if (runpod.autoStartConfigured) {
+    try {
+      podStatus = await getPodStatus();
+    } catch (error) {
+      podStatus = { configured: true, desiredStatus: 'status-error', error: error.message };
+    }
+  }
+  const presets = getPresets().map((preset) => ({
+    ...preset,
+    ready: comfyReady && preset.available
+  }));
   res.json({
     provider: 'comfyui',
     configured: !!getBaseUrl(),
@@ -95,9 +107,12 @@ router.get('/status', async (req, res) => {
     runpod: {
       podIdConfigured: !!runpod.podId,
       autoStartConfigured: runpod.autoStartConfigured,
-      port: runpod.port
+      port: runpod.port,
+      state: normalizePodState(podStatus, comfyReady),
+      desiredStatus: podStatus.desiredStatus,
+      statusError: podStatus.error || null
     },
-    presets: getPresets(),
+    presets,
     audioProviders: [
       { id: 'upload', label: 'Uploaded audio', available: true },
       { id: 'elevenlabs', label: 'ElevenLabs', available: !!process.env.ELEVENLABS_API_KEY },
@@ -174,7 +189,7 @@ router.get('/jobs', (req, res) => {
           audioProvider: job.audio_provider,
           status: job.status,
           prompt: job.prompt,
-          aspectRatio: job.metadata?.aspectRatio || '9:16',
+          aspectRatio: job.metadata?.aspectRatio || '16:9',
           script: job.script,
           localPath: job.metadata?.localPath || null,
           error: job.error,
@@ -262,7 +277,7 @@ router.post('/generate', upload.fields([
     }
 
     const files = req.files || {};
-    if (mode === 'i2v' && !files.image?.[0] && !req.body.imageAssetId) {
+    if (mode === 'i2v' && !files.image?.[0] && !req.body.imageAssetId && !req.body.imageUrl) {
       return res.status(400).json({ error: 'Upload a starting image for I2V.' });
     }
     if (mode === 'v2v' && !files.video?.[0]) {
@@ -280,6 +295,9 @@ router.post('/generate', upload.fields([
       } else {
         imagePath = getLocalAssetFile(req, req.body.imageAssetId, 'subjects');
       }
+    }
+    if (!imagePath && req.body.imageUrl) {
+      imagePath = await downloadTempFile(req.body.imageUrl, req.tenant.slug || req.tenant.id, 'library-character.png');
     }
 
     const imageName = imagePath ? await uploadInput(imagePath) : null;
@@ -302,7 +320,7 @@ router.post('/generate', upload.fields([
       script: req.body.script || '',
         prompt: req.body.prompt || '',
         negativePrompt: req.body.negativePrompt || '',
-        aspectRatio: req.body.aspectRatio || '9:16',
+        aspectRatio: req.body.aspectRatio || '16:9',
         imageName,
       videoName,
       audioName
@@ -321,7 +339,12 @@ router.post('/generate', upload.fields([
         script: req.body.script || '',
         prompt: req.body.prompt || '',
         negative_prompt: req.body.negativePrompt || '',
-        metadata: { localJobId: job.jobId, aspectRatio: req.body.aspectRatio || '9:16', imageAssetId: req.body.imageAssetId || null }
+        metadata: {
+          localJobId: job.jobId,
+          aspectRatio: req.body.aspectRatio || '16:9',
+          imageAssetId: req.body.imageAssetId || null,
+          imageUrl: req.body.imageUrl || null
+        }
       });
     }
 

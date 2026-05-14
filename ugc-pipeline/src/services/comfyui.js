@@ -236,7 +236,7 @@ async function submitStudioJob(input) {
     audioProvider: input.audioProvider,
     status: 'pending',
     prompt: input.prompt,
-    aspectRatio: input.aspectRatio || '9:16',
+    aspectRatio: input.aspectRatio || '16:9',
     script: input.script,
     createdAt: new Date().toISOString(),
     completedAt: null,

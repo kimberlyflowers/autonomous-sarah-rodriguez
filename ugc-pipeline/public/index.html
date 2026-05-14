@@ -40,12 +40,15 @@ button,input,select,textarea{font:inherit}
 .file-drop:hover{border-color:var(--primary);background:#fff7ef}.file-drop strong{font-size:14px}.file-drop span{font-size:12px;color:var(--muted)}.file-name{font-size:12px;color:#bf6a35;font-weight:700;margin-top:7px;word-break:break-word}
 .actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:6px}.btn{border:0;border-radius:12px;padding:12px 18px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:8px;transition:.18s;text-decoration:none}
 .btn-primary{background:var(--grad);color:#fff}.btn-primary:hover{transform:translateY(-1px);box-shadow:0 12px 24px rgba(231,111,139,.25)}.btn-secondary{background:#fff;color:var(--ink);border:1px solid var(--line)}.btn-secondary:hover{border-color:var(--primary)}
-.hint{font-size:12px;color:var(--muted)}.preview-card{overflow:hidden}.preview-frame{aspect-ratio:9/16;background:linear-gradient(160deg,#242a2c,#111);display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.58);text-align:center;padding:28px}
+.hint{font-size:12px;color:var(--muted)}.preview-card{overflow:hidden}.preview-frame{aspect-ratio:16/9;background:linear-gradient(160deg,#242a2c,#111);display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.58);text-align:center;padding:18px;transition:.2s}
+.preview-frame.ratio-portrait{aspect-ratio:9/16;max-height:560px;margin:0 auto}.preview-frame.ratio-square{aspect-ratio:1/1}.preview-frame img{width:100%;height:100%;object-fit:contain;border-radius:12px}
 .preview-frame video{width:100%;height:100%;object-fit:contain}.preview-body{padding:18px}.mini-list{display:flex;flex-direction:column;gap:10px}.mini-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);font-size:13px}.mini-row:last-child{border-bottom:0}.chip{display:inline-flex;align-items:center;border-radius:999px;padding:5px 10px;font-size:12px;font-weight:800}.chip-green{background:#e8f7ef;color:#16794a}.chip-warn{background:#fff3df;color:#ad641e}.chip-red{background:#fdecec;color:#b53c3c}.chip-soft{background:#f4ece6;color:#8b6450}
 .tab-content{display:none}.tab-content.active{display:block}.section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:16px}.section-title{font-size:24px;font-weight:800;letter-spacing:-.03em}.section-desc{font-size:14px;color:var(--muted);margin-top:4px}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px;margin-bottom:14px}.card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}.card-title{font-weight:800}.card-subtitle{font-size:13px;color:var(--muted);margin-top:2px}
 .asset-grid,.video-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}.asset-card,.video-card{background:#fff;border:1px solid var(--line);border-radius:16px;overflow:hidden}.asset-thumb{height:150px;background:var(--soft);display:flex;align-items:center;justify-content:center;color:var(--muted)}.asset-thumb img{width:100%;height:100%;object-fit:cover}.asset-info,.video-info{padding:13px}.asset-name{font-weight:800}.asset-meta,.video-prompt{font-size:12px;color:var(--muted);margin-top:4px}.asset-actions{padding:10px 13px;border-top:1px solid var(--line);display:flex;gap:8px}
+.character-page{background:#141414;border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:16px;box-shadow:var(--shadow)}.character-head{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:14px}.character-head h2{color:#fff;font-size:22px;letter-spacing:-.03em}.character-head p{color:rgba(255,255,255,.5);font-size:13px;margin-top:3px}.character-tabs{display:flex;gap:4px;background:#090909;border-radius:12px;padding:4px}.character-tab{border:1px solid transparent;background:transparent;color:rgba(255,255,255,.58);border-radius:9px;padding:9px 18px;font-weight:800;font-size:13px;cursor:pointer}.character-tab.active{background:#222;color:#fff;border-color:rgba(255,255,255,.16)}.character-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px}.character-card{position:relative;aspect-ratio:9/14;border-radius:13px;overflow:hidden;background:#222;border:1px solid rgba(255,255,255,.08);cursor:pointer}.character-card:hover{border-color:rgba(244,162,97,.65);transform:translateY(-1px)}.character-card img{width:100%;height:100%;object-fit:cover;display:block}.character-overlay{position:absolute;inset:auto 0 0;background:linear-gradient(transparent,rgba(0,0,0,.82));padding:42px 11px 11px;color:#fff}.character-title{font-size:13px;font-weight:800}.character-meta{font-size:11px;color:rgba(255,255,255,.62);margin-top:2px}.character-menu{position:absolute;top:8px;right:8px;color:#fff;background:rgba(0,0,0,.38);border-radius:999px;padding:2px 8px;font-weight:800}.character-actions{display:flex;gap:6px;margin-top:9px}.character-actions .btn{padding:7px 9px;border-radius:8px;font-size:11px}.character-empty{color:rgba(255,255,255,.55);border:1px dashed rgba(255,255,255,.14);border-radius:14px;padding:36px;text-align:center}
 .selected-character{display:none;align-items:center;gap:12px;padding:12px;border:1px solid rgba(244,162,97,.35);background:#fff8f1;border-radius:14px;margin-bottom:12px}.selected-character.active{display:flex}.selected-character img{width:52px;height:52px;border-radius:12px;object-fit:cover;background:var(--soft)}.selected-character strong{display:block;font-size:14px}.selected-character span{font-size:12px;color:var(--muted)}
+.workflow-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-top:12px}.workflow-card{border:1px solid var(--line);border-radius:14px;padding:13px;background:#fff}.workflow-card strong{font-size:13px}.workflow-card p{font-size:12px;color:var(--muted);margin-top:4px}.billing-hero{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px;align-items:stretch}.price-card{background:linear-gradient(135deg,#242a2c,#16191a);color:#fff;border-radius:20px;padding:24px;box-shadow:var(--shadow)}.price-card .price{font-size:42px;font-weight:800;letter-spacing:-.05em;margin:12px 0}.price-card .price span{font-size:15px;color:rgba(255,255,255,.55);letter-spacing:0}.plan-list{display:flex;flex-direction:column;gap:10px;margin:16px 0}.plan-list div{display:flex;gap:9px;font-size:14px;color:rgba(255,255,255,.82)}.audit-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.audit-item{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px}.audit-item strong{font-size:14px}.audit-item p{font-size:12px;color:var(--muted);margin-top:5px}
 .video-player{width:100%;aspect-ratio:9/16;max-height:360px;background:#111;object-fit:contain}.empty-state{text-align:center;padding:36px;color:var(--muted);border:1px dashed var(--line);border-radius:16px;background:rgba(255,255,255,.55)}
 .brand-profile,.gen-config{display:grid;grid-template-columns:1fr 1fr;gap:14px}.selling-points-list{padding-left:18px;color:var(--muted);font-size:13px}.toast-container{position:fixed;top:20px;right:20px;z-index:20;display:flex;flex-direction:column;gap:8px}.toast{padding:12px 14px;border-radius:12px;background:#fff;border:1px solid var(--line);box-shadow:var(--shadow);font-size:13px;font-weight:700;max-width:380px}.toast-error{border-color:#f1b4b4;color:#a63232}.toast-success{border-color:#aadfbe;color:#16794a}.toast-info{color:#76513e}
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:15;align-items:center;justify-content:center}.modal-overlay.active{display:flex}.modal{background:#fff;border-radius:18px;border:1px solid var(--line);box-shadow:var(--shadow);padding:22px;max-width:540px;width:min(92vw,540px)}.modal-title{font-size:18px;font-weight:800;margin-bottom:16px}.modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:16px}
@@ -92,6 +95,7 @@ button,input,select,textarea{font:inherit}
       <button class="nav-tab" data-tab="characters"><span class="nav-ico">◉</span>Characters</button>
       <button class="nav-tab" data-tab="assets"><span class="nav-ico">◫</span>Assets</button>
       <button class="nav-tab" data-tab="brands"><span class="nav-ico">✦</span>Brands</button>
+      <button class="nav-tab" data-tab="billing"><span class="nav-ico">$</span>Billing</button>
       <button class="nav-tab" data-tab="advanced"><span class="nav-ico">⚙</span>Advanced</button>
     </nav>
     <div class="side-card">
@@ -131,6 +135,7 @@ button,input,select,textarea{font:inherit}
               <input type="hidden" id="studioMode" name="mode" value="i2v">
               <input type="hidden" id="studioPreset" name="presetId" value="sarah-i2v-lipsync">
               <input type="hidden" id="studioImageAssetId" name="imageAssetId" value="">
+              <input type="hidden" id="studioImageUrl" name="imageUrl" value="">
               <div class="form-grid">
                 <div class="form-group">
                   <label class="form-label">Audio source</label>
@@ -144,14 +149,18 @@ button,input,select,textarea{font:inherit}
                 <div class="form-group">
                   <label class="form-label">Aspect ratio</label>
                   <select class="form-select" id="studioAspectRatio" name="aspectRatio">
-                    <option value="9:16">9:16 Short</option>
                     <option value="16:9">16:9 Landscape</option>
+                    <option value="9:16">9:16 Short</option>
                     <option value="1:1">1:1 Square</option>
                   </select>
                 </div>
 
                 <div class="form-group" id="studioImageGroup">
                   <label class="form-label">Avatar image</label>
+                  <div class="actions" style="margin:0 0 10px">
+                    <button class="btn btn-secondary" type="button" onclick="switchTab('characters')">Select from Characters</button>
+                    <button class="btn btn-secondary" type="button" onclick="document.getElementById('studioImage').click()">Upload my own</button>
+                  </div>
                   <div class="selected-character" id="selectedCharacter">
                     <img id="selectedCharacterImg" alt="">
                     <div style="flex:1">
@@ -214,18 +223,24 @@ button,input,select,textarea{font:inherit}
           <div class="preview-frame" id="studioPreview">
             <div>
               <div style="font-size:34px;margin-bottom:10px">▶</div>
-              <strong>Your video preview appears here</strong>
-              <p style="font-size:13px;margin-top:6px;color:rgba(255,255,255,.45)">Generate a clip, then watch it from the library.</p>
+              <strong id="previewTitle">Your video preview appears here</strong>
+              <p id="previewHint" style="font-size:13px;margin-top:6px;color:rgba(255,255,255,.45)">Select a character or upload an image to preview the frame.</p>
             </div>
           </div>
           <div class="preview-body">
             <div class="panel-title">Studio status</div>
             <div class="mini-list">
               <div class="mini-row"><span>ComfyUI</span><span class="chip chip-warn" id="comfyStatus">Checking</span></div>
-              <div class="mini-row"><span>I2V preset</span><span class="chip chip-soft" id="i2vStatus">Ready</span></div>
-              <div class="mini-row"><span>V2V preset</span><span class="chip chip-soft" id="v2vStatus">Ready</span></div>
+              <div class="mini-row"><span>RunPod pod</span><span class="chip chip-warn" id="runpodStatus">Checking</span></div>
+              <div class="mini-row"><span>I2V preset</span><span class="chip chip-soft" id="i2vStatus">Checking</span></div>
+              <div class="mini-row"><span>V2V preset</span><span class="chip chip-soft" id="v2vStatus">Checking</span></div>
               <div class="mini-row"><span>Qwen audio</span><span class="chip chip-warn" id="qwenStatus">Needs workflow</span></div>
               <div class="mini-row"><span>RunPod credits</span><span class="chip chip-warn" id="runpodBalance">Checking</span></div>
+            </div>
+            <div class="workflow-grid">
+              <div class="workflow-card"><strong>I2V ready</strong><p id="i2vNote">Checks the Sarah image-to-video workflow.</p></div>
+              <div class="workflow-card"><strong>V2V ready</strong><p id="v2vNote">Checks the Bloomies video-to-video workflow.</p></div>
+              <div class="workflow-card"><strong>Qwen next</strong><p id="qwenNote">Waiting for Qwen TTS API workflow export.</p></div>
             </div>
             <div class="actions" style="margin-top:14px">
               <button class="btn btn-secondary" type="button" onclick="startRunPod()">Start pod</button>
@@ -244,8 +259,23 @@ button,input,select,textarea{font:inherit}
     </section>
 
     <section class="tab-content" id="tab-characters">
-      <div class="section-head"><div><h2 class="section-title">Characters</h2><p class="section-desc">Store repeatable spokesperson portraits here. Pick one to load it directly into Create.</p></div><button class="btn btn-primary" onclick="showUploadModal('subjects')">Upload character</button></div>
-      <div class="asset-grid" id="characterGrid"></div>
+      <div class="character-page">
+        <div class="character-head">
+          <div>
+            <h2>Agents</h2>
+            <p>Choose a starter character from the library or use one of your uploaded agents.</p>
+          </div>
+          <div class="actions">
+            <div class="character-tabs">
+              <button class="character-tab active" type="button" data-character-tab="library" onclick="setCharacterTab('library')">Agent library</button>
+              <button class="character-tab" type="button" data-character-tab="mine" onclick="setCharacterTab('mine')">My agents</button>
+            </div>
+            <button class="btn btn-secondary" onclick="showUploadModal('subjects')">+ New agent</button>
+          </div>
+        </div>
+        <div class="character-grid" id="agentLibraryGrid"></div>
+        <div class="character-grid" id="myAgentsGrid" style="display:none"></div>
+      </div>
     </section>
 
     <section class="tab-content" id="tab-assets">
@@ -277,6 +307,54 @@ button,input,select,textarea{font:inherit}
       <div id="brandsList"></div>
     </section>
 
+    <section class="tab-content" id="tab-billing">
+      <div class="section-head">
+        <div>
+          <h2 class="section-title">Billing</h2>
+          <p class="section-desc">Bloom Studio can run as an in-app upgrade or as a standalone lip-sync video service.</p>
+        </div>
+        <button class="btn btn-secondary" onclick="loadBilling()">Refresh</button>
+      </div>
+      <div class="billing-hero">
+        <div class="price-card">
+          <div class="kicker" style="color:var(--primary)">Creator Plan</div>
+          <h3 style="font-size:24px;line-height:1.15;margin-top:8px">UGC video creation for lip-sync clips, character videos, and AI spokesperson tests.</h3>
+          <div class="price">$99 <span>/ month</span></div>
+          <div class="plan-list">
+            <div>✓ Multi-tenant workspace access</div>
+            <div>✓ Character library and saved agents</div>
+            <div>✓ ComfyUI RunPod workflow launcher</div>
+            <div>✓ Video job library and asset storage path</div>
+          </div>
+          <div class="actions">
+            <button class="btn btn-primary" id="checkoutButton" onclick="startCheckout()">Start checkout</button>
+            <span class="hint" id="billingStatus" style="color:rgba(255,255,255,.65)">Checking Stripe setup...</span>
+          </div>
+        </div>
+        <div class="panel panel-pad">
+          <div class="panel-title">Payment readiness</div>
+          <p class="panel-note">Checkout uses Stripe Billing subscriptions. It stays in setup mode until Stripe test keys are added.</p>
+          <div class="mini-list">
+            <div class="mini-row"><span>Stripe secret key</span><span class="chip chip-warn" id="stripeSecretStatus">Checking</span></div>
+            <div class="mini-row"><span>Price</span><span class="chip chip-soft" id="stripePriceStatus">$99/mo</span></div>
+            <div class="mini-row"><span>Mode</span><span class="chip chip-warn" id="billingModeStatus">Setup</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <div class="card-title">UX audit checklist</div>
+        <div class="card-subtitle">Basic functionality the app should have before clients touch it.</div>
+        <div class="audit-grid" style="margin-top:14px">
+          <div class="audit-item"><strong>Sign in / tenant isolation</strong><p>Access-key mode works now; Supabase mode is ready after the separate ugc_ schema is enabled.</p></div>
+          <div class="audit-item"><strong>Persistent uploads</strong><p>Requires the Supabase `ugc-assets` bucket and `ugc_assets` table before Railway restarts stop wiping uploads.</p></div>
+          <div class="audit-item"><strong>Character library</strong><p>Agent library and My agents are split, selectable, and feed directly into Create.</p></div>
+          <div class="audit-item"><strong>Workflow readiness</strong><p>Pod state, credits, ComfyUI, I2V, V2V, and Qwen readiness are visible from Create.</p></div>
+          <div class="audit-item"><strong>Payments</strong><p>$99/mo subscription checkout is wired for Stripe test keys and ready for live keys later.</p></div>
+          <div class="audit-item"><strong>Upgrade model</strong><p>Supports in-app purchase positioning or standalone Bloom Studio access.</p></div>
+        </div>
+      </div>
+    </section>
+
     <section class="tab-content advanced-box" id="tab-advanced">
       <div class="section-head"><div><h2 class="section-title">Advanced A/B testing</h2><p class="section-desc">The original Seedance batch generator is still here for ad variant testing.</p></div></div>
       <div class="card">
@@ -284,7 +362,8 @@ button,input,select,textarea{font:inherit}
           <div class="form-group"><label class="form-label">Brand</label><select class="form-select" id="genBrand"></select></div>
           <div class="form-group"><label class="form-label">Subject</label><select class="form-select" id="genSubject"><option value="">None</option></select></div>
           <div class="form-group"><label class="form-label">Audio Reference</label><select class="form-select" id="genAudio"><option value="">None</option></select></div>
-          <div class="form-group"><label class="form-label">Duration</label><select class="form-select" id="genDuration"><option value="5">5s test</option><option value="10">10s</option><option value="15" selected>15s</option></select></div>
+          <div class="form-group"><label class="form-label">Duration</label><select class="form-select" id="genDuration"><option value="5">5s test</option><option value="10">10s</option><option value="15">15s</option><option value="30" selected>30s</option><option value="60">60s</option><option value="custom">Custom</option></select></div>
+          <div class="form-group" id="genCustomDurationGroup" style="display:none"><label class="form-label">Custom seconds</label><input class="form-input" id="genCustomDuration" type="number" min="1" max="300" value="30"></div>
           <div class="form-group"><label class="form-label">Resolution</label><select class="form-select" id="genResolution"><option value="480p">480p</option><option value="720p" selected>720p</option><option value="1080p">1080p</option></select></div>
           <div class="form-group"><label class="form-label">Model</label><select class="form-select" id="genModel"><option value="seedance2-fast" selected>Fast</option><option value="seedance2-standard">Standard</option></select></div>
           <div class="form-group"><label class="form-label">Aspect Ratio</label><select class="form-select" id="genAspect"><option value="9:16" selected>9:16</option><option value="16:9">16:9</option><option value="1:1">1:1</option></select></div>
@@ -308,7 +387,7 @@ button,input,select,textarea{font:inherit}
     <form id="uploadForm" onsubmit="uploadAsset(event)">
       <input type="hidden" id="uploadType" value="">
       <div class="form-group"><label class="form-label">Name</label><input class="form-input" id="uploadName" required placeholder="Sarah portrait, Marcus voiceover"></div>
-      <label class="file-drop"><strong>Choose file</strong><span>Images, audio, or video</span><input type="file" id="uploadFile" hidden accept="image/*,audio/*,video/*" onchange="handleFileSelect(this)"></label>
+      <label class="file-drop"><strong>Choose file</strong><span>Images, audio, or video. You can select more than one.</span><input type="file" id="uploadFile" hidden multiple accept="image/*,audio/*,video/*" onchange="handleFileSelect(this)"></label>
       <div class="file-name" id="uploadFileName"></div>
       <div class="form-group" id="characterVoiceFields" style="display:none;margin-top:14px">
         <label class="form-label">Default ElevenLabs voice ID</label>

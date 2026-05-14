@@ -50,6 +50,37 @@ async function startPod() {
   return response.json().catch(() => ({ id: podId, desiredStatus: 'RUNNING' }));
 }
 
+async function getPodStatus() {
+  const { apiKey, podId } = getRunPodConfig();
+  if (!apiKey || !podId) return { configured: false, desiredStatus: 'unconfigured' };
+
+  const response = await fetch(`https://rest.runpod.io/v1/pods/${podId}`, {
+    headers: { Authorization: `Bearer ${apiKey}` }
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`RunPod status failed: ${response.status} ${text}`);
+  }
+  const pod = await response.json();
+  return {
+    configured: true,
+    id: pod.id,
+    name: pod.name,
+    desiredStatus: pod.desiredStatus || pod.status || 'unknown',
+    machineId: pod.machineId || null,
+    ports: pod.ports || []
+  };
+}
+
+function normalizePodState(status, comfyReady = false) {
+  const raw = String(status?.desiredStatus || '').toUpperCase();
+  if (comfyReady) return 'running';
+  if (['RUNNING'].includes(raw)) return 'booting';
+  if (['EXITED', 'STOPPED'].includes(raw)) return 'stopped';
+  if (['PENDING', 'STARTING', 'CREATED'].includes(raw)) return 'starting';
+  return raw ? raw.toLowerCase() : 'unknown';
+}
+
 async function stopPod() {
   const { apiKey, podId } = getRunPodConfig();
   if (!apiKey || !podId) {
@@ -136,7 +167,9 @@ module.exports = {
   ensureComfyReady,
   getAccountBalance,
   getRunPodConfig,
+  getPodStatus,
   isComfyReady,
+  normalizePodState,
   startPod,
   stopPod
 };

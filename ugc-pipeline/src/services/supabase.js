@@ -3,7 +3,15 @@ const { createClient } = require('@supabase/supabase-js');
 function getSupabaseConfig() {
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
   const anonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-  return { url, anonKey, configured: !!(url && anonKey) };
+  const mode = String(process.env.UGC_AUTH_MODE || '').toLowerCase();
+  const enabled = ['true', '1', 'yes'].includes(String(process.env.UGC_SUPABASE_ENABLED || '').toLowerCase())
+    || mode === 'supabase';
+  return {
+    url,
+    anonKey,
+    available: !!(url && anonKey),
+    configured: enabled && !!(url && anonKey)
+  };
 }
 
 function createUserClient(accessToken) {
