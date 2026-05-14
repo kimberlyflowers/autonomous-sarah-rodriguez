@@ -265,7 +265,7 @@ function trendThumbnailUrl(url = '') {
       const type = parts[typeIndex];
       const code = parts[typeIndex + 1];
       if (typeIndex !== -1 && code) {
-        return `https://www.instagram.com/${type}/${code}/media/?size=l`;
+        return authenticatedMediaUrl(`/api/trends/thumbnail?url=${encodeURIComponent(url)}`);
       }
     }
   } catch (error) {
