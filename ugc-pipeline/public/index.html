@@ -50,6 +50,7 @@ button,input,select,textarea{font:inherit}
 .character-page{background:var(--bg);border:1px solid var(--line);border-radius:18px;padding:14px;box-shadow:none;min-height:calc(100vh - 150px)}.character-head{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:14px}.character-head h2{color:var(--ink);font-size:22px;letter-spacing:-.03em}.character-head p{color:var(--muted);font-size:13px;margin-top:3px}.character-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.character-tabs,.ratio-tabs{display:flex;gap:4px;background:var(--dark);border:1px solid var(--line);border-radius:12px;padding:4px}.character-tab,.ratio-tab{border:1px solid transparent;background:transparent;color:var(--muted);border-radius:9px;padding:9px 18px;font-weight:800;font-size:13px;cursor:pointer}.character-tab.active,.ratio-tab.active{background:var(--surface);color:var(--ink);border-color:var(--line)}.character-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(245px,1fr));gap:18px;align-items:start}.character-grid.landscape{grid-template-columns:repeat(auto-fill,minmax(390px,1fr))}.character-card{position:relative;aspect-ratio:9/16;border-radius:13px;overflow:hidden;background:#222;border:1px solid var(--line);cursor:pointer;min-height:440px}.character-grid.landscape .character-card{aspect-ratio:16/9;min-height:250px}.character-card:hover{border-color:rgba(244,162,97,.65);transform:translateY(-1px)}.character-card img{width:100%;height:100%;object-fit:cover;object-position:center;display:block}.character-overlay{position:absolute;inset:auto 0 0;background:linear-gradient(transparent,rgba(0,0,0,.78));padding:72px 14px 14px;color:#fff}.character-title{font-size:15px;font-weight:800}.character-meta{font-size:12px;color:rgba(255,255,255,.72);margin-top:2px}.character-menu{position:absolute;top:8px;right:8px;color:#fff;background:rgba(0,0,0,.38);border-radius:999px;padding:2px 8px;font-weight:800}.character-actions{position:absolute;right:12px;bottom:12px;display:flex;gap:6px;margin-top:0;opacity:0;transform:translateY(6px);transition:.16s}.character-card:hover .character-actions{opacity:1;transform:translateY(0)}.character-actions .btn{padding:7px 9px;border-radius:8px;font-size:11px}.character-empty{color:var(--muted);border:1px dashed var(--line);border-radius:14px;padding:36px;text-align:center}
 .selected-character{display:none;align-items:center;gap:12px;padding:12px;border:1px solid rgba(244,162,97,.35);background:rgba(244,162,97,.10);color:var(--ink);border-radius:14px;margin-bottom:12px}.selected-character.active{display:flex}.selected-character img{width:52px;height:52px;border-radius:12px;object-fit:cover;background:var(--soft)}.selected-character strong{display:block;font-size:14px}.selected-character span{font-size:12px;color:var(--muted)}
 .product-lab{display:grid;grid-template-columns:minmax(0,1fr) minmax(360px,.72fr);gap:18px;align-items:start}.product-drop-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.pick-card{border:1.5px solid var(--line);border-radius:16px;overflow:hidden;background:var(--surface)}.pick-preview{aspect-ratio:16/9;background:var(--soft);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:13px;overflow:hidden}.pick-preview img{width:100%;height:100%;object-fit:cover;object-position:center}.pick-body{padding:12px}.pick-body strong{display:block;font-size:14px}.pick-body span{display:block;color:var(--muted);font-size:12px;margin-top:3px}.mini-pick-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:10px;max-height:360px;overflow:auto;padding-right:4px}.mini-pick{position:relative;aspect-ratio:16/9;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--soft);cursor:pointer}.mini-pick:hover{border-color:var(--primary)}.mini-pick img{width:100%;height:100%;object-fit:cover;display:block}.mini-pick span{position:absolute;inset:auto 0 0;background:linear-gradient(transparent,rgba(0,0,0,.78));color:#fff;font-size:11px;font-weight:800;padding:24px 8px 8px}.result-frame{aspect-ratio:16/9;background:linear-gradient(160deg,#242a2c,#111);border-radius:16px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;overflow:hidden;color:rgba(255,255,255,.55);text-align:center}.result-frame.ratio-portrait{aspect-ratio:9/16;max-height:640px;margin:0 auto}.result-frame img{width:100%;height:100%;object-fit:cover;display:block}.endpoint-note{font-size:12px;color:var(--muted);margin-top:10px}
+.reference-strip{display:grid;grid-template-columns:repeat(auto-fill,minmax(82px,1fr));gap:8px;margin-top:10px}.reference-chip{position:relative;aspect-ratio:1/1;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--soft)}.reference-chip img{width:100%;height:100%;object-fit:cover}.reference-chip button{position:absolute;top:5px;right:5px;border:0;border-radius:999px;background:rgba(0,0,0,.68);color:#fff;width:24px;height:24px;font-weight:900;cursor:pointer}
 .cooking-state{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px}.cooking-orb{width:58px;height:58px;border-radius:50%;background:conic-gradient(from 0deg,var(--primary),var(--pink),var(--primary));animation:cookspin 1.2s linear infinite;position:relative}.cooking-orb:after{content:"";position:absolute;inset:7px;border-radius:50%;background:var(--surface)}.cooking-steps{font-size:12px;color:var(--muted)}.voice-loading{border:1px dashed rgba(244,162,97,.45);border-radius:14px;background:rgba(244,162,97,.08);min-height:170px;margin-top:12px}.voice-loading .cooking-orb{width:46px;height:46px}.voice-loading .cooking-orb:after{inset:6px}@keyframes cookspin{to{transform:rotate(360deg)}}
 .workflow-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-top:12px}.workflow-card{border:1px solid var(--line);border-radius:14px;padding:13px;background:var(--surface)}.workflow-card strong{font-size:13px}.workflow-card p{font-size:12px;color:var(--muted);margin-top:4px}.billing-hero{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px;align-items:stretch}.price-card{background:linear-gradient(135deg,#242a2c,#16191a);color:#fff;border-radius:20px;padding:24px;box-shadow:var(--shadow)}.price-card .price{font-size:42px;font-weight:800;letter-spacing:-.05em;margin:12px 0}.price-card .price span{font-size:15px;color:rgba(255,255,255,.55);letter-spacing:0}.plan-list{display:flex;flex-direction:column;gap:10px;margin:16px 0}.plan-list div{display:flex;gap:9px;font-size:14px;color:rgba(255,255,255,.82)}.audit-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.audit-item{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px}.audit-item strong{font-size:14px}.audit-item p{font-size:12px;color:var(--muted);margin-top:5px}
 .video-player{width:100%;aspect-ratio:9/16;max-height:360px;background:#111;object-fit:contain}.empty-state{text-align:center;padding:36px;color:var(--muted);border:1px dashed var(--line);border-radius:16px;background:var(--soft)}
@@ -97,7 +98,7 @@ button,input,select,textarea{font:inherit}
     <nav class="nav">
       <button class="nav-tab active" data-tab="characters"><span class="nav-ico">◉</span>Characters</button>
       <button class="nav-tab" data-tab="studio"><span class="nav-ico">▶</span>Create</button>
-      <button class="nav-tab" data-tab="products"><span class="nav-ico">✦</span>Products</button>
+      <button class="nav-tab" data-tab="products"><span class="nav-ico">✦</span>Image Composite</button>
       <button class="nav-tab" data-tab="videos"><span class="nav-ico">▥</span>Library</button>
       <button class="nav-tab" data-tab="assets"><span class="nav-ico">◫</span>Assets</button>
       <button class="nav-tab" data-tab="brands"><span class="nav-ico">✦</span>Brands</button>
@@ -407,8 +408,8 @@ button,input,select,textarea{font:inherit}
     <section class="tab-content" id="tab-products">
       <div class="section-head">
         <div>
-          <h2 class="section-title">Product placement</h2>
-          <p class="section-desc">Upload or select one reference image, optionally add a product image, then generate one production-ready image with Nano Banana.</p>
+          <h2 class="section-title">Image Composite</h2>
+          <p class="section-desc">Generate from a prompt alone, or add up to five optional reference images when you want Nano Banana to preserve a person, product, setting, or style.</p>
         </div>
         <span class="chip chip-warn" id="nanoStatus">Checking endpoint</span>
       </div>
@@ -417,7 +418,7 @@ button,input,select,textarea{font:inherit}
           <div class="panel-pad">
             <div class="form-group">
               <label class="form-label">Prompt</label>
-              <textarea class="form-textarea" id="productPlacementPrompt" placeholder="Have the character naturally hold and present the product in a clean creator-style scene. Keep the face identity consistent, make the product clear, realistic, and correctly scaled."></textarea>
+              <textarea class="form-textarea" id="productPlacementPrompt" placeholder="Create a clean creator-style production image. If references are attached, preserve the important identity, product, setting, or style details while following this prompt."></textarea>
             </div>
             <div class="form-grid">
               <div class="form-group">
@@ -441,11 +442,11 @@ button,input,select,textarea{font:inherit}
             <div class="product-drop-grid">
               <div>
                 <div class="pick-card">
-                  <div class="pick-preview" id="productCharacterPreview">Choose a character</div>
-                  <div class="pick-body"><strong id="productCharacterName">No character selected</strong><span>Select from your library or upload a new image.</span></div>
+                  <div class="pick-preview" id="productCharacterPreview">Optional primary image</div>
+                  <div class="pick-body"><strong id="productCharacterName">No primary image selected</strong><span>Optional. Use this when one image should anchor the edit.</span></div>
                 </div>
                 <div class="actions">
-                  <button class="btn btn-secondary" onclick="document.getElementById('productCharacterUpload').click()">Upload character</button>
+                  <button class="btn btn-secondary" onclick="document.getElementById('productCharacterUpload').click()">Upload primary</button>
                   <input id="productCharacterUpload" type="file" accept="image/*" hidden onchange="previewProductPlacementUpload('character', this.files?.[0])">
                 </div>
                 <div class="mini-pick-grid" id="productCharacterGrid"></div>
@@ -453,14 +454,15 @@ button,input,select,textarea{font:inherit}
 
               <div>
                 <div class="pick-card">
-                  <div class="pick-preview" id="productImagePreview">Choose a product</div>
-                  <div class="pick-body"><strong id="productImageName">No product selected</strong><span>Optional. Add a prop/product shot when you want a composite.</span></div>
+                  <div class="pick-preview" id="productImagePreview">Optional references</div>
+                  <div class="pick-body"><strong id="productImageName">0 reference images selected</strong><span>Add up to five images for products, props, outfits, backgrounds, or style.</span></div>
                 </div>
                 <div class="actions">
-                  <button class="btn btn-secondary" onclick="document.getElementById('productImageUpload').click()">Upload product</button>
-                  <button class="btn btn-secondary" onclick="showUploadModal('products')">Save product asset</button>
-                  <input id="productImageUpload" type="file" accept="image/*" hidden onchange="previewProductPlacementUpload('product', this.files?.[0])">
+                  <button class="btn btn-secondary" onclick="document.getElementById('productImageUpload').click()">Upload references</button>
+                  <button class="btn btn-secondary" onclick="showUploadModal('products')">Save reusable image</button>
+                  <input id="productImageUpload" type="file" accept="image/*" multiple hidden onchange="previewProductPlacementUpload('product', this.files)">
                 </div>
+                <div class="reference-strip" id="productReferenceStrip"></div>
                 <div class="mini-pick-grid" id="productAssetGrid"></div>
               </div>
             </div>
@@ -468,7 +470,7 @@ button,input,select,textarea{font:inherit}
             <div class="actions" style="margin-top:18px">
               <button class="btn btn-primary" id="productGenerateButton" onclick="generateProductPlacement()">Run Nano Banana</button>
               <button class="btn btn-secondary" onclick="resetProductPlacement()">Reset</button>
-              <span class="hint">Use one image for edits, or two images for product/character composites.</span>
+              <span class="hint">Prompt-only is allowed in Bloom Studio. Add references only when you need visual control.</span>
             </div>
           </div>
         </div>
@@ -478,7 +480,7 @@ button,input,select,textarea{font:inherit}
             <div class="panel-title">Result</div>
             <p class="panel-note">The generated production image will appear here.</p>
             <div class="result-frame ratio-portrait" id="productPlacementResult">
-              <div><strong>Preview idle</strong><p class="hint">Choose a character, product, and prompt.</p></div>
+              <div><strong>Preview idle</strong><p class="hint">Enter a prompt, then optionally attach references.</p></div>
             </div>
             <div class="actions" id="productResultActions" style="display:none">
               <a class="btn btn-secondary" id="productResultDownload" href="#" download="product-placement.png">Download image</a>
@@ -647,7 +649,10 @@ button,input,select,textarea{font:inherit}
     <div class="generation-progress"><div class="generation-progress-fill" id="generationProgressFill"></div></div>
     <div class="generation-actions">
       <span id="generationNote">Progress is estimated while the video endpoint renders.</span>
-      <button class="btn btn-secondary" type="button" onclick="dismissGenerationOverlay()">Hide</button>
+      <div class="actions" id="generationSuccessActions" style="display:none;margin-top:0">
+        <button class="btn btn-primary" type="button" onclick="openGeneratedLibrary()">Open Library</button>
+      </div>
+      <button class="btn btn-secondary" type="button" id="generationDismissButton" onclick="dismissGenerationOverlay()">Hide</button>
     </div>
   </div>
 </div>

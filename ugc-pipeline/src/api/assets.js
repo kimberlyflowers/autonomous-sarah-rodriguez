@@ -67,7 +67,8 @@ function fileToAsset(row) {
     }],
     voiceId: row.metadata?.voiceId || '',
     voiceSampleAssetId: row.metadata?.voiceSampleAssetId || '',
-    aiContext: row.metadata?.aiContext || null
+    aiContext: row.metadata?.aiContext || row.metadata || null,
+    createdAt: row.created_at
   };
 }
 

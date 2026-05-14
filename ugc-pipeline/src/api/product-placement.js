@@ -95,6 +95,28 @@ async function resolveOptionalImageUrl(req, files, field, type) {
   return '';
 }
 
+function normalizeToArray(value) {
+  if (!value) return [];
+  return Array.isArray(value) ? value : [value];
+}
+
+async function resolveReferenceImages(req, files) {
+  const images = [];
+  const uploads = (files?.references || []).slice(0, 5);
+  for (const file of uploads) images.push(await uploadToTempHost(file.path));
+
+  const assetIds = normalizeToArray(req.body.referenceAssetIds).slice(0, 5 - images.length);
+  for (const assetId of assetIds) images.push(await assetToTempUrl(req, assetId, 'product'));
+
+  const urls = normalizeToArray(req.body.referenceUrls).slice(0, 5 - images.length);
+  for (const url of urls) {
+    if (/^https?:\/\//i.test(url || '')) images.push(url);
+    else if (publicFileFromUrl(url)) images.push(absolutePublicUrl(req, url));
+  }
+
+  return images.slice(0, 5);
+}
+
 function normalizeRunPodResult(data) {
   const output = data?.output || data;
   const image =
@@ -133,7 +155,8 @@ router.get('/status', (req, res) => {
 
 router.post('/generate', upload.fields([
   { name: 'character', maxCount: 1 },
-  { name: 'product', maxCount: 1 }
+  { name: 'product', maxCount: 5 },
+  { name: 'references', maxCount: 5 }
 ]), async (req, res) => {
   try {
     const config = getConfig();
@@ -150,11 +173,13 @@ router.post('/generate', upload.fields([
       });
     }
 
-    const characterImage = await resolveImageUrl(req, req.files, 'character', 'subject');
+    const characterImage = await resolveOptionalImageUrl(req, req.files, 'character', 'subject');
     const productImage = await resolveOptionalImageUrl(req, req.files, 'product', 'product');
-    const prompt = req.body.prompt || (productImage
-      ? 'Place the product naturally with the character in a realistic UGC creator scene. Preserve the character identity and make the product look authentic, correctly scaled, and clearly visible.'
-      : 'Edit the reference image into a polished production-ready UGC creator image. Preserve identity, improve lighting and composition, and follow the prompt.');
+    const referenceImages = await resolveReferenceImages(req, req.files);
+    const images = [characterImage, productImage, ...referenceImages].filter(Boolean).slice(0, 5);
+    const prompt = req.body.prompt || (images.length
+      ? 'Create a polished production-ready image using the provided references. Preserve the important identity, product, setting, or style details while improving lighting and composition.'
+      : 'Create a polished production-ready UGC creator image from the prompt.');
     const aspectRatio = req.body.aspectRatio || '9:16';
     const size = req.body.size || '1k';
     const endpointUrl = buildRunSyncUrl(config);
@@ -167,7 +192,7 @@ router.post('/generate', upload.fields([
       },
       body: JSON.stringify({
         input: {
-          images: [characterImage, productImage].filter(Boolean),
+          ...(images.length ? { images } : {}),
           prompt,
           resolution: size,
           aspect_ratio: aspectRatio,

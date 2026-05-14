@@ -13,6 +13,7 @@ let currentCharacterTab = 'library';
 let currentCharacterRatio = 'portrait';
 let productPlacementCharacter = null;
 let productPlacementProduct = null;
+let productPlacementReferences = [];
 let productPlacementRequest = null;
 let productPlacementTimedOut = false;
 let latestProductPlacementImage = '';
@@ -88,6 +89,9 @@ function startGenerationOverlay({ engine = 'wan-comfy', mode = 'i2v' } = {}) {
   if (!overlay) return;
   generationStartedAt = Date.now();
   overlay.classList.add('active');
+  document.getElementById('generationSuccessActions').style.display = 'none';
+  document.getElementById('generationDismissButton').textContent = 'Hide';
+  document.getElementById('generationNote').textContent = 'Progress is estimated while the video endpoint renders.';
   const label = engine === 'meigen' ? 'Meigen lip sync' : mode === 'v2v' ? 'WAN V2V' : 'WAN ComfyUI';
   document.getElementById('generationEngine').textContent = label;
   updateGenerationOverlay(engine, mode);
@@ -127,10 +131,12 @@ function stopGenerationOverlay({ success = false } = {}) {
   if (!overlay) return;
   if (success) {
     document.getElementById('generationTitle').textContent = 'Video ready';
-    document.getElementById('generationDetail').textContent = 'Saved to your Library.';
+    document.getElementById('generationDetail').textContent = 'Your generation was saved. Open the Library tab to preview, download, or post it.';
     document.getElementById('generationPercent').textContent = '100%';
     document.getElementById('generationProgressFill').style.width = '100%';
-    setTimeout(() => overlay.classList.remove('active'), 900);
+    document.getElementById('generationNote').textContent = 'This message will stay here until you open Library or dismiss it.';
+    document.getElementById('generationSuccessActions').style.display = '';
+    document.getElementById('generationDismissButton').textContent = 'Dismiss';
     return;
   }
   overlay.classList.remove('active');
@@ -139,6 +145,12 @@ function stopGenerationOverlay({ success = false } = {}) {
 function dismissGenerationOverlay() {
   const overlay = document.getElementById('generationOverlay');
   if (overlay) overlay.classList.remove('active');
+}
+
+function openGeneratedLibrary() {
+  dismissGenerationOverlay();
+  switchTab('videos');
+  loadVideos();
 }
 
 function toggleTheme() {
@@ -678,11 +690,11 @@ async function submitStudioVideo(e) {
   try {
     toast(videoEngine === 'meigen' ? 'Generating Meigen lip sync video...' : 'Queuing video. If the RunPod is asleep, Bloom Studio will wake it first.', 'info');
     const result = await api('/api/studio/generate', { method: 'POST', body: data });
-    stopGenerationOverlay({ success: true });
     toast(videoEngine === 'meigen' ? 'Meigen video generated and saved to Library.' : 'Video job queued.', 'success');
     studioJobs.unshift(result.job);
     await loadAssets();
-    switchTab('videos');
+    await loadVideos();
+    stopGenerationOverlay({ success: true });
   } catch (err) {
     stopGenerationOverlay();
     toast(err.message, 'error');
@@ -957,29 +969,72 @@ function selectProductPlacementCharacter(character) {
 function selectProductPlacementProduct(product) {
   const file = product.files?.[0];
   const imageUrl = product.imageUrl || file?.path || '';
-  productPlacementProduct = {
+  addProductPlacementReference({
     slug: product.slug,
     name: product.name,
     imageUrl,
     assetId: product.slug,
     file: null
-  };
-  document.getElementById('productImageName').textContent = product.name;
-  document.getElementById('productImagePreview').innerHTML = `<img src="${imageUrl}" alt="${product.name}">`;
+  });
 }
 
 function previewProductPlacementUpload(type, file) {
   if (!file) return;
-  const url = URL.createObjectURL(file);
   if (type === 'character') {
+    const url = URL.createObjectURL(file);
     productPlacementCharacter = { name: file.name, imageUrl: url, assetId: '', file };
     document.getElementById('productCharacterName').textContent = file.name;
     document.getElementById('productCharacterPreview').innerHTML = `<img src="${url}" alt="${file.name}">`;
   } else {
-    productPlacementProduct = { name: file.name, imageUrl: url, assetId: '', file };
-    document.getElementById('productImageName').textContent = file.name;
-    document.getElementById('productImagePreview').innerHTML = `<img src="${url}" alt="${file.name}">`;
+    const files = Array.from(file instanceof FileList ? file : [file]).slice(0, 5 - productPlacementReferences.length);
+    files.forEach(item => addProductPlacementReference({
+      name: item.name,
+      imageUrl: URL.createObjectURL(item),
+      assetId: '',
+      file: item
+    }));
   }
+}
+
+function addProductPlacementReference(reference) {
+  if (!reference?.imageUrl && !reference?.file && !reference?.assetId) return;
+  if (productPlacementReferences.length >= 5) {
+    toast('You can use up to 5 reference images for one composite.', 'error');
+    return;
+  }
+  const key = reference.assetId || reference.imageUrl || reference.name;
+  if (key && productPlacementReferences.some(item => (item.assetId || item.imageUrl || item.name) === key)) {
+    toast('That reference is already selected.', 'info');
+    return;
+  }
+  productPlacementReferences.push(reference);
+  productPlacementProduct = productPlacementReferences[0] || null;
+  renderProductPlacementReferences();
+}
+
+function removeProductPlacementReference(index) {
+  productPlacementReferences.splice(index, 1);
+  productPlacementProduct = productPlacementReferences[0] || null;
+  renderProductPlacementReferences();
+}
+
+function renderProductPlacementReferences() {
+  const strip = document.getElementById('productReferenceStrip');
+  const name = document.getElementById('productImageName');
+  const preview = document.getElementById('productImagePreview');
+  if (name) name.textContent = `${productPlacementReferences.length} reference image${productPlacementReferences.length === 1 ? '' : 's'} selected`;
+  if (preview) {
+    preview.innerHTML = productPlacementReferences[0]
+      ? `<img src="${productPlacementReferences[0].imageUrl}" alt="${productPlacementReferences[0].name || 'Reference image'}">`
+      : 'Optional references';
+  }
+  if (!strip) return;
+  strip.innerHTML = productPlacementReferences.map((reference, index) => `
+    <div class="reference-chip">
+      <img src="${reference.imageUrl}" alt="${reference.name || `Reference ${index + 1}`}">
+      <button type="button" onclick="removeProductPlacementReference(${index})" aria-label="Remove reference">×</button>
+    </div>
+  `).join('');
 }
 
 async function loadProductPlacementStatus() {
@@ -1003,13 +1058,15 @@ function resetProductPlacement() {
   }
   productPlacementCharacter = null;
   productPlacementProduct = null;
-  document.getElementById('productCharacterName').textContent = 'No character selected';
-  document.getElementById('productImageName').textContent = 'No product selected';
-  document.getElementById('productCharacterPreview').textContent = 'Choose a character';
-  document.getElementById('productImagePreview').textContent = 'Optional product';
+  productPlacementReferences = [];
+  document.getElementById('productCharacterName').textContent = 'No primary image selected';
+  document.getElementById('productImageName').textContent = '0 reference images selected';
+  document.getElementById('productCharacterPreview').textContent = 'Optional primary image';
+  document.getElementById('productImagePreview').textContent = 'Optional references';
+  renderProductPlacementReferences();
   document.getElementById('productCharacterUpload').value = '';
   document.getElementById('productImageUpload').value = '';
-  document.getElementById('productPlacementResult').innerHTML = '<div><strong>Preview idle</strong><p class="hint">Choose at least one image and prompt.</p></div>';
+  document.getElementById('productPlacementResult').innerHTML = '<div><strong>Preview idle</strong><p class="hint">Enter a prompt, then optionally attach references.</p></div>';
   document.getElementById('productResultActions').style.display = 'none';
   const button = document.getElementById('productGenerateButton');
   if (button) {
@@ -1019,7 +1076,8 @@ function resetProductPlacement() {
 }
 
 async function generateProductPlacement() {
-  if (!productPlacementCharacter) return toast('Choose or upload a character first.', 'error');
+  const prompt = document.getElementById('productPlacementPrompt').value.trim();
+  if (!prompt && !productPlacementCharacter && !productPlacementReferences.length) return toast('Add a prompt or at least one reference image first.', 'error');
   const button = document.getElementById('productGenerateButton');
   const resultFrame = document.getElementById('productPlacementResult');
   const aspectRatio = document.getElementById('productPlacementAspect').value;
@@ -1037,15 +1095,17 @@ async function generateProductPlacement() {
   resultFrame.innerHTML = '<div class="cooking-state"><div class="cooking-orb"></div><strong>Generating with Nano Banana</strong><p class="hint">Uploading public references and waiting for the /runsync result.</p><div class="cooking-steps">Large edits can take several minutes.</div></div>';
   try {
     const data = new FormData();
-    data.append('prompt', document.getElementById('productPlacementPrompt').value.trim());
+    data.append('prompt', prompt);
     data.append('aspectRatio', aspectRatio);
     data.append('size', document.getElementById('productPlacementSize').value);
     if (productPlacementCharacter.file) data.append('character', productPlacementCharacter.file);
     else if (productPlacementCharacter.assetId) data.append('characterAssetId', productPlacementCharacter.assetId);
     else data.append('characterUrl', productPlacementCharacter.imageUrl);
-    if (productPlacementProduct?.file) data.append('product', productPlacementProduct.file);
-    else if (productPlacementProduct?.assetId) data.append('productAssetId', productPlacementProduct.assetId);
-    else if (productPlacementProduct?.imageUrl) data.append('productUrl', productPlacementProduct.imageUrl);
+    productPlacementReferences.forEach(reference => {
+      if (reference.file) data.append('references', reference.file);
+      else if (reference.assetId) data.append('referenceAssetIds', reference.assetId);
+      else if (reference.imageUrl) data.append('referenceUrls', reference.imageUrl);
+    });
 
     const response = await api('/api/product-placement/generate', { method: 'POST', body: data, signal: controller.signal });
     const image = response.result?.image;
@@ -1056,7 +1116,7 @@ async function generateProductPlacement() {
       link.href = image;
       document.getElementById('productResultActions').style.display = '';
       saveGeneratedImageToLibrary(image);
-      toast('Product image generated.', 'success');
+      toast('Composite image generated.', 'success');
     } else {
       resultFrame.innerHTML = '<div><strong>No image returned</strong><p class="hint">Nano Banana completed but the response did not include an image URL.</p></div>';
       toast('Nano Banana did not return an image URL.', 'error');
@@ -1456,9 +1516,17 @@ async function loadVideos() {
   let seedance = { videos: [], total: 0, completed: 0, pending: 0, failed: 0 };
   let studio = { jobs: [] };
   let assets = assetsCache;
+  const grid = document.getElementById('videoGrid');
   try { seedance = await api('/api/videos'); } catch (e) {}
   try { studio = await api('/api/studio/jobs'); } catch (e) {}
-  try { assets = await api('/api/assets'); assetsCache = assets; } catch (e) {}
+  try {
+    assets = await api(`/api/assets?ts=${Date.now()}`);
+    assetsCache = assets;
+  } catch (e) {
+    if (grid) grid.innerHTML = `<div class="empty-state">Could not load generated videos: ${escapeHtml(e.message)}</div>`;
+    toast(`Could not load Library assets: ${e.message}`, 'error');
+    return;
+  }
   studioJobs = studio.jobs || studioJobs;
   const libraryVideos = (assets.videos || []).map(asset => ({
     requestId: asset.slug,
@@ -1490,7 +1558,6 @@ async function loadVideos() {
     ...(seedance.videos || [])
   ];
 
-  const grid = document.getElementById('videoGrid');
   if (!combined.length) {
     grid.innerHTML = '<div class="empty-state">No videos generated yet. Create your first clip from the Create tab.</div>';
     return;
