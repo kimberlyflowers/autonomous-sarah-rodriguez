@@ -20,6 +20,7 @@ let trendsCache = [];
 let trendIndex = 0;
 let trendsTimer = null;
 let remixOptionsCache = { brands: [], products: [], characters: [] };
+let trendRemixMode = false;
 let currentLibraryVideoRatio = 'portrait';
 let productPlacementCharacter = null;
 let productPlacementProduct = null;
@@ -235,9 +236,10 @@ function trendEmbedUrl(url = '') {
     const host = parsed.hostname.replace(/^www\./, '');
     if (host.includes('instagram.com')) {
       const parts = parsed.pathname.split('/').filter(Boolean);
-      const type = parts[0];
-      const code = parts[1];
-      if (['p', 'reel', 'tv'].includes(type) && code) {
+      const typeIndex = parts.findIndex(part => ['p', 'reel', 'tv'].includes(part));
+      const type = parts[typeIndex];
+      const code = parts[typeIndex + 1];
+      if (typeIndex !== -1 && code) {
         return `https://www.instagram.com/${type}/${code}/embed`;
       }
     }
@@ -341,8 +343,8 @@ function renderTrends() {
           ${(trend.industries || []).slice(0, 2).map(industry => `<span class="chip chip-warn">${escapeHtml(industry)}</span>`).join('')}
         </div>
         <div class="trend-card-actions">
-          <button class="btn btn-secondary" type="button" onclick="event.stopPropagation();openTrendLightbox(${index})">Preview</button>
-          <button class="btn btn-primary" type="button" onclick="event.stopPropagation();openTrendLightbox(${index})">Remix</button>
+          <button class="btn btn-secondary" type="button" onclick="event.stopPropagation();openTrendLightbox(${index}, false)">Preview</button>
+          <button class="btn btn-primary" type="button" onclick="event.stopPropagation();openTrendLightbox(${index}, true)">Remix</button>
         </div>
       </div>
     </article>
@@ -361,19 +363,27 @@ async function ensureRemixOptions() {
   return remixOptionsCache;
 }
 
-async function openTrendLightbox(index) {
+async function openTrendLightbox(index, remix = false) {
   trendIndex = Number(index) || 0;
+  trendRemixMode = remix;
   await renderTrendLightbox();
   document.getElementById('trendLightbox')?.classList.add('active');
 }
 
 function closeTrendLightbox() {
+  trendRemixMode = false;
   document.getElementById('trendLightbox')?.classList.remove('active');
 }
 
 async function moveTrendLightbox(direction) {
   if (!trendsCache.length) return;
   trendIndex = (trendIndex + direction + trendsCache.length) % trendsCache.length;
+  trendRemixMode = false;
+  await renderTrendLightbox();
+}
+
+async function showTrendRemixOptions() {
+  trendRemixMode = true;
   await renderTrendLightbox();
 }
 
@@ -394,31 +404,37 @@ async function renderTrendLightbox() {
 
   body.innerHTML = `
     <div>${renderTrendFrame(trend, true)}</div>
-    <div class="trend-remix-panel">
-      <h3>Remix this trend</h3>
-      <p>Use the hook structure, then adapt it to one of your brands, products, and characters. Bloom Studio will move the script and prompt into Create so you can generate with Meigen or WAN.</p>
-      <div class="form-group">
-        <label class="form-label">Character</label>
-        <select class="form-select" id="trendCharacterSelect">
-          ${options.characters.map(character => `<option value="${escapeHtml(character.slug)}">${escapeHtml(character.name)}</option>`).join('')}
-        </select>
+    <div class="trend-remix-panel ${trendRemixMode ? 'is-remix' : 'is-preview'}">
+      <h3>${trendRemixMode ? 'Confirm remix setup' : 'Preview this trend'}</h3>
+      <p class="trend-preview-guidance">Watch the source if the platform allows it, move through trends with the arrows, or open the original post to analyze the creator profile.</p>
+      <div class="actions trend-preview-guidance" style="margin-top:12px">
+        <button class="btn btn-primary" type="button" onclick="showTrendRemixOptions()">Remix this trend</button>
       </div>
-      <div class="form-group">
-        <label class="form-label">Brand</label>
-        <select class="form-select" id="trendBrandSelect">
-          <option value="">No brand selected</option>
-          ${options.brands.map(brand => `<option value="${escapeHtml(brand.slug)}">${escapeHtml(brand.name)}</option>`).join('')}
-        </select>
+      <div class="trend-remix-fields">
+        <p>Choose the character, brand, and product first. Then confirm remix to load the adapted hook and prompt into Create.</p>
+        <div class="form-group">
+          <label class="form-label">Character</label>
+          <select class="form-select" id="trendCharacterSelect">
+            ${options.characters.map(character => `<option value="${escapeHtml(character.slug)}">${escapeHtml(character.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Brand</label>
+          <select class="form-select" id="trendBrandSelect">
+            <option value="">No brand selected</option>
+            ${options.brands.map(brand => `<option value="${escapeHtml(brand.slug)}">${escapeHtml(brand.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Product</label>
+          <select class="form-select" id="trendProductSelect">
+            <option value="">No product selected</option>
+            ${options.products.map(product => `<option value="${escapeHtml(product.slug)}">${escapeHtml(product.name)}</option>`).join('')}
+          </select>
+        </div>
+        <button class="btn btn-primary" type="button" onclick="remixCurrentTrend()">Confirm remix into Create</button>
+        <p class="hint" style="margin-top:10px;color:rgba(255,255,255,.55)">Tip: select a saved brand first so the hook fills in with the right offer, audience, and CTA.</p>
       </div>
-      <div class="form-group">
-        <label class="form-label">Product</label>
-        <select class="form-select" id="trendProductSelect">
-          <option value="">No product selected</option>
-          ${options.products.map(product => `<option value="${escapeHtml(product.slug)}">${escapeHtml(product.name)}</option>`).join('')}
-        </select>
-      </div>
-      <button class="btn btn-primary" type="button" onclick="remixCurrentTrend()">Remix into Create</button>
-      <p class="hint" style="margin-top:10px;color:rgba(255,255,255,.55)">Tip: select a saved brand first so the hook fills in with the right offer, audience, and CTA.</p>
     </div>
   `;
 }
