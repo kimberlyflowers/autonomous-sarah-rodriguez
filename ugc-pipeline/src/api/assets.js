@@ -264,7 +264,7 @@ router.post('/generated-image', async (req, res) => {
 router.post('/subjects/from-image-url', async (req, res) => {
   try {
     const { imageUrl, name, voiceId, voiceSampleAssetId } = req.body || {};
-    if (!/^https?:\/\//i.test(imageUrl || '')) return res.status(400).json({ error: 'Image URL is required.' });
+    if (!imageUrl) return res.status(400).json({ error: 'Image URL is required.' });
     const file = await downloadRemoteImage(req, imageUrl, name || 'New agent');
     const slug = cleanSlug(name || 'new-agent') || `agent-${Date.now()}`;
     req.body.voiceId = voiceId || '';
@@ -292,6 +292,23 @@ router.post('/subjects/from-image-url', async (req, res) => {
 });
 
 async function downloadRemoteImage(req, imageUrl, name) {
+  if (/^data:image\//i.test(imageUrl || '')) {
+    return imageDataUrlToFile(req, imageUrl, name);
+  }
+  if (String(imageUrl || '').startsWith('/api/assets/file/')) {
+    const id = String(imageUrl).split('/api/assets/file/')[1]?.split(/[?#]/)[0];
+    const asset = await getAssetFile(req.tenant.slug || req.tenant.id, id);
+    if (!asset) throw new Error('Saved image asset was not found.');
+    const tenantSlug = req.tenant?.slug || req.tenant?.id || 'default';
+    const dir = path.join(ASSETS_DIR, 'remote-downloads', tenantSlug);
+    fs.mkdirSync(dir, { recursive: true });
+    const ext = path.extname(asset.file_name) || mimeToExt(asset.mime_type);
+    const originalname = `${cleanSlug(name) || 'generated'}-${Date.now()}${ext}`;
+    const filePath = path.join(dir, originalname);
+    fs.writeFileSync(filePath, asset.file_data);
+    return { path: filePath, originalname, mimetype: asset.mime_type || 'image/png', size: Number(asset.size_bytes || asset.file_data.length) };
+  }
+  if (!/^https?:\/\//i.test(imageUrl || '')) throw new Error('Image URL must be a public URL, data image, or saved Bloom Studio asset.');
   const response = await fetch(imageUrl, { timeout: 45000 });
   if (!response.ok) throw new Error(`Could not download generated image: ${response.status}`);
   const contentType = response.headers.get('content-type') || 'image/png';
@@ -305,6 +322,20 @@ async function downloadRemoteImage(req, imageUrl, name) {
   const buffer = await response.buffer();
   fs.writeFileSync(filePath, buffer);
   return { path: filePath, originalname, mimetype: contentType, size: buffer.length };
+}
+
+function imageDataUrlToFile(req, dataUrl, name) {
+  const match = String(dataUrl || '').match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+  if (!match) throw new Error('Generated data image is invalid.');
+  const mimetype = match[1];
+  const buffer = Buffer.from(match[2], 'base64');
+  const tenantSlug = req.tenant?.slug || req.tenant?.id || 'default';
+  const dir = path.join(ASSETS_DIR, 'remote-downloads', tenantSlug);
+  fs.mkdirSync(dir, { recursive: true });
+  const originalname = `${cleanSlug(name) || 'generated'}-${Date.now()}${mimeToExt(mimetype)}`;
+  const filePath = path.join(dir, originalname);
+  fs.writeFileSync(filePath, buffer);
+  return { path: filePath, originalname, mimetype, size: buffer.length };
 }
 
 function cleanSlug(value) {

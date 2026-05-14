@@ -1110,6 +1110,12 @@ async function addLatestImageAsCharacter() {
   if (!latestProductPlacementImage) return toast('Generate an image first.', 'error');
   const name = prompt('Name this new agent:', 'New generated agent');
   if (!name) return;
+  const actionButtons = [...document.querySelectorAll('[onclick*="addLatestImageAsCharacter"],[onclick*="addImageUrlAsCharacter"]')];
+  actionButtons.forEach(button => {
+    button.disabled = true;
+    button.dataset.originalText = button.textContent;
+    button.textContent = 'Adding...';
+  });
   try {
     await api('/api/assets/subjects/from-image-url', {
       method: 'POST',
@@ -1120,7 +1126,13 @@ async function addLatestImageAsCharacter() {
     switchTab('characters');
     setCharacterTab('mine');
   } catch (error) {
-    toast(error.message, 'error');
+    toast(`Could not add character: ${error.message}`, 'error');
+  } finally {
+    actionButtons.forEach(button => {
+      button.disabled = false;
+      button.textContent = button.dataset.originalText || 'Add as character';
+      delete button.dataset.originalText;
+    });
   }
 }
 
