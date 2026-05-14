@@ -36,11 +36,11 @@ const uploadSubject = multer({ storage: createStorage('subjects'), limits: { fil
 const uploadAudio = multer({ storage: createStorage('audio'), limits: { fileSize: 50 * 1024 * 1024 } });
 
 function singularType(type) {
-  return type === 'products' ? 'product' : type === 'subjects' ? 'subject' : type;
+  return type === 'products' ? 'product' : type === 'subjects' ? 'subject' : type === 'videos' ? 'video' : type;
 }
 
 function pluralType(type) {
-  return type === 'product' ? 'products' : type === 'subject' ? 'subjects' : type === 'output' ? 'outputs' : type;
+  return type === 'product' ? 'products' : type === 'subject' ? 'subjects' : type === 'output' ? 'outputs' : type === 'video' ? 'videos' : type;
 }
 
 function fileToAsset(row) {
@@ -97,7 +97,7 @@ router.get('/', async (req, res) => {
         'select * from public.ugc_asset_files where tenant_slug = $1 order by created_at desc',
         [req.tenant.slug || req.tenant.id]
       );
-      const result = { products: [], subjects: [], audio: [], outputs: [] };
+      const result = { products: [], subjects: [], audio: [], outputs: [], videos: [] };
       for (const row of rows) {
         const key = pluralType(row.type);
         if (result[key]) result[key].push(fileToAsset(row));
@@ -117,7 +117,7 @@ router.get('/', async (req, res) => {
         .order('created_at', { ascending: false });
       if (error) throw error;
 
-      const result = { products: [], subjects: [], audio: [], outputs: [] };
+      const result = { products: [], subjects: [], audio: [], outputs: [], videos: [] };
       for (const asset of data || []) {
         const typeKey = pluralType(asset.type);
         if (!result[typeKey]) continue;
@@ -142,10 +142,10 @@ router.get('/', async (req, res) => {
     }
   }
 
-  const result = { products: [], subjects: [], audio: [], outputs: [] };
+  const result = { products: [], subjects: [], audio: [], outputs: [], videos: [] };
   const tenantSlug = req.tenant?.slug || req.tenant?.id || 'default';
 
-  ['products', 'subjects', 'audio', 'outputs'].forEach(type => {
+  ['products', 'subjects', 'audio', 'outputs', 'videos'].forEach(type => {
     const dir = path.join(ASSETS_DIR, 'tenants', tenantSlug, type);
     if (!fs.existsSync(dir)) return;
 
@@ -169,7 +169,7 @@ router.get('/', async (req, res) => {
       result[type].push({
         slug: folder,
         name: folder.replace(/-/g, ' '),
-        type: type === 'subjects' ? 'subject' : type === 'products' ? 'product' : type,
+        type: singularType(type),
         files: files.filter(f => !f.name.endsWith('.json')),
         voiceId: aiContext?.voiceId || '',
         voiceSampleAssetId: aiContext?.voiceSampleAssetId || '',

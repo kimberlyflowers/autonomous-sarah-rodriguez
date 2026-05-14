@@ -7,7 +7,7 @@ let authConfig = null;
 let supabaseClient = null;
 let authToken = localStorage.getItem('bloomStudioToken') || '';
 let currentTenant = JSON.parse(localStorage.getItem('bloomStudioTenant') || 'null');
-let assetsCache = { products: [], subjects: [], audio: [], outputs: [] };
+let assetsCache = { products: [], subjects: [], audio: [], outputs: [], videos: [] };
 let selectedCharacter = null;
 let currentCharacterTab = 'library';
 let currentCharacterRatio = 'portrait';
@@ -260,7 +260,9 @@ async function loadStudioStatus() {
 
     const qwen = data.audioProviders.find(p => p.id === 'qwen');
     const chatterbox = data.audioProviders.find(p => p.id === 'chatterbox');
+    const meigen = data.videoEngines?.find(p => p.id === 'meigen');
     setChip('qwenStatus', qwen?.available ? 'Ready' : 'Needs workflow', qwen?.available ? 'soft' : 'warn');
+    setChip('meigenStatus', meigen?.available ? 'Ready' : 'Needs key', meigen?.available ? 'green' : 'warn');
     const qwenNote = document.getElementById('qwenNote');
     if (qwenNote) qwenNote.textContent = chatterbox?.available
       ? 'Chatterbox Turbo is ready for preset voices and custom voice_url samples.'
@@ -341,6 +343,7 @@ function setStudioMode(mode) {
   document.getElementById('studioPreset').value = actualMode === 'v2v' ? 'bloomies-v2v' : 'sarah-i2v-lipsync';
   document.querySelectorAll('[data-mode-choice]').forEach(btn => btn.classList.toggle('active', btn.dataset.modeChoice === actualMode));
   document.getElementById('studioImageGroup').style.display = actualMode === 'i2v' ? '' : 'none';
+  document.getElementById('studioVideoEngineGroup').style.display = actualMode === 'i2v' ? '' : 'none';
   document.getElementById('studioVideoGroup').style.display = actualMode === 'v2v' ? '' : 'none';
   const submitButton = document.getElementById('studioSubmitButton');
   submitButton.textContent = actualMode === 'audio' ? 'Generate audio' : '▶ Generate video';
@@ -348,9 +351,29 @@ function setStudioMode(mode) {
     ? 'Creates and saves an approved voiceover before video generation.'
     : actualMode === 'v2v'
       ? 'Uses the Bloomies V2V workflow preset.'
-      : 'Uses the Sarah I2V lip-sync workflow preset.';
+      : document.getElementById('studioVideoEngine')?.value === 'meigen'
+        ? 'Uses Meigen lip sync through the RunPod public endpoint.'
+        : 'Uses the Sarah I2V lip-sync workflow preset.';
+  if (actualMode !== 'i2v') {
+    document.getElementById('studioVideoEngine').value = 'wan-comfy';
+    setStudioVideoEngine('wan-comfy');
+  }
   if (actualMode === 'audio' && ['upload', 'asset'].includes(document.getElementById('studioAudioProvider').value)) {
     setStudioAudio('chatterbox');
+  }
+}
+
+function setStudioVideoEngine(engine) {
+  const hint = document.getElementById('studioVideoEngineHint');
+  if (hint) {
+    hint.textContent = engine === 'meigen'
+      ? 'Uses Meigen / InfiniteTalk public lip sync. No ComfyUI pod required.'
+      : 'Uses the installed WAN/ComfyUI workflow and RunPod pod.';
+  }
+  if (document.getElementById('studioMode').value === 'i2v') {
+    document.getElementById('studioSubmitHint').textContent = engine === 'meigen'
+      ? 'Uses Meigen lip sync through the RunPod public endpoint.'
+      : 'Uses the Sarah I2V lip-sync workflow preset.';
   }
 }
 
@@ -573,6 +596,7 @@ async function submitStudioVideo(e) {
 
   const data = new FormData(form);
   data.append('clientJobId', crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
+  const videoEngine = document.getElementById('studioVideoEngine')?.value || 'wan-comfy';
 
   if (mode === 'i2v' && !document.getElementById('studioImage').files[0] && !document.getElementById('studioImageAssetId').value && !document.getElementById('studioImageUrl').value) return toast('Upload a portrait image or select a saved character first.', 'error');
   if (mode === 'v2v' && !document.getElementById('studioVideo').files[0]) return toast('Upload a source video first.', 'error');
@@ -580,15 +604,16 @@ async function submitStudioVideo(e) {
   if (document.getElementById('studioAudioProvider').value === 'asset' && !document.getElementById('studioAudioAssetId').value) return toast('Choose saved audio first.', 'error');
   if (document.getElementById('studioAudioProvider').value === 'elevenlabs' && !document.getElementById('studioScript').value.trim()) return toast('Paste a script for ElevenLabs audio.', 'error');
   if (document.getElementById('studioAudioProvider').value === 'chatterbox' && !document.getElementById('studioScript').value.trim()) return toast('Paste a script for Chatterbox audio.', 'error');
+  if (videoEngine === 'meigen' && mode !== 'i2v') return toast('Meigen is only available for image-to-video lip sync.', 'error');
   if (!confirm('Video generation starts immediately and uses processing time. Make sure your audio and visual are final before continuing.')) return;
 
   const button = form.querySelector('button[type="submit"]');
   button.disabled = true;
   button.textContent = 'Queuing video...';
   try {
-    toast('Queuing video. If the RunPod is asleep, Bloom Studio will wake it first.', 'info');
+    toast(videoEngine === 'meigen' ? 'Generating Meigen lip sync video...' : 'Queuing video. If the RunPod is asleep, Bloom Studio will wake it first.', 'info');
     const result = await api('/api/studio/generate', { method: 'POST', body: data });
-    toast('Video job queued.', 'success');
+    toast(videoEngine === 'meigen' ? 'Meigen video generated and saved to Library.' : 'Video job queued.', 'success');
     studioJobs.unshift(result.job);
     switchTab('videos');
   } catch (err) {
@@ -1331,16 +1356,38 @@ async function submitVariants() {
   }
 }
 
+function authenticatedMediaUrl(path) {
+  if (!path || !path.startsWith('/api/')) return path;
+  const url = new URL(path, window.location.origin);
+  if (authToken) url.searchParams.set('token', authToken);
+  if (currentTenant?.slug || currentTenant?.id) url.searchParams.set('tenant', currentTenant.slug || currentTenant.id);
+  return url.pathname + url.search;
+}
+
 async function loadVideos() {
   let seedance = { videos: [], total: 0, completed: 0, pending: 0, failed: 0 };
   let studio = { jobs: [] };
+  let assets = assetsCache;
   try { seedance = await api('/api/videos'); } catch (e) {}
   try { studio = await api('/api/studio/jobs'); } catch (e) {}
+  try { assets = await api('/api/assets'); assetsCache = assets; } catch (e) {}
   studioJobs = studio.jobs || studioJobs;
+  const libraryVideos = (assets.videos || []).map(asset => ({
+    requestId: asset.slug,
+    jobId: asset.slug,
+    provider: asset.aiContext?.provider || 'library',
+    presetId: asset.aiContext?.source || 'saved-video',
+    mode: 'i2v',
+    status: 'completed',
+    prompt: asset.aiContext?.prompt || asset.name,
+    localPath: asset.files?.[0]?.path,
+    createdAt: asset.createdAt,
+    format: asset.aiContext?.provider || 'saved'
+  }));
 
-  const total = seedance.total + studioJobs.length;
+  const total = seedance.total + studioJobs.length + libraryVideos.length;
   if (total > 0) {
-    const completed = seedance.completed + studioJobs.filter(j => j.status === 'completed').length;
+    const completed = seedance.completed + studioJobs.filter(j => j.status === 'completed').length + libraryVideos.length;
     const pct = Math.round((completed / total) * 100);
     document.getElementById('videoProgress').style.display = 'block';
     document.getElementById('progressFill').style.width = pct + '%';
@@ -1350,6 +1397,7 @@ async function loadVideos() {
   }
 
   const combined = [
+    ...libraryVideos,
     ...studioJobs.map(j => ({ ...j, format: j.presetId || 'studio', prompt: j.script || j.prompt })),
     ...(seedance.videos || [])
   ];
@@ -1362,11 +1410,12 @@ async function loadVideos() {
 
   grid.innerHTML = combined.map(v => {
     const statusChip = v.status === 'completed' ? '<span class="chip chip-green">Completed</span>' : v.status === 'failed' ? '<span class="chip chip-red">Failed</span>' : '<span class="chip chip-warn">Processing</span>';
-    const videoEl = v.localPath
-      ? `<video class="video-player" controls preload="metadata"><source src="${v.localPath}" type="video/mp4"></video>`
+    const mediaUrl = authenticatedMediaUrl(v.localPath || '');
+    const videoEl = mediaUrl
+      ? `<video class="video-player" controls preload="metadata"><source src="${mediaUrl}" type="video/mp4"></video>`
       : `<div class="video-player" style="display:flex;align-items:center;justify-content:center;color:#999">Processing</div>`;
-    const actions = v.status === 'completed' && v.localPath
-      ? `<div class="actions"><button class="btn btn-primary" onclick="openPublishModal('${v.localPath.replace(/'/g, "\\'")}','video')">Post</button><a class="btn btn-secondary" href="${v.localPath}" download>Download</a></div>`
+    const actions = v.status === 'completed' && mediaUrl
+      ? `<div class="actions"><button class="btn btn-primary" onclick="openPublishModal('${mediaUrl.replace(/'/g, "\\'")}','video')">Post</button><a class="btn btn-secondary" href="${mediaUrl}" download>Download</a></div>`
       : '';
     return `<div class="video-card">${videoEl}<div class="video-info"><div style="display:flex;justify-content:space-between;gap:8px"><span class="chip chip-soft">${v.format || 'custom'}</span>${statusChip}</div><div class="video-prompt">${v.prompt || ''}</div>${v.error ? `<div class="video-prompt" style="color:var(--red)">${v.error}</div>` : ''}${actions}</div></div>`;
   }).join('');

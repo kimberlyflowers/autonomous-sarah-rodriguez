@@ -15,8 +15,9 @@ const {
   getStudioJobs
 } = require('../services/comfyui');
 const { ensureComfyReady, getAccountBalance, getPodStatus, getRunPodConfig, isComfyReady, normalizePodState, startPod, stopPod } = require('../services/runpod');
-const { getAssetFile, hasDatabase } = require('../services/postgres');
+const { getAssetFile, hasDatabase, initUgcStore, query } = require('../services/postgres');
 const { CHATTERBOX_VOICES, createChatterboxAudio, getChatterboxConfig } = require('../services/chatterbox');
+const { createMeigenVideo, getMeigenConfig } = require('../services/meigen');
 
 const router = express.Router();
 const UPLOAD_DIR = path.join(__dirname, '..', '..', 'assets', 'studio-uploads');
@@ -116,6 +117,10 @@ function getOutputSize(aspectRatio = '9:16') {
   return { width: 720, height: 1280 };
 }
 
+function getMeigenSize(aspectRatio = '9:16') {
+  return aspectRatio === '16:9' ? '720p' : '480p';
+}
+
 async function frameImageForStudio(imagePath, aspectRatio, cropX, cropY) {
   if (!imagePath) return null;
   const target = getOutputSize(aspectRatio);
@@ -163,6 +168,64 @@ async function getAudioDurationSeconds(filePath) {
   }
 }
 
+function publicAssetPath(tenantSlug, folder, slug, fileName) {
+  return `/assets/tenants/${tenantSlug}/${folder}/${slug}/${fileName}`;
+}
+
+async function saveGeneratedVideoAsset(req, localPath, metadata = {}) {
+  const tenantSlug = cleanSlug(req.tenant?.slug || req.tenant?.id || 'default') || 'default';
+  const slug = cleanSlug(metadata.name || `meigen-video-${Date.now()}`) || `meigen-video-${Date.now()}`;
+  const fileName = `${slug}.mp4`;
+  const bytes = fs.readFileSync(localPath);
+  const assetMetadata = {
+    provider: metadata.provider || 'meigen',
+    source: metadata.source || 'infinitetalk',
+    prompt: metadata.prompt || '',
+    aspectRatio: metadata.aspectRatio || '9:16',
+    cost: metadata.cost || null,
+    rawRequestId: metadata.rawRequestId || ''
+  };
+
+  if (!req.supabase && hasDatabase()) {
+    await initUgcStore();
+    const { rows } = await query(`
+      insert into public.ugc_asset_files
+        (tenant_slug, type, name, file_name, mime_type, size_bytes, file_data, metadata)
+      values ($1, 'video', $2, $3, 'video/mp4', $4, $5, $6::jsonb)
+      returning *
+    `, [
+      req.tenant.slug || req.tenant.id,
+      metadata.name || 'Meigen lip sync video',
+      fileName,
+      bytes.length,
+      bytes,
+      JSON.stringify(assetMetadata)
+    ]);
+    return {
+      id: rows[0].id,
+      slug: rows[0].id,
+      path: `/api/assets/file/${rows[0].id}`,
+      name: rows[0].name,
+      size: bytes.length,
+      metadata: assetMetadata
+    };
+  }
+
+  const outDir = path.join(__dirname, '..', '..', 'assets', 'tenants', tenantSlug, 'videos', slug);
+  fs.mkdirSync(outDir, { recursive: true });
+  const finalPath = path.join(outDir, fileName);
+  fs.copyFileSync(localPath, finalPath);
+  fs.writeFileSync(path.join(outDir, 'ai-context.json'), JSON.stringify(assetMetadata, null, 2));
+  return {
+    id: slug,
+    slug,
+    path: publicAssetPath(tenantSlug, 'videos', slug, fileName),
+    name: metadata.name || 'Meigen lip sync video',
+    size: bytes.length,
+    metadata: assetMetadata
+  };
+}
+
 router.get('/status', async (req, res) => {
   const runpod = getRunPodConfig();
   const comfyReady = await isComfyReady(getBaseUrl() || runpod.baseUrl);
@@ -203,6 +266,20 @@ router.get('/status', async (req, res) => {
         note: 'RunPod public Chatterbox Turbo endpoint. Preset voices or custom voice_url reference audio.'
       },
       { id: 'qwen', label: 'Qwen audio workflow', available: false, note: 'Install ComfyUI-Qwen-TTS on RunPod and export a Qwen API workflow preset before enabling.' }
+    ],
+    videoEngines: [
+      {
+        id: 'wan-comfy',
+        label: 'WAN / ComfyUI',
+        available: comfyReady,
+        note: 'Uses the installed ComfyUI I2V workflow and the active RunPod pod.'
+      },
+      {
+        id: 'meigen',
+        label: 'Meigen lip sync',
+        available: !!getMeigenConfig().apiKey,
+        note: 'Uses RunPod InfiniteTalk public endpoint; does not require the ComfyUI pod.'
+      }
     ]
   });
 });
@@ -343,18 +420,25 @@ router.post('/generate', upload.fields([
   { name: 'voiceSample', maxCount: 1 }
 ]), async (req, res) => {
   try {
-    if (!getBaseUrl()) {
+    const presetId = req.body.presetId || (req.body.mode === 'v2v' ? 'bloomies-v2v' : 'sarah-i2v-lipsync');
+    const audioProvider = req.body.audioProvider || 'upload';
+    const mode = req.body.mode || 'i2v';
+    const videoEngine = req.body.videoEngine || 'wan-comfy';
+
+    if (mode !== 'i2v' && videoEngine === 'meigen') {
+      return res.status(400).json({ error: 'Meigen is only available for image-to-video lip sync right now.' });
+    }
+
+    if (videoEngine !== 'meigen' && !getBaseUrl()) {
       return res.status(400).json({
         error: 'COMFYUI_BASE_URL is not configured on Railway yet.',
         detail: 'The studio UI is ready, but the service needs the public RunPod/ComfyUI API URL before it can queue jobs.'
       });
     }
 
-    await ensureComfyReady();
-
-    const presetId = req.body.presetId || (req.body.mode === 'v2v' ? 'bloomies-v2v' : 'sarah-i2v-lipsync');
-    const audioProvider = req.body.audioProvider || 'upload';
-    const mode = req.body.mode || 'i2v';
+    if (videoEngine !== 'meigen') {
+      await ensureComfyReady();
+    }
 
     if (audioProvider === 'qwen') {
       return res.status(400).json({
@@ -400,8 +484,6 @@ router.post('/generate', upload.fields([
       );
     }
 
-    const imageName = imagePath ? await uploadInput(imagePath) : null;
-    const videoName = files.video?.[0] ? await uploadInput(files.video[0].path) : null;
     let audioPath = files.audio?.[0]?.path || null;
     if (audioProvider === 'asset') {
       if (req.supabase) {
@@ -433,6 +515,49 @@ router.post('/generate', upload.fields([
       audioPath = chatterbox.localPath;
     }
     const durationSeconds = parseDurationSeconds(req.body.durationSeconds) || await getAudioDurationSeconds(audioPath);
+
+    if (videoEngine === 'meigen') {
+      const dir = path.join(UPLOAD_DIR, cleanSlug(req.tenant.slug || req.tenant.id || 'default'), 'meigen');
+      const meigen = await createMeigenVideo({
+        imagePath,
+        audioPath,
+        imageUrl: '',
+        audioUrl: '',
+        prompt: req.body.prompt,
+        size: getMeigenSize(req.body.aspectRatio || '9:16'),
+        outputDir: dir
+      });
+      const savedVideo = await saveGeneratedVideoAsset(req, meigen.localPath, {
+        name: `Meigen lip sync ${new Date().toLocaleString('en-US')}`,
+        provider: 'meigen',
+        source: 'infinitetalk',
+        prompt: req.body.prompt || '',
+        aspectRatio: req.body.aspectRatio || '9:16',
+        cost: meigen.cost,
+        rawRequestId: meigen.id
+      });
+      const job = {
+        requestId: savedVideo.id,
+        jobId: savedVideo.id,
+        tenantId: req.tenant.slug || req.tenant.id,
+        provider: 'meigen',
+        presetId: 'meigen-infinitetalk',
+        mode,
+        audioProvider,
+        status: 'completed',
+        prompt: req.body.prompt || '',
+        aspectRatio: req.body.aspectRatio || '9:16',
+        durationSeconds,
+        localPath: savedVideo.path,
+        cost: meigen.cost,
+        createdAt: new Date().toISOString(),
+        completedAt: new Date().toISOString()
+      };
+      return res.json({ success: true, job });
+    }
+
+    const imageName = imagePath ? await uploadInput(imagePath) : null;
+    const videoName = files.video?.[0] ? await uploadInput(files.video[0].path) : null;
     const audioName = audioPath ? await uploadInput(audioPath) : null;
 
     const job = await submitStudioJob({

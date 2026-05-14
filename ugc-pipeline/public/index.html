@@ -156,6 +156,15 @@ button,input,select,textarea{font:inherit}
                   </select>
                 </div>
 
+                <div class="form-group" id="studioVideoEngineGroup">
+                  <label class="form-label">I2V engine</label>
+                  <select class="form-select" id="studioVideoEngine" name="videoEngine" onchange="setStudioVideoEngine(this.value)">
+                    <option value="wan-comfy" selected>WAN (ComfyUI)</option>
+                    <option value="meigen">Meigen lip sync</option>
+                  </select>
+                  <div class="hint" id="studioVideoEngineHint">Uses the installed WAN/ComfyUI workflow and RunPod pod.</div>
+                </div>
+
                 <div class="form-group">
                   <label class="form-label">Aspect ratio</label>
                   <select class="form-select" id="studioAspectRatio" name="aspectRatio">
@@ -331,6 +340,7 @@ button,input,select,textarea{font:inherit}
               <div class="mini-row"><span>ComfyUI</span><span class="chip chip-warn" id="comfyStatus">Checking</span></div>
               <div class="mini-row"><span>RunPod pod</span><span class="chip chip-warn" id="runpodStatus">Checking</span></div>
               <div class="mini-row"><span>I2V preset</span><span class="chip chip-soft" id="i2vStatus">Checking</span></div>
+              <div class="mini-row"><span>Meigen</span><span class="chip chip-soft" id="meigenStatus">Checking</span></div>
               <div class="mini-row"><span>V2V preset</span><span class="chip chip-soft" id="v2vStatus">Checking</span></div>
               <div class="mini-row"><span>Qwen audio</span><span class="chip chip-warn" id="qwenStatus">Needs workflow</span></div>
               <div class="mini-row"><span>RunPod credits</span><span class="chip chip-warn" id="runpodBalance">Checking</span></div>
