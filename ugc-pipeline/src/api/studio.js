@@ -5,6 +5,7 @@ const fs = require('fs');
 const fetch = require('node-fetch');
 const { v4: uuidv4 } = require('uuid');
 const { parseFile } = require('music-metadata');
+const sharp = require('sharp');
 const {
   getBaseUrl,
   getPresets,
@@ -100,6 +101,55 @@ function parseDurationSeconds(value) {
   const seconds = Number(value);
   if (!Number.isFinite(seconds) || seconds <= 0) return null;
   return Math.min(Math.max(seconds, 1), 300);
+}
+
+function parseCropPercent(value) {
+  const percent = Number(value);
+  if (!Number.isFinite(percent)) return 50;
+  return Math.max(0, Math.min(100, percent));
+}
+
+function getOutputSize(aspectRatio = '9:16') {
+  if (aspectRatio === '16:9') return { width: 1280, height: 720 };
+  if (aspectRatio === '1:1') return { width: 1024, height: 1024 };
+  return { width: 720, height: 1280 };
+}
+
+async function frameImageForStudio(imagePath, aspectRatio, cropX, cropY) {
+  if (!imagePath) return null;
+  const target = getOutputSize(aspectRatio);
+  const metadata = await sharp(imagePath).metadata();
+  const sourceWidth = metadata.width;
+  const sourceHeight = metadata.height;
+  if (!sourceWidth || !sourceHeight) return imagePath;
+
+  const targetRatio = target.width / target.height;
+  const sourceRatio = sourceWidth / sourceHeight;
+  let extractWidth = sourceWidth;
+  let extractHeight = sourceHeight;
+
+  if (sourceRatio > targetRatio) {
+    extractWidth = Math.round(sourceHeight * targetRatio);
+  } else if (sourceRatio < targetRatio) {
+    extractHeight = Math.round(sourceWidth / targetRatio);
+  }
+
+  const maxLeft = Math.max(0, sourceWidth - extractWidth);
+  const maxTop = Math.max(0, sourceHeight - extractHeight);
+  const left = Math.round(maxLeft * (parseCropPercent(cropX) / 100));
+  const top = Math.round(maxTop * (parseCropPercent(cropY) / 100));
+  const outputPath = path.join(
+    path.dirname(imagePath),
+    `${path.basename(imagePath, path.extname(imagePath))}-framed-${target.width}x${target.height}.png`
+  );
+
+  await sharp(imagePath)
+    .extract({ left, top, width: extractWidth, height: extractHeight })
+    .resize(target.width, target.height, { fit: 'cover', position: 'center' })
+    .png()
+    .toFile(outputPath);
+
+  return outputPath;
 }
 
 async function getAudioDurationSeconds(filePath) {
@@ -329,6 +379,14 @@ router.post('/generate', upload.fields([
     if (!imagePath && req.body.imageUrl) {
       imagePath = await downloadTempFile(req.body.imageUrl, req.tenant.slug || req.tenant.id, 'library-character.png');
     }
+    if (imagePath && mode === 'i2v') {
+      imagePath = await frameImageForStudio(
+        imagePath,
+        req.body.aspectRatio || '9:16',
+        req.body.cropX,
+        req.body.cropY
+      );
+    }
 
     const imageName = imagePath ? await uploadInput(imagePath) : null;
     const videoName = files.video?.[0] ? await uploadInput(files.video[0].path) : null;
@@ -350,12 +408,13 @@ router.post('/generate', upload.fields([
       tenantId: req.tenant.slug || req.tenant.id,
       script: req.body.script || '',
       prompt: req.body.prompt || '',
-        negativePrompt: req.body.negativePrompt || '',
-        aspectRatio: req.body.aspectRatio || '16:9',
-        durationSeconds,
-        cropX: req.body.cropX || '',
-        cropY: req.body.cropY || '',
-        imageName,
+      negativePrompt: req.body.negativePrompt || '',
+      aspectRatio: req.body.aspectRatio || '16:9',
+      durationSeconds,
+      cropX: req.body.cropX || '',
+      cropY: req.body.cropY || '',
+      preFramedImage: !!imagePath && mode === 'i2v',
+      imageName,
       videoName,
       audioName
     });

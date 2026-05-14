@@ -122,7 +122,7 @@ function patchWorkflow(workflow, preset, input) {
     next['246'].inputs.value = size.height;
   }
 
-  const cropPosition = getCropPosition(input.cropX, input.cropY);
+  const cropPosition = input.preFramedImage ? 'center' : getCropPosition(input.cropX, input.cropY);
   for (const nodeId of ['281', '230']) {
     if (next[nodeId]?.inputs && typeof next[nodeId].inputs.crop_position !== 'undefined') {
       next[nodeId].inputs.crop_position = cropPosition;
