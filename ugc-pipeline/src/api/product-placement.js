@@ -82,6 +82,19 @@ async function resolveImageUrl(req, files, field, type) {
   throw new Error(`Choose or upload a ${field === 'character' ? 'character' : 'product'} image first.`);
 }
 
+async function resolveOptionalImageUrl(req, files, field, type) {
+  if (files?.[field]?.[0]) return uploadToTempHost(files[field][0].path);
+
+  const assetId = req.body[`${field}AssetId`];
+  if (assetId) return assetToTempUrl(req, assetId, type);
+
+  const publicUrl = req.body[`${field}Url`];
+  if (/^https?:\/\//i.test(publicUrl || '')) return publicUrl;
+  if (publicFileFromUrl(publicUrl)) return absolutePublicUrl(req, publicUrl);
+
+  return '';
+}
+
 function normalizeRunPodResult(data) {
   const output = data?.output || data;
   const image =
@@ -138,8 +151,10 @@ router.post('/generate', upload.fields([
     }
 
     const characterImage = await resolveImageUrl(req, req.files, 'character', 'subject');
-    const productImage = await resolveImageUrl(req, req.files, 'product', 'product');
-    const prompt = req.body.prompt || 'Place the product naturally with the character in a realistic UGC creator scene. Preserve the character identity and make the product look authentic, correctly scaled, and clearly visible.';
+    const productImage = await resolveOptionalImageUrl(req, req.files, 'product', 'product');
+    const prompt = req.body.prompt || (productImage
+      ? 'Place the product naturally with the character in a realistic UGC creator scene. Preserve the character identity and make the product look authentic, correctly scaled, and clearly visible.'
+      : 'Edit the reference image into a polished production-ready UGC creator image. Preserve identity, improve lighting and composition, and follow the prompt.');
     const aspectRatio = req.body.aspectRatio || '9:16';
     const size = req.body.size || '1k';
     const endpointUrl = buildRunSyncUrl(config);
@@ -152,7 +167,7 @@ router.post('/generate', upload.fields([
       },
       body: JSON.stringify({
         input: {
-          images: [characterImage, productImage],
+          images: [characterImage, productImage].filter(Boolean),
           prompt,
           resolution: size,
           aspect_ratio: aspectRatio,

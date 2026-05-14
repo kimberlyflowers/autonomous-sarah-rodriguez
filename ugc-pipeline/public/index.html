@@ -408,7 +408,7 @@ button,input,select,textarea{font:inherit}
       <div class="section-head">
         <div>
           <h2 class="section-title">Product placement</h2>
-          <p class="section-desc">Upload or select a character, upload or select a product, then generate one production-ready image with Nano Banana.</p>
+          <p class="section-desc">Upload or select one reference image, optionally add a product image, then generate one production-ready image with Nano Banana.</p>
         </div>
         <span class="chip chip-warn" id="nanoStatus">Checking endpoint</span>
       </div>
@@ -454,7 +454,7 @@ button,input,select,textarea{font:inherit}
               <div>
                 <div class="pick-card">
                   <div class="pick-preview" id="productImagePreview">Choose a product</div>
-                  <div class="pick-body"><strong id="productImageName">No product selected</strong><span>Select from product assets or upload a prop/product shot.</span></div>
+                  <div class="pick-body"><strong id="productImageName">No product selected</strong><span>Optional. Add a prop/product shot when you want a composite.</span></div>
                 </div>
                 <div class="actions">
                   <button class="btn btn-secondary" onclick="document.getElementById('productImageUpload').click()">Upload product</button>
@@ -468,7 +468,7 @@ button,input,select,textarea{font:inherit}
             <div class="actions" style="margin-top:18px">
               <button class="btn btn-primary" id="productGenerateButton" onclick="generateProductPlacement()">Run Nano Banana</button>
               <button class="btn btn-secondary" onclick="resetProductPlacement()">Reset</button>
-              <span class="hint">No Comfy workflow required. This calls the Nano Banana endpoint directly.</span>
+              <span class="hint">Use one image for edits, or two images for product/character composites.</span>
             </div>
           </div>
         </div>

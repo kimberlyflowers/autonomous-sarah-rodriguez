@@ -1005,10 +1005,10 @@ function resetProductPlacement() {
   document.getElementById('productCharacterName').textContent = 'No character selected';
   document.getElementById('productImageName').textContent = 'No product selected';
   document.getElementById('productCharacterPreview').textContent = 'Choose a character';
-  document.getElementById('productImagePreview').textContent = 'Choose a product';
+  document.getElementById('productImagePreview').textContent = 'Optional product';
   document.getElementById('productCharacterUpload').value = '';
   document.getElementById('productImageUpload').value = '';
-  document.getElementById('productPlacementResult').innerHTML = '<div><strong>Preview idle</strong><p class="hint">Choose a character, product, and prompt.</p></div>';
+  document.getElementById('productPlacementResult').innerHTML = '<div><strong>Preview idle</strong><p class="hint">Choose at least one image and prompt.</p></div>';
   document.getElementById('productResultActions').style.display = 'none';
   const button = document.getElementById('productGenerateButton');
   if (button) {
@@ -1019,7 +1019,6 @@ function resetProductPlacement() {
 
 async function generateProductPlacement() {
   if (!productPlacementCharacter) return toast('Choose or upload a character first.', 'error');
-  if (!productPlacementProduct) return toast('Choose or upload a product first.', 'error');
   const button = document.getElementById('productGenerateButton');
   const resultFrame = document.getElementById('productPlacementResult');
   const aspectRatio = document.getElementById('productPlacementAspect').value;
@@ -1043,9 +1042,9 @@ async function generateProductPlacement() {
     if (productPlacementCharacter.file) data.append('character', productPlacementCharacter.file);
     else if (productPlacementCharacter.assetId) data.append('characterAssetId', productPlacementCharacter.assetId);
     else data.append('characterUrl', productPlacementCharacter.imageUrl);
-    if (productPlacementProduct.file) data.append('product', productPlacementProduct.file);
-    else if (productPlacementProduct.assetId) data.append('productAssetId', productPlacementProduct.assetId);
-    else data.append('productUrl', productPlacementProduct.imageUrl);
+    if (productPlacementProduct?.file) data.append('product', productPlacementProduct.file);
+    else if (productPlacementProduct?.assetId) data.append('productAssetId', productPlacementProduct.assetId);
+    else if (productPlacementProduct?.imageUrl) data.append('productUrl', productPlacementProduct.imageUrl);
 
     const response = await api('/api/product-placement/generate', { method: 'POST', body: data, signal: controller.signal });
     const image = response.result?.image;
