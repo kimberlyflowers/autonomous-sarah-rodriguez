@@ -207,10 +207,9 @@ function renderLibraryLightbox() {
   const item = lightboxCollection[lightboxIndex];
   const body = document.getElementById('lightboxBody');
   if (!item || !body) return;
-  const ratioClass = item.aspectRatio === '16:9' ? 'ratio-landscape' : item.aspectRatio === '1:1' ? 'ratio-square' : 'ratio-portrait';
   document.getElementById('lightboxTitle').textContent = item.name || 'Library preview';
   document.getElementById('lightboxMeta').textContent = `${lightboxIndex + 1} of ${lightboxCollection.length}${item.prompt ? ` · ${item.prompt}` : ''}`;
-  body.className = `lightbox-body ${ratioClass}`;
+  body.className = 'lightbox-body';
   const media = item.type === 'video'
     ? `<video class="lightbox-media" controls autoplay playsinline src="${item.url}"></video>`
     : `<img class="lightbox-media" src="${item.url}" alt="${escapeHtml(item.name || 'Library image')}">`;
