@@ -178,7 +178,7 @@ button,input,select,textarea{font:inherit}
                   </div>
                   <label class="file-drop">
                     <strong>Upload a portrait</strong><span>PNG, JPG, WEBP</span>
-                    <input id="studioImage" name="image" type="file" accept="image/*" hidden onchange="showStudioFileName('studioImage','studioImageName')">
+                    <input id="studioImage" name="image" type="file" accept="image/*" hidden onchange="showStudioFileName('studioImage','studioImageName'); previewUploadedImage(this.files?.[0])">
                   </label>
                   <div class="file-name" id="studioImageName"></div>
                 </div>
@@ -187,7 +187,7 @@ button,input,select,textarea{font:inherit}
                   <label class="form-label">Source video</label>
                   <label class="file-drop">
                     <strong>Upload source video</strong><span>MP4 or MOV</span>
-                    <input id="studioVideo" name="video" type="file" accept="video/*" hidden onchange="showStudioFileName('studioVideo','studioVideoName')">
+                    <input id="studioVideo" name="video" type="file" accept="video/*" hidden onchange="showStudioFileName('studioVideo','studioVideoName'); previewUploadedVideo(this.files?.[0])">
                   </label>
                   <div class="file-name" id="studioVideoName"></div>
                 </div>
@@ -264,6 +264,7 @@ button,input,select,textarea{font:inherit}
             <div class="actions" style="margin-top:14px">
               <button class="btn btn-secondary" type="button" onclick="startRunPod()">Start pod</button>
               <button class="btn btn-secondary" type="button" onclick="stopRunPod()">Stop pod</button>
+              <a class="btn btn-secondary" id="migratePodButton" href="https://www.runpod.io/console/pods" target="_blank" rel="noopener" style="display:none">Migrate pod</a>
             </div>
             <p class="hint" style="margin-top:8px">Generate will also wake the pod automatically when RunPod is configured.</p>
           </div>

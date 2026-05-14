@@ -371,6 +371,17 @@ function setPreviewImage(src, title = 'Selected character') {
   applyStudioCrop();
 }
 
+function setPreviewVideo(src, title = 'Selected video') {
+  const frame = document.getElementById('studioPreview');
+  if (!frame || !src) return;
+  updatePreviewRatio();
+  frame.classList.add('has-media');
+  frame.classList.remove('dragging');
+  frame.onpointerdown = null;
+  frame.innerHTML = `<video src="${src}" controls muted playsinline aria-label="${title}"></video>`;
+  document.getElementById('cropHint').style.display = 'none';
+}
+
 function resetPreview() {
   const frame = document.getElementById('studioPreview');
   if (!frame) return;
@@ -439,6 +450,12 @@ function previewUploadedImage(file) {
   setPreviewImage(url, file.name);
 }
 
+function previewUploadedVideo(file) {
+  if (!file) return;
+  const url = URL.createObjectURL(file);
+  setPreviewVideo(url, file.name);
+}
+
 function resetStudioForm() {
   document.getElementById('studioForm').reset();
   document.getElementById('studioImageName').textContent = '';
@@ -454,10 +471,17 @@ async function startRunPod() {
   try {
     toast('Starting RunPod...', 'info');
     setChip('runpodStatus', 'Starting', 'warn');
+    document.getElementById('migratePodButton').style.display = 'none';
     await api('/api/studio/runpod/start', { method: 'POST' });
     toast('RunPod start requested. It may take a few minutes to become ready.', 'success');
     setTimeout(loadStudioStatus, 8000);
   } catch (error) {
+    if (/not enough free GPUs|host machine/i.test(error.message || '')) {
+      document.getElementById('migratePodButton').style.display = '';
+      setChip('runpodStatus', 'Migrate needed', 'red');
+      toast('RunPod cannot restart on that host. Use Migrate pod, then update the Comfy URL if RunPod assigns a new pod URL.', 'error');
+      return;
+    }
     toast(error.message, 'error');
   }
 }

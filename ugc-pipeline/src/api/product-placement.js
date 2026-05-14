@@ -12,9 +12,25 @@ const ROOT_DIR = path.join(__dirname, '..', '..');
 const UPLOAD_DIR = path.join(ROOT_DIR, 'assets', 'product-placement-uploads');
 
 const upload = multer({
-  dest: UPLOAD_DIR,
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+      cb(null, UPLOAD_DIR);
+    },
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname || '').toLowerCase() || mimeToExt(file.mimetype);
+      cb(null, `${file.fieldname}-${Date.now()}-${uuidv4()}${ext}`);
+    }
+  }),
   limits: { fileSize: 50 * 1024 * 1024 }
 });
+
+function mimeToExt(mimeType = '') {
+  if (mimeType === 'image/jpeg') return '.jpg';
+  if (mimeType === 'image/png') return '.png';
+  if (mimeType === 'image/webp') return '.webp';
+  return '.png';
+}
 
 function getConfig() {
   return {
@@ -144,14 +160,11 @@ router.post('/generate', upload.fields([
       },
       body: JSON.stringify({
         input: {
-          prompt,
           images: [characterImage, productImage],
-          image_urls: [characterImage, productImage],
-          reference_images: [characterImage, productImage],
-          aspect_ratio: aspectRatio,
+          prompt,
           resolution: size,
-          output_format: 'png',
-          tenant: req.tenant.slug || req.tenant.id
+          aspect_ratio: aspectRatio,
+          output_format: 'png'
         }
       })
     });
