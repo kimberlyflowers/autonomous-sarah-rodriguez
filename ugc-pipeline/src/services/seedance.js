@@ -47,7 +47,8 @@ async function uploadToTempHost(filePath) {
 
     const res = await fetch('https://tmpfiles.org/api/v1/upload', {
       method: 'POST',
-      body: form
+      body: form,
+      timeout: Number(process.env.TEMP_UPLOAD_TIMEOUT_MS || 30000)
     });
 
     const data = await res.json();

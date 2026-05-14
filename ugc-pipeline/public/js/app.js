@@ -12,6 +12,8 @@ let currentCharacterTab = 'library';
 let currentCharacterRatio = 'portrait';
 let productPlacementCharacter = null;
 let productPlacementProduct = null;
+let productPlacementRequest = null;
+let productPlacementTimedOut = false;
 let studioCrop = { x: 50, y: 50 };
 let cropDrag = null;
 
@@ -709,6 +711,11 @@ async function loadProductPlacementStatus() {
 }
 
 function resetProductPlacement() {
+  if (productPlacementRequest) {
+    productPlacementRequest.abort();
+    productPlacementRequest = null;
+    productPlacementTimedOut = false;
+  }
   productPlacementCharacter = null;
   productPlacementProduct = null;
   document.getElementById('productCharacterName').textContent = 'No character selected';
@@ -719,6 +726,11 @@ function resetProductPlacement() {
   document.getElementById('productImageUpload').value = '';
   document.getElementById('productPlacementResult').innerHTML = '<div><strong>Preview idle</strong><p class="hint">Choose a character, product, and prompt.</p></div>';
   document.getElementById('productResultActions').style.display = 'none';
+  const button = document.getElementById('productGenerateButton');
+  if (button) {
+    button.disabled = false;
+    button.textContent = 'Run Nano Banana';
+  }
 }
 
 async function generateProductPlacement() {
@@ -728,9 +740,17 @@ async function generateProductPlacement() {
   const resultFrame = document.getElementById('productPlacementResult');
   const aspectRatio = document.getElementById('productPlacementAspect').value;
   resultFrame.classList.toggle('ratio-portrait', aspectRatio === '9:16');
+  if (productPlacementRequest) productPlacementRequest.abort();
+  productPlacementTimedOut = false;
+  const controller = new AbortController();
+  productPlacementRequest = controller;
+  const timeoutId = setTimeout(() => {
+    productPlacementTimedOut = true;
+    controller.abort();
+  }, 90000);
   button.disabled = true;
   button.textContent = 'Running Nano...';
-  resultFrame.innerHTML = '<div><strong>Generating...</strong><p class="hint">Nano Banana is combining your character and product.</p></div>';
+  resultFrame.innerHTML = '<div class="cooking-state"><div class="cooking-orb"></div><strong>Generating with Nano Banana</strong><p class="hint">Uploading public references and waiting for the /runsync result.</p><div class="cooking-steps">This usually finishes in under a minute.</div></div>';
   try {
     const data = new FormData();
     data.append('prompt', document.getElementById('productPlacementPrompt').value.trim());
@@ -743,7 +763,7 @@ async function generateProductPlacement() {
     else if (productPlacementProduct.assetId) data.append('productAssetId', productPlacementProduct.assetId);
     else data.append('productUrl', productPlacementProduct.imageUrl);
 
-    const response = await api('/api/product-placement/generate', { method: 'POST', body: data });
+    const response = await api('/api/product-placement/generate', { method: 'POST', body: data, signal: controller.signal });
     const image = response.result?.image;
     if (image) {
       resultFrame.innerHTML = `<img src="${image}" alt="Generated product placement">`;
@@ -752,13 +772,23 @@ async function generateProductPlacement() {
       document.getElementById('productResultActions').style.display = '';
       toast('Product image generated.', 'success');
     } else {
-      resultFrame.innerHTML = '<div><strong>Job queued</strong><p class="hint">The endpoint accepted the request but did not return an image yet.</p></div>';
-      toast('Nano job queued. Check the RunPod endpoint logs if it does not return.', 'info');
+      resultFrame.innerHTML = '<div><strong>No image returned</strong><p class="hint">Nano Banana completed but the response did not include an image URL.</p></div>';
+      toast('Nano Banana did not return an image URL.', 'error');
     }
   } catch (error) {
-    resultFrame.innerHTML = '<div><strong>Generation failed</strong><p class="hint">Check endpoint settings or prompt inputs.</p></div>';
-    toast(error.message, 'error');
+    if (error.name === 'AbortError') {
+      resultFrame.innerHTML = productPlacementTimedOut
+        ? '<div><strong>Request timed out</strong><p class="hint">Nano Banana did not return within 90 seconds. Check the public endpoint logs or try again.</p></div>'
+        : '<div><strong>Generation stopped</strong><p class="hint">The Nano Banana request was cancelled.</p></div>';
+      toast(productPlacementTimedOut ? 'Nano Banana timed out after 90 seconds.' : 'Nano Banana generation cancelled.', productPlacementTimedOut ? 'error' : 'info');
+    } else {
+      resultFrame.innerHTML = '<div><strong>Generation failed</strong><p class="hint">Check endpoint settings or prompt inputs.</p></div>';
+      toast(error.message, 'error');
+    }
   } finally {
+    clearTimeout(timeoutId);
+    if (productPlacementRequest === controller) productPlacementRequest = null;
+    productPlacementTimedOut = false;
     button.disabled = false;
     button.textContent = 'Run Nano Banana';
   }

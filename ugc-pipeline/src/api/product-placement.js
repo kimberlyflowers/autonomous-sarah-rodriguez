@@ -37,7 +37,7 @@ function getConfig() {
     endpointId: process.env.RUNPOD_NANO_BANANA_ENDPOINT_ID || process.env.NANO_BANANA_ENDPOINT_ID || 'google-nano-banana-2-edit',
     endpointUrl: process.env.RUNPOD_NANO_BANANA_ENDPOINT_URL || process.env.NANO_BANANA_ENDPOINT_URL || '',
     apiKey: process.env.RUNPOD_NANO_BANANA_API_KEY || process.env.RUNPOD_API_KEY || '',
-    timeoutMs: Number(process.env.NANO_BANANA_TIMEOUT_MS || 180000)
+    timeoutMs: Number(process.env.NANO_BANANA_RUNSYNC_TIMEOUT_MS || process.env.NANO_BANANA_TIMEOUT_MS || 75000)
   };
 }
 
@@ -101,19 +101,11 @@ function normalizeRunPodResult(data) {
   };
 }
 
-async function waitForRunPod(endpointId, apiKey, jobId, timeoutMs) {
-  const started = Date.now();
-  while (Date.now() - started < timeoutMs) {
-    const response = await fetch(`https://api.runpod.ai/v2/${endpointId}/status/${jobId}`, {
-      headers: { Authorization: `Bearer ${apiKey}` }
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || `RunPod status failed: ${response.status}`);
-    if (data.status === 'COMPLETED') return normalizeRunPodResult(data);
-    if (data.status === 'FAILED' || data.status === 'CANCELLED') throw new Error(data.error || `Nano Banana job ${data.status.toLowerCase()}.`);
-    await new Promise(resolve => setTimeout(resolve, 2500));
-  }
-  return { id: jobId, status: 'processing', image: '', raw: { id: jobId } };
+function buildRunSyncUrl(config) {
+  const baseUrl = config.endpointUrl || `https://api.runpod.ai/v2/${config.endpointId}/runsync`;
+  const url = new URL(baseUrl);
+  if (!url.searchParams.has('wait')) url.searchParams.set('wait', String(config.timeoutMs));
+  return url.toString();
 }
 
 router.get('/status', (req, res) => {
@@ -150,7 +142,7 @@ router.post('/generate', upload.fields([
     const prompt = req.body.prompt || 'Place the product naturally with the character in a realistic UGC creator scene. Preserve the character identity and make the product look authentic, correctly scaled, and clearly visible.';
     const aspectRatio = req.body.aspectRatio || '9:16';
     const size = req.body.size || '1k';
-    const endpointUrl = config.endpointUrl || `https://api.runpod.ai/v2/${config.endpointId}/runsync`;
+    const endpointUrl = buildRunSyncUrl(config);
 
     const response = await fetch(endpointUrl, {
       method: 'POST',
@@ -166,15 +158,19 @@ router.post('/generate', upload.fields([
           aspect_ratio: aspectRatio,
           output_format: 'png'
         }
-      })
+      }),
+      timeout: config.timeoutMs
     });
 
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || data.detail || `RunPod request failed: ${response.status}`);
-    const jobId = data.id || data.requestId;
-    const result = data.status === 'COMPLETED' || !jobId
-      ? normalizeRunPodResult(data)
-      : await waitForRunPod(config.endpointId, config.apiKey, jobId, config.timeoutMs);
+    if (data.status && data.status !== 'COMPLETED') {
+      throw new Error(`Nano Banana returned ${data.status}. The public /runsync endpoint accepted the request but did not return a completed image.`);
+    }
+    const result = normalizeRunPodResult(data);
+    if (!result.image) {
+      throw new Error('Nano Banana completed but did not return an image URL. Check the RunPod response output field.');
+    }
 
     res.json({ success: true, result });
   } catch (error) {
