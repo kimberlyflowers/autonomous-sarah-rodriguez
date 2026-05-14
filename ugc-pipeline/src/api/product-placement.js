@@ -37,7 +37,7 @@ function getConfig() {
     endpointId: process.env.RUNPOD_NANO_BANANA_ENDPOINT_ID || process.env.NANO_BANANA_ENDPOINT_ID || 'google-nano-banana-2-edit',
     endpointUrl: process.env.RUNPOD_NANO_BANANA_ENDPOINT_URL || process.env.NANO_BANANA_ENDPOINT_URL || '',
     apiKey: process.env.RUNPOD_NANO_BANANA_API_KEY || process.env.RUNPOD_API_KEY || '',
-    timeoutMs: Number(process.env.NANO_BANANA_RUNSYNC_TIMEOUT_MS || process.env.NANO_BANANA_TIMEOUT_MS || 75000)
+    timeoutMs: Number(process.env.NANO_BANANA_RUNSYNC_TIMEOUT_MS || process.env.NANO_BANANA_TIMEOUT_MS || 300000)
   };
 }
 
@@ -163,17 +163,23 @@ router.post('/generate', upload.fields([
     });
 
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || data.detail || `RunPod request failed: ${response.status}`);
+    if (!response.ok) {
+      console.error('Nano Banana request failed', { status: response.status, data });
+      throw new Error(data.error || data.detail || `RunPod request failed: ${response.status}`);
+    }
     if (data.status && data.status !== 'COMPLETED') {
+      console.error('Nano Banana did not complete during runsync', { status: data.status, id: data.id });
       throw new Error(`Nano Banana returned ${data.status}. The public /runsync endpoint accepted the request but did not return a completed image.`);
     }
     const result = normalizeRunPodResult(data);
     if (!result.image) {
+      console.error('Nano Banana response missing image URL', { id: result.id, raw: data });
       throw new Error('Nano Banana completed but did not return an image URL. Check the RunPod response output field.');
     }
 
     res.json({ success: true, result });
   } catch (error) {
+    console.error('Product placement generation failed', { error: error.message });
     res.status(500).json({ error: error.message });
   } finally {
     for (const fileGroup of Object.values(req.files || {})) {

@@ -166,6 +166,15 @@ button,input,select,textarea{font:inherit}
                   <div class="hint" id="studioVideoEngineHint">Uses the installed WAN/ComfyUI workflow and RunPod pod.</div>
                 </div>
 
+                <div class="form-group" id="studioMeigenQualityGroup" style="display:none">
+                  <label class="form-label">Meigen quality</label>
+                  <select class="form-select" id="studioMeigenSize" name="meigenSize">
+                    <option value="480p" selected>480p - faster, more reliable</option>
+                    <option value="720p">720p - sharper, slower</option>
+                  </select>
+                  <div class="hint">480p is best for testing. 720p can take longer and may fail more often on the public endpoint.</div>
+                </div>
+
                 <div class="form-group">
                   <label class="form-label">Aspect ratio</label>
                   <select class="form-select" id="studioAspectRatio" name="aspectRatio">

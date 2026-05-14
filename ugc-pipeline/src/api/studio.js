@@ -117,8 +117,8 @@ function getOutputSize(aspectRatio = '9:16') {
   return { width: 720, height: 1280 };
 }
 
-function getMeigenSize(aspectRatio = '9:16') {
-  return aspectRatio === '16:9' ? '720p' : '480p';
+function getMeigenSize(value = '480p') {
+  return value === '720p' ? '720p' : '480p';
 }
 
 async function frameImageForStudio(imagePath, aspectRatio, cropX, cropY) {
@@ -524,7 +524,7 @@ router.post('/generate', upload.fields([
         imageUrl: '',
         audioUrl: '',
         prompt: req.body.prompt,
-        size: getMeigenSize(req.body.aspectRatio || '9:16'),
+        size: getMeigenSize(req.body.meigenSize || '480p'),
         outputDir: dir
       });
       const savedVideo = await saveGeneratedVideoAsset(req, meigen.localPath, {
@@ -533,6 +533,7 @@ router.post('/generate', upload.fields([
         source: 'infinitetalk',
         prompt: req.body.prompt || '',
         aspectRatio: req.body.aspectRatio || '9:16',
+        meigenSize: getMeigenSize(req.body.meigenSize || '480p'),
         cost: meigen.cost,
         rawRequestId: meigen.id
       });

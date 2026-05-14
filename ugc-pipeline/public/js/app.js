@@ -417,6 +417,8 @@ function setStudioMode(mode) {
   if (actualMode !== 'i2v') {
     document.getElementById('studioVideoEngine').value = 'wan-comfy';
     setStudioVideoEngine('wan-comfy');
+  } else {
+    setStudioVideoEngine(document.getElementById('studioVideoEngine').value);
   }
   if (actualMode === 'audio' && ['upload', 'asset'].includes(document.getElementById('studioAudioProvider').value)) {
     setStudioAudio('chatterbox');
@@ -425,9 +427,11 @@ function setStudioMode(mode) {
 
 function setStudioVideoEngine(engine) {
   const hint = document.getElementById('studioVideoEngineHint');
+  const quality = document.getElementById('studioMeigenQualityGroup');
+  if (quality) quality.style.display = engine === 'meigen' ? '' : 'none';
   if (hint) {
     hint.textContent = engine === 'meigen'
-      ? 'Uses Meigen / InfiniteTalk public lip sync. No ComfyUI pod required.'
+      ? 'Uses MeiGen-AI InfiniteTalk through the RunPod public endpoint. No ComfyUI pod required.'
       : 'Uses the installed WAN/ComfyUI workflow and RunPod pod.';
   }
   if (document.getElementById('studioMode').value === 'i2v') {
@@ -1027,10 +1031,10 @@ async function generateProductPlacement() {
   const timeoutId = setTimeout(() => {
     productPlacementTimedOut = true;
     controller.abort();
-  }, 90000);
+  }, 300000);
   button.disabled = true;
   button.textContent = 'Running Nano...';
-  resultFrame.innerHTML = '<div class="cooking-state"><div class="cooking-orb"></div><strong>Generating with Nano Banana</strong><p class="hint">Uploading public references and waiting for the /runsync result.</p><div class="cooking-steps">This usually finishes in under a minute.</div></div>';
+  resultFrame.innerHTML = '<div class="cooking-state"><div class="cooking-orb"></div><strong>Generating with Nano Banana</strong><p class="hint">Uploading public references and waiting for the /runsync result.</p><div class="cooking-steps">Large edits can take several minutes.</div></div>';
   try {
     const data = new FormData();
     data.append('prompt', document.getElementById('productPlacementPrompt').value.trim());
@@ -1060,11 +1064,11 @@ async function generateProductPlacement() {
   } catch (error) {
     if (error.name === 'AbortError') {
       resultFrame.innerHTML = productPlacementTimedOut
-        ? '<div><strong>Request timed out</strong><p class="hint">Nano Banana did not return within 90 seconds. Check the public endpoint logs or try again.</p></div>'
+        ? '<div><strong>Request timed out</strong><p class="hint">Nano Banana did not return within 5 minutes. Check the public endpoint logs or try again.</p></div>'
         : '<div><strong>Generation stopped</strong><p class="hint">The Nano Banana request was cancelled.</p></div>';
-      toast(productPlacementTimedOut ? 'Nano Banana timed out after 90 seconds.' : 'Nano Banana generation cancelled.', productPlacementTimedOut ? 'error' : 'info');
+      toast(productPlacementTimedOut ? 'Nano Banana timed out after 5 minutes.' : 'Nano Banana generation cancelled.', productPlacementTimedOut ? 'error' : 'info');
     } else {
-      resultFrame.innerHTML = '<div><strong>Generation failed</strong><p class="hint">Check endpoint settings or prompt inputs.</p></div>';
+      resultFrame.innerHTML = `<div><strong>Generation failed</strong><p class="hint">${escapeHtml(error.message || 'Check endpoint settings or prompt inputs.')}</p></div>`;
       toast(error.message, 'error');
     }
   } finally {
@@ -1074,6 +1078,15 @@ async function generateProductPlacement() {
     button.disabled = false;
     button.textContent = 'Run Nano Banana';
   }
+}
+
+function escapeHtml(value = '') {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
 async function saveGeneratedImageToLibrary(imageUrl) {
