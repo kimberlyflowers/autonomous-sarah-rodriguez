@@ -43,6 +43,14 @@ function pluralType(type) {
   return type === 'product' ? 'products' : type === 'subject' ? 'subjects' : type === 'output' ? 'outputs' : type === 'video' ? 'videos' : type;
 }
 
+function mimeToExt(mimeType = '') {
+  if (mimeType.includes('jpeg') || mimeType.includes('jpg')) return '.jpg';
+  if (mimeType.includes('webp')) return '.webp';
+  if (mimeType.includes('gif')) return '.gif';
+  if (mimeType.includes('avif')) return '.avif';
+  return '.png';
+}
+
 function fileToAsset(row) {
   const dataUrl = row.mime_type?.startsWith('image/')
     ? `data:${row.mime_type};base64,${Buffer.from(row.file_data).toString('base64')}`
