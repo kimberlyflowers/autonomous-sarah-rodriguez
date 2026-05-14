@@ -46,6 +46,31 @@ async function initUgcStore() {
 
       create index if not exists idx_ugc_asset_files_tenant
         on public.ugc_asset_files(tenant_slug, type, created_at desc);
+
+      create table if not exists public.ugc_video_jobs (
+        id uuid primary key default gen_random_uuid(),
+        tenant_slug text not null,
+        provider text not null,
+        workflow_preset text,
+        mode text,
+        audio_provider text,
+        status text not null default 'processing',
+        request_id text not null,
+        script text,
+        prompt text,
+        negative_prompt text,
+        error text,
+        metadata jsonb not null default '{}',
+        created_at timestamptz not null default now(),
+        completed_at timestamptz,
+        updated_at timestamptz not null default now()
+      );
+
+      create index if not exists idx_ugc_video_jobs_tenant
+        on public.ugc_video_jobs(tenant_slug, created_at desc);
+
+      create unique index if not exists idx_ugc_video_jobs_request
+        on public.ugc_video_jobs(tenant_slug, request_id);
     `).then(() => true);
   }
   return initPromise;

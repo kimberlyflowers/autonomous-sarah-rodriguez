@@ -12,6 +12,10 @@ let selectedCharacter = null;
 let currentCharacterTab = 'library';
 let currentCharacterRatio = 'portrait';
 let currentLibraryImageRatio = 'portrait';
+let libraryImageItems = [];
+let libraryVideoItems = [];
+let lightboxCollection = [];
+let lightboxIndex = 0;
 let currentLibraryVideoRatio = 'portrait';
 let productPlacementCharacter = null;
 let productPlacementProduct = null;
@@ -178,6 +182,47 @@ function captureVideoPoster(video, imgId) {
 function markVideoPlaying(video, isPlaying) {
   const wrap = video.closest('.video-thumb-wrap');
   if (wrap) wrap.classList.toggle('playing', isPlaying);
+}
+
+function openLibraryLightbox(kind, index) {
+  lightboxCollection = kind === 'videos' ? libraryVideoItems : libraryImageItems;
+  lightboxIndex = Number(index) || 0;
+  renderLibraryLightbox();
+  document.getElementById('libraryLightbox').classList.add('active');
+}
+
+function closeLibraryLightbox() {
+  const body = document.getElementById('lightboxBody');
+  if (body) body.innerHTML = '';
+  document.getElementById('libraryLightbox').classList.remove('active');
+}
+
+function moveLibraryLightbox(direction) {
+  if (!lightboxCollection.length) return;
+  lightboxIndex = (lightboxIndex + direction + lightboxCollection.length) % lightboxCollection.length;
+  renderLibraryLightbox();
+}
+
+function renderLibraryLightbox() {
+  const item = lightboxCollection[lightboxIndex];
+  const body = document.getElementById('lightboxBody');
+  if (!item || !body) return;
+  const ratioClass = item.aspectRatio === '16:9' ? 'ratio-landscape' : item.aspectRatio === '1:1' ? 'ratio-square' : 'ratio-portrait';
+  document.getElementById('lightboxTitle').textContent = item.name || 'Library preview';
+  document.getElementById('lightboxMeta').textContent = `${lightboxIndex + 1} of ${lightboxCollection.length}${item.prompt ? ` · ${item.prompt}` : ''}`;
+  body.className = `lightbox-body ${ratioClass}`;
+  const media = item.type === 'video'
+    ? `<video class="lightbox-media" controls autoplay playsinline src="${item.url}"></video>`
+    : `<img class="lightbox-media" src="${item.url}" alt="${escapeHtml(item.name || 'Library image')}">`;
+  body.innerHTML = `
+    <button class="lightbox-nav lightbox-prev" type="button" onclick="moveLibraryLightbox(-1)">‹</button>
+    ${media}
+    <button class="lightbox-nav lightbox-next" type="button" onclick="moveLibraryLightbox(1)">›</button>
+  `;
+  const download = document.getElementById('lightboxDownload');
+  const post = document.getElementById('lightboxPost');
+  if (download) download.href = item.url;
+  if (post) post.onclick = () => openPublishModal(item.url, item.type);
 }
 
 function toggleTheme() {
@@ -1264,31 +1309,49 @@ async function editCharacterVoice(slug, currentVoiceId = '') {
 function renderAssetGrid(containerId, assets, type) {
   const grid = document.getElementById(containerId);
   if (!grid) return;
+  if (type === 'outputs') {
+    libraryImageItems = assets
+      .map(asset => {
+        const file = asset.files?.[0];
+        if (!file || !/\.(jpg|jpeg|png|webp|gif)$/i.test(file.name)) return null;
+        return {
+          type: 'image',
+          name: asset.name,
+          url: authenticatedMediaUrl(file.path),
+          rawUrl: file.path,
+          prompt: asset.aiContext?.prompt || asset.aiContext?.source || '',
+          aspectRatio: asset.aiContext?.aspectRatio || (currentLibraryImageRatio === 'landscape' ? '16:9' : '9:16')
+        };
+      })
+      .filter(Boolean);
+  }
   if (assets.length === 0) {
     grid.innerHTML = `<div class="empty-state">No ${type} uploaded yet</div>`;
     return;
   }
 
+  let imageIndex = -1;
   grid.innerHTML = assets.map(asset => {
     const file = asset.files[0];
     const isImage = file && /\.(jpg|jpeg|png|webp|gif)$/i.test(file.name);
     const isAudio = file && /\.(mp3|wav|m4a|ogg|aac)$/i.test(file.name);
     const filePath = file?.path ? authenticatedMediaUrl(file.path) : '';
+    const openAttr = type === 'outputs' && isImage ? `onclick="openLibraryLightbox('images',${++imageIndex})"` : '';
     const thumb = isImage
       ? `<div class="asset-thumb"><img src="${filePath}" alt="${asset.name}" loading="lazy"></div>`
       : `<div class="asset-thumb">${isAudio ? 'Audio' : 'File'}</div>`;
 
-    return `<div class="asset-card">
+    return `<div class="asset-card" ${openAttr}>
       ${thumb}
       <div class="asset-info">
         <div class="asset-name">${asset.name}</div>
         <div class="asset-meta">${file ? formatBytes(file.size) : 'Empty'}</div>
       </div>
       <div class="asset-actions">
-        <button class="btn btn-secondary" onclick="viewContext('${type}','${asset.slug}')">Context</button>
-        ${type === 'audio' ? `<button class="btn btn-secondary" onclick="copyAudioTempUrl('${asset.slug}')">Copy voice URL</button>` : ''}
-        ${type === 'outputs' && file?.path ? `<button class="btn btn-secondary" onclick="addImageUrlAsCharacter('${file.path.replace(/'/g, "\\'")}')">Add as character</button><button class="btn btn-primary" onclick="openPublishModal('${filePath.replace(/'/g, "\\'")}','image')">Post</button>` : ''}
-        <button class="btn btn-secondary" onclick="deleteAsset('${type}','${asset.slug}')">Delete</button>
+        <button class="btn btn-secondary" onclick="event.stopPropagation();viewContext('${type}','${asset.slug}')">Info</button>
+        ${type === 'audio' ? `<button class="btn btn-secondary" onclick="event.stopPropagation();copyAudioTempUrl('${asset.slug}')">Voice URL</button>` : ''}
+        ${type === 'outputs' && file?.path ? `<button class="btn btn-secondary" onclick="event.stopPropagation();addImageUrlAsCharacter('${file.path.replace(/'/g, "\\'")}')">Agent</button><button class="btn btn-primary" onclick="event.stopPropagation();openPublishModal('${filePath.replace(/'/g, "\\'")}','image')">Post</button>` : ''}
+        <button class="btn btn-secondary" onclick="event.stopPropagation();deleteAsset('${type}','${asset.slug}')">Del</button>
       </div>
     </div>`;
   }).join('');
@@ -1600,35 +1663,54 @@ async function loadVideos() {
     document.getElementById('videoProgress').style.display = 'none';
   }
 
-  const combined = [
+  const combinedRaw = [
     ...libraryVideos,
     ...studioJobs.map(j => ({ ...j, format: j.presetId || 'studio', prompt: j.script || j.prompt })),
     ...(seedance.videos || [])
   ];
+  const seenVideos = new Set();
+  const combined = combinedRaw.filter(item => {
+    const key = item.localPath || item.assetId || item.requestId || item.jobId;
+    if (!key) return true;
+    if (seenVideos.has(key)) return false;
+    seenVideos.add(key);
+    return true;
+  });
+  libraryVideoItems = combined
+    .filter(v => v.status === 'completed' && (v.localPath || '').trim())
+    .map(v => ({
+      type: 'video',
+      name: v.prompt || v.format || 'Generated video',
+      url: authenticatedMediaUrl(v.localPath || ''),
+      prompt: v.prompt || '',
+      aspectRatio: v.aspectRatio || (currentLibraryVideoRatio === 'landscape' ? '16:9' : '9:16')
+    }));
 
   if (!combined.length) {
     grid.innerHTML = '<div class="empty-state">No videos generated yet. Create your first clip from the Create tab.</div>';
     return;
   }
 
+  let videoIndex = -1;
   grid.innerHTML = combined.map(v => {
     const statusChip = v.status === 'completed' ? '<span class="chip chip-green">Completed</span>' : v.status === 'failed' ? '<span class="chip chip-red">Failed</span>' : '<span class="chip chip-warn">Processing</span>';
     const mediaUrl = authenticatedMediaUrl(v.localPath || '');
+    const lightboxIndex = v.status === 'completed' && mediaUrl ? ++videoIndex : -1;
     const posterId = `poster-${String(v.requestId || v.jobId || Math.random()).replace(/[^a-zA-Z0-9_-]/g, '-')}`;
     const videoPreviewUrl = mediaUrl ? `${mediaUrl}#t=0.1` : '';
     const videoEl = mediaUrl
-      ? `<div class="video-thumb-wrap">
+      ? `<div class="video-thumb-wrap" onclick="openLibraryLightbox('videos',${lightboxIndex})">
           <img class="video-poster" id="${posterId}" alt="Video preview">
-          <video class="video-player" controls preload="auto" muted playsinline onloadeddata="captureVideoPoster(this,'${posterId}')" onseeked="captureVideoPoster(this,'${posterId}')" onplay="markVideoPlaying(this,true)" onpause="markVideoPlaying(this,false)">
+          <video class="video-player" preload="auto" muted playsinline onloadeddata="captureVideoPoster(this,'${posterId}')" onseeked="captureVideoPoster(this,'${posterId}')" onplay="markVideoPlaying(this,true)" onpause="markVideoPlaying(this,false)">
             <source src="${videoPreviewUrl}" type="video/mp4">
           </video>
           <div class="video-play-badge">▶ Preview</div>
         </div>`
       : `<div class="video-player" style="display:flex;align-items:center;justify-content:center;color:#999">Processing</div>`;
     const actions = v.status === 'completed' && mediaUrl
-      ? `<div class="actions"><button class="btn btn-primary" onclick="openPublishModal('${mediaUrl.replace(/'/g, "\\'")}','video')">Post</button><a class="btn btn-secondary" href="${mediaUrl}" download>Download</a></div>`
+      ? `<div class="actions"><button class="btn btn-primary" onclick="event.stopPropagation();openPublishModal('${mediaUrl.replace(/'/g, "\\'")}','video')">Post</button><a class="btn btn-secondary" href="${mediaUrl}" download onclick="event.stopPropagation()">Save</a></div>`
       : '';
-    return `<div class="video-card">${videoEl}<div class="video-info"><div style="display:flex;justify-content:space-between;gap:8px"><span class="chip chip-soft">${v.format || 'custom'}</span>${statusChip}</div><div class="video-prompt">${v.prompt || v.localPath || ''}</div>${v.error ? `<div class="video-prompt" style="color:var(--red)">${v.error}</div>` : ''}${actions}</div></div>`;
+    return `<div class="video-card">${videoEl}<div class="video-info" onclick="${mediaUrl ? `openLibraryLightbox('videos',${lightboxIndex})` : ''}"><div style="display:flex;justify-content:space-between;gap:8px"><span class="chip chip-soft">${v.format || 'custom'}</span>${statusChip}</div><div class="video-prompt">${v.prompt || v.localPath || ''}</div>${v.error ? `<div class="video-prompt" style="color:var(--red)">${v.error}</div>` : ''}${actions}</div></div>`;
   }).join('');
 }
 

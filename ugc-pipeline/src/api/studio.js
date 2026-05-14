@@ -226,6 +226,90 @@ async function saveGeneratedVideoAsset(req, localPath, metadata = {}) {
   };
 }
 
+function mapLocalVideoJob(row) {
+  return {
+    requestId: row.request_id,
+    jobId: row.id,
+    tenantId: row.tenant_slug,
+    provider: row.provider,
+    presetId: row.workflow_preset,
+    mode: row.mode,
+    audioProvider: row.audio_provider,
+    status: row.status,
+    prompt: row.prompt,
+    aspectRatio: row.metadata?.aspectRatio || '9:16',
+    script: row.script,
+    localPath: row.metadata?.localPath || null,
+    assetId: row.metadata?.assetId || null,
+    cost: row.metadata?.cost || null,
+    error: row.error,
+    createdAt: row.created_at,
+    completedAt: row.completed_at
+  };
+}
+
+async function listLocalVideoJobs(req) {
+  if (!hasDatabase()) return getStudioJobs().filter(job => job.tenantId === (req.tenant.slug || req.tenant.id));
+  await initUgcStore();
+  const { rows } = await query(
+    'select * from public.ugc_video_jobs where tenant_slug = $1 order by created_at desc limit 100',
+    [req.tenant.slug || req.tenant.id]
+  );
+  return rows.map(mapLocalVideoJob);
+}
+
+async function createLocalVideoJob(req, job) {
+  if (!hasDatabase()) return null;
+  await initUgcStore();
+  const metadata = job.metadata || {};
+  const { rows } = await query(`
+    insert into public.ugc_video_jobs
+      (tenant_slug, provider, workflow_preset, mode, audio_provider, status, request_id, script, prompt, negative_prompt, metadata)
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
+    on conflict (tenant_slug, request_id) do update set
+      status = excluded.status,
+      metadata = excluded.metadata,
+      updated_at = now()
+    returning *
+  `, [
+    req.tenant.slug || req.tenant.id,
+    job.provider,
+    job.presetId || '',
+    job.mode || '',
+    job.audioProvider || '',
+    job.status || 'processing',
+    job.requestId,
+    job.script || '',
+    job.prompt || '',
+    job.negativePrompt || '',
+    JSON.stringify(metadata)
+  ]);
+  return rows[0] ? mapLocalVideoJob(rows[0]) : null;
+}
+
+async function updateLocalVideoJob(req, requestId, patch = {}) {
+  if (!hasDatabase() || !requestId) return null;
+  await initUgcStore();
+  const metadata = patch.metadata || {};
+  const { rows } = await query(`
+    update public.ugc_video_jobs
+    set status = coalesce($3, status),
+        error = $4,
+        completed_at = case when $3 = 'completed' then now() else completed_at end,
+        metadata = metadata || $5::jsonb,
+        updated_at = now()
+    where tenant_slug = $1 and request_id = $2
+    returning *
+  `, [
+    req.tenant.slug || req.tenant.id,
+    requestId,
+    patch.status || null,
+    patch.error || null,
+    JSON.stringify(metadata)
+  ]);
+  return rows[0] ? mapLocalVideoJob(rows[0]) : null;
+}
+
 router.get('/status', async (req, res) => {
   const runpod = getRunPodConfig();
   const comfyReady = await isComfyReady(getBaseUrl() || runpod.baseUrl);
@@ -331,7 +415,9 @@ async function createElevenLabsAudio({ script, voiceId, tenantId }) {
 
 router.get('/jobs', (req, res) => {
   if (!req.supabase) {
-    return res.json({ jobs: getStudioJobs().filter(job => job.tenantId === (req.tenant.slug || req.tenant.id)) });
+    return listLocalVideoJobs(req)
+      .then(jobs => res.json({ jobs }))
+      .catch(error => res.status(500).json({ error: error.message }));
   }
 
   req.supabase
@@ -515,47 +601,87 @@ router.post('/generate', upload.fields([
       audioPath = chatterbox.localPath;
     }
     const durationSeconds = parseDurationSeconds(req.body.durationSeconds) || await getAudioDurationSeconds(audioPath);
-
-    if (videoEngine === 'meigen') {
-      const dir = path.join(UPLOAD_DIR, cleanSlug(req.tenant.slug || req.tenant.id || 'default'), 'meigen');
-      const meigen = await createMeigenVideo({
-        imagePath,
-        audioPath,
-        imageUrl: '',
-        audioUrl: '',
-        prompt: req.body.prompt,
-        size: getMeigenSize(req.body.meigenSize || '480p'),
-        outputDir: dir
-      });
-      const savedVideo = await saveGeneratedVideoAsset(req, meigen.localPath, {
-        name: `Meigen lip sync ${new Date().toLocaleString('en-US')}`,
-        provider: 'meigen',
-        source: 'infinitetalk',
-        prompt: req.body.prompt || '',
-        aspectRatio: req.body.aspectRatio || '9:16',
-        meigenSize: getMeigenSize(req.body.meigenSize || '480p'),
-        cost: meigen.cost,
-        rawRequestId: meigen.id
-      });
-      const job = {
-        requestId: savedVideo.id,
-        jobId: savedVideo.id,
-        tenantId: req.tenant.slug || req.tenant.id,
-        provider: 'meigen',
-        presetId: 'meigen-infinitetalk',
+    const clientRequestId = req.body.clientJobId || uuidv4();
+    if (!req.supabase && hasDatabase()) {
+      await createLocalVideoJob(req, {
+        requestId: clientRequestId,
+        provider: videoEngine === 'meigen' ? 'meigen' : 'comfyui',
+        presetId: videoEngine === 'meigen' ? 'meigen-infinitetalk' : presetId,
         mode,
         audioProvider,
-        status: 'completed',
+        status: 'processing',
+        script: req.body.script || '',
         prompt: req.body.prompt || '',
-        aspectRatio: req.body.aspectRatio || '9:16',
-        durationSeconds,
-        localPath: savedVideo.path,
-        asset: savedVideo,
-        cost: meigen.cost,
-        createdAt: new Date().toISOString(),
-        completedAt: new Date().toISOString()
-      };
-      return res.json({ success: true, job });
+        negativePrompt: req.body.negativePrompt || '',
+        metadata: {
+          aspectRatio: req.body.aspectRatio || '9:16',
+          durationSeconds,
+          imageAssetId: req.body.imageAssetId || null,
+          audioAssetId: req.body.audioAssetId || null,
+          videoEngine
+        }
+      });
+    }
+
+    if (videoEngine === 'meigen') {
+      try {
+        const dir = path.join(UPLOAD_DIR, cleanSlug(req.tenant.slug || req.tenant.id || 'default'), 'meigen');
+        const meigen = await createMeigenVideo({
+          imagePath,
+          audioPath,
+          imageUrl: '',
+          audioUrl: '',
+          prompt: req.body.prompt,
+          size: getMeigenSize(req.body.meigenSize || '480p'),
+          outputDir: dir
+        });
+        const savedVideo = await saveGeneratedVideoAsset(req, meigen.localPath, {
+          name: `Meigen lip sync ${new Date().toLocaleString('en-US')}`,
+          provider: 'meigen',
+          source: 'infinitetalk',
+          prompt: req.body.prompt || '',
+          aspectRatio: req.body.aspectRatio || '9:16',
+          meigenSize: getMeigenSize(req.body.meigenSize || '480p'),
+          cost: meigen.cost,
+          rawRequestId: meigen.id
+        });
+        const job = {
+          requestId: clientRequestId,
+          jobId: clientRequestId,
+          tenantId: req.tenant.slug || req.tenant.id,
+          provider: 'meigen',
+          presetId: 'meigen-infinitetalk',
+          mode,
+          audioProvider,
+          status: 'completed',
+          prompt: req.body.prompt || '',
+          aspectRatio: req.body.aspectRatio || '9:16',
+          durationSeconds,
+          localPath: savedVideo.path,
+          asset: savedVideo,
+          cost: meigen.cost,
+          createdAt: new Date().toISOString(),
+          completedAt: new Date().toISOString()
+        };
+        if (!req.supabase && hasDatabase()) {
+          await updateLocalVideoJob(req, clientRequestId, {
+            status: 'completed',
+            metadata: {
+              localPath: savedVideo.path,
+              assetId: savedVideo.id,
+              cost: meigen.cost,
+              rawRequestId: meigen.id,
+              meigenSize: getMeigenSize(req.body.meigenSize || '480p')
+            }
+          });
+        }
+        return res.json({ success: true, job });
+      } catch (error) {
+        if (!req.supabase && hasDatabase()) {
+          await updateLocalVideoJob(req, clientRequestId, { status: 'failed', error: error.message });
+        }
+        throw error;
+      }
     }
 
     const imageName = imagePath ? await uploadInput(imagePath) : null;
@@ -579,6 +705,12 @@ router.post('/generate', upload.fields([
       videoName,
       audioName
     });
+    if (!req.supabase && hasDatabase()) {
+      await updateLocalVideoJob(req, clientRequestId, {
+        status: job.status,
+        metadata: { localJobId: job.jobId, comfyRequestId: job.requestId }
+      });
+    }
 
     if (req.supabase) {
       await req.supabase.from('ugc_video_jobs').insert({
