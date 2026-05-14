@@ -11,6 +11,7 @@ let assetsCache = { products: [], subjects: [], audio: [], outputs: [], videos: 
 let selectedCharacter = null;
 let currentCharacterTab = 'library';
 let currentCharacterRatio = 'portrait';
+let currentLibraryVideoRatio = 'portrait';
 let productPlacementCharacter = null;
 let productPlacementProduct = null;
 let productPlacementReferences = [];
@@ -863,6 +864,13 @@ function setCharacterRatio(ratio) {
   document.querySelectorAll('.character-grid').forEach(grid => grid.classList.toggle('landscape', ratio === 'landscape'));
 }
 
+function setLibraryVideoRatio(ratio) {
+  currentLibraryVideoRatio = ratio;
+  document.querySelectorAll('[data-video-ratio]').forEach(btn => btn.classList.toggle('active', btn.dataset.videoRatio === ratio));
+  const grid = document.getElementById('videoGrid');
+  if (grid) grid.classList.toggle('landscape', ratio === 'landscape');
+}
+
 function renderAgentLibrary() {
   const grid = document.getElementById('agentLibraryGrid');
   if (!grid) return;
@@ -1547,6 +1555,7 @@ async function loadVideos() {
   let studio = { jobs: [] };
   let assets = assetsCache;
   const grid = document.getElementById('videoGrid');
+  if (grid) grid.classList.toggle('landscape', currentLibraryVideoRatio === 'landscape');
   try { seedance = await api('/api/videos'); } catch (e) {}
   try { studio = await api('/api/studio/jobs'); } catch (e) {}
   try {
@@ -1596,11 +1605,9 @@ async function loadVideos() {
   grid.innerHTML = combined.map(v => {
     const statusChip = v.status === 'completed' ? '<span class="chip chip-green">Completed</span>' : v.status === 'failed' ? '<span class="chip chip-red">Failed</span>' : '<span class="chip chip-warn">Processing</span>';
     const mediaUrl = authenticatedMediaUrl(v.localPath || '');
-    const ratio = v.aspectRatio || v.aiContext?.aspectRatio || '9:16';
-    const ratioClass = ratio === '16:9' ? 'landscape' : ratio === '1:1' ? 'square' : '';
     const posterId = `poster-${String(v.requestId || v.jobId || Math.random()).replace(/[^a-zA-Z0-9_-]/g, '-')}`;
     const videoEl = mediaUrl
-      ? `<div class="video-thumb-wrap ${ratioClass}">
+      ? `<div class="video-thumb-wrap">
           <img class="video-poster" id="${posterId}" alt="Video preview">
           <video class="video-player" controls preload="metadata" muted playsinline onloadeddata="captureVideoPoster(this,'${posterId}')" onseeked="captureVideoPoster(this,'${posterId}')" onplay="markVideoPlaying(this,true)" onpause="markVideoPlaying(this,false)">
             <source src="${mediaUrl}" type="video/mp4">
