@@ -350,10 +350,12 @@ router.post('/generate', upload.fields([
       tenantId: req.tenant.slug || req.tenant.id,
       script: req.body.script || '',
       prompt: req.body.prompt || '',
-      negativePrompt: req.body.negativePrompt || '',
-      aspectRatio: req.body.aspectRatio || '16:9',
-      durationSeconds,
-      imageName,
+        negativePrompt: req.body.negativePrompt || '',
+        aspectRatio: req.body.aspectRatio || '16:9',
+        durationSeconds,
+        cropX: req.body.cropX || '',
+        cropY: req.body.cropY || '',
+        imageName,
       videoName,
       audioName
     });
@@ -375,6 +377,8 @@ router.post('/generate', upload.fields([
           localJobId: job.jobId,
           aspectRatio: req.body.aspectRatio || '16:9',
           durationSeconds,
+          cropX: req.body.cropX || null,
+          cropY: req.body.cropY || null,
           imageAssetId: req.body.imageAssetId || null,
           imageUrl: req.body.imageUrl || null
         }

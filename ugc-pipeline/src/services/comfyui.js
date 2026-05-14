@@ -122,6 +122,13 @@ function patchWorkflow(workflow, preset, input) {
     next['246'].inputs.value = size.height;
   }
 
+  const cropPosition = getCropPosition(input.cropX, input.cropY);
+  for (const nodeId of ['281', '230']) {
+    if (next[nodeId]?.inputs && typeof next[nodeId].inputs.crop_position !== 'undefined') {
+      next[nodeId].inputs.crop_position = cropPosition;
+    }
+  }
+
   const frameCount = getFrameCount(input.durationSeconds);
   if (frameCount && next['270']?.inputs && typeof next['270'].inputs.value !== 'undefined') {
     next['270'].inputs.value = frameCount;
@@ -148,6 +155,20 @@ function getFrameCount(durationSeconds, fps = 25) {
   const seconds = Number(durationSeconds);
   if (!Number.isFinite(seconds) || seconds <= 0) return null;
   return Math.ceil((Math.min(seconds, 300) + 0.2) * fps);
+}
+
+function getCropPosition(cropX = 50, cropY = 50) {
+  const x = Number(cropX);
+  const y = Number(cropY);
+  if (Number.isFinite(y)) {
+    if (y <= 25) return 'top';
+    if (y >= 75) return 'bottom';
+  }
+  if (Number.isFinite(x)) {
+    if (x <= 33) return 'left';
+    if (x >= 67) return 'right';
+  }
+  return 'center';
 }
 
 function getDefaultPrompt(mode) {
@@ -266,6 +287,8 @@ async function submitStudioJob(input) {
     prompt: input.prompt,
     aspectRatio: input.aspectRatio || '16:9',
     durationSeconds: input.durationSeconds || null,
+    cropX: input.cropX || null,
+    cropY: input.cropY || null,
     script: input.script,
     createdAt: new Date().toISOString(),
     completedAt: null,

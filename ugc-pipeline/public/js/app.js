@@ -12,6 +12,8 @@ let currentCharacterTab = 'library';
 let currentCharacterRatio = 'portrait';
 let productPlacementCharacter = null;
 let productPlacementProduct = null;
+let studioCrop = { x: 50, y: 50 };
+let cropDrag = null;
 
 const starterCharacters = [
   { slug: 'library-financial-advisor', name: 'Financial Advisor', role: 'Advisor specialist', imageUrl: '/agent-library/financial-advisor.png' },
@@ -44,6 +46,10 @@ document.addEventListener('change', (event) => {
     previewUploadedImage(event.target.files?.[0]);
   }
 });
+
+document.addEventListener('pointermove', handlePreviewDragMove);
+document.addEventListener('pointerup', endPreviewDrag);
+document.addEventListener('pointercancel', endPreviewDrag);
 
 function switchTab(tabId) {
   document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
@@ -357,8 +363,12 @@ function setPreviewImage(src, title = 'Selected character') {
   const frame = document.getElementById('studioPreview');
   if (!frame || !src) return;
   updatePreviewRatio();
+  resetStudioCrop();
   frame.classList.add('has-media');
   frame.innerHTML = `<img src="${src}" alt="${title}">`;
+  frame.onpointerdown = startPreviewDrag;
+  document.getElementById('cropHint').style.display = '';
+  applyStudioCrop();
 }
 
 function resetPreview() {
@@ -366,7 +376,58 @@ function resetPreview() {
   if (!frame) return;
   updatePreviewRatio();
   frame.classList.remove('has-media');
+  frame.classList.remove('dragging');
+  frame.onpointerdown = null;
+  resetStudioCrop();
+  document.getElementById('cropHint').style.display = 'none';
   frame.innerHTML = `<div><div style="font-size:34px;margin-bottom:10px">▶</div><strong id="previewTitle">Your video preview appears here</strong><p id="previewHint" style="font-size:13px;margin-top:6px;color:rgba(255,255,255,.45)">Select a character or upload an image to preview the frame.</p></div>`;
+}
+
+function resetStudioCrop() {
+  studioCrop = { x: 50, y: 50 };
+  applyStudioCrop();
+}
+
+function applyStudioCrop() {
+  const frame = document.getElementById('studioPreview');
+  if (frame) {
+    frame.style.setProperty('--crop-x', `${studioCrop.x}%`);
+    frame.style.setProperty('--crop-y', `${studioCrop.y}%`);
+  }
+  const cropX = document.getElementById('studioCropX');
+  const cropY = document.getElementById('studioCropY');
+  if (cropX) cropX.value = Math.round(studioCrop.x);
+  if (cropY) cropY.value = Math.round(studioCrop.y);
+}
+
+function startPreviewDrag(event) {
+  const frame = document.getElementById('studioPreview');
+  if (!frame?.classList.contains('has-media')) return;
+  cropDrag = {
+    startX: event.clientX,
+    startY: event.clientY,
+    cropX: studioCrop.x,
+    cropY: studioCrop.y
+  };
+  frame.classList.add('dragging');
+}
+
+function handlePreviewDragMove(event) {
+  if (!cropDrag) return;
+  const frame = document.getElementById('studioPreview');
+  if (!frame) return;
+  const rect = frame.getBoundingClientRect();
+  const deltaX = ((event.clientX - cropDrag.startX) / Math.max(rect.width, 1)) * 100;
+  const deltaY = ((event.clientY - cropDrag.startY) / Math.max(rect.height, 1)) * 100;
+  studioCrop.x = Math.max(0, Math.min(100, cropDrag.cropX - deltaX));
+  studioCrop.y = Math.max(0, Math.min(100, cropDrag.cropY - deltaY));
+  applyStudioCrop();
+}
+
+function endPreviewDrag() {
+  if (!cropDrag) return;
+  cropDrag = null;
+  document.getElementById('studioPreview')?.classList.remove('dragging');
 }
 
 function previewUploadedImage(file) {

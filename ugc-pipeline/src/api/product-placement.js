@@ -18,7 +18,7 @@ const upload = multer({
 
 function getConfig() {
   return {
-    endpointId: process.env.RUNPOD_NANO_BANANA_ENDPOINT_ID || process.env.NANO_BANANA_ENDPOINT_ID || 'google-nano-banana-2',
+    endpointId: process.env.RUNPOD_NANO_BANANA_ENDPOINT_ID || process.env.NANO_BANANA_ENDPOINT_ID || 'google-nano-banana-2-edit',
     endpointUrl: process.env.RUNPOD_NANO_BANANA_ENDPOINT_URL || process.env.NANO_BANANA_ENDPOINT_URL || '',
     apiKey: process.env.RUNPOD_NANO_BANANA_API_KEY || process.env.RUNPOD_API_KEY || '',
     timeoutMs: Number(process.env.NANO_BANANA_TIMEOUT_MS || 180000)
@@ -72,6 +72,7 @@ function normalizeRunPodResult(data) {
     output?.image ||
     output?.image_url ||
     output?.url ||
+    (typeof output?.result === 'string' ? output.result : '') ||
     output?.images?.[0] ||
     output?.result?.image ||
     output?.result?.url ||
