@@ -43,6 +43,7 @@ async function fileToDataUri(filePath, fallbackMime = 'application/octet-stream'
 }
 
 async function resolveInput({ url, filePath, preferBase64 = false, fallbackMime }) {
+  if (/^data:/i.test(url || '')) return { url: '', dataUri: url };
   if (/^https?:\/\//i.test(url || '')) return { url, dataUri: '' };
   if (!filePath) return { url: '', dataUri: '' };
   if (preferBase64) return { url: '', dataUri: await fileToDataUri(filePath, fallbackMime) };
@@ -170,7 +171,7 @@ async function createWan22Video({ imagePath, imageUrl, prompt, negativePrompt, a
 async function createWanAnimateVideo({ imagePath, imageUrl, videoPath, videoUrl, prompt, negativePrompt, aspectRatio, outputDir, seed, fps, cfg, steps }) {
   const config = getRunpodVideoConfig('WAN_ANIMATE');
   const image = await resolveInput({ url: imageUrl, filePath: imagePath, preferBase64: true, fallbackMime: 'image/png' });
-  const video = await resolveInput({ url: videoUrl, filePath: videoPath, preferBase64: true, fallbackMime: 'video/mp4' });
+  const video = await resolveInput({ url: videoUrl, filePath: videoPath, preferBase64: false, fallbackMime: 'video/mp4' });
   if (!image.url && !image.dataUri) throw new Error('Wan Animate needs a character image.');
   if (!video.url && !video.dataUri) throw new Error('Wan Animate needs a reference video.');
   const dims = dimensionsForAspect(aspectRatio, 'wan-animate');

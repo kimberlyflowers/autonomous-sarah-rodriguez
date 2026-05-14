@@ -19,6 +19,7 @@ const { getAssetFile, hasDatabase, initUgcStore, query } = require('../services/
 const { CHATTERBOX_VOICES, createChatterboxAudio, getChatterboxConfig } = require('../services/chatterbox');
 const { createMeigenVideo, getMeigenConfig } = require('../services/meigen');
 const { createWan22Video, createWanAnimateVideo, getRunpodVideoConfig } = require('../services/runpodVideo');
+const { downloadSourceVideo, getRunpodToolConfig } = require('../services/runpodTools');
 
 const router = express.Router();
 const UPLOAD_DIR = path.join(__dirname, '..', '..', 'assets', 'studio-uploads');
@@ -81,6 +82,26 @@ async function downloadTempFile(url, tenantId, filename) {
     dest.on('error', reject);
   });
   return outputPath;
+}
+
+function isDirectVideoUrl(value = '') {
+  return /^https?:\/\/.+\.(mp4|mov|m4v|webm)(?:[?#].*)?$/i.test(String(value));
+}
+
+async function prepareReferenceVideoUrl(sourceUrl, maxDuration = 180) {
+  const url = String(sourceUrl || '').trim();
+  if (!url) return '';
+  if (/^data:video\//i.test(url) || isDirectVideoUrl(url)) return url;
+
+  const downloaderConfig = getRunpodToolConfig('DOWNLOADER');
+  const downloaderReady = !!downloaderConfig.apiKey && !!(downloaderConfig.endpointId || downloaderConfig.endpointUrl);
+  if (!downloaderReady) return url;
+
+  const downloaded = await downloadSourceVideo(url, {
+    audioOnly: false,
+    maxDuration: Number(maxDuration || 180)
+  });
+  return downloaded.url;
 }
 
 async function writeDatabaseAssetTemp(req, assetId, type) {
@@ -376,6 +397,20 @@ router.get('/status', async (req, res) => {
         label: 'Wan Animate motion remix',
         available: !!getRunpodVideoConfig('WAN_ANIMATE').apiKey && !!(getRunpodVideoConfig('WAN_ANIMATE').endpointId || getRunpodVideoConfig('WAN_ANIMATE').endpointUrl),
         note: 'RunPod serverless character image + reference video motion transfer.'
+      }
+    ],
+    remixTools: [
+      {
+        id: 'faster-whisper',
+        label: 'Faster Whisper transcription',
+        available: !!getRunpodToolConfig('FASTER_WHISPER').apiKey && !!(getRunpodToolConfig('FASTER_WHISPER').endpointId || getRunpodToolConfig('FASTER_WHISPER').endpointUrl),
+        note: 'Extracts scripts from source audio/video for remix drafts.'
+      },
+      {
+        id: 'downloader',
+        label: 'Source video downloader',
+        available: !!getRunpodToolConfig('DOWNLOADER').apiKey && !!(getRunpodToolConfig('DOWNLOADER').endpointId || getRunpodToolConfig('DOWNLOADER').endpointUrl),
+        note: 'Turns Instagram/TikTok/YouTube links into media files for transcription and motion remix.'
       }
     ]
   });
@@ -696,7 +731,10 @@ router.post('/generate', upload.fields([
     if (videoEngine === 'wan-animate') {
       try {
         const referenceVideoPath = files.referenceVideo?.[0]?.path || files.video?.[0]?.path || null;
-        const referenceVideoUrl = req.body.referenceVideoUrl || req.body.remixSourceUrl || '';
+        const referenceVideoUrl = await prepareReferenceVideoUrl(
+          req.body.referenceVideoUrl || req.body.remixSourceUrl || '',
+          req.body.referenceMaxDuration || req.body.durationSeconds || 180
+        );
         if (!referenceVideoPath && !referenceVideoUrl) {
           return res.status(400).json({ error: 'Wan Animate needs a source/reference video to mimic.' });
         }
