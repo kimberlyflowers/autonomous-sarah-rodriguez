@@ -30,6 +30,14 @@ function instagramMediaUrl(sourceUrl = '') {
   }
 }
 
+function withTimeout(promise, ms, label) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${Math.round(ms / 1000)}s.`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 router.get('/', (req, res) => {
   const q = String(req.query.q || '').trim().toLowerCase();
   const industry = String(req.query.industry || '').trim();
@@ -105,7 +113,11 @@ router.post('/extract-script', async (req, res) => {
     const downloaderConfigured = getRunpodToolConfig('DOWNLOADER').apiKey && (getRunpodToolConfig('DOWNLOADER').endpointId || getRunpodToolConfig('DOWNLOADER').endpointUrl);
 
     if (preferLocalDownloader) {
-      download = await downloadWithYtDlp(sourceUrl, { audioOnly: true, maxDuration, timeoutMs: downloadTimeoutMs });
+      download = await withTimeout(
+        downloadWithYtDlp(sourceUrl, { audioOnly: true, maxDuration, timeoutMs: downloadTimeoutMs }),
+        downloadTimeoutMs + 5000,
+        'Source download'
+      );
       mediaUrl = download.url;
     } else if (downloaderConfigured) {
       download = await downloadSourceVideo(sourceUrl, { audioOnly: true, maxDuration });
