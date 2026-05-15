@@ -101,10 +101,11 @@ router.post('/extract-script', async (req, res) => {
     let download = null;
     const preferLocalDownloader = String(process.env.USE_LOCAL_DOWNLOADER || 'true') !== 'false';
     const maxDuration = Number(req.body.maxDuration || 180);
+    const downloadTimeoutMs = Number(req.body.downloadTimeoutMs || process.env.LOCAL_DOWNLOADER_TIMEOUT_MS || 120000);
     const downloaderConfigured = getRunpodToolConfig('DOWNLOADER').apiKey && (getRunpodToolConfig('DOWNLOADER').endpointId || getRunpodToolConfig('DOWNLOADER').endpointUrl);
 
     if (preferLocalDownloader) {
-      download = await downloadWithYtDlp(sourceUrl, { audioOnly: true, maxDuration });
+      download = await downloadWithYtDlp(sourceUrl, { audioOnly: true, maxDuration, timeoutMs: downloadTimeoutMs });
       mediaUrl = download.url;
     } else if (downloaderConfigured) {
       download = await downloadSourceVideo(sourceUrl, { audioOnly: true, maxDuration });

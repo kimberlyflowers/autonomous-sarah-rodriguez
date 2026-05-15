@@ -18,6 +18,12 @@ async function downloadWithYtDlp(sourceUrl, options = {}) {
     const outputTemplate = path.join(tempDir, 'source.%(ext)s');
     const args = [
       '--no-playlist',
+      '--socket-timeout',
+      String(options.socketTimeout || 20),
+      '--retries',
+      String(options.retries || 2),
+      '--fragment-retries',
+      String(options.fragmentRetries || 2),
       '--max-filesize',
       String(options.maxFilesize || '500M'),
       '--download-sections',
