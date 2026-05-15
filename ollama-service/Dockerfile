@@ -19,6 +19,6 @@ RUN chmod +x /start.sh
 EXPOSE 11434
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=300s --retries=5 \
-  CMD curl -sf http://localhost:11434/api/tags || exit 1
+      CMD curl -sf http://127.0.0.1:11434/api/tags || exit 1
 
 CMD ["/start.sh"]
