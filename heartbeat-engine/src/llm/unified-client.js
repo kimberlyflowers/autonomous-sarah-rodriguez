@@ -350,6 +350,7 @@ export class UnifiedLLMClient {
     this._failoverActive = false;
     this._isFailingOver = false; // Guard against recursive failover
     this._originalProvider = null;
+    this._lastSuccessfulProvider = null; // sticky: remember what worked last
 
     // Log Ollama availability on startup
     const ollamaUrl = process.env.OLLAMA_URL;
@@ -518,8 +519,18 @@ export class UnifiedLLMClient {
     const origProvider = this._currentProvider;
 
     try {
+      // Sticky provider: if a fallback worked last time, try it first
+      const stickyProvider = this._lastSuccessfulProvider;
+      const orderedChain = stickyProvider
+        ? [
+            ...FAILOVER_CHAIN.filter(f => f.provider === stickyProvider),
+            ...FAILOVER_CHAIN.filter(f => f.provider !== stickyProvider),
+          ]
+        : FAILOVER_CHAIN;
+      if (stickyProvider) logger.info(`Sticky provider: trying ${stickyProvider} first (worked last time)`);
+
       let attemptIndex = 0;
-      for (const fallback of FAILOVER_CHAIN) {
+      for (const fallback of orderedChain) {
         if (fallback.provider === failedProvider && fallback.model === origModel) continue;
         if (!hasApiKey(fallback.provider)) continue;
 
@@ -551,6 +562,7 @@ export class UnifiedLLMClient {
           }
 
           logger.info(`Failover to ${fallback.provider} succeeded${isFree ? ' (FREE — $0 cost)' : ''}`);
+          this._lastSuccessfulProvider = fallback.provider; // sticky: remember this worked
           // Restore original after success
           this._currentModel = origModel;
           this._currentProvider = origProvider;
