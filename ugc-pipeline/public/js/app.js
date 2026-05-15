@@ -30,6 +30,8 @@ let productPlacementReferences = [];
 let productPlacementRequest = null;
 let productPlacementTimedOut = false;
 let latestProductPlacementImage = '';
+let latestBuiltAgentImage = '';
+let currentAgentBuildPreviewRatio = 'portrait';
 let studioCrop = { x: 50, y: 50 };
 let cropDrag = null;
 let previewAudioAsset = null;
@@ -892,8 +894,45 @@ function renderFlowStatus(selected) {
   return `<div class="create-flow-status-row">${(statusSets[selected] || statusSets.shorts).join('')}</div>`;
 }
 
+function setCreateTool(tool = 'video') {
+  const selected = tool || 'video';
+  const studioTab = document.getElementById('tab-studio');
+  studioTab?.classList.toggle('create-tool-audio', selected === 'audio');
+  document.querySelectorAll('[data-create-tool]').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.createTool === selected);
+  });
+
+  const title = document.querySelector('#tab-studio .panel-title');
+  const note = document.querySelector('#tab-studio .panel-note');
+  if (selected === 'audio') {
+    if (title) title.textContent = 'Create voice-over';
+    if (note) note.textContent = 'Write or paste a script, choose Chatterbox or ElevenLabs v3, preview it, then save the approved audio.';
+    const scriptLabel = document.getElementById('studioScriptLabel');
+    const script = document.getElementById('studioScript');
+    if (scriptLabel) scriptLabel.textContent = 'Voiceover script';
+    if (script) script.placeholder = 'Paste the exact narration script for Chatterbox or ElevenLabs v3.';
+    setAudioPreviewMode();
+    setStudioMode('audio');
+    setStudioAudio(document.getElementById('studioAudioProvider')?.value || 'chatterbox', { preserveToast: true });
+    return;
+  }
+
+  if (title) title.textContent = 'Create video';
+  if (note) note.textContent = 'Choose a video type, load a character, add voice, then generate.';
+  const scriptLabel = document.getElementById('studioScriptLabel');
+  const script = document.getElementById('studioScript');
+  if (scriptLabel) scriptLabel.textContent = 'Script or notes';
+  if (script) script.placeholder = 'Paste the narration script here so the job record keeps the creative direction with the video.';
+  resetPreview();
+  setCreateType(document.getElementById('studioCreateType')?.value || 'shorts');
+}
+
 function setCreateType(type, options = {}) {
   const selected = type || 'shorts';
+  document.getElementById('tab-studio')?.classList.remove('create-tool-audio');
+  document.querySelectorAll('[data-create-tool]').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.createTool === 'video');
+  });
   const flows = {
     shorts: {
       title: 'Shorts workflow',
@@ -1117,6 +1156,7 @@ function setPreviewImage(src, title = 'Selected character') {
   const displaySrc = authenticatedMediaUrl(src);
   updatePreviewRatio();
   resetStudioCrop();
+  frame.classList.remove('audio-preview-mode');
   frame.classList.add('has-media');
   frame.innerHTML = `<img src="${displaySrc}" alt="${title}">`;
   frame.onpointerdown = startPreviewDrag;
@@ -1129,7 +1169,7 @@ function setPreviewVideo(src, title = 'Selected video') {
   if (!frame || !src) return;
   updatePreviewRatio();
   frame.classList.add('has-media');
-  frame.classList.remove('dragging');
+  frame.classList.remove('dragging', 'audio-preview-mode');
   frame.onpointerdown = null;
   frame.innerHTML = `<video src="${src}" controls muted playsinline aria-label="${title}"></video>`;
   document.getElementById('cropHint').style.display = 'none';
@@ -1140,11 +1180,21 @@ function resetPreview() {
   if (!frame) return;
   updatePreviewRatio();
   frame.classList.remove('has-media');
-  frame.classList.remove('dragging');
+  frame.classList.remove('dragging', 'audio-preview-mode');
   frame.onpointerdown = null;
   resetStudioCrop();
   document.getElementById('cropHint').style.display = 'none';
   frame.innerHTML = `<div><div style="font-size:34px;margin-bottom:10px">▶</div><strong id="previewTitle">Your video preview appears here</strong><p id="previewHint" style="font-size:13px;margin-top:6px;color:rgba(255,255,255,.45)">Select a character or upload an image to preview the frame.</p></div>`;
+}
+
+function setAudioPreviewMode() {
+  const frame = document.getElementById('studioPreview');
+  if (!frame) return;
+  frame.classList.remove('has-media', 'dragging', 'ratio-landscape', 'ratio-square');
+  frame.classList.add('audio-preview-mode');
+  frame.onpointerdown = null;
+  document.getElementById('cropHint').style.display = 'none';
+  frame.innerHTML = `<div><strong id="previewTitle">Audio preview appears here</strong><p id="previewHint" style="font-size:13px;margin-top:6px;color:rgba(255,255,255,.45)">Generate from script with Chatterbox or ElevenLabs v3, then play it here.</p></div>`;
 }
 
 function resetStudioCrop() {
@@ -1948,6 +1998,202 @@ function handleFileSelect(input) {
   document.getElementById('uploadFileName').textContent = files.length > 1
     ? `${files.length} files selected`
     : files[0]?.name || '';
+}
+
+function showAgentModal() {
+  const modal = document.getElementById('agentModal');
+  if (!modal) return showUploadModal('subjects');
+  document.getElementById('agentUploadName').value = '';
+  document.getElementById('agentUploadFile').value = '';
+  document.getElementById('agentUploadFileName').textContent = '';
+  document.getElementById('agentUploadVoiceId').value = '';
+  document.getElementById('agentBuildName').value = '';
+  document.getElementById('agentBuildGender').value = 'woman';
+  document.getElementById('agentBuildEthnicity').value = 'Black';
+  document.getElementById('agentBuildAge').value = '30s';
+  document.querySelector('input[name="agentBuildBody"][value="average build"]').checked = true;
+  document.getElementById('agentBuildLook').value = '';
+  document.getElementById('agentBuildBackground').value = '';
+  document.getElementById('agentBuildDetails').value = '';
+  latestBuiltAgentImage = '';
+  currentAgentBuildPreviewRatio = 'portrait';
+  const sampleSelect = document.getElementById('agentUploadVoiceSampleAssetId');
+  if (sampleSelect) {
+    sampleSelect.innerHTML = '<option value="">None</option>' + (assetsCache.audio || []).map(a => `<option value="${a.slug}">${escapeHtml(a.name)}</option>`).join('');
+    sampleSelect.value = '';
+  }
+  resetAgentUploadPreview();
+  resetAgentBuildPreview();
+  setAgentModalMode('upload');
+  modal.classList.add('active');
+}
+
+function closeAgentModal() {
+  document.getElementById('agentModal')?.classList.remove('active');
+}
+
+function setAgentModalMode(mode) {
+  document.querySelectorAll('[data-agent-mode]').forEach(tab => tab.classList.toggle('active', tab.dataset.agentMode === mode));
+  document.getElementById('agentPaneUpload')?.classList.toggle('active', mode === 'upload');
+  document.getElementById('agentPaneBuild')?.classList.toggle('active', mode === 'build');
+}
+
+function resetAgentUploadPreview() {
+  const preview = document.getElementById('agentUploadPreview');
+  if (!preview) return;
+  preview.innerHTML = `<div>
+    <div class="agent-builder-icon"><svg viewBox="0 0 24 24"><path d="M5 5h14v14H5z"/><path d="m8 16 3-4 2 2 2-3 2 5H8Z"/><circle cx="9" cy="9" r="1.4"/></svg></div>
+    <strong>Portrait preview</strong>
+    <p>Your uploaded agent image appears here before saving.</p>
+  </div>`;
+}
+
+function resetAgentBuildPreview() {
+  const preview = document.getElementById('agentBuildPreview');
+  if (!preview) return;
+  setAgentBuildPreviewRatio(currentAgentBuildPreviewRatio || 'portrait');
+  preview.innerHTML = `<div class="agent-preview-placeholder">
+    <div>
+      <div class="agent-builder-icon"><svg viewBox="0 0 24 24"><path d="M12 3 14 8l5 2-5 2-2 5-2-5-5-2 5-2 2-5Z"/><path d="m18 15 1 2 2 1-2 1-1 2-1-2-2-1 2-1 1-2Z"/></svg></div>
+      <strong>${currentAgentBuildPreviewRatio === 'landscape' ? '16:9 source preview' : '9:16 crop preview'}</strong>
+      <p>Generate a centered 16:9 source image, then check the shorts crop.</p>
+    </div>
+  </div>`;
+  document.getElementById('agentBuildProgress')?.classList.remove('active');
+  document.getElementById('agentBuildResultActions')?.classList.remove('active');
+}
+
+function setAgentBuildPreviewRatio(ratio) {
+  currentAgentBuildPreviewRatio = ratio === 'landscape' ? 'landscape' : 'portrait';
+  document.querySelectorAll('[data-agent-preview-ratio]').forEach(tab => {
+    tab.classList.toggle('active', tab.dataset.agentPreviewRatio === currentAgentBuildPreviewRatio);
+  });
+  const preview = document.getElementById('agentBuildPreview');
+  if (!preview) return;
+  preview.classList.toggle('agent-preview-landscape', currentAgentBuildPreviewRatio === 'landscape');
+  preview.classList.toggle('agent-preview-portrait', currentAgentBuildPreviewRatio !== 'landscape');
+}
+
+function handleAgentUploadFile(input) {
+  const file = input.files?.[0];
+  document.getElementById('agentUploadFileName').textContent = file?.name || '';
+  if (!file) return resetAgentUploadPreview();
+  const url = URL.createObjectURL(file);
+  document.getElementById('agentUploadPreview').innerHTML = `<img src="${url}" alt="Agent upload preview">`;
+}
+
+async function uploadAgentFromModal(event) {
+  event.preventDefault();
+  if (window.location.protocol === 'file:') {
+    return toast('Open the live app URL before uploading. Files cannot persist from a file:// preview.', 'error');
+  }
+  const file = document.getElementById('agentUploadFile').files?.[0];
+  if (!file) return toast('Choose a character image first.', 'error');
+  const button = document.getElementById('agentUploadButton');
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Uploading...';
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('name', document.getElementById('agentUploadName').value.trim() || file.name.replace(/\.[^.]+$/, ''));
+    formData.append('voiceId', document.getElementById('agentUploadVoiceId').value.trim());
+    formData.append('voiceSampleAssetId', document.getElementById('agentUploadVoiceSampleAssetId').value);
+    await api('/api/assets/subjects', { method: 'POST', body: formData });
+    toast('Agent uploaded to My agents.', 'success');
+    closeAgentModal();
+    await loadAssets();
+    switchTab('characters');
+    setCharacterTab('mine');
+  } catch (error) {
+    toast(error.message, 'error');
+  } finally {
+    button.disabled = false;
+    button.textContent = original;
+  }
+}
+
+function getAgentBuildBody() {
+  return document.querySelector('input[name="agentBuildBody"]:checked')?.value || 'average build';
+}
+
+function buildAgentImagePrompt() {
+  const gender = document.getElementById('agentBuildGender').value;
+  const ethnicity = document.getElementById('agentBuildEthnicity').value;
+  const age = document.getElementById('agentBuildAge').value;
+  const body = getAgentBuildBody();
+  const look = document.getElementById('agentBuildLook').value.trim() || 'friendly polished creator, natural expression, modern professional outfit';
+  const background = document.getElementById('agentBuildBackground').value.trim() || 'modern creator studio with warm subtle lighting';
+  const details = document.getElementById('agentBuildDetails').value.trim();
+  return [
+    `Create a realistic 16:9 source portrait for a UGC video agent.`,
+    `Subject: ${ethnicity} ${gender}, approximate age ${age}, ${body}.`,
+    `Look: ${look}.`,
+    `Background: ${background}.`,
+    `Frame mid-chest up, subject centered with enough room for a clean 9:16 center crop, direct eye contact, natural hands if visible, premium creator lighting, subtle Bloom brand warmth with soft orange-pink accents.`,
+    `No text, no watermark, no distorted fingers, no exaggerated beauty filter, no cartoon style.`,
+    details ? `Additional details: ${details}.` : ''
+  ].filter(Boolean).join(' ');
+}
+
+async function generateBuiltAgent() {
+  const button = document.getElementById('agentBuildButton');
+  const progress = document.getElementById('agentBuildProgress');
+  const preview = document.getElementById('agentBuildPreview');
+  const actions = document.getElementById('agentBuildResultActions');
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Generating...';
+  progress?.classList.add('active');
+  actions?.classList.remove('active');
+  setAgentBuildPreviewRatio(currentAgentBuildPreviewRatio || 'portrait');
+  preview.innerHTML = '<div class="cooking-state"><div class="cooking-orb"></div><strong>Building character</strong><p class="hint">Creating a centered 16:9 source image.</p></div>';
+  try {
+    const data = new FormData();
+    data.append('prompt', buildAgentImagePrompt());
+    data.append('aspectRatio', '16:9');
+    data.append('size', '1k');
+    const response = await api('/api/product-placement/generate', { method: 'POST', body: data });
+    const image = response.result?.image;
+    if (!image) throw new Error('The image endpoint completed but did not return an image.');
+    latestBuiltAgentImage = image;
+    setAgentBuildPreviewRatio(currentAgentBuildPreviewRatio || 'portrait');
+    preview.innerHTML = `<img src="${image}" alt="Generated agent preview">`;
+    actions?.classList.add('active');
+    toast('Agent preview generated.', 'success');
+  } catch (error) {
+    resetAgentBuildPreview();
+    toast(error.message, 'error');
+  } finally {
+    progress?.classList.remove('active');
+    button.disabled = false;
+    button.textContent = original;
+  }
+}
+
+async function saveBuiltAgent() {
+  if (!latestBuiltAgentImage) return toast('Generate a character preview first.', 'error');
+  const name = document.getElementById('agentBuildName').value.trim() || 'Generated agent';
+  const button = document.querySelector('#agentBuildResultActions .btn-primary');
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Adding...';
+  try {
+    await api('/api/assets/subjects/from-image-url', {
+      method: 'POST',
+      body: JSON.stringify({ imageUrl: latestBuiltAgentImage, name })
+    });
+    toast('Generated character added to My agents.', 'success');
+    closeAgentModal();
+    await loadAssets();
+    switchTab('characters');
+    setCharacterTab('mine');
+  } catch (error) {
+    toast(`Could not add character: ${error.message}`, 'error');
+  } finally {
+    button.disabled = false;
+    button.textContent = original;
+  }
 }
 
 async function uploadAsset(e) {
