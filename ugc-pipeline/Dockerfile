@@ -2,6 +2,14 @@ FROM node:20-slim
 
 WORKDIR /app
 
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates ffmpeg python3 python3-venv \
+  && python3 -m venv /opt/yt-dlp \
+  && /opt/yt-dlp/bin/pip install --no-cache-dir yt-dlp \
+  && rm -rf /var/lib/apt/lists/*
+
+ENV PATH="/opt/yt-dlp/bin:${PATH}"
+
 COPY package*.json ./
 RUN npm ci --omit=dev
 

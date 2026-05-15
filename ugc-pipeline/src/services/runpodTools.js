@@ -91,15 +91,23 @@ async function downloadSourceVideo(url, options = {}) {
 }
 
 async function transcribeAudio(audioUrl, options = {}) {
-  const data = await runServerlessTool('FASTER_WHISPER', {
-    audio: audioUrl,
+  const input = {
     model: options.model || 'turbo',
     transcription: options.transcription || 'plain_text',
     translate: !!options.translate,
     language: options.language || null,
     enable_vad: options.enableVad ?? true,
     word_timestamps: !!options.wordTimestamps
-  }, 'Faster Whisper');
+  };
+
+  const dataUrlMatch = String(audioUrl || '').match(/^data:audio\/[^;]+;base64,(.+)$/);
+  if (dataUrlMatch) {
+    input.audio_base64 = dataUrlMatch[1];
+  } else {
+    input.audio = audioUrl;
+  }
+
+  const data = await runServerlessTool('FASTER_WHISPER', input, 'Faster Whisper');
   const output = getOutput(data);
   const text = output.transcription || output.text || output.formatted_text || output.result || '';
   if (!text) throw new Error(`Faster Whisper completed but did not return transcription text. Raw output: ${JSON.stringify(output).slice(0, 400)}`);

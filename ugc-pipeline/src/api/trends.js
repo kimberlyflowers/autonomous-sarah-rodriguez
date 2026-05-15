@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const fetch = require('node-fetch');
 const { downloadSourceVideo, getRunpodToolConfig, transcribeAudio } = require('../services/runpodTools');
+const { downloadWithYtDlp } = require('../services/localDownloader');
 
 const router = express.Router();
 const TRENDS_PATH = path.join(__dirname, '..', '..', 'data', 'viral-hooks.json');
@@ -98,8 +99,15 @@ router.post('/extract-script', async (req, res) => {
 
     let mediaUrl = sourceUrl;
     let download = null;
-    if (getRunpodToolConfig('DOWNLOADER').apiKey && (getRunpodToolConfig('DOWNLOADER').endpointId || getRunpodToolConfig('DOWNLOADER').endpointUrl)) {
-      download = await downloadSourceVideo(sourceUrl, { audioOnly: true, maxDuration: Number(req.body.maxDuration || 180) });
+    const preferLocalDownloader = String(process.env.USE_LOCAL_DOWNLOADER || 'true') !== 'false';
+    const maxDuration = Number(req.body.maxDuration || 180);
+    const downloaderConfigured = getRunpodToolConfig('DOWNLOADER').apiKey && (getRunpodToolConfig('DOWNLOADER').endpointId || getRunpodToolConfig('DOWNLOADER').endpointUrl);
+
+    if (preferLocalDownloader) {
+      download = await downloadWithYtDlp(sourceUrl, { audioOnly: true, maxDuration });
+      mediaUrl = download.url;
+    } else if (downloaderConfigured) {
+      download = await downloadSourceVideo(sourceUrl, { audioOnly: true, maxDuration });
       mediaUrl = download.url;
     }
 
