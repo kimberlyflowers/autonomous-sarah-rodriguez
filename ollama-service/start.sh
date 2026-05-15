@@ -1,8 +1,7 @@
 #!/bin/bash
 # BLOOM Ollama Startup Script
 # Model is pre-baked into the image during docker build.
-# This script just starts Ollama and waits for it to be ready.
-
+Fix start.sh: use 127.0.0.1 not localhost, increase MAX_RETRIES to 120
 echo "BLOOM Ollama Service — FREE LLM Fallback"
 echo "Starting Ollama server..."
 
@@ -12,9 +11,9 @@ SERVER_PID=$!
 
 # Wait for server to be ready (up to 30 seconds)
 echo "Waiting for Ollama server to start..."
-MAX_RETRIES=30
+MAX_RETRIES=120
 RETRY_COUNT=0
-while ! curl -sf http://localhost:11434/api/tags > /dev/null 2>&1; do
+while ! curl -sf http://127.0.0.1:11434/api/tags > /dev/null 2>&1; do
   RETRY_COUNT=$((RETRY_COUNT + 1))
   if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
     echo "ERROR: Ollama server failed to start after ${MAX_RETRIES} seconds"
