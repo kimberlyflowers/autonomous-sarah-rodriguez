@@ -186,6 +186,119 @@ body[data-theme="light"] #tab-studio .actions .btn-secondary{background:#fff;col
 @media(max-width:620px){#tab-studio .create-tool-grid,#tab-studio .create-lanes,#tab-studio .create-flow-steps{grid-template-columns:1fr}.creator-panel-head{grid-template-columns:34px 1fr}.creator-help{display:none}}
 .agent-modal{max-height:92vh}.agent-modal-body{height:min(680px,calc(92vh - 78px));min-height:0}.agent-pane{min-height:0}.agent-pane .modal-actions{position:sticky;bottom:-20px;background:linear-gradient(180deg,rgba(21,22,22,0),#151616 34%);padding-top:18px;padding-bottom:2px}.agent-builder-card{animation:agentSlide .2s ease-out}.agent-modal-tab{transition:border-color .16s,background .16s,transform .16s}.agent-modal-tab:hover{transform:translateY(-1px)}#agentBuildLook,#agentBuildDetails{min-height:78px}body[data-theme="light"] .agent-pane .modal-actions{background:linear-gradient(180deg,rgba(255,255,255,0),#fff 34%)}@keyframes agentSlide{from{opacity:.72;transform:translateY(5px)}to{opacity:1;transform:none}}
 .agent-build-grid{grid-template-columns:minmax(0,1fr) 360px}.agent-build-preview-shell{display:flex;flex-direction:column;align-items:center}.agent-build-preview-shell .ratio-tabs{width:100%;margin-bottom:12px}.agent-build-preview-shell .ratio-tab{flex:1}.agent-builder-card.preview-card-large{display:flex;flex-direction:column}.agent-builder-hero.agent-preview-landscape{aspect-ratio:16/9;min-height:0;width:100%;max-height:none}.agent-builder-hero.agent-preview-portrait{aspect-ratio:9/16;min-height:0;max-height:540px;width:min(100%,320px);margin:0 auto}.agent-builder-hero.agent-preview-landscape img,.agent-builder-hero.agent-preview-portrait img{width:100%;height:100%;object-fit:cover;object-position:center}.agent-builder-hero.agent-preview-landscape .agent-preview-placeholder,.agent-builder-hero.agent-preview-portrait .agent-preview-placeholder{width:100%;height:100%;display:grid;place-items:center;padding:18px}
+/* Video subfolders: make Video behave like a real nested workflow, not a flat settings pile. */
+#tab-studio[data-create-tool="video"] .create-folder-label{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:16px 0 10px}
+#tab-studio[data-create-tool="video"] .create-lanes{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:12px}
+#tab-studio[data-create-tool="video"] .create-lane{display:block;min-height:176px;padding:0;overflow:hidden;border-radius:18px;background:#151616;border-color:#2a2d2d;box-shadow:none;transition:transform .16s,border-color .16s,box-shadow .16s}
+#tab-studio[data-create-tool="video"] .create-lane:hover{transform:translateY(-2px);border-color:rgba(244,162,97,.55);box-shadow:0 16px 34px rgba(0,0,0,.18)}
+#tab-studio[data-create-tool="video"] .create-lane.active{border-color:var(--primary);box-shadow:0 0 0 1px rgba(244,162,97,.24),0 18px 42px rgba(231,111,139,.12)}
+#tab-studio[data-create-tool="video"] .create-lane-preview{display:block;height:104px;position:relative;background:linear-gradient(145deg,#161919,#282c2c);overflow:hidden}
+#tab-studio[data-create-tool="video"] .create-lane-preview:before{content:"";position:absolute;inset:10px;border-radius:18px;background:radial-gradient(circle at 28% 18%,rgba(244,162,97,.78),transparent 32%),radial-gradient(circle at 76% 26%,rgba(231,111,139,.58),transparent 30%),linear-gradient(145deg,#202525,#0e0f0f);filter:none;opacity:1}
+#tab-studio[data-create-tool="video"] .create-lane-preview:after{display:none}
+#tab-studio[data-create-tool="video"] .create-lane-preview span{position:absolute;top:10px;right:10px;border-radius:999px;background:rgba(255,255,255,.88);color:#9d592c;padding:4px 8px;font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.03em}
+#tab-studio[data-create-tool="video"] .lane-device{position:absolute;left:22px;bottom:12px;border-radius:12px;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.24);box-shadow:0 16px 32px rgba(0,0,0,.22)}
+#tab-studio[data-create-tool="video"] .lane-device-phone{width:42px;height:70px}
+#tab-studio[data-create-tool="video"] .lane-device-remix{width:76px;height:50px;transform:rotate(-4deg)}
+#tab-studio[data-create-tool="video"] .lane-device-wide{width:88px;height:48px}
+#tab-studio[data-create-tool="video"] .lane-device-webinar{width:92px;height:52px}
+#tab-studio[data-create-tool="video"] .lane-device-course{width:74px;height:58px}
+#tab-studio[data-create-tool="video"] .create-lane-body{display:grid;grid-template-columns:38px 1fr;gap:10px;align-items:center;padding:12px!important;background:#1b1d1d!important}
+#tab-studio[data-create-tool="video"] .create-lane.active .create-lane-body{background:linear-gradient(180deg,rgba(244,162,97,.18),rgba(231,111,139,.08)),#1b1d1d!important}
+#tab-studio[data-create-tool="video"] .create-lane-icon{width:38px;height:38px;border-radius:12px;background:#272a2a;color:var(--primary);display:grid;place-items:center}
+#tab-studio[data-create-tool="video"] .create-lane.active .create-lane-icon{background:var(--grad);color:#fff}
+#tab-studio[data-create-tool="video"] .create-flow-panel{position:relative;background:#111313;border-color:#292d2d;border-radius:18px;padding:15px;margin:12px 0 12px}
+#tab-studio[data-create-tool="video"] .create-flow-panel:before{content:"Selected workflow";display:block;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--primary);font-weight:900;margin-bottom:8px}
+#tab-studio[data-create-tool="video"] .create-flow-title{font-size:16px}
+#tab-studio[data-create-tool="video"] .create-flow-desc{display:block;font-size:12px;color:#8b9292;margin-top:3px}
+#tab-studio[data-create-tool="video"] .create-flow-steps{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+#tab-studio[data-create-tool="video"] .step-row{background:#111313;border:1px solid #292d2d;border-radius:16px;padding:8px;margin:0 0 10px}
+#tab-studio[data-create-tool="video"] .choice{background:#1b1d1d;border-color:#292d2d}
+#tab-studio[data-create-tool="video"] form{border:1px solid #292d2d;background:#111313;border-radius:18px;padding:14px;margin-top:10px}
+#tab-studio[data-create-tool="video"] form:before{content:"Workflow settings";display:block;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--primary);font-weight:900;margin-bottom:12px}
+body[data-theme="light"] #tab-studio[data-create-tool="video"] .create-lane,body[data-theme="light"] #tab-studio[data-create-tool="video"] .create-flow-panel,body[data-theme="light"] #tab-studio[data-create-tool="video"] .step-row,body[data-theme="light"] #tab-studio[data-create-tool="video"] form{background:#fff;border-color:#e5dcd4}
+body[data-theme="light"] #tab-studio[data-create-tool="video"] .create-lane-body,body[data-theme="light"] #tab-studio[data-create-tool="video"] .create-lane.active .create-lane-body{background:#fbfaf8!important}
+body[data-theme="light"] #tab-studio[data-create-tool="video"] .choice{background:#fbfaf8;border-color:#e6ddd5}
+@media(max-width:620px){#tab-studio[data-create-tool="video"] .create-lanes,#tab-studio[data-create-tool="video"] .create-flow-steps{grid-template-columns:1fr}}
+/* Final Create polish: OpenArt-style nested folders with Bloom colors. */
+#tab-studio .creator-workbench{grid-template-columns:minmax(420px,470px) minmax(620px,1fr);gap:14px}
+#tab-studio .creator-builder{border-radius:18px;background:#141616;border-color:#282b2b;overflow:hidden}
+#tab-studio .creator-builder .panel-pad{padding:14px}
+#tab-studio[data-create-tool="video"] .create-folder-label{margin:14px 0 8px;color:#777f7f;text-transform:none;letter-spacing:.02em;font-size:11px}
+#tab-studio[data-create-tool="video"] .create-lanes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:10px}
+#tab-studio[data-create-tool="video"] .create-lane{min-height:154px;border-radius:15px;background:#1a1c1c;border:1px solid #2b2f2f;box-shadow:none}
+#tab-studio[data-create-tool="video"] .create-lane-preview{height:88px;display:block;background:#101111}
+#tab-studio[data-create-tool="video"] .create-lane-preview:before{inset:0;border-radius:0;background:
+  radial-gradient(circle at 26% 20%,rgba(244,162,97,.58),transparent 30%),
+  radial-gradient(circle at 76% 14%,rgba(231,111,139,.48),transparent 30%),
+  linear-gradient(145deg,#202525,#101111)}
+#tab-studio[data-create-tool="video"] .create-lane-preview span{top:9px;right:9px;font-size:9px;padding:3px 8px}
+#tab-studio[data-create-tool="video"] .lane-device{left:18px;bottom:10px;background:rgba(255,255,255,.15)}
+#tab-studio[data-create-tool="video"] .create-lane-body{padding:11px!important;grid-template-columns:34px 1fr;background:#1a1c1c!important}
+#tab-studio[data-create-tool="video"] .create-lane-icon{width:34px;height:34px;border-radius:10px;background:#252929}
+#tab-studio[data-create-tool="video"] .create-lane-icon svg{width:19px;height:19px}
+#tab-studio[data-create-tool="video"] .create-lane b{font-size:13px}
+#tab-studio[data-create-tool="video"] .create-lane span{font-size:10.5px;line-height:1.25}
+#tab-studio[data-create-tool="video"] .create-lane.active{border-color:var(--primary);box-shadow:0 0 0 1px rgba(244,162,97,.25),0 0 32px rgba(231,111,139,.10)}
+#tab-studio[data-create-tool="video"] .create-video-folder{border:1px solid #2b2f2f;background:#101111;border-radius:18px;padding:10px;margin:10px 0 12px}
+#tab-studio[data-create-tool="video"] .create-video-folder:before{content:"Selected video folder";display:block;color:var(--primary);font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.08em;margin:0 0 9px}
+#tab-studio[data-create-tool="video"] .create-flow-panel{margin:0 0 9px;padding:0;border:0;background:transparent;border-radius:0}
+#tab-studio[data-create-tool="video"] .create-flow-panel:before{display:none}
+#tab-studio[data-create-tool="video"] .create-flow-head{align-items:center;margin-bottom:10px}
+#tab-studio[data-create-tool="video"] .create-flow-title{font-size:17px;letter-spacing:-.035em}
+#tab-studio[data-create-tool="video"] .create-flow-desc{font-size:12px;color:#8b9292;line-height:1.45}
+#tab-studio[data-create-tool="video"] .create-flow-chip{background:rgba(244,162,97,.14);border-color:rgba(244,162,97,.32);color:var(--primary);font-size:10px}
+#tab-studio[data-create-tool="video"] .create-flow-steps{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+#tab-studio[data-create-tool="video"] .create-flow-step{border-radius:11px;background:#181a1a;border-color:#292d2d;padding:9px;min-height:62px}
+#tab-studio[data-create-tool="video"] .create-flow-step strong{font-size:11px;color:#f7f0ea}
+#tab-studio[data-create-tool="video"] .create-flow-step span{font-size:10px;color:#818989}
+#tab-studio[data-create-tool="video"] .create-flow-status-row{margin-top:9px}
+#tab-studio[data-create-tool="video"] .create-flow-status{font-size:9px;padding:4px 7px}
+#tab-studio[data-create-tool="video"] .step-row{margin:9px 0 0;padding:0;border:0;background:transparent;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+#tab-studio[data-create-tool="video"] .choice{min-height:56px;border-radius:12px;padding:9px;background:#181a1a;border-color:#292d2d;text-align:left}
+#tab-studio[data-create-tool="video"] .choice strong{font-size:11px}
+#tab-studio[data-create-tool="video"] .choice span{display:none}
+#tab-studio[data-create-tool="video"] form{border:1px solid #2b2f2f;background:#101111;border-radius:18px;padding:12px;margin-top:0}
+#tab-studio[data-create-tool="video"] form:before{content:"Folder controls";margin-bottom:10px}
+#tab-studio[data-create-tool="video"] .form-group{margin-bottom:9px}
+#tab-studio[data-create-tool="video"] .form-label{font-size:10px;margin-bottom:5px;color:#787f7f}
+#tab-studio[data-create-tool="video"] .form-input,
+#tab-studio[data-create-tool="video"] .form-select,
+#tab-studio[data-create-tool="video"] .form-textarea{border-radius:11px;padding:10px 11px;font-size:12px;background:#151717;border-color:#2a2d2d}
+#tab-studio[data-create-tool="video"] .form-textarea{min-height:74px}
+#tab-studio[data-create-tool="video"] #studioScript{min-height:96px}
+#tab-studio[data-create-tool="video"] .file-drop{min-height:76px;border-radius:12px;padding:12px;background:#1b1d1d}
+#tab-studio[data-create-tool="video"] .selected-character{padding:9px;border-radius:12px}
+#tab-studio[data-create-tool="video"] .selected-character img{width:42px;height:42px}
+#tab-studio[data-create-tool="video"] .actions{gap:7px}
+#tab-studio[data-create-tool="video"] .btn{border-radius:11px;padding:10px 12px;font-size:12px}
+#tab-studio[data-create-tool="audio"] .create-video-folder{display:none!important}
+body[data-theme="light"] #tab-studio .creator-builder,
+body[data-theme="light"] #tab-studio[data-create-tool="video"] .create-video-folder,
+body[data-theme="light"] #tab-studio[data-create-tool="video"] form{background:#fff;border-color:#e5dcd4}
+body[data-theme="light"] #tab-studio[data-create-tool="video"] .create-lane,
+body[data-theme="light"] #tab-studio[data-create-tool="video"] .create-lane-body,
+body[data-theme="light"] #tab-studio[data-create-tool="video"] .create-flow-step,
+body[data-theme="light"] #tab-studio[data-create-tool="video"] .choice,
+body[data-theme="light"] #tab-studio[data-create-tool="video"] .file-drop{background:#fbfaf8!important;border-color:#e9ded5}
+body[data-theme="light"] #tab-studio[data-create-tool="video"] .form-input,
+body[data-theme="light"] #tab-studio[data-create-tool="video"] .form-select,
+body[data-theme="light"] #tab-studio[data-create-tool="video"] .form-textarea{background:#fff;color:#252b2d;border-color:#e6ddd5}
+body[data-theme="light"] #tab-studio[data-create-tool="video"] .create-flow-step strong{color:#252b2d}
+@media(max-width:1180px){#tab-studio .creator-workbench{grid-template-columns:1fr}#tab-studio[data-create-tool="video"] .create-lanes{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:620px){#tab-studio[data-create-tool="video"] .create-lanes,#tab-studio[data-create-tool="video"] .create-flow-steps,#tab-studio[data-create-tool="video"] .step-row{grid-template-columns:1fr}}
+/* Keep the selected video folder visible in the first viewport. */
+#tab-studio .create-tool-grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;margin-bottom:9px}
+#tab-studio .create-tool{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;min-height:68px;padding:8px 5px;text-align:center}
+#tab-studio .create-tool .tool-icon{width:30px;height:30px;border-radius:9px;grid-row:auto}
+#tab-studio .create-tool svg{width:17px;height:17px}
+#tab-studio .create-tool b{font-size:11px;line-height:1}
+#tab-studio .create-tool span:last-child{display:none}
+#tab-studio[data-create-tool="video"] .create-lanes{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+#tab-studio[data-create-tool="video"] .create-lane{display:grid;grid-template-columns:0 1fr;min-height:70px;border-radius:14px}
+#tab-studio[data-create-tool="video"] .create-lane-preview{display:none}
+#tab-studio[data-create-tool="video"] .create-lane-body{grid-column:1/-1;min-height:70px}
+#tab-studio[data-create-tool="video"] .create-folder-label{margin-top:10px}
+#tab-studio[data-create-tool="video"] .create-video-folder{margin-top:8px}
   </style>
 </head>
 <body>
@@ -252,7 +365,7 @@ body[data-theme="light"] #tab-studio .actions .btn-secondary{background:#fff;col
       </div>
     </div>
 
-    <section class="tab-content create-studio active-workbench" id="tab-studio">
+    <section class="tab-content create-studio" id="tab-studio">
       <div class="hero-grid creator-workbench">
         <div class="panel creator-builder">
           <div class="panel-pad">
@@ -275,18 +388,20 @@ body[data-theme="light"] #tab-studio .actions .btn-secondary{background:#fff;col
 
             <div class="create-folder-label create-video-only">Video type</div>
             <div class="create-lanes create-video-only" aria-label="Create folders">
-              <button class="create-lane active" type="button" data-create-type="shorts" onclick="setCreateType('shorts')"><div class="create-lane-icon"><svg viewBox="0 0 24 24"><path d="M7 4h10v16H7z"/><path d="M10 9.5 15 12l-5 2.5v-5Z"/></svg></div><div class="create-lane-body"><b>Shorts</b><span>Fast talking-head posts</span></div></button>
-              <button class="create-lane" type="button" data-create-type="remix" onclick="setCreateType('remix')"><div class="create-lane-icon"><svg viewBox="0 0 24 24"><path d="M7 17c2.8-6 6.1-8.9 10-8.9"/><path d="M13 5h5v5"/><path d="M6 6v12h12"/></svg></div><div class="create-lane-body"><b>Remix videos</b><span>Rebuild a viral source</span></div></button>
-              <button class="create-lane" type="button" data-create-type="long-form" onclick="setCreateType('long-form')"><div class="create-lane-icon"><svg viewBox="0 0 24 24"><path d="M6 5h12v14H6z"/><path d="M9 9h6"/><path d="M9 12h6"/><path d="M9 15h4"/></svg></div><div class="create-lane-body"><b>Long form</b><span>Longer scripts and edits</span></div></button>
-              <button class="create-lane" type="button" data-create-type="webinar" onclick="setCreateType('webinar')"><div class="create-lane-icon"><svg viewBox="0 0 24 24"><path d="M4 6h16v10H4z"/><path d="M9 20h6"/><path d="M12 16v4"/></svg></div><div class="create-lane-body"><b>Webinars</b><span>Recorded training style</span></div></button>
-              <button class="create-lane" type="button" data-create-type="course" onclick="setCreateType('course')"><div class="create-lane-icon"><svg viewBox="0 0 24 24"><path d="M5 6.5A3.5 3.5 0 0 1 8.5 3H19v16H8.5A3.5 3.5 0 0 0 5 22V6.5Z"/><path d="M9 7h6"/><path d="M9 10h7"/></svg></div><div class="create-lane-body"><b>Courses</b><span>Lesson-based content</span></div></button>
+              <button class="create-lane active" type="button" data-create-type="shorts" onclick="setCreateType('shorts')"><div class="create-lane-preview"><div class="lane-device lane-device-phone"></div><span>Short</span></div><div class="create-lane-body"><div class="create-lane-icon"><svg viewBox="0 0 24 24"><path d="M7 4h10v16H7z"/><path d="M10 9.5 15 12l-5 2.5v-5Z"/></svg></div><div><b>Shorts</b><span>Fast talking-head posts</span></div></div></button>
+              <button class="create-lane" type="button" data-create-type="remix" onclick="setCreateType('remix')"><div class="create-lane-preview"><div class="lane-device lane-device-remix"></div><span>Remix</span></div><div class="create-lane-body"><div class="create-lane-icon"><svg viewBox="0 0 24 24"><path d="M7 17c2.8-6 6.1-8.9 10-8.9"/><path d="M13 5h5v5"/><path d="M6 6v12h12"/></svg></div><div><b>Remix videos</b><span>Rebuild a viral source</span></div></div></button>
+              <button class="create-lane" type="button" data-create-type="long-form" onclick="setCreateType('long-form')"><div class="create-lane-preview"><div class="lane-device lane-device-wide"></div><span>Long</span></div><div class="create-lane-body"><div class="create-lane-icon"><svg viewBox="0 0 24 24"><path d="M6 5h12v14H6z"/><path d="M9 9h6"/><path d="M9 12h6"/><path d="M9 15h4"/></svg></div><div><b>Long form</b><span>Longer scripts and edits</span></div></div></button>
+              <button class="create-lane" type="button" data-create-type="webinar" onclick="setCreateType('webinar')"><div class="create-lane-preview"><div class="lane-device lane-device-webinar"></div><span>Webinar</span></div><div class="create-lane-body"><div class="create-lane-icon"><svg viewBox="0 0 24 24"><path d="M4 6h16v10H4z"/><path d="M9 20h6"/><path d="M12 16v4"/></svg></div><div><b>Webinars</b><span>Recorded training style</span></div></div></button>
+              <button class="create-lane" type="button" data-create-type="course" onclick="setCreateType('course')"><div class="create-lane-preview"><div class="lane-device lane-device-course"></div><span>Course</span></div><div class="create-lane-body"><div class="create-lane-icon"><svg viewBox="0 0 24 24"><path d="M5 6.5A3.5 3.5 0 0 1 8.5 3H19v16H8.5A3.5 3.5 0 0 0 5 22V6.5Z"/><path d="M9 7h6"/><path d="M9 10h7"/></svg></div><div><b>Courses</b><span>Lesson-based content</span></div></div></button>
             </div>
-            <div class="create-flow-panel create-video-only" id="createFlowPanel"></div>
+            <div class="create-video-folder create-video-only">
+              <div class="create-flow-panel" id="createFlowPanel"></div>
 
-            <div class="step-row create-video-only">
-              <button class="choice active" type="button" data-mode-choice="i2v" onclick="setStudioMode('i2v')"><strong>Image to video</strong><span>Use a portrait and audio to animate a talking head.</span></button>
-              <button class="choice" type="button" data-mode-choice="v2v" onclick="setStudioMode('v2v')"><strong>Video to video</strong><span>Use a source video and replace or sync the audio.</span></button>
-              <button class="choice" type="button" data-mode-choice="audio" onclick="setStudioMode('audio')"><strong>Audio voiceover</strong><span>Create the voice first, then approve it for video.</span></button>
+              <div class="step-row">
+                <button class="choice active" type="button" data-mode-choice="i2v" onclick="setStudioMode('i2v')"><strong>Image to video</strong><span>Use a portrait and audio to animate a talking head.</span></button>
+                <button class="choice" type="button" data-mode-choice="v2v" onclick="setStudioMode('v2v')"><strong>Video to video</strong><span>Use a source video and replace or sync the audio.</span></button>
+                <button class="choice" type="button" data-mode-choice="audio" onclick="setStudioMode('audio')"><strong>Audio voiceover</strong><span>Create the voice first, then approve it for video.</span></button>
+              </div>
             </div>
 
             <form id="studioForm" onsubmit="submitStudioVideo(event)">
@@ -1062,6 +1177,6 @@ body[data-theme="light"] #tab-studio .actions .btn-secondary{background:#fff;col
 
 <div class="toast-container" id="toastContainer"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="/js/app.js?v=agent-builder-2"></script>
+<script src="/js/app.js?v=video-subfolders-3"></script>
 </body>
 </html>

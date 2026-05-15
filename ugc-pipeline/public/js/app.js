@@ -732,6 +732,7 @@ async function hydrateUser() {
   localStorage.setItem('bloomStudioTenant', JSON.stringify(currentTenant));
   document.getElementById('tenantPill').textContent = currentTenant?.name || currentTenant?.slug || currentTenant?.id || 'Workspace';
   hideLogin();
+  switchTab('characters');
   setCreateType(document.getElementById('studioCreateType')?.value || 'shorts');
   await Promise.all([loadDashboard(), loadStudioStatus(), loadAssets()]);
 }
@@ -897,6 +898,7 @@ function renderFlowStatus(selected) {
 function setCreateTool(tool = 'video') {
   const selected = tool || 'video';
   const studioTab = document.getElementById('tab-studio');
+  if (studioTab) studioTab.dataset.createTool = selected;
   studioTab?.classList.toggle('create-tool-audio', selected === 'audio');
   document.querySelectorAll('[data-create-tool]').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.createTool === selected);
@@ -935,7 +937,12 @@ function openCreateCharacterBuilder() {
 
 function setCreateType(type, options = {}) {
   const selected = type || 'shorts';
-  document.getElementById('tab-studio')?.classList.remove('create-tool-audio');
+  const studioTab = document.getElementById('tab-studio');
+  if (studioTab) {
+    studioTab.dataset.createTool = 'video';
+    studioTab.dataset.createType = selected;
+    studioTab.classList.remove('create-tool-audio');
+  }
   document.querySelectorAll('[data-create-tool]').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.createTool === 'video');
   });
