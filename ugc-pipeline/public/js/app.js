@@ -927,6 +927,12 @@ function setCreateTool(tool = 'video') {
   setCreateType(document.getElementById('studioCreateType')?.value || 'shorts');
 }
 
+function openCreateCharacterBuilder() {
+  setCreateTool('video');
+  showAgentModal();
+  setAgentModalMode('build');
+}
+
 function setCreateType(type, options = {}) {
   const selected = type || 'shorts';
   document.getElementById('tab-studio')?.classList.remove('create-tool-audio');
