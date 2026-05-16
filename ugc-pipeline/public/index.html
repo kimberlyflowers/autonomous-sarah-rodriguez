@@ -45,20 +45,21 @@ button,input,select,textarea{font:inherit}
 .hint{font-size:12px;color:var(--muted)}.preview-card{overflow:hidden}.preview-frame{aspect-ratio:9/16;background:linear-gradient(160deg,#242a2c,#111);display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.58);text-align:center;padding:18px;transition:.2s;max-height:560px;margin:0 auto;position:relative;user-select:none;touch-action:none}
 .preview-frame.ratio-landscape{aspect-ratio:16/9;max-height:none}.preview-frame.ratio-square{aspect-ratio:1/1}.preview-frame.has-media{padding:0;cursor:grab}.preview-frame.has-media.dragging{cursor:grabbing}.preview-frame img{width:100%;height:100%;object-fit:cover;object-position:var(--crop-x,50%) var(--crop-y,50%);display:block;border-radius:0;pointer-events:none}
 .preview-frame video{width:100%;height:100%;object-fit:contain}.preview-body{padding:18px}.mini-list{display:flex;flex-direction:column;gap:10px}.mini-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);font-size:13px}.mini-row:last-child{border-bottom:0}.chip{display:inline-flex;align-items:center;border-radius:999px;padding:5px 10px;font-size:12px;font-weight:800}.chip-green{background:#e8f7ef;color:#16794a}.chip-warn{background:#fff3df;color:#ad641e}.chip-red{background:#fdecec;color:#b53c3c}.chip-soft{background:#f4ece6;color:#8b6450}
+.processing-preview-frame{position:relative;width:100%;height:100%;display:grid;place-items:center;overflow:hidden;background:#101111}.processing-preview-frame img{width:100%;height:100%;object-fit:cover;object-position:var(--crop-x,50%) var(--crop-y,50%);display:block}.processing-preview-empty{display:grid;place-items:center;gap:12px;color:var(--muted);min-height:240px}.processing-preview-overlay{position:absolute;left:18px;right:18px;bottom:18px;z-index:3;background:rgba(10,12,12,.82);border:1px solid rgba(255,255,255,.14);border-radius:16px;padding:14px 15px;text-align:left;color:#fff;box-shadow:0 16px 45px rgba(0,0,0,.28);backdrop-filter:blur(10px)}.processing-preview-overlay strong{display:block;font-size:15px;margin-bottom:5px}.processing-preview-overlay p{font-size:12px;line-height:1.45;color:rgba(255,255,255,.76);margin:0}.processing-bar{height:6px;background:rgba(255,255,255,.14);border-radius:999px;overflow:hidden;margin-top:12px}.processing-bar span{display:block;width:34%;height:100%;border-radius:999px;background:var(--grad);animation:processingBar 1.3s ease-in-out infinite alternate}@keyframes processingBar{from{transform:translateX(-45%)}to{transform:translateX(220%)}}body[data-theme="light"] .processing-preview-overlay{background:rgba(255,255,255,.88);color:#252b2d;border-color:rgba(39,47,49,.12)}body[data-theme="light"] .processing-preview-overlay p{color:#667071}
 .tab-content{display:none}.tab-content.active{display:block}.section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:16px}.section-title{font-size:24px;font-weight:800;letter-spacing:-.03em}.section-desc{font-size:14px;color:var(--muted);margin-top:4px}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px;margin-bottom:14px}.card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}.card-title{font-weight:800}.card-subtitle{font-size:13px;color:var(--muted);margin-top:2px}
 .asset-grid,.video-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}.asset-card,.video-card{background:var(--surface);border:1px solid var(--line);border-radius:16px;overflow:hidden}.asset-thumb{height:150px;background:var(--soft);display:flex;align-items:center;justify-content:center;color:var(--muted)}.asset-thumb img{width:100%;height:100%;object-fit:cover}.asset-info,.video-info{padding:13px}.asset-name{font-weight:800}.asset-meta,.video-prompt{font-size:12px;color:var(--muted);margin-top:4px}.asset-actions{padding:10px 13px;border-top:1px solid var(--line);display:flex;gap:8px}
 .character-page{background:var(--bg);border:1px solid var(--line);border-radius:18px;padding:14px;box-shadow:none;min-height:calc(100vh - 150px)}.character-head{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:14px}.character-head h2{color:var(--ink);font-size:22px;letter-spacing:-.03em}.character-head p{color:var(--muted);font-size:13px;margin-top:3px}.character-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.character-tabs,.ratio-tabs{display:flex;gap:4px;background:var(--dark);border:1px solid var(--line);border-radius:12px;padding:4px}.character-tab,.ratio-tab{border:1px solid transparent;background:transparent;color:var(--muted);border-radius:9px;padding:9px 18px;font-weight:800;font-size:13px;cursor:pointer}.character-tab.active,.ratio-tab.active{background:var(--surface);color:var(--ink);border-color:var(--line)}.character-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(245px,1fr));gap:18px;align-items:start}.character-grid.landscape{grid-template-columns:repeat(auto-fill,minmax(390px,1fr))}.character-card{position:relative;aspect-ratio:9/16;border-radius:13px;overflow:hidden;background:#222;border:1px solid var(--line);cursor:pointer;min-height:440px}.character-grid.landscape .character-card{aspect-ratio:16/9;min-height:250px}.character-card:hover{border-color:rgba(244,162,97,.65);transform:translateY(-1px)}.character-card img{width:100%;height:100%;object-fit:cover;object-position:center;display:block}.character-overlay{position:absolute;inset:auto 0 0;background:linear-gradient(transparent,rgba(0,0,0,.78));padding:72px 14px 14px;color:#fff}.character-title{font-size:15px;font-weight:800}.character-meta{font-size:12px;color:rgba(255,255,255,.72);margin-top:2px}.character-menu{position:absolute;top:8px;right:8px;color:#fff;background:rgba(0,0,0,.38);border-radius:999px;padding:2px 8px;font-weight:800}.character-actions{position:absolute;right:12px;bottom:12px;display:flex;gap:6px;margin-top:0;opacity:0;transform:translateY(6px);transition:.16s}.character-card:hover .character-actions{opacity:1;transform:translateY(0)}.character-actions .btn{padding:7px 9px;border-radius:8px;font-size:11px}.character-empty{color:var(--muted);border:1px dashed var(--line);border-radius:14px;padding:36px;text-align:center}
 .selected-character{display:none;align-items:center;gap:12px;padding:12px;border:1px solid rgba(244,162,97,.35);background:rgba(244,162,97,.10);color:var(--ink);border-radius:14px;margin-bottom:12px}.selected-character.active{display:flex}.selected-character img{width:52px;height:52px;border-radius:12px;object-fit:cover;background:var(--soft)}.selected-character strong{display:block;font-size:14px}.selected-character span{font-size:12px;color:var(--muted)}
-.product-lab{display:grid;grid-template-columns:minmax(0,1fr) minmax(360px,.72fr);gap:18px;align-items:start}.product-drop-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.pick-card{border:1.5px solid var(--line);border-radius:16px;overflow:hidden;background:var(--surface)}.pick-preview{aspect-ratio:16/9;background:var(--soft);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:13px;overflow:hidden}.pick-preview img{width:100%;height:100%;object-fit:cover;object-position:center}.pick-body{padding:12px}.pick-body strong{display:block;font-size:14px}.pick-body span{display:block;color:var(--muted);font-size:12px;margin-top:3px}.mini-pick-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:10px;max-height:360px;overflow:auto;padding-right:4px}.mini-pick{position:relative;aspect-ratio:16/9;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--soft);cursor:pointer}.mini-pick:hover{border-color:var(--primary)}.mini-pick img{width:100%;height:100%;object-fit:cover;display:block}.mini-pick span{position:absolute;inset:auto 0 0;background:linear-gradient(transparent,rgba(0,0,0,.78));color:#fff;font-size:11px;font-weight:800;padding:24px 8px 8px}.result-frame{aspect-ratio:16/9;background:linear-gradient(160deg,#242a2c,#111);border-radius:16px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;overflow:hidden;color:rgba(255,255,255,.55);text-align:center}.result-frame.ratio-portrait{aspect-ratio:9/16;max-height:640px;margin:0 auto}.result-frame img{width:100%;height:100%;object-fit:cover;display:block}.endpoint-note{font-size:12px;color:var(--muted);margin-top:10px}
+.product-lab{display:grid;grid-template-columns:minmax(0,1fr) minmax(360px,.72fr);gap:18px;align-items:start}.product-drop-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.pick-card{border:1.5px solid var(--line);border-radius:16px;overflow:hidden;background:var(--surface)}.pick-preview{aspect-ratio:16/9;background:var(--soft);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:13px;overflow:hidden}.pick-preview img{width:100%;height:100%;object-fit:cover;object-position:center}.pick-body{padding:12px}.pick-body strong{display:block;font-size:14px}.pick-body span{display:block;color:var(--muted);font-size:12px;margin-top:3px}.mini-pick-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:10px;max-height:360px;overflow:auto;padding-right:4px}.mini-pick{position:relative;aspect-ratio:16/9;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--soft);cursor:pointer}.mini-pick:hover{border-color:var(--primary)}.mini-pick img{width:100%;height:100%;object-fit:cover;display:block}.mini-pick span{position:absolute;inset:auto 0 0;background:linear-gradient(transparent,rgba(0,0,0,.78));color:#fff;font-size:11px;font-weight:800;padding:24px 8px 8px}.result-frame{aspect-ratio:var(--result-ratio,16/9);background:linear-gradient(160deg,#242a2c,#111);border-radius:16px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;overflow:hidden;color:rgba(255,255,255,.55);text-align:center;max-height:720px}.result-frame.ratio-portrait{max-height:640px;margin:0 auto}.result-frame img{width:100%;height:100%;object-fit:contain;display:block}.endpoint-note{font-size:12px;color:var(--muted);margin-top:10px}
 .reference-strip{display:grid;grid-template-columns:repeat(auto-fill,minmax(82px,1fr));gap:8px;margin-top:10px}.reference-chip{position:relative;aspect-ratio:1/1;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--soft)}.reference-chip img{width:100%;height:100%;object-fit:cover}.reference-chip button{position:absolute;top:5px;right:5px;border:0;border-radius:999px;background:rgba(0,0,0,.68);color:#fff;width:24px;height:24px;font-weight:900;cursor:pointer}
 .cooking-state{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px}.cooking-orb{width:58px;height:58px;border-radius:50%;background:conic-gradient(from 0deg,var(--primary),var(--pink),var(--primary));animation:cookspin 1.2s linear infinite;position:relative}.cooking-orb:after{content:"";position:absolute;inset:7px;border-radius:50%;background:var(--surface)}.cooking-steps{font-size:12px;color:var(--muted)}.voice-loading{border:1px dashed rgba(244,162,97,.45);border-radius:14px;background:rgba(244,162,97,.08);min-height:170px;margin-top:12px}.voice-loading .cooking-orb{width:46px;height:46px}.voice-loading .cooking-orb:after{inset:6px}@keyframes cookspin{to{transform:rotate(360deg)}}
 .workflow-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-top:12px}.workflow-card{border:1px solid var(--line);border-radius:14px;padding:13px;background:var(--surface)}.workflow-card strong{font-size:13px}.workflow-card p{font-size:12px;color:var(--muted);margin-top:4px}.billing-hero{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px;align-items:stretch}.price-card{background:linear-gradient(135deg,#242a2c,#16191a);color:#fff;border-radius:20px;padding:24px;box-shadow:var(--shadow)}.price-card .price{font-size:42px;font-weight:800;letter-spacing:-.05em;margin:12px 0}.price-card .price span{font-size:15px;color:rgba(255,255,255,.55);letter-spacing:0}.plan-list{display:flex;flex-direction:column;gap:10px;margin:16px 0}.plan-list div{display:flex;gap:9px;font-size:14px;color:rgba(255,255,255,.82)}.audit-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.audit-item{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px}.audit-item strong{font-size:14px}.audit-item p{font-size:12px;color:var(--muted);margin-top:5px}
 .video-player{width:100%;aspect-ratio:9/16;max-height:360px;background:#111;object-fit:contain}.empty-state{text-align:center;padding:36px;color:var(--muted);border:1px dashed var(--line);border-radius:16px;background:var(--soft)}
 .video-thumb-wrap{position:relative;background:#111}.video-thumb-wrap.landscape .video-player{aspect-ratio:16/9;max-height:none}.video-thumb-wrap.square .video-player{aspect-ratio:1/1}.video-poster{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#111;z-index:2;opacity:0;pointer-events:none;transition:opacity .18s}.video-thumb-wrap.ready .video-poster{opacity:1}.video-thumb-wrap.playing .video-poster,.video-thumb-wrap.no-poster .video-poster{opacity:0;pointer-events:none}.video-play-badge{position:absolute;left:10px;bottom:10px;z-index:3;background:rgba(0,0,0,.66);color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:999px;padding:7px 10px;font-size:12px;font-weight:800;pointer-events:none}.video-thumb-wrap.playing .video-play-badge{display:none}
-.video-grid{grid-template-columns:repeat(auto-fill,minmax(245px,1fr));gap:18px}.video-grid.landscape{grid-template-columns:repeat(auto-fill,minmax(390px,1fr))}.video-card{position:relative;aspect-ratio:9/16;border-radius:13px;background:#111;min-height:440px}.video-grid.landscape .video-card{aspect-ratio:16/9;min-height:250px}.video-card .video-thumb-wrap,.video-card .video-player{width:100%;height:100%;max-height:none;aspect-ratio:auto}.video-card .video-player{object-fit:cover}.video-grid.landscape .video-card .video-player{object-fit:contain}.video-info{position:absolute;inset:auto 0 0;background:linear-gradient(transparent,rgba(0,0,0,.82));color:#fff;padding:72px 14px 14px}.video-info .video-prompt{color:rgba(255,255,255,.74);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.video-info .actions{opacity:0;transform:translateY(6px);transition:.16s}.video-card:hover .video-info .actions{opacity:1;transform:translateY(0)}
+.video-grid{grid-template-columns:repeat(auto-fill,minmax(245px,1fr));gap:18px}.video-grid.landscape{grid-template-columns:repeat(auto-fill,minmax(390px,1fr))}.video-card{position:relative;aspect-ratio:9/16;border-radius:13px;background:#111;min-height:440px}.video-card.landscape,.video-grid.landscape .video-card{aspect-ratio:16/9;min-height:250px}.video-card.square{aspect-ratio:1/1;min-height:310px}.video-card .video-thumb-wrap,.video-card .video-player{width:100%;height:100%;max-height:none;aspect-ratio:auto}.video-card .video-player{object-fit:contain}.video-info{position:absolute;inset:auto 0 0;background:linear-gradient(transparent,rgba(0,0,0,.82));color:#fff;padding:54px 14px 14px;max-height:58%;overflow:auto}.video-info .video-prompt{color:rgba(255,255,255,.74);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.video-info .trend-source-line,.video-info .audio-source-line{-webkit-line-clamp:1;color:rgba(255,255,255,.86)}.link-button{border:0;background:transparent;color:var(--primary);font:inherit;font-weight:900;padding:0;cursor:pointer;text-decoration:underline}.video-info .actions{opacity:0;transform:translateY(6px);transition:.16s}.video-card:hover .video-info .actions{opacity:1;transform:translateY(0)}
 #generatedImageGrid{grid-template-columns:repeat(auto-fill,minmax(245px,1fr));gap:18px}#generatedImageGrid.landscape{grid-template-columns:repeat(auto-fill,minmax(390px,1fr))}#generatedImageGrid .asset-card{position:relative;aspect-ratio:9/16;border-radius:13px;background:#111;min-height:440px}#generatedImageGrid.landscape .asset-card{aspect-ratio:16/9;min-height:250px}#generatedImageGrid .asset-thumb{width:100%;height:100%;background:#111}#generatedImageGrid .asset-thumb img{width:100%;height:100%;object-fit:cover}#generatedImageGrid.landscape .asset-thumb img{object-fit:contain}#generatedImageGrid .asset-info{position:absolute;inset:auto 0 0;background:linear-gradient(transparent,rgba(0,0,0,.82));color:#fff;padding:72px 14px 50px}#generatedImageGrid .asset-meta{color:rgba(255,255,255,.72)}#generatedImageGrid .asset-actions{position:absolute;right:12px;bottom:12px;border:0;padding:0;gap:6px;opacity:0;transform:translateY(6px);transition:.16s}#generatedImageGrid .asset-card:hover .asset-actions{opacity:1;transform:translateY(0)}#generatedImageGrid .btn,.video-info .btn{padding:7px 9px;border-radius:8px;font-size:11px}
-.asset-card,.video-card{cursor:pointer}.asset-actions .btn,.video-info .btn{min-height:0;line-height:1;white-space:nowrap}.media-lightbox{display:none;position:fixed;inset:0;background:rgba(0,0,0,.86);z-index:60;align-items:center;justify-content:center;padding:22px}.media-lightbox.active{display:flex}.lightbox-shell{width:min(96vw,1180px);height:min(94vh,860px);display:grid;grid-template-rows:auto minmax(0,1fr);gap:12px;position:relative}.lightbox-top{display:flex;align-items:center;justify-content:space-between;gap:12px;color:#fff}.lightbox-title{font-size:15px;font-weight:900}.lightbox-meta{font-size:12px;color:rgba(255,255,255,.6);margin-top:2px}.lightbox-actions{display:flex;gap:8px;align-items:center}.lightbox-actions .btn{padding:8px 11px;border-radius:9px;font-size:12px}.lightbox-close-x{position:absolute;top:-8px;right:-8px;width:34px;height:34px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.12);color:#fff;border-radius:999px;font-size:18px;font-weight:900;cursor:pointer;display:grid;place-items:center;z-index:3}.lightbox-close-x:hover{background:rgba(244,162,97,.30);border-color:rgba(244,162,97,.65)}.lightbox-body{position:relative;display:grid;place-items:center;min-height:0;overflow:hidden}.lightbox-media{display:block;width:auto;height:auto;max-width:100%;max-height:100%;object-fit:contain;border-radius:14px;background:#111;box-shadow:0 22px 80px rgba(0,0,0,.45)}video.lightbox-media{width:auto;height:auto}.lightbox-nav{position:absolute;top:50%;transform:translateY(-50%);width:42px;height:42px;border:1px solid rgba(255,255,255,.18);border-radius:999px;background:rgba(255,255,255,.12);color:#fff;font-size:26px;cursor:pointer;display:grid;place-items:center;z-index:2}.lightbox-nav:hover{background:rgba(244,162,97,.28);border-color:rgba(244,162,97,.65)}.lightbox-prev{left:8px}.lightbox-next{right:8px}
+.asset-card,.video-card{cursor:pointer}.asset-actions .btn,.video-info .btn{min-height:0;line-height:1;white-space:nowrap}.media-lightbox{display:none;position:fixed;inset:0;background:rgba(0,0,0,.86);z-index:60;align-items:center;justify-content:center;padding:22px}.media-lightbox.active{display:flex}.lightbox-shell{width:min(96vw,1180px);height:min(94vh,860px);display:grid;grid-template-rows:auto minmax(0,1fr);gap:12px;position:relative}.lightbox-top{display:flex;align-items:center;justify-content:space-between;gap:12px;color:#fff}.lightbox-title{font-size:15px;font-weight:900}.lightbox-meta{font-size:12px;color:rgba(255,255,255,.6);margin-top:2px}.lightbox-actions{display:flex;gap:8px;align-items:center}.lightbox-actions .btn{padding:8px 11px;border-radius:9px;font-size:12px}.lightbox-close-x{position:absolute;top:-8px;right:-8px;width:34px;height:34px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.12);color:#fff;border-radius:999px;font-size:18px;font-weight:900;cursor:pointer;display:grid;place-items:center;z-index:3}.lightbox-close-x:hover{background:rgba(244,162,97,.30);border-color:rgba(244,162,97,.65)}.lightbox-body{position:relative;display:grid;place-items:center;min-height:0;overflow:hidden}.lightbox-single-media,.lightbox-generated-panel{display:grid;place-items:center;min-width:0;min-height:0}.lightbox-review-grid{width:100%;height:100%;display:grid;grid-template-columns:minmax(0,1fr) minmax(250px,330px);gap:16px;align-items:center}.lightbox-source-panel{height:min(82vh,760px);max-height:100%;border:1px solid rgba(255,255,255,.14);border-radius:14px;background:rgba(255,255,255,.06);padding:12px;display:flex;flex-direction:column;gap:10px;color:#fff}.lightbox-source-title{font-size:11px;font-weight:900;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.54)}.lightbox-source-name{font-size:13px;font-weight:900;line-height:1.25}.lightbox-source-frame{width:100%;flex:1;min-height:320px;border:0;border-radius:10px;background:#111}.lightbox-media{display:block;width:auto;height:auto;max-width:100%;max-height:100%;object-fit:contain;border-radius:14px;background:#111;box-shadow:0 22px 80px rgba(0,0,0,.45)}.lightbox-body.portrait .lightbox-media{height:min(82vh,760px);max-height:100%;aspect-ratio:9/16;width:auto}.lightbox-body.landscape .lightbox-media{width:min(92vw,1080px);height:auto;aspect-ratio:16/9}.lightbox-body.square .lightbox-media{width:min(82vh,760px);height:auto;aspect-ratio:1/1}.lightbox-body.natural .lightbox-media{max-width:100%;max-height:100%;width:auto;height:auto;aspect-ratio:auto}video.lightbox-media{width:auto}.lightbox-nav{position:absolute;top:50%;transform:translateY(-50%);width:42px;height:42px;border:1px solid rgba(255,255,255,.18);border-radius:999px;background:rgba(255,255,255,.12);color:#fff;font-size:26px;cursor:pointer;display:grid;place-items:center;z-index:2}.lightbox-nav:hover{background:rgba(244,162,97,.28);border-color:rgba(244,162,97,.65)}.lightbox-prev{left:8px}.lightbox-next{right:8px}@media(max-width:860px){.lightbox-review-grid{grid-template-columns:1fr;overflow:auto}.lightbox-source-panel{height:360px}.lightbox-body.portrait .lightbox-media{height:min(70vh,660px)}}
 .trend-filter-bar{display:grid;grid-template-columns:minmax(220px,1fr) 190px 150px auto;gap:10px;margin-bottom:14px}.trend-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(265px,1fr));gap:16px}.trend-card{background:var(--surface);border:1px solid var(--line);border-radius:15px;overflow:hidden;cursor:pointer;transition:.16s}.trend-card:hover{border-color:rgba(244,162,97,.65);transform:translateY(-1px)}.trend-preview{position:relative;aspect-ratio:9/16;background:#111;overflow:hidden;display:flex;align-items:flex-end}.trend-art{position:absolute;inset:0;background:radial-gradient(circle at 24% 18%,rgba(244,162,97,.58),transparent 30%),radial-gradient(circle at 82% 8%,rgba(231,111,139,.48),transparent 28%),linear-gradient(145deg,#2d3436,#111);opacity:.94}.trend-thumb-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center;display:block;background:#111}.trend-preview.has-thumb .trend-art{opacity:0}.trend-preview.has-thumb:after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.12),rgba(0,0,0,.05) 44%,rgba(0,0,0,.84))}.trend-play{position:absolute;top:14px;left:14px;width:44px;height:44px;border-radius:999px;background:rgba(0,0,0,.34);border:1px solid rgba(255,255,255,.32);display:grid;place-items:center;color:#fff;font-size:18px;backdrop-filter:blur(8px);z-index:2}.trend-platform{position:absolute;top:14px;right:14px;z-index:2}.trend-preview-copy{position:relative;z-index:2;color:#fff;padding:74px 14px 14px;background:linear-gradient(transparent,rgba(0,0,0,.82));width:100%}.trend-preview.has-thumb .trend-preview-copy{background:transparent}.trend-preview-copy strong{display:block;font-size:16px;line-height:1.2}.trend-preview-copy span{display:block;font-size:12px;color:rgba(255,255,255,.68);margin-top:5px}.trend-body{padding:13px}.trend-hook{font-size:14px;font-weight:850;line-height:1.35;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}.trend-meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.trend-card-actions{display:flex;gap:8px;margin-top:12px}.trend-card-actions .btn{padding:8px 10px;border-radius:9px;font-size:12px;flex:1}.trend-lightbox-layout{display:grid;grid-template-columns:minmax(270px,430px) minmax(260px,360px);gap:18px;align-items:center}.trend-watch-shell{width:min(430px,82vw);aspect-ratio:9/16;max-height:min(76vh,760px);border-radius:14px;background:#111;box-shadow:0 22px 80px rgba(0,0,0,.45);overflow:hidden;position:relative}.trend-lightbox-frame{width:100%;height:100%;border:0;background:#111;display:block}.trend-fallback{height:100%;width:100%;display:flex;align-items:center;justify-content:center;text-align:center;padding:18px;color:rgba(255,255,255,.72);background:linear-gradient(145deg,#2d3436,#111);border-radius:14px}.trend-watch-overlay{position:absolute;inset:auto 12px 12px;display:flex;justify-content:center;pointer-events:none}.trend-watch-overlay span{background:rgba(0,0,0,.68);color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:7px 10px;font-size:12px;font-weight:800}.trend-remix-panel.is-preview .trend-remix-fields{display:none}.trend-remix-panel.is-remix .trend-preview-guidance{display:none}.trend-remix-fields{margin-top:12px}.trend-remix-panel{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:14px;color:#fff}.trend-remix-panel h3{font-size:18px;margin-bottom:8px}.trend-remix-panel p{font-size:13px;color:rgba(255,255,255,.68);line-height:1.55}.trend-remix-panel .form-label{color:rgba(255,255,255,.72)}.trend-remix-panel .form-select{background:rgba(255,255,255,.08);color:#fff;border-color:rgba(255,255,255,.16)}@media(max-width:900px){.trend-filter-bar,.trend-lightbox-layout{grid-template-columns:1fr}}
 .brand-profile,.gen-config{display:grid;grid-template-columns:1fr 1fr;gap:14px}.selling-points-list{padding-left:18px;color:var(--muted);font-size:13px}.toast-container{position:fixed;top:20px;right:20px;z-index:20;display:flex;flex-direction:column;gap:8px}.toast{padding:12px 14px;border-radius:12px;background:var(--surface);color:var(--ink);border:1px solid var(--line);box-shadow:var(--shadow);font-size:13px;font-weight:700;max-width:380px}.toast-error{border-color:#f1b4b4;color:#d94f4f}.toast-success{border-color:#aadfbe;color:#2fb36d}.toast-info{color:var(--primary)}
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:15;align-items:center;justify-content:center}.modal-overlay.active{display:flex}.modal{background:var(--surface);color:var(--ink);border-radius:18px;border:1px solid var(--line);box-shadow:var(--shadow);padding:22px;max-width:540px;width:min(92vw,540px)}.modal-title{font-size:18px;font-weight:800;margin-bottom:16px;color:var(--ink)}.modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:16px}
@@ -287,7 +288,7 @@ body[data-theme="light"] #tab-studio[data-create-tool="video"] .create-flow-step
 @media(max-width:1180px){#tab-studio .creator-workbench{grid-template-columns:1fr}#tab-studio[data-create-tool="video"] .create-lanes{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:620px){#tab-studio[data-create-tool="video"] .create-lanes,#tab-studio[data-create-tool="video"] .create-flow-steps,#tab-studio[data-create-tool="video"] .step-row{grid-template-columns:1fr}}
 /* Keep the selected video folder visible in the first viewport. */
-#tab-studio .create-tool-grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;margin-bottom:9px}
+#tab-studio .create-tool-grid{grid-template-columns:repeat(6,minmax(0,1fr));gap:6px;margin-bottom:9px}
 #tab-studio .create-tool{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;min-height:68px;padding:8px 5px;text-align:center}
 #tab-studio .create-tool .tool-icon{width:30px;height:30px;border-radius:9px;grid-row:auto}
 #tab-studio .create-tool svg{width:17px;height:17px}
@@ -299,6 +300,235 @@ body[data-theme="light"] #tab-studio[data-create-tool="video"] .create-flow-step
 #tab-studio[data-create-tool="video"] .create-lane-body{grid-column:1/-1;min-height:70px}
 #tab-studio[data-create-tool="video"] .create-folder-label{margin-top:10px}
 #tab-studio[data-create-tool="video"] .create-video-folder{margin-top:8px}
+#tab-studio.focused-create .create-tool-grid:not(.expanded){grid-template-columns:1fr;margin-bottom:10px}#tab-studio.focused-create .create-tool-grid:not(.expanded) .create-tool:not(.active){display:none}#tab-studio.focused-create .create-tool-grid:not(.expanded) .create-tool.active{min-height:54px;display:grid;grid-template-columns:34px 1fr;grid-template-rows:auto auto;text-align:left;align-items:center;padding:10px 12px}#tab-studio.focused-create .create-tool-grid:not(.expanded) .create-tool.active .tool-icon{grid-row:1/3;width:34px;height:34px}#tab-studio[data-create-tool="campaign"] .creator-workbench{grid-template-columns:minmax(0,1fr)}#tab-studio[data-create-tool="campaign"] .preview-card{display:none}#tab-studio[data-create-tool="campaign"] .creator-builder{max-width:980px;margin:0 auto;width:100%}#tab-studio[data-create-tool="campaign"] .create-video-folder,#tab-studio[data-create-tool="campaign"] #studioForm{display:none!important}.seedance-campaign-panel{display:none;border:1px solid #2b2f2f;background:#101111;border-radius:18px;padding:14px;margin-top:10px}#tab-studio[data-create-tool="campaign"] .seedance-campaign-panel{display:block}.campaign-node-row{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:12px}.campaign-node{border:1px solid rgba(244,162,97,.28);background:rgba(244,162,97,.08);border-radius:999px;padding:7px 10px;min-height:0}.campaign-node strong{display:block;font-size:11px;color:var(--primary)}.campaign-node span,.campaign-link{display:none}.campaign-builder-grid{display:grid;grid-template-columns:1.2fr .8fr;gap:12px}.campaign-character-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;max-height:320px;overflow:auto}.campaign-character-card{border:1px solid #292d2d;background:#181a1a;border-radius:14px;padding:8px;display:grid;grid-template-columns:46px 1fr;gap:8px;align-items:center;text-align:left;color:var(--ink);cursor:pointer}.campaign-character-card img{width:46px;height:46px;object-fit:cover;border-radius:11px;background:#0d0f0f}.campaign-character-card strong{display:block;font-size:11px;line-height:1.15}.campaign-character-card span{display:block;font-size:10px;color:#818989;margin-top:3px}.campaign-character-card.active{border-color:var(--primary);background:linear-gradient(180deg,rgba(244,162,97,.18),rgba(231,111,139,.08)),#181a1a}.campaign-output-list{display:grid;gap:7px;margin-top:10px}.campaign-output-item{border:1px solid #292d2d;background:#181a1a;border-radius:12px;padding:9px;font-size:11px;color:var(--muted)}.campaign-output-item strong{color:var(--ink)}body[data-theme="light"] .seedance-campaign-panel,body[data-theme="light"] .campaign-character-card,body[data-theme="light"] .campaign-output-item{background:#fff;border-color:#e5dcd4}body[data-theme="light"] .campaign-node{background:#fff7ee}body[data-theme="light"] .campaign-node strong{color:#9a5526}@media(max-width:900px){.campaign-builder-grid{grid-template-columns:1fr}.campaign-character-grid{grid-template-columns:1fr}}
+#tab-studio .creator-builder .panel-pad{display:grid;grid-template-columns:180px minmax(0,1fr);gap:12px;align-items:start}#tab-studio .creator-panel-head{grid-column:1/-1}#tab-studio .create-tool-grid{grid-column:1;grid-row:2 / span 5;display:grid!important;grid-template-columns:1fr!important;gap:4px;margin:0!important;position:sticky;top:12px;align-self:start}#tab-studio.focused-create .create-tool-grid:not(.expanded) .create-tool:not(.active){display:grid}#tab-studio .create-tool{min-height:42px!important;display:grid!important;grid-template-columns:28px 1fr 16px!important;grid-template-rows:1fr!important;text-align:left!important;align-items:center!important;padding:7px 8px!important;border-radius:9px!important}#tab-studio .create-tool:after{content:"›";color:#666;font-size:17px;justify-self:end}#tab-studio .create-tool .tool-icon{grid-row:auto!important;width:28px!important;height:28px!important;border-radius:8px!important}#tab-studio .create-tool b{font-size:12px!important;align-self:center!important}#tab-studio .create-tool span:last-child{display:none!important}#tab-studio .create-folder-label,#tab-studio .create-lanes,#tab-studio .create-video-folder,#tab-studio .seedance-campaign-panel,#tab-studio #studioForm{grid-column:2}#tab-studio[data-create-tool="video"] .create-lanes{display:grid;grid-template-columns:1fr;gap:5px}#tab-studio[data-create-tool="video"] .create-lane{min-height:46px!important;border-radius:10px!important}#tab-studio[data-create-tool="video"] .create-lane-body{min-height:46px!important;grid-template-columns:30px 1fr!important;padding:7px 9px!important}#tab-studio[data-create-tool="video"] .create-lane-icon{width:30px!important;height:30px!important;border-radius:8px!important}#tab-studio[data-create-tool="video"] .create-lane b{font-size:12px!important}#tab-studio[data-create-tool="video"] .create-lane span{display:none!important}#tab-studio[data-create-tool="video"] .create-video-folder{padding:9px!important;border-radius:12px!important}#tab-studio[data-create-tool="video"] .create-flow-panel,#tab-studio[data-create-tool="video"] .create-flow-steps,#tab-studio[data-create-tool="video"] .create-flow-status-row{display:none!important}@media(max-width:900px){#tab-studio .creator-builder .panel-pad{grid-template-columns:1fr}#tab-studio .create-tool-grid,#tab-studio .create-folder-label,#tab-studio .create-lanes,#tab-studio .create-video-folder,#tab-studio .seedance-campaign-panel,#tab-studio #studioForm{grid-column:1;position:static}}
+.status-pill-button{border:0;cursor:pointer;font:inherit}.status-pill-button:hover{box-shadow:0 0 0 3px rgba(47,179,109,.12)}#tab-studio .preview-control-slot{display:block}#tab-studio .preview-control-slot:empty{display:none}#tab-studio .preview-control-slot #studioForm{margin-top:0!important;border-radius:14px!important;background:#101111!important;border-color:#292d2d!important}#tab-studio[data-create-tool="video"] .preview-control-slot #studioForm:before{content:"Controls"!important}#tab-studio .preview-control-slot .form-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}#tab-studio .preview-control-slot .form-group.full,#tab-studio .preview-control-slot .remix-context,#tab-studio .preview-control-slot #studioChatterboxGroup{grid-column:1/-1}#tab-studio .preview-control-slot .selected-character{min-height:58px}#tab-studio .preview-control-slot .actions{border-top:1px solid #292d2d;margin-top:8px;padding-top:10px}.studio-status-panel{display:none;margin-top:12px;border:1px solid #292d2d;border-radius:14px;background:#101111;padding:12px}.studio-status-panel.active{display:block}#tab-studio .studio-status-panel .workflow-grid,#tab-studio .studio-status-panel .actions,#tab-studio .studio-status-panel>p.hint{display:grid}#tab-studio .studio-status-panel .actions{display:flex}@media(max-width:760px){#tab-studio .preview-control-slot .form-grid{grid-template-columns:1fr}}
+#tab-studio .creator-workbench{--studio-builder-width:470px;grid-template-columns:minmax(240px,var(--studio-builder-width)) 10px minmax(520px,1fr)!important;gap:8px!important;align-items:start!important;min-height:auto!important}#tab-studio .creator-builder{max-height:none!important;overflow:visible!important}#tab-studio .creator-builder .panel-pad{height:auto!important;overflow:visible!important}#tab-studio .studio-resize-handle{align-self:stretch;min-height:calc(100vh - 150px);border:0;background:transparent;cursor:col-resize;padding:0;position:relative}.studio-resize-handle:before{content:"";position:absolute;top:18px;bottom:18px;left:4px;width:2px;border-radius:999px;background:rgba(255,255,255,.10);transition:.16s}.studio-resize-handle:hover:before,.studio-resize-handle.dragging:before{left:2px;width:6px;background:linear-gradient(180deg,var(--primary),var(--pink))}#tab-studio[data-create-tool="campaign"] .creator-workbench{grid-template-columns:minmax(0,1fr)!important}#tab-studio[data-create-tool="campaign"] .studio-resize-handle{display:none}@media(max-width:1180px){#tab-studio .creator-workbench{grid-template-columns:1fr!important}#tab-studio .studio-resize-handle{display:none}}
+#tab-studio[data-create-tool="campaign"] .creator-workbench{grid-template-columns:minmax(240px,var(--studio-builder-width)) 10px minmax(520px,1fr)!important}#tab-studio[data-create-tool="campaign"] .preview-card{display:flex!important}#tab-studio[data-create-tool="campaign"] .studio-resize-handle{display:block!important}#tab-studio[data-create-tool="campaign"] .creator-builder{max-width:none!important;margin:0!important;width:auto!important}#tab-studio[data-create-tool="campaign"] .seedance-campaign-panel{grid-column:2!important}@media(max-width:1180px){#tab-studio[data-create-tool="campaign"] .creator-workbench{grid-template-columns:1fr!important}#tab-studio[data-create-tool="campaign"] .studio-resize-handle{display:none!important}}
+#tab-studio.narrow-create .creator-builder .panel-pad{grid-template-columns:1fr!important;gap:8px}#tab-studio.narrow-create .create-tool-grid{grid-column:1!important;grid-row:auto!important;position:static!important}#tab-studio.narrow-create .create-folder-label,#tab-studio.narrow-create .create-lanes,#tab-studio.narrow-create .create-video-folder,#tab-studio.narrow-create .seedance-campaign-panel,#tab-studio.narrow-create #studioForm{grid-column:1!important}#tab-studio.narrow-create .create-folder-label{margin:8px 0 4px 42px!important;padding-left:10px;border-left:2px solid rgba(244,162,97,.38);font-size:10px!important}#tab-studio.narrow-create .create-lanes{margin-left:42px!important;padding-left:10px;border-left:2px solid rgba(244,162,97,.18);grid-template-columns:1fr!important;gap:5px!important}#tab-studio.narrow-create .create-video-folder,#tab-studio.narrow-create .seedance-campaign-panel{margin-left:42px!important;padding-left:10px!important;border-left:2px solid rgba(244,162,97,.18)}#tab-studio.narrow-create .create-lane{min-height:42px!important;border-radius:9px!important}#tab-studio.narrow-create .create-lane-body{min-height:42px!important;padding:6px 8px!important;grid-template-columns:26px 1fr!important}#tab-studio.narrow-create .create-lane-icon{width:26px!important;height:26px!important}#tab-studio.narrow-create .create-lane b{font-size:11px!important}#tab-studio.narrow-create .create-tool{min-height:40px!important;padding:6px 7px!important}
+#tab-studio .preview-card{min-height:calc(100vh - 112px)!important;--studio-preview-height:min(76vh,820px)}#tab-studio .preview-frame{min-height:360px!important;flex:0 0 var(--studio-preview-height)!important}#tab-studio .preview-resize-handle{height:10px;border:0;border-top:1px solid #272929;border-bottom:1px solid #272929;background:#101111;cursor:row-resize;position:relative}.preview-resize-handle:before{content:"";position:absolute;left:50%;top:3px;transform:translateX(-50%);width:54px;height:3px;border-radius:999px;background:rgba(255,255,255,.14)}.preview-resize-handle:hover:before,.preview-resize-handle.dragging:before{background:linear-gradient(90deg,var(--primary),var(--pink));height:4px}#tab-studio .preview-body{flex:1 1 auto;max-height:none;overflow:auto;min-height:150px}#tab-studio .preview-control-slot #studioForm{padding:10px!important}#tab-studio .preview-control-slot #studioForm:before{content:"Controls"!important;margin-bottom:8px!important}#tab-studio .preview-control-slot .form-grid{grid-template-columns:1.05fr .72fr 1.05fr 1.35fr;gap:7px;align-items:start}#tab-studio .preview-control-slot .form-group{margin-bottom:7px!important}#tab-studio .preview-control-slot .form-label{font-size:9px!important;margin-bottom:4px!important}#tab-studio .preview-control-slot .form-input,#tab-studio .preview-control-slot .form-select,#tab-studio .preview-control-slot .form-textarea{font-size:11px!important;padding:8px 9px!important;border-radius:9px!important}#tab-studio .preview-control-slot .file-drop{display:none!important}#tab-studio .preview-control-slot #studioMeigenQualityGroup,#tab-studio .preview-control-slot #studioReferenceVideoGroup,#tab-studio .preview-control-slot #studioPrompt,#tab-studio .preview-control-slot #studioNegativePrompt,#tab-studio .preview-control-slot #studioDurationSeconds{display:none!important}#tab-studio .preview-control-slot #studioAudioGroup,#tab-studio .preview-control-slot #studioAudioAssetGroup,#tab-studio .preview-control-slot #studioVoiceGroup,#tab-studio .preview-control-slot #studioChatterboxGroup{display:none!important}#tab-studio .preview-control-slot #studioForm.show-voice-details.voice-provider-upload #studioAudioGroup,#tab-studio .preview-control-slot #studioForm.show-voice-details.voice-provider-asset #studioAudioAssetGroup,#tab-studio .preview-control-slot #studioForm.show-voice-details.voice-provider-elevenlabs #studioVoiceGroup,#tab-studio .preview-control-slot #studioForm.show-voice-details.voice-provider-chatterbox #studioChatterboxGroup{display:block!important;grid-column:1/-1;border:1px solid #292d2d;border-radius:12px;background:#151717;padding:10px}#tab-studio .preview-control-slot #studioImageGroup,#tab-studio .preview-control-slot #studioVideoGroup{grid-column:3}#tab-studio .preview-control-slot #studioScript{min-height:40px!important}#tab-studio .preview-control-slot .form-group.full{grid-column:4}.compact-config-button{width:100%;margin-top:6px;padding:7px 8px!important;font-size:11px!important}.source-actions{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 7px}.source-actions .btn{padding:8px 9px!important;font-size:11px!important}.character-picker-modal{width:min(94vw,1040px);max-width:1040px}.character-picker-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px;max-height:min(68vh,680px);overflow:auto}.character-picker-grid .character-card{min-height:250px}.character-picker-grid.landscape .character-card{min-height:150px}@media(max-width:1180px){#tab-studio .preview-control-slot .form-grid{grid-template-columns:1fr 1fr}#tab-studio .preview-control-slot .form-group.full,#tab-studio .preview-control-slot #studioImageGroup,#tab-studio .preview-control-slot #studioVideoGroup{grid-column:auto}}
+#tab-studio.left-collapsed .creator-workbench{grid-template-columns:72px 10px minmax(620px,1fr)!important}#tab-studio.left-collapsed .creator-builder .panel-pad{display:block!important;padding:10px!important}#tab-studio.left-collapsed .creator-panel-head{display:flex!important;justify-content:center;margin-bottom:10px}#tab-studio.left-collapsed .creator-panel-head>div,#tab-studio.left-collapsed .creator-help{display:none!important}#tab-studio.left-collapsed .create-tool-grid{position:static!important;display:grid!important;grid-template-columns:1fr!important;gap:8px!important}#tab-studio.left-collapsed .create-tool{grid-template-columns:1fr!important;padding:8px!important;min-height:48px!important;place-items:center!important}#tab-studio.left-collapsed .create-tool:after,#tab-studio.left-collapsed .create-tool b,#tab-studio.left-collapsed .create-tool span:last-child,#tab-studio.left-collapsed .create-folder-label,#tab-studio.left-collapsed .create-lanes,#tab-studio.left-collapsed .create-video-folder,#tab-studio.left-collapsed .seedance-campaign-panel{display:none!important}#tab-studio.left-collapsed .create-tool .tool-icon{width:34px!important;height:34px!important}.creator-collapse-toggle{width:34px;height:34px;border-radius:11px;border:1px solid #303333;background:#1c1e1e;color:#f6f2ee;font-weight:900;cursor:pointer;display:grid;place-items:center}#tab-studio.left-collapsed .creator-collapse-toggle{transform:rotate(180deg)}
+#tab-studio .create-image-only,#tab-studio .create-image-panel{display:none}#tab-studio:not([data-create-tool="image"]) .create-image-only,#tab-studio:not([data-create-tool="image"]) .create-image-panel{display:none!important}#tab-studio[data-create-tool="image"] .create-image-only{display:grid}#tab-studio[data-create-tool="image"] .create-folder-label.create-image-only{display:block}#tab-studio[data-create-tool="image"] .create-video-only,#tab-studio[data-create-tool="image"] #studioForm,#tab-studio[data-create-tool="image"] .preview-card,#tab-studio[data-create-tool="image"] .studio-resize-handle{display:none!important}#tab-studio[data-create-tool="image"] .creator-workbench{grid-template-columns:1fr!important}#tab-studio[data-create-tool="image"] .creator-builder{grid-column:1/-1!important}#tab-studio[data-create-tool="image"] .create-image-panel{display:block!important;grid-column:2}.create-image-panel .product-lab{display:grid;grid-template-columns:minmax(0,1fr) minmax(520px,1.1fr);gap:12px;align-items:stretch}.create-image-panel .product-lab>aside{display:flex;flex-direction:column;background:#111}.create-image-panel .product-lab>aside .panel-pad{display:flex;flex-direction:column;height:100%}.create-image-panel .result-frame{flex:1;min-height:min(72vh,780px);height:auto;max-height:none}.create-image-panel .section-head{display:none}.create-image-panel .mini-pick-grid{max-height:230px}.create-image-placeholder{border:1px solid #2b2f2f;background:#101111;border-radius:18px;padding:18px;color:var(--muted);font-size:13px;line-height:1.5}#tab-studio.left-collapsed .create-image-panel{display:none!important}body[data-theme="light"] #tab-studio .creator-builder,body[data-theme="light"] #tab-studio .preview-card,body[data-theme="light"] #tab-studio .preview-control-slot #studioForm,body[data-theme="light"] #tab-studio .studio-status-panel,body[data-theme="light"] .seedance-campaign-panel,body[data-theme="light"] .create-image-panel .product-lab>aside,body[data-theme="light"] .create-image-panel .result-frame,body[data-theme="light"] .create-image-placeholder{background:#fff!important;border-color:#e5dcd4!important;color:#252b2d!important}body[data-theme="light"] #tab-studio .create-tool,body[data-theme="light"] #tab-studio .create-lane,body[data-theme="light"] #tab-studio .create-lane-body,body[data-theme="light"] #tab-studio .create-video-folder,body[data-theme="light"] #tab-studio .create-flow-step,body[data-theme="light"] #tab-studio .choice,body[data-theme="light"] .campaign-output-item,body[data-theme="light"] .campaign-character-card{background:#fbfaf8!important;border-color:#e9ded5!important;color:#252b2d!important}body[data-theme="light"] #tab-studio .create-lane.active,body[data-theme="light"] #tab-studio .create-tool.active{background:linear-gradient(180deg,rgba(244,162,97,.18),rgba(231,111,139,.06)),#fff!important;border-color:#f4a261!important}body[data-theme="light"] #tab-studio .create-lane-icon,body[data-theme="light"] #tab-studio .tool-icon,body[data-theme="light"] .creator-collapse-toggle{background:#f1e8df!important;border-color:#e2d6cb!important;color:#252b2d!important}body[data-theme="light"] #tab-studio .preview-resize-handle{background:#fff;border-color:#e5dcd4}body[data-theme="light"] #tab-studio .form-input,body[data-theme="light"] #tab-studio .form-select,body[data-theme="light"] #tab-studio .form-textarea{background:#fff!important;color:#252b2d!important;border-color:#e2d6cb!important}@media(max-width:1180px){.create-image-panel .product-lab{grid-template-columns:1fr}}
+#tab-studio .preview-control-slot .actions{display:flex!important}
+#tab-studio .studio-resize-handle{z-index:3;touch-action:none}
+#tab-studio .preview-card{--studio-preview-height:min(62vh,700px)}
+#tab-studio .preview-frame{height:var(--studio-preview-height)!important;max-height:var(--studio-preview-height)!important;overflow:hidden!important;box-sizing:border-box}
+#tab-studio .preview-frame.has-media{padding:18px!important}
+#tab-studio .preview-frame img,#tab-studio .preview-frame video{width:auto!important;height:auto!important;max-width:calc(100% - 36px)!important;max-height:calc(var(--studio-preview-height) - 36px)!important;object-fit:cover!important}
+#tab-studio .preview-frame.ratio-portrait img,#tab-studio .preview-frame.ratio-portrait video{width:auto!important;height:auto!important;max-width:min(100%,calc((var(--studio-preview-height) - 36px) * .5625))!important;max-height:calc(var(--studio-preview-height) - 36px)!important}
+#tab-studio .preview-frame.ratio-landscape img,#tab-studio .preview-frame.ratio-landscape video{max-width:calc(100% - 36px)!important;max-height:min(calc(var(--studio-preview-height) - 36px),calc((100vw - 720px) * .5625))!important}
+#tab-studio .preview-frame.ratio-square img,#tab-studio .preview-frame.ratio-square video{max-width:min(100%,calc(var(--studio-preview-height) - 36px))!important;max-height:calc(var(--studio-preview-height) - 36px)!important}
+#tab-studio[data-create-tool="video"] .selected-character.active{align-items:start!important}
+#tab-studio[data-create-tool="video"] .selected-character img{width:86px!important;height:86px!important;border-radius:12px!important}
+#tab-studio .preview-control-slot #studioPromptGroup,#tab-studio .preview-control-slot #studioNegativePromptGroup{display:none!important}
+#tab-studio .preview-control-slot #studioDurationSecondsGroup.comfy-visible{display:block!important}
+#tab-studio .preview-control-slot #studioDurationSecondsGroup.comfy-visible #studioDurationSeconds{display:block!important}
+#tab-studio[data-create-tool="image"] .preview-frame,#tab-studio[data-create-tool="image"] .preview-resize-handle{display:none!important}
+#tab-studio:not([data-create-tool="image"]) .preview-control-slot #productLab{display:none!important}
+#tab-studio[data-create-tool="image"] .preview-card{display:flex!important}
+#tab-studio[data-create-tool="image"] .creator-workbench{grid-template-columns:minmax(240px,var(--studio-builder-width)) 10px minmax(520px,1fr)!important}
+#tab-studio[data-create-tool="image"] .creator-builder{grid-column:auto!important}
+#tab-studio[data-create-tool="image"] .studio-resize-handle{display:block!important}
+#tab-studio[data-create-tool="image"] .preview-body{min-height:calc(100vh - 130px);overflow:auto;padding:12px}
+#tab-studio[data-create-tool="image"] .preview-control-slot{height:100%}
+#tab-studio[data-create-tool="image"] .preview-control-slot .product-lab{display:grid;grid-template-columns:minmax(360px,.82fr) minmax(420px,1.18fr);gap:12px;align-items:stretch;height:100%}
+#tab-studio[data-create-tool="image"] .preview-control-slot .product-lab .panel:first-child .panel-pad{display:flex!important;flex-direction:column;height:100%;gap:10px}
+#tab-studio[data-create-tool="image"] .preview-control-slot .product-lab .form-group{margin-bottom:0!important}
+#tab-studio[data-create-tool="image"] .preview-control-slot .product-lab .form-label{display:block!important;font-size:10px!important;margin:0 0 6px!important}
+#tab-studio[data-create-tool="image"] .preview-control-slot .product-lab .form-input,#tab-studio[data-create-tool="image"] .preview-control-slot .product-lab .form-select,#tab-studio[data-create-tool="image"] .preview-control-slot .product-lab .form-textarea{font-size:12px!important;padding:10px 11px!important;border-radius:10px!important;width:100%}
+#tab-studio[data-create-tool="image"] .preview-control-slot #productPlacementPrompt{min-height:112px!important}
+#tab-studio[data-create-tool="image"] .preview-control-slot .product-lab .form-grid{display:grid;grid-template-columns:1fr 1fr!important;gap:9px!important}
+#tab-studio[data-create-tool="image"] .preview-control-slot .product-drop-grid{display:grid;grid-template-columns:1fr!important;gap:10px}
+#tab-studio[data-create-tool="image"] .preview-control-slot .pick-card{border-radius:13px}
+#tab-studio[data-create-tool="image"] .preview-control-slot .pick-preview{min-height:74px}
+#tab-studio[data-create-tool="image"] .preview-control-slot .pick-body{padding:10px}
+#tab-studio[data-create-tool="image"] .preview-control-slot .product-lab .actions{display:flex!important;align-items:center;gap:8px;flex-wrap:wrap;border-top:0;margin-top:0!important;padding-top:0!important}
+#tab-studio[data-create-tool="image"] .preview-control-slot .product-lab>aside{display:flex;flex-direction:column;background:#111}
+#tab-studio[data-create-tool="image"] .preview-control-slot .product-lab>aside .panel-pad{display:flex;flex-direction:column;height:100%}
+#tab-studio[data-create-tool="image"] .preview-control-slot .result-frame{flex:1;min-height:520px;height:auto;max-height:none}
+#tab-studio[data-create-tool="image"] .preview-control-slot .section-head{display:none}
+#tab-studio[data-create-tool="image"] .preview-control-slot .mini-pick-grid{max-height:220px}
+#tab-studio[data-create-tool="video"] .selected-character.active{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;padding:0;border:0;background:transparent;margin-bottom:8px}
+#tab-studio[data-create-tool="video"] .selected-character img{width:100%;height:150px;border-radius:14px;border:1px solid #292d2d;object-fit:cover;background:#101111}
+#tab-studio[data-create-tool="video"] .selected-character .btn{align-self:start;height:34px;padding:7px 10px!important;font-size:11px!important}
+body[data-theme="light"] #tab-studio[data-create-tool="video"] .selected-character img{border-color:#e5dcd4;background:#fbfaf8}
+body[data-theme="light"] #tab-studio[data-create-tool="image"] .preview-control-slot .product-lab>aside{background:#fff!important;border-color:#e5dcd4!important}
+#tab-studio[data-create-tool="video"] .preview-control-slot #studioForm{padding:12px 14px!important}
+#tab-studio[data-create-tool="video"] .preview-control-slot .form-grid{grid-template-columns:minmax(180px,1fr) minmax(130px,.62fr) minmax(260px,1.3fr)!important;gap:9px 10px!important;align-items:start}
+#tab-studio[data-create-tool="video"] .preview-control-slot #studioConfigureVoiceButton{width:auto;min-width:138px;margin-top:6px;padding:8px 10px!important}
+#tab-studio[data-create-tool="video"] .preview-control-slot #studioImageGroup,#tab-studio[data-create-tool="video"] .preview-control-slot #studioVideoGroup{grid-column:3!important}
+#tab-studio[data-create-tool="video"] .preview-control-slot #studioVideoEngineGroup{display:block!important;grid-column:2!important}
+#tab-studio[data-create-tool="video"] .preview-control-slot #studioToneGroup{display:block!important;grid-column:1!important}
+#tab-studio[data-create-tool="video"] .preview-control-slot #studioPromptGroup{display:block!important;grid-column:2/-1!important}
+#tab-studio[data-create-tool="video"] .preview-control-slot #studioScriptGroup{grid-column:1/-1!important;max-width:none!important}
+#tab-studio[data-create-tool="video"] .preview-control-slot #studioScriptLabel{color:var(--primary)!important}
+#tab-studio[data-create-tool="video"] .preview-control-slot #studioScript{min-height:74px!important;font-size:12px!important;line-height:1.45!important}
+#tab-studio[data-create-tool="video"] .preview-control-slot .selected-character.active{display:flex!important;align-items:center!important;gap:8px!important;margin:6px 0 0!important}
+#tab-studio[data-create-tool="video"] .preview-control-slot .selected-character img{width:70px!important;height:70px!important;border-radius:12px!important;object-fit:cover!important}
+#tab-studio[data-create-tool="video"] .preview-control-slot .selected-character .btn{height:34px!important;padding:7px 10px!important}
+#tab-studio[data-create-tool="video"] .preview-control-slot #studioChatterboxGroup{margin-top:2px!important}
+#tab-studio[data-create-tool="video"] .preview-control-slot #studioForm.show-voice-details.voice-provider-chatterbox #studioChatterboxGroup{padding:9px 10px!important}
+#tab-studio[data-create-tool="video"] .preview-control-slot #studioForm.voice-provider-upload #studioAudioGroup,
+#tab-studio[data-create-tool="video"] .preview-control-slot #studioForm.voice-provider-asset #studioAudioAssetGroup{display:block!important;grid-column:1!important;border:1px solid #292d2d;border-radius:12px;background:#151717;padding:10px}
+#tab-studio[data-create-tool="video"] .preview-control-slot #studioForm.voice-provider-upload #studioAudioGroup .file-drop{display:flex!important;min-height:62px!important;align-items:center!important;justify-content:center!important;text-align:center!important}
+#tab-studio[data-create-tool="video"] .preview-control-slot #studioChatterboxGroup>.form-grid{grid-template-columns:minmax(140px,.9fr) minmax(110px,.55fr) minmax(220px,1.35fr)!important;gap:8px!important}
+#tab-studio[data-create-tool="video"] .preview-control-slot #studioChatterboxGroup .hint{font-size:11px!important;line-height:1.35!important;margin-top:4px!important}
+.voice-picker-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
+.voice-picker-head strong{display:block;font-size:15px;color:var(--ink);margin-top:2px}
+#tab-studio[data-create-tool="video"] .preview-control-slot #studioChatterboxVoice{font-weight:800}
+#tab-studio[data-create-tool="video"] .preview-control-slot #studioChatterboxGroup .source-actions .btn{padding:7px 9px!important}
+#tab-studio[data-create-tool="video"] .preview-control-slot .actions{align-items:center;gap:8px!important;flex-wrap:wrap}
+#tab-studio[data-create-tool="video"] .preview-control-slot #studioPreviewVoiceButton{grid-column:auto!important;min-width:158px}
+@media(max-width:1180px){#tab-studio[data-create-tool="video"] .preview-control-slot .form-grid,#tab-studio[data-create-tool="video"] .preview-control-slot #studioChatterboxGroup>.form-grid{grid-template-columns:1fr 1fr!important}#tab-studio[data-create-tool="video"] .preview-control-slot #studioImageGroup,#tab-studio[data-create-tool="video"] .preview-control-slot #studioVideoGroup,#tab-studio[data-create-tool="video"] .preview-control-slot #studioScriptGroup{grid-column:1/-1!important}}
+@media(max-width:760px){#tab-studio[data-create-tool="video"] .preview-control-slot .form-grid,#tab-studio[data-create-tool="video"] .preview-control-slot #studioChatterboxGroup>.form-grid{grid-template-columns:1fr!important}}
+@media(max-width:1180px){#tab-studio[data-create-tool="image"] .creator-workbench,#tab-studio[data-create-tool="image"] .preview-control-slot .product-lab{grid-template-columns:1fr!important}#tab-studio[data-create-tool="image"] .studio-resize-handle{display:none!important}}
+#tab-studio[data-create-tool="video"] .preview-control-slot #studioForm>.form-grid{grid-template-columns:minmax(280px,.86fr) minmax(420px,1.14fr)!important;gap:8px 14px!important;align-items:start!important}
+#tab-studio[data-create-tool="video"] .preview-control-slot #studioForm>.form-grid>#studioAudioGroup,
+#tab-studio[data-create-tool="video"] .preview-control-slot #studioForm>.form-grid>#studioAudioAssetGroup,
+#tab-studio[data-create-tool="video"] .preview-control-slot #studioForm>.form-grid>#studioChatterboxGroup,
+#tab-studio[data-create-tool="video"] .preview-control-slot #studioForm>.form-grid>#studioImageGroup,
+#tab-studio[data-create-tool="video"] .preview-control-slot #studioForm>.form-grid>#studioMeigenQualityGroup,
+#tab-studio[data-create-tool="video"] .preview-control-slot #studioForm>.form-grid>#studioReferenceVideoGroup,
+#tab-studio[data-create-tool="video"] .preview-control-slot #studioForm>.form-grid>#studioToneGroup,
+#tab-studio[data-create-tool="video"] .preview-control-slot #studioForm>.form-grid>#studioVideoEngineGroup,
+#tab-studio[data-create-tool="video"] .preview-control-slot #studioForm>.form-grid>#studioVideoGroup,
+#tab-studio[data-create-tool="video"] .preview-control-slot #studioForm>.form-grid>#studioVoiceGroup,
+#tab-studio[data-create-tool="video"] .preview-control-slot #studioForm>.form-grid>.form-group:not(#studioPromptGroup):not(#studioScriptGroup):not(#studioNegativePromptGroup):not(#studioDurationSecondsGroup){grid-column:1!important;max-width:none!important}
+#tab-studio[data-create-tool="video"] .preview-control-slot #studioForm>.form-grid>#studioPromptGroup,
+#tab-studio[data-create-tool="video"] .preview-control-slot #studioForm>.form-grid>#studioScriptGroup{grid-column:2!important;max-width:none!important}
+#tab-studio[data-create-tool="video"] .preview-control-slot #studioForm>.form-grid>#studioScriptGroup{grid-row:1 / span 2!important}
+#tab-studio[data-create-tool="video"] .preview-control-slot #studioForm>.form-grid>#studioPromptGroup{grid-row:3 / span 2!important}
+#tab-studio[data-create-tool="video"] .preview-control-slot #studioPrompt,
+#tab-studio[data-create-tool="video"] .preview-control-slot #studioScript{display:block!important;width:100%!important}
+#tab-studio[data-create-tool="video"] .preview-control-slot #studioPrompt{min-height:72px!important;resize:vertical!important}
+#tab-studio[data-create-tool="video"] .preview-control-slot #studioScript{min-height:112px!important;resize:vertical!important}
+#tab-studio[data-create-tool="video"] .preview-control-slot #studioPromptGroup,
+#tab-studio[data-create-tool="video"] .preview-control-slot #studioScriptGroup{margin-bottom:4px!important}
+#tab-studio[data-create-tool="video"] .preview-control-slot #studioNegativePromptGroup,
+#tab-studio[data-create-tool="video"] .preview-control-slot #studioDurationSecondsGroup.comfy-visible{grid-column:2!important}
+#tab-studio[data-create-tool="video"] .preview-control-slot #studioForm>.actions{display:flex!important;justify-content:flex-start!important;border-top:1px solid #292d2d!important;margin-top:10px!important;padding-top:10px!important}
+@media(max-width:900px){#tab-studio[data-create-tool="video"] .preview-control-slot #studioForm>.form-grid{grid-template-columns:1fr!important}#tab-studio[data-create-tool="video"] .preview-control-slot #studioForm>.form-grid>*{grid-column:1!important;grid-row:auto!important}#tab-studio[data-create-tool="video"] .preview-control-slot #studioScript{min-height:120px!important}}
+#tab-studio[data-create-tool="video"] .preview-control-slot{container-type:inline-size}
+@container (max-width: 860px){
+  #studioForm>.form-grid{grid-template-columns:minmax(220px,.92fr) minmax(280px,1.08fr)!important;gap:8px!important}
+  #studioForm>.form-grid>#studioScriptGroup{grid-row:1 / span 2!important}
+  #studioForm>.form-grid>#studioPromptGroup{grid-row:3 / span 2!important}
+  #studioPrompt{min-height:68px!important}
+  #studioScript{min-height:104px!important}
+}
+@container (max-width: 640px){
+  #studioForm>.form-grid{grid-template-columns:1fr!important}
+  #studioForm>.form-grid>*{grid-column:1!important;grid-row:auto!important}
+  #studioPrompt,#studioScript{min-height:110px!important}
+}
+#tab-studio[data-create-tool="campaign"] .create-video-only,
+#tab-studio[data-create-tool="campaign"] .create-image-only,
+#tab-studio[data-create-tool="campaign"] #studioForm,
+#tab-studio[data-create-tool="campaign"] .create-image-panel{display:none!important}
+#tab-studio[data-create-tool="campaign"] .creator-workbench{grid-template-columns:minmax(240px,var(--studio-builder-width)) 10px minmax(520px,1fr)!important}
+#tab-studio[data-create-tool="campaign"] .preview-card{display:flex!important}
+#tab-studio[data-create-tool="campaign"] .studio-resize-handle{display:block!important}
+#tab-studio[data-create-tool="campaign"] .preview-control-slot{display:block!important}
+#tab-studio[data-create-tool="campaign"] .seedance-campaign-panel{display:block!important;margin:0!important;border-radius:14px!important;background:#101111!important;border-color:#292d2d!important;padding:12px 14px!important}
+#tab-studio[data-create-tool="campaign"] .seedance-campaign-panel:before{content:"Campaign controls";display:block;color:var(--primary);font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.08em;margin:0 0 10px}
+#tab-studio[data-create-tool="campaign"] .campaign-node-row{display:none!important}
+#tab-studio[data-create-tool="campaign"] .campaign-builder-grid{display:grid!important;grid-template-columns:minmax(280px,.9fr) minmax(420px,1.1fr)!important;gap:10px 14px!important;align-items:start!important}
+#tab-studio[data-create-tool="campaign"] #campaignCharacterSelect{display:none!important}
+#tab-studio[data-create-tool="campaign"] .campaign-character-grid{display:grid!important;grid-template-columns:repeat(auto-fill,minmax(170px,1fr))!important;gap:8px!important;max-height:188px!important;overflow:auto!important;margin:7px 0!important}
+#tab-studio[data-create-tool="campaign"] .campaign-character-card{min-height:64px!important;border-radius:12px!important;padding:7px!important;background:#181a1a!important}
+#tab-studio[data-create-tool="campaign"] .campaign-character-card img{width:48px!important;height:48px!important}
+#tab-studio[data-create-tool="campaign"] .campaign-character-card strong{font-size:11px!important}
+#tab-studio[data-create-tool="campaign"] .campaign-character-card span{font-size:10px!important}
+#tab-studio[data-create-tool="campaign"] .seedance-campaign-panel .form-label{font-size:9px!important;margin-bottom:4px!important}
+#tab-studio[data-create-tool="campaign"] .seedance-campaign-panel .form-input,
+#tab-studio[data-create-tool="campaign"] .seedance-campaign-panel .form-select,
+#tab-studio[data-create-tool="campaign"] .seedance-campaign-panel .form-textarea{font-size:11px!important;padding:8px 9px!important;border-radius:9px!important}
+#tab-studio[data-create-tool="campaign"] #campaignPrompt{min-height:88px!important}
+#tab-studio[data-create-tool="campaign"] #campaignEnvironments{min-height:92px!important}
+#tab-studio[data-create-tool="campaign"] .seedance-campaign-panel .actions{display:flex!important;gap:8px!important;align-items:center!important;flex-wrap:wrap!important;border-top:1px solid #292d2d!important;margin-top:10px!important;padding-top:10px!important}
+#tab-studio[data-create-tool="campaign"] .campaign-output-list{max-height:104px!important;overflow:auto!important;margin-top:8px!important}
+body[data-theme="light"] #tab-studio[data-create-tool="campaign"] .seedance-campaign-panel,
+body[data-theme="light"] #tab-studio[data-create-tool="campaign"] .campaign-character-card{background:#fff!important;border-color:#e5dcd4!important;color:#252b2d!important}
+.campaign-source-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px;align-items:center}
+.campaign-trend-card{border:1px solid #292d2d;background:#181a1a;border-radius:12px;padding:9px;margin-top:8px;font-size:11px;color:var(--muted)}
+.campaign-trend-card strong{display:block;color:var(--ink);font-size:12px;line-height:1.25;margin-bottom:4px}
+.campaign-trend-card span{display:inline-flex;margin:5px 6px 0 0}
+.campaign-frame-summary{margin-top:8px;border:1px solid rgba(244,162,97,.32);background:rgba(244,162,97,.08);border-radius:10px;padding:7px;color:var(--primary);font-weight:800;font-size:10px;text-transform:uppercase;letter-spacing:.04em}
+.campaign-frame-report{border-color:rgba(244,162,97,.45)!important;background:linear-gradient(180deg,rgba(244,162,97,.12),rgba(231,111,139,.06)),#181a1a!important}
+.campaign-scene-list{display:grid;gap:8px;margin-top:10px}
+.campaign-scene-card{border:1px solid #292d2d;background:#181a1a;border-radius:12px;padding:9px;display:grid;gap:7px}
+.campaign-scene-head{display:grid;grid-template-columns:minmax(0,1fr) 92px 130px;gap:8px;align-items:center}
+.campaign-scene-head strong{font-size:12px;color:var(--ink)}
+.campaign-scene-time{font-size:10px;color:var(--primary);font-weight:900;text-align:right}
+.campaign-scene-card textarea{min-height:58px!important}
+.campaign-node-view{border:1px solid #292d2d;background:#111313;border-radius:13px;padding:10px;margin:8px 0;display:grid;gap:8px}
+.campaign-node-view-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:7px;align-items:stretch}
+.campaign-node-box{border:1px solid rgba(244,162,97,.28);background:rgba(244,162,97,.08);border-radius:11px;padding:8px;min-height:58px}
+.campaign-node-box strong{display:block;color:var(--ink);font-size:11px;margin-bottom:4px}
+.campaign-node-box span{display:block;color:var(--muted);font-size:10px;line-height:1.35}
+.campaign-node-arrow{text-align:center;color:var(--primary);font-weight:900;font-size:12px}
+.campaign-node-canvas-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;border-bottom:1px solid #292d2d;padding-bottom:8px}
+.campaign-node-canvas-head strong{color:var(--ink);font-size:12px}.campaign-node-canvas-head span{color:var(--muted);font-size:10px;line-height:1.35;text-align:right}
+.campaign-node-canvas{display:grid;grid-template-columns:repeat(auto-fit,minmax(126px,1fr));gap:7px}
+.campaign-node-box-source{border-color:rgba(91,141,239,.38);background:rgba(91,141,239,.09)}
+.campaign-node-box-analysis{border-color:rgba(244,162,97,.42);background:rgba(244,162,97,.1)}
+.campaign-node-box-replacement{border-color:rgba(231,111,139,.38);background:rgba(231,111,139,.08)}
+.campaign-node-box-render{border-color:rgba(113,204,152,.36);background:rgba(113,204,152,.08)}
+.campaign-node-box-assembly{border-color:rgba(255,213,128,.42);background:rgba(255,213,128,.09)}
+.campaign-node-edges{display:grid;gap:4px;max-height:120px;overflow:auto;border-top:1px solid #292d2d;padding-top:8px}
+.campaign-node-edges span{font-size:10px;color:var(--muted);line-height:1.35}
+.campaign-workflow-json{display:none;border:1px solid #292d2d;background:#0d0f0f;border-radius:13px;padding:10px;margin:8px 0;gap:8px}
+.campaign-workflow-json.active{display:grid}
+.campaign-workflow-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.campaign-workflow-json textarea{min-height:230px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace;font-size:10px;line-height:1.45}
+.campaign-engine-pill{display:inline-flex;align-items:center;border:1px solid rgba(244,162,97,.35);border-radius:999px;padding:2px 7px;color:var(--primary);font-size:9px;font-weight:900;margin:3px 4px 0 0}
+.trend-card-actions .btn.btn-campaign{background:rgba(244,162,97,.12);border-color:rgba(244,162,97,.35)}
+body[data-theme="light"] .campaign-trend-card,
+body[data-theme="light"] .campaign-scene-card,
+body[data-theme="light"] .campaign-node-view,
+body[data-theme="light"] .campaign-node-box,
+body[data-theme="light"] .campaign-workflow-json{background:#fff!important;border-color:#e5dcd4!important;color:#252b2d!important}
+.course-context{display:none;grid-column:1/-1;border:1px solid rgba(244,162,97,.35);background:rgba(244,162,97,.08);border-radius:14px;padding:12px;margin-bottom:8px}.course-context.active{display:block}.course-context-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:10px}.course-context-title{font-size:14px;font-weight:900}.course-context .form-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.course-context .form-group.full{grid-column:1/-1}.course-context .form-textarea{min-height:82px;background:var(--surface)}#tab-studio[data-create-tool="video"] .preview-control-slot .course-context{grid-column:1/-1!important}body[data-theme="light"] .course-context{background:#fff7ee;border-color:#ead3c0}@media(max-width:760px){.course-context .form-grid{grid-template-columns:1fr}}
+.course-style-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;grid-column:1/-1}.course-style-card{position:relative;min-height:46px;border:1px solid #292d2d;background:#151717;color:var(--ink);border-radius:11px;padding:9px 10px;text-align:left;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px}.course-style-card:before{content:"";width:8px;height:8px;border-radius:999px;background:rgba(244,162,97,.42);box-shadow:0 0 0 4px rgba(244,162,97,.08);order:2;flex:0 0 auto}.course-style-card.active{border-color:var(--primary);background:linear-gradient(135deg,rgba(244,162,97,.18),rgba(231,111,139,.08)),#181a1a}.course-style-card.active:before{background:var(--primary)}.course-style-card strong{display:block;font-size:11px;line-height:1.15}.course-style-card span{display:none}.course-style-card:after{content:attr(data-info);position:absolute;left:0;bottom:calc(100% + 8px);width:min(260px,70vw);padding:9px 10px;border-radius:10px;background:#222525;border:1px solid #343838;color:#f6f2ee;font-size:11px;line-height:1.35;font-weight:700;opacity:0;transform:translateY(4px);pointer-events:none;transition:.14s;z-index:8;box-shadow:0 12px 32px rgba(0,0,0,.28)}.course-style-card:hover:after,.course-style-card:focus-visible:after{opacity:1;transform:translateY(0)}.course-timeline{display:none;grid-column:1/-1;border:1px solid #292d2d;background:#111313;border-radius:12px;padding:10px;gap:7px}.course-timeline.active{display:grid}.course-timeline-row{display:grid;grid-template-columns:74px 126px minmax(0,1fr);gap:8px;align-items:start;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);border-radius:10px;padding:8px}.course-timeline-row strong{font-size:11px}.course-timeline-row span{font-size:10px;color:var(--muted);line-height:1.35}.course-source-grid{display:grid;grid-template-columns:1fr auto;gap:7px;align-items:center}body[data-theme="light"] .course-style-card,body[data-theme="light"] .course-timeline{background:#fff!important;border-color:#e5dcd4!important}body[data-theme="light"] .course-style-card:after{background:#fff;border-color:#e5dcd4;color:#252b2d}body[data-theme="light"] .course-timeline-row{background:#fff7ee;border-color:#ead3c0}@media(max-width:900px){.course-style-row{grid-template-columns:1fr 1fr}.course-timeline-row{grid-template-columns:1fr}}
+#tab-studio[data-create-type="course"] .preview-control-slot #studioForm>.form-grid{grid-template-columns:minmax(300px,1.08fr) minmax(280px,.92fr)!important;gap:10px 14px!important}#tab-studio[data-create-type="course"] .preview-control-slot #studioScriptGroup,#tab-studio[data-create-type="course"] .preview-control-slot #studioPromptGroup,#tab-studio[data-create-type="course"] .preview-control-slot #studioNegativePromptGroup,#tab-studio[data-create-type="course"] .preview-control-slot #studioCourseContext{grid-column:1!important;max-width:none!important}#tab-studio[data-create-type="course"] .preview-control-slot #studioScriptGroup{grid-row:1!important}#tab-studio[data-create-type="course"] .preview-control-slot #studioPromptGroup{grid-row:2!important}#tab-studio[data-create-type="course"] .preview-control-slot #studioCourseContext{grid-row:3 / span 8!important;margin:0!important;padding:10px!important;border-radius:13px!important}#tab-studio[data-create-type="course"] .preview-control-slot #studioCourseContext .course-context-head{margin-bottom:8px!important;align-items:center!important}#tab-studio[data-create-type="course"] .preview-control-slot #studioCourseContext .course-context-head .hint{display:none!important}#tab-studio[data-create-type="course"] .preview-control-slot #studioCourseContext .form-grid{grid-template-columns:1fr!important;gap:7px!important}#tab-studio[data-create-type="course"] .preview-control-slot #studioCourseContext .form-group{grid-column:1!important;margin-bottom:0!important}#tab-studio[data-create-type="course"] .preview-control-slot #studioCourseContext .form-textarea{min-height:68px!important}#tab-studio[data-create-type="course"] .preview-control-slot #studioCourseContext #courseModuleOutline{min-height:78px!important}#tab-studio[data-create-type="course"] .preview-control-slot #studioCourseContext .course-style-row{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:6px!important}#tab-studio[data-create-type="course"] .preview-control-slot #studioCourseContext .course-style-card{min-height:38px!important;padding:7px 9px!important}#tab-studio[data-create-type="course"] .preview-control-slot #studioScript{min-height:136px!important}#tab-studio[data-create-type="course"] .preview-control-slot #studioPrompt{min-height:96px!important}#tab-studio[data-create-type="course"] .preview-control-slot #studioAudioGroup,#tab-studio[data-create-type="course"] .preview-control-slot #studioAudioAssetGroup,#tab-studio[data-create-type="course"] .preview-control-slot #studioVoiceGroup,#tab-studio[data-create-type="course"] .preview-control-slot #studioChatterboxGroup,#tab-studio[data-create-type="course"] .preview-control-slot #studioToneGroup,#tab-studio[data-create-type="course"] .preview-control-slot #studioVideoEngineGroup,#tab-studio[data-create-type="course"] .preview-control-slot #studioImageGroup,#tab-studio[data-create-type="course"] .preview-control-slot #studioVideoGroup,#tab-studio[data-create-type="course"] .preview-control-slot #studioForm>.form-grid>.form-group:not(#studioCourseContext):not(#studioScriptGroup):not(#studioPromptGroup):not(#studioNegativePromptGroup):not(#studioDurationSecondsGroup){grid-column:2!important;max-width:none!important}#tab-studio[data-create-type="course"] .preview-control-slot #studioForm>.actions{grid-column:1/-1!important}@media(max-width:900px){#tab-studio[data-create-type="course"] .preview-control-slot #studioForm>.form-grid{grid-template-columns:1fr!important}#tab-studio[data-create-type="course"] .preview-control-slot #studioCourseContext,#tab-studio[data-create-type="course"] .preview-control-slot #studioForm>.form-grid>*{grid-column:1!important;grid-row:auto!important}}
+#tab-studio[data-create-type="course"] .preview-control-slot #coursePresentationUploadGroup .file-drop{display:flex!important;min-height:64px!important;align-items:center!important;justify-content:center!important}
+.preview-control-slot #studioForm>.form-grid>#studioCourseContext{display:none}
+#tab-studio[data-create-type="course"] .preview-control-slot #studioForm>.form-grid{grid-template-columns:minmax(360px,1fr) minmax(330px,.9fr)!important;gap:10px 14px!important;align-items:start!important}
+#tab-studio[data-create-type="course"] .preview-control-slot #studioForm>.form-grid>#studioScriptGroup,#tab-studio[data-create-type="course"] .preview-control-slot #studioForm>.form-grid>#studioPromptGroup,#tab-studio[data-create-type="course"] .preview-control-slot #studioForm>.form-grid>#studioNegativePromptGroup{grid-column:1!important;max-width:none!important}
+#tab-studio[data-create-type="course"] .preview-control-slot #studioForm>.form-grid>#studioScriptGroup{grid-row:1!important}
+#tab-studio[data-create-type="course"] .preview-control-slot #studioForm>.form-grid>#studioPromptGroup{grid-row:2!important}
+#tab-studio[data-create-type="course"] .preview-control-slot #studioForm>.form-grid>#studioCourseContext{display:block!important;grid-column:2!important;grid-row:1 / span 12!important;max-width:none!important;margin:0!important;padding:10px!important;border-radius:13px!important}
+#tab-studio[data-create-type="course"] .preview-control-slot #studioCourseContext .course-context-head{margin-bottom:8px!important;align-items:center!important}
+#tab-studio[data-create-type="course"] .preview-control-slot #studioCourseContext .course-context-head .hint{display:none!important}
+#tab-studio[data-create-type="course"] .preview-control-slot #studioCourseContext>.form-grid{grid-template-columns:1fr!important;gap:7px!important}
+#tab-studio[data-create-type="course"] .preview-control-slot #studioCourseContext>.form-grid>*{grid-column:1/-1!important;width:100%!important;min-width:0!important;box-sizing:border-box!important}
+#tab-studio[data-create-type="course"] .preview-control-slot #studioCourseContext .form-group,#tab-studio[data-create-type="course"] .preview-control-slot #studioCourseContext #courseTimeline{grid-column:1!important;margin-bottom:0!important}
+#tab-studio[data-create-type="course"] .preview-control-slot #studioCourseContext .form-textarea{min-height:68px!important}
+#tab-studio[data-create-type="course"] .preview-control-slot #studioCourseContext #courseModuleOutline{min-height:78px!important}
+#tab-studio[data-create-type="course"] .preview-control-slot #studioCourseContext .course-style-row{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:6px!important}
+#tab-studio[data-create-type="course"] .preview-control-slot #studioCourseContext .course-style-card{min-height:38px!important;padding:7px 9px!important}
+#tab-studio[data-create-type="course"] .preview-control-slot #studioCourseContext #courseTimeline{margin-top:2px!important}
+#tab-studio[data-create-type="course"] .preview-control-slot #studioCourseContext .course-timeline-row{grid-template-columns:58px 96px minmax(0,1fr)!important}
+#tab-studio[data-create-type="course"] .preview-control-slot #studioScript{min-height:132px!important}
+#tab-studio[data-create-type="course"] .preview-control-slot #studioPrompt{min-height:92px!important}
+#tab-studio[data-create-type="course"] .preview-control-slot #studioForm>.form-grid>#studioAudioGroup,#tab-studio[data-create-type="course"] .preview-control-slot #studioForm>.form-grid>#studioAudioAssetGroup,#tab-studio[data-create-type="course"] .preview-control-slot #studioForm>.form-grid>#studioVoiceGroup,#tab-studio[data-create-type="course"] .preview-control-slot #studioForm>.form-grid>#studioChatterboxGroup,#tab-studio[data-create-type="course"] .preview-control-slot #studioForm>.form-grid>#studioToneGroup,#tab-studio[data-create-type="course"] .preview-control-slot #studioForm>.form-grid>#studioVideoEngineGroup,#tab-studio[data-create-type="course"] .preview-control-slot #studioForm>.form-grid>#studioImageGroup,#tab-studio[data-create-type="course"] .preview-control-slot #studioForm>.form-grid>#studioVideoGroup,#tab-studio[data-create-type="course"] .preview-control-slot #studioForm>.form-grid>.form-group:not(#studioCourseContext):not(#studioScriptGroup):not(#studioPromptGroup):not(#studioNegativePromptGroup):not(#studioDurationSecondsGroup){grid-column:1!important;max-width:none!important}
+#tab-studio[data-create-type="course"] .preview-control-slot #studioForm>.form-grid>#studioCourseContext>.form-grid{grid-template-columns:1fr!important;width:100%!important}
+#tab-studio[data-create-type="course"] .preview-control-slot #studioForm>.form-grid>#studioCourseContext>.form-grid>.form-group,#tab-studio[data-create-type="course"] .preview-control-slot #studioForm>.form-grid>#studioCourseContext>.form-grid>#courseTimeline{grid-column:1/2!important;width:100%!important;min-width:0!important}
+#tab-studio[data-create-type="course"] .preview-control-slot #studioForm>.actions{grid-column:1/-1!important}
+#tab-studio[data-create-type="course"] .preview-control-slot #coursePresentationUploadGroup .file-drop{display:flex!important;min-height:62px!important;align-items:center!important;justify-content:center!important}
+@media(max-width:900px){#tab-studio[data-create-type="course"] .preview-control-slot #studioForm>.form-grid{grid-template-columns:1fr!important}#tab-studio[data-create-type="course"] .preview-control-slot #studioForm>.form-grid>*{grid-column:1!important;grid-row:auto!important}#tab-studio[data-create-type="course"] .preview-control-slot #studioCourseContext{grid-column:1!important;grid-row:auto!important}}
+@media(max-width:1180px){
+  #tab-studio[data-create-tool="campaign"] .creator-workbench{grid-template-columns:1fr!important}
+  #tab-studio[data-create-tool="campaign"] .studio-resize-handle{display:none!important}
+}
+@media(max-width:760px){
+  #tab-studio[data-create-tool="campaign"] .campaign-builder-grid{grid-template-columns:1fr!important}
+  .campaign-scene-head{grid-template-columns:1fr}
+  .campaign-scene-time{text-align:left}
+}
+#libraryLightbox .lightbox-single-media,#libraryLightbox .lightbox-generated-panel{width:100%;height:100%;display:grid;place-items:center;overflow:hidden}
+#libraryLightbox .lightbox-media{width:auto!important;height:auto!important;max-width:min(100%,92vw)!important;max-height:min(100%,82vh)!important;aspect-ratio:auto!important;object-fit:contain!important}
+#libraryLightbox .lightbox-review-grid .lightbox-media{max-width:100%!important}
   </style>
 </head>
 <body>
@@ -336,8 +566,6 @@ body[data-theme="light"] #tab-studio[data-create-tool="video"] .create-flow-step
     <nav class="nav">
       <button class="nav-tab active" data-tab="characters"><span class="nav-ico">◉</span>Characters</button>
       <button class="nav-tab" data-tab="studio"><span class="nav-ico">▶</span>Create</button>
-      <button class="nav-tab" data-tab="trends"><span class="nav-ico">↗</span>Trends</button>
-      <button class="nav-tab" data-tab="products"><span class="nav-ico">✦</span>Image Composite</button>
       <button class="nav-tab" data-tab="videos"><span class="nav-ico">▥</span>Library</button>
       <button class="nav-tab" data-tab="assets"><span class="nav-ico">◫</span>Assets</button>
       <button class="nav-tab" data-tab="brands"><span class="nav-ico">✦</span>Brands</button>
@@ -361,38 +589,48 @@ body[data-theme="light"] #tab-studio[data-create-tool="video"] .create-flow-step
         <div class="tenant-pill" id="tenantPill">No workspace</div>
         <button class="btn btn-secondary" type="button" onclick="toggleTheme()" id="themeButton">Light mode</button>
         <button class="btn btn-secondary" type="button" onclick="logout()">Sign out</button>
-        <div class="status-pill"><span class="dot" id="statusDot"></span><span id="statusText">Checking studio...</span></div>
+        <button class="status-pill status-pill-button" type="button" onclick="toggleStudioStatusPanel()" aria-expanded="false" aria-controls="studioStatusPanel"><span class="dot" id="statusDot"></span><span id="statusText">Checking studio...</span></button>
       </div>
     </div>
 
-    <section class="tab-content create-studio" id="tab-studio">
+    <section class="tab-content create-studio" id="tab-studio" data-create-tool="video">
       <div class="hero-grid creator-workbench">
         <div class="panel creator-builder">
           <div class="panel-pad">
             <div class="creator-panel-head">
-              <button class="creator-back" type="button" onclick="switchTab('characters')" aria-label="Back">‹</button>
+              <button class="creator-back" type="button" onclick="switchTab('characters')" aria-label="Back to characters">‹</button>
               <div>
                 <div class="panel-title">Create video</div>
                 <p class="panel-note">Choose a format, load a character, add voice, then generate.</p>
               </div>
-              <button class="creator-help" type="button">Tutorials</button>
+              <button class="creator-collapse-toggle" type="button" onclick="toggleCreateLeftColumn()" aria-label="Collapse create column">‹</button>
+              <button class="creator-help" type="button" onclick="toggleCreateTools()">Change tool</button>
             </div>
 
             <div class="create-tool-grid">
               <button class="create-tool active" type="button" data-create-tool="video" onclick="setCreateTool('video')"><span class="tool-icon"><svg viewBox="0 0 24 24"><path d="M5 7.8C5 6.8 5.8 6 6.8 6h6.4c1 0 1.8.8 1.8 1.8v8.4c0 1-.8 1.8-1.8 1.8H6.8c-1 0-1.8-.8-1.8-1.8V7.8Z"/><path d="m15 10 4-2.4v8.8L15 14v-4Z"/></svg></span><b>Video</b><span>Animate, remix</span></button>
-              <button class="create-tool" type="button" data-create-tool="image" onclick="switchTab('products')"><span class="tool-icon"><svg viewBox="0 0 24 24"><path d="M5 5h14v14H5z"/><path d="m8 16 3-4 2 2 2-3 2 5H8Z"/><circle cx="9" cy="9" r="1.4"/></svg></span><b>Image</b><span>Composite shots</span></button>
+              <button class="create-tool" type="button" data-create-tool="image" onclick="setCreateTool('image')"><span class="tool-icon"><svg viewBox="0 0 24 24"><path d="M5 5h14v14H5z"/><path d="m8 16 3-4 2 2 2-3 2 5H8Z"/><circle cx="9" cy="9" r="1.4"/></svg></span><b>Image</b><span>Composite shots</span></button>
               <button class="create-tool" type="button" data-create-tool="character" onclick="openCreateCharacterBuilder()"><span class="tool-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.2"/><path d="M5.5 19c.8-3.4 3-5.1 6.5-5.1s5.7 1.7 6.5 5.1"/></svg></span><b>Character</b><span>Agents and looks</span></button>
               <button class="create-tool" type="button" data-create-tool="audio" onclick="setCreateTool('audio')"><span class="tool-icon"><svg viewBox="0 0 24 24"><path d="M8 10v4"/><path d="M12 7v10"/><path d="M16 10v4"/><path d="M4 12h1"/><path d="M19 12h1"/></svg></span><b>Audio</b><span>Voiceovers first</span></button>
+              <button class="create-tool" type="button" data-create-tool="campaign" onclick="setCreateTool('campaign')"><span class="tool-icon"><svg viewBox="0 0 24 24"><path d="M4 7h5v5H4z"/><path d="M15 7h5v5h-5z"/><path d="M9 17h6"/><path d="M6.5 12v2.5c0 1.4 1.1 2.5 2.5 2.5"/><path d="M17.5 12v2.5c0 1.4-1.1 2.5-2.5 2.5"/></svg></span><b>Campaign</b><span>Batch Seedance</span></button>
               <button class="create-tool" type="button" data-create-tool="trends" onclick="switchTab('trends')"><span class="tool-icon"><svg viewBox="0 0 24 24"><path d="M5 16 10 11l3 3 6-7"/><path d="M14 7h5v5"/></svg></span><b>Trends</b><span>Find remix sources</span></button>
             </div>
 
             <div class="create-folder-label create-video-only">Video type</div>
             <div class="create-lanes create-video-only" aria-label="Create folders">
               <button class="create-lane active" type="button" data-create-type="shorts" onclick="setCreateType('shorts')"><div class="create-lane-preview"><div class="lane-device lane-device-phone"></div><span>Short</span></div><div class="create-lane-body"><div class="create-lane-icon"><svg viewBox="0 0 24 24"><path d="M7 4h10v16H7z"/><path d="M10 9.5 15 12l-5 2.5v-5Z"/></svg></div><div><b>Shorts</b><span>Fast talking-head posts</span></div></div></button>
+              <button class="create-lane" type="button" data-create-type="scenes" onclick="setCreateType('scenes')"><div class="create-lane-preview"><div class="lane-device lane-device-wide"></div><span>Scene</span></div><div class="create-lane-body"><div class="create-lane-icon"><svg viewBox="0 0 24 24"><path d="M4 7h16v10H4z"/><path d="M8 7V5"/><path d="M16 7V5"/><path d="M8 17v2"/><path d="M16 17v2"/></svg></div><div><b>B-roll / Scenes</b><span>Product and environment clips</span></div></div></button>
               <button class="create-lane" type="button" data-create-type="remix" onclick="setCreateType('remix')"><div class="create-lane-preview"><div class="lane-device lane-device-remix"></div><span>Remix</span></div><div class="create-lane-body"><div class="create-lane-icon"><svg viewBox="0 0 24 24"><path d="M7 17c2.8-6 6.1-8.9 10-8.9"/><path d="M13 5h5v5"/><path d="M6 6v12h12"/></svg></div><div><b>Remix videos</b><span>Rebuild a viral source</span></div></div></button>
               <button class="create-lane" type="button" data-create-type="long-form" onclick="setCreateType('long-form')"><div class="create-lane-preview"><div class="lane-device lane-device-wide"></div><span>Long</span></div><div class="create-lane-body"><div class="create-lane-icon"><svg viewBox="0 0 24 24"><path d="M6 5h12v14H6z"/><path d="M9 9h6"/><path d="M9 12h6"/><path d="M9 15h4"/></svg></div><div><b>Long form</b><span>Longer scripts and edits</span></div></div></button>
               <button class="create-lane" type="button" data-create-type="webinar" onclick="setCreateType('webinar')"><div class="create-lane-preview"><div class="lane-device lane-device-webinar"></div><span>Webinar</span></div><div class="create-lane-body"><div class="create-lane-icon"><svg viewBox="0 0 24 24"><path d="M4 6h16v10H4z"/><path d="M9 20h6"/><path d="M12 16v4"/></svg></div><div><b>Webinars</b><span>Recorded training style</span></div></div></button>
               <button class="create-lane" type="button" data-create-type="course" onclick="setCreateType('course')"><div class="create-lane-preview"><div class="lane-device lane-device-course"></div><span>Course</span></div><div class="create-lane-body"><div class="create-lane-icon"><svg viewBox="0 0 24 24"><path d="M5 6.5A3.5 3.5 0 0 1 8.5 3H19v16H8.5A3.5 3.5 0 0 0 5 22V6.5Z"/><path d="M9 7h6"/><path d="M9 10h7"/></svg></div><div><b>Courses</b><span>Lesson-based content</span></div></div></button>
+            </div>
+            <div class="create-folder-label create-image-only">Image type</div>
+            <div class="create-lanes create-image-only" aria-label="Image folders">
+              <button class="create-lane active" type="button" data-image-type="products" onclick="setCreateImageType('products')"><div class="create-lane-preview"><span>Product</span></div><div class="create-lane-body"><div class="create-lane-icon"><svg viewBox="0 0 24 24"><path d="M6 8.5 12 5l6 3.5v7L12 19l-6-3.5v-7Z"/><path d="M6 8.5 12 12l6-3.5"/><path d="M12 12v7"/></svg></div><div><b>Products</b><span>Product images and composites</span></div></div></button>
+              <button class="create-lane" type="button" data-image-type="composite" onclick="setCreateImageType('composite')"><div class="create-lane-preview"><span>Image</span></div><div class="create-lane-body"><div class="create-lane-icon"><svg viewBox="0 0 24 24"><path d="M5 5h14v14H5z"/><path d="m8 16 3-4 2 2 2-3 2 5H8Z"/></svg></div><div><b>Image composite</b><span>References and layouts</span></div></div></button>
+              <button class="create-lane" type="button" data-image-type="environment" onclick="setCreateImageType('environment')"><div class="create-lane-preview"><span>Scene</span></div><div class="create-lane-body"><div class="create-lane-icon"><svg viewBox="0 0 24 24"><path d="M4 18 10 7l4 7 2-3 4 7H4Z"/><path d="M5 5h14v14H5z"/></svg></div><div><b>Environments</b><span>Backgrounds and locations</span></div></div></button>
+              <button class="create-lane" type="button" data-image-type="instagram" onclick="setCreateImageType('instagram')"><div class="create-lane-preview"><span>Post</span></div><div class="create-lane-body"><div class="create-lane-icon"><svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="4"/><circle cx="12" cy="12" r="3"/><path d="M16.8 7.2h.01"/></svg></div><div><b>Instagram post</b><span>Square and carousel creative</span></div></div></button>
             </div>
             <div class="create-video-folder create-video-only">
               <div class="create-flow-panel" id="createFlowPanel"></div>
@@ -404,6 +642,84 @@ body[data-theme="light"] #tab-studio[data-create-tool="video"] .create-flow-step
               </div>
             </div>
 
+            <div class="seedance-campaign-panel" id="seedanceCampaignPanel">
+              <div class="campaign-node-row" aria-label="Campaign flow">
+                <div class="campaign-node"><strong>Character</strong><span>Select one or many saved creators. Each selected character becomes one video.</span></div>
+                <div class="campaign-link">→</div>
+                <div class="campaign-node"><strong>Product</strong><span>Choose one product image to keep consistent across all generated clips.</span></div>
+                <div class="campaign-link">→</div>
+                <div class="campaign-node"><strong>Environment</strong><span>Add locations or scenes. Bloom Studio rotates them across selected characters.</span></div>
+                <div class="campaign-link">→</div>
+                <div class="campaign-node"><strong>Seedance output</strong><span>One Generate creates a Seedance video for each character/product/location combo.</span></div>
+              </div>
+              <div class="campaign-builder-grid">
+                <div>
+	                  <label class="form-label">Campaign prompt</label>
+	                  <textarea class="form-textarea" id="campaignPrompt" placeholder="Create UGC videos where each creator naturally introduces the product, uses it in a different environment, and ends with a confident call to action."></textarea>
+	                  <div class="form-group campaign-trend-source">
+	                    <label class="form-label">Trend source</label>
+	                    <div class="campaign-source-row">
+	                      <select class="form-select" id="campaignTrendSelect" onchange="selectCampaignTrend(this.value)">
+	                        <option value="">No trend source</option>
+	                      </select>
+	                      <button class="btn btn-secondary" type="button" onclick="switchTab('trends')">Browse</button>
+	                    </div>
+	                    <div class="campaign-trend-card" id="campaignTrendSource" style="display:none"></div>
+	                    <button class="btn btn-secondary" type="button" id="campaignAnalyzeTrendButton" onclick="analyzeCampaignTrendScenes()" style="margin-top:8px;width:100%;display:none">Analyze trend into scenes</button>
+	                    <button class="btn btn-secondary" type="button" id="campaignFrameAnalyzeButton" onclick="analyzeCampaignTrendFrames()" style="margin-top:8px;width:100%;display:none">Clone frames to JSON</button>
+	                    <button class="btn btn-secondary" type="button" id="campaignRefineSceneButton" onclick="refineCampaignScenePlan()" style="margin-top:8px;width:100%;display:none">Refine scene plan</button>
+	                  </div>
+	                  <div class="form-group">
+	                    <label class="form-label">CTA</label>
+	                    <input class="form-input" id="campaignCta" placeholder="Example: Book a demo, shop now, join the waitlist" oninput="renderCampaignNodeView()">
+	                  </div>
+	                  <div class="form-group">
+	                    <label class="form-label">Output mode</label>
+	                    <select class="form-select" id="campaignOutputMode" onchange="estimateSeedanceCampaign({ quiet: true }); renderCampaignNodeView()">
+	                      <option value="separate" selected>Separate video per character</option>
+	                      <option value="together">One video with selected characters together</option>
+	                    </select>
+	                    <div class="actions" style="margin-top:8px">
+	                      <button class="btn btn-secondary" type="button" onclick="toggleCampaignNodeView()">Node view</button>
+	                      <button class="btn btn-secondary" type="button" onclick="toggleCampaignWorkflowJson()">JSON</button>
+	                    </div>
+	                  </div>
+	                  <div class="campaign-node-view" id="campaignNodeView" style="display:none"></div>
+	                  <div class="campaign-workflow-json" id="campaignWorkflowJsonPanel">
+	                    <div class="campaign-workflow-head">
+	                      <label class="form-label">Campaign workflow JSON</label>
+	                      <button class="btn btn-secondary" type="button" onclick="applyCampaignWorkflowJson()">Apply JSON</button>
+	                    </div>
+	                    <textarea class="form-textarea" id="campaignWorkflowJson" spellcheck="false"></textarea>
+	                    <div class="hint">This is the source of truth for no-node controls, scene cards, and node view. Each scene can use Seedance, Wan Animate, or InfiniteTalk when its required inputs are present.</div>
+	                  </div>
+	                  <label class="form-label" style="margin-top:10px">Characters</label>
+	                  <select class="form-select" id="campaignCharacterSelect" multiple size="5" onchange="syncCampaignCharacterSelection()"></select>
+                  <button class="btn btn-secondary" type="button" onclick="showUploadModal('subjects')" style="margin-top:8px;width:100%">Upload new character</button>
+                  <div class="hint">Select one or more characters. Hold Shift or Command to choose several.</div>
+                  <div class="campaign-character-grid" id="campaignCharacterGrid" style="display:none"></div>
+                </div>
+                <div>
+                  <div class="form-group"><label class="form-label">Product</label><select class="form-select" id="campaignProductSelect"><option value="">No product image</option></select><button class="btn btn-secondary" type="button" onclick="showUploadModal('products')" style="margin-top:8px;width:100%">Upload product</button></div>
+                  <div class="form-grid" style="grid-template-columns:1fr 1fr">
+                    <div class="form-group"><label class="form-label">Aspect</label><select class="form-select" id="campaignAspectRatio"><option value="9:16" selected>9:16</option><option value="16:9">16:9</option></select></div>
+                    <div class="form-group"><label class="form-label">Duration</label><select class="form-select" id="campaignDuration"><option value="5" selected>5s</option><option value="10">10s</option></select></div>
+                    <div class="form-group"><label class="form-label">Resolution</label><select class="form-select" id="campaignResolution"><option value="480p">480p</option><option value="720p" selected>720p</option><option value="1080p">1080p</option></select></div>
+                    <div class="form-group"><label class="form-label">Motion engine</label><select class="form-select" id="campaignModel"><option value="seedance2-fast" selected>RunPod Seedance 1.5 Pro I2V</option><option value="seedance2-standard">RunPod Seedance 1.5 Pro I2V fixed camera</option></select></div>
+                  </div>
+                  <div class="form-group"><label class="form-label">Environment source</label><select class="form-select" id="campaignEnvironmentMode" onchange="setCampaignEnvironmentMode(this.value)"><option value="text" selected>Describe environment</option><option value="library">Select saved image</option></select></div>
+                  <div class="form-group" id="campaignEnvironmentTextGroup"><label class="form-label">Environment or location</label><textarea class="form-textarea" id="campaignEnvironments" placeholder="Kitchen counter demo&#10;Podcast desk testimonial&#10;Bright office product walkthrough"></textarea></div>
+                  <div class="form-group" id="campaignEnvironmentLibraryGroup" style="display:none"><label class="form-label">Environment image</label><select class="form-select" id="campaignEnvironmentAssetSelect"><option value="">Choose saved image</option></select><button class="btn btn-secondary" type="button" onclick="showUploadModal('products')" style="margin-top:8px;width:100%">Upload environment image</button></div>
+	                  <div class="actions" style="margin-top:10px"><button class="btn btn-secondary" type="button" onclick="estimateSeedanceCampaign()">Estimate</button><button class="btn btn-primary" type="button" id="campaignGenerateButton" onclick="previewCampaignPlan()">Review campaign</button><button class="btn btn-secondary" type="button" id="campaignSubmitButton" onclick="submitSeedanceCampaign()" style="display:none">Submit approved jobs</button></div>
+	                  <div class="hint" id="campaignEstimateText">Select characters to estimate the batch.</div>
+	                  <div class="campaign-scene-list" id="campaignSceneList"></div>
+	                  <div class="campaign-output-list" id="campaignOutputList"></div>
+	                </div>
+              </div>
+            </div>
+
+            <div class="create-image-panel" id="createImagePanel"></div>
+
             <form id="studioForm" onsubmit="submitStudioVideo(event)">
               <input type="hidden" id="studioMode" name="mode" value="i2v">
               <input type="hidden" id="studioPreset" name="presetId" value="sarah-i2v-lipsync">
@@ -413,6 +729,7 @@ body[data-theme="light"] #tab-studio[data-create-tool="video"] .create-flow-step
               <input type="hidden" id="studioCropY" name="cropY" value="50">
               <input type="hidden" id="studioCreateType" name="createType" value="shorts">
               <input type="hidden" id="studioRemixSourceUrl" name="remixSourceUrl" value="">
+              <input type="hidden" id="courseTimelineJson" name="courseTimelineJson" value="">
               <div class="form-grid">
                 <div class="remix-context" id="studioRemixContext">
                   <div class="remix-context-head">
@@ -427,22 +744,101 @@ body[data-theme="light"] #tab-studio[data-create-tool="video"] .create-flow-step
                   <div class="hint">Remix uses this as the structure, then adapts it with the selected brand, product, character, and voice.</div>
                 </div>
 
+                <div class="course-context" id="studioCourseContext">
+                  <div class="course-context-head">
+                    <div>
+                      <div class="course-context-title">Course setup</div>
+                      <div class="hint">Define the lesson, choose the presentation source, then generate or paste the narration script.</div>
+                    </div>
+	                    <button class="btn btn-secondary" type="button" onclick="fillCourseIntroScript()">Draft intro script</button>
+                  </div>
+                  <div class="form-grid">
+                    <div class="form-group full">
+                      <label class="form-label">Course style</label>
+                      <input type="hidden" id="courseStyle" name="courseStyle" value="instructor-led">
+                      <div class="course-style-row">
+                        <button class="course-style-card active" type="button" data-course-style="instructor-led" data-info="Teacher opens, slides support concepts, teacher closes." onclick="setCourseStyle('instructor-led')"><strong>Instructor-led</strong></button>
+                        <button class="course-style-card" type="button" data-course-style="slide-first" data-info="Presentation carries most of the lesson with teacher emphasis." onclick="setCourseStyle('slide-first')"><strong>Slide-first</strong></button>
+                        <button class="course-style-card" type="button" data-course-style="demo-walkthrough" data-info="Screen or slides full screen with teacher picture-in-picture." onclick="setCourseStyle('demo-walkthrough')"><strong>Demo walkthrough</strong></button>
+                        <button class="course-style-card" type="button" data-course-style="recap" data-info="Fast teaching cuts for a tighter lesson summary." onclick="setCourseStyle('recap')"><strong>Short recap</strong></button>
+                      </div>
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">Module title</label>
+                      <input class="form-input" id="courseModuleTitle" name="courseModuleTitle" placeholder="Module 1: The big picture">
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">Lesson title</label>
+                      <input class="form-input" id="courseLessonTitle" name="courseLessonTitle" placeholder="Lesson 1: Welcome and course roadmap">
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">Lesson objective</label>
+                      <input class="form-input" id="courseLessonObjective" name="courseLessonObjective" placeholder="Help students understand what they will build and how to use the course.">
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">Presentation source</label>
+                      <select class="form-select" id="coursePresentationSource" name="coursePresentationSource" onchange="updateCoursePresentationSource()">
+                        <option value="upload">Upload presentation</option>
+                        <option value="asset">Choose from assets</option>
+                        <option value="generate">Generate presentation</option>
+                      </select>
+                    </div>
+                    <div class="form-group full" id="courseModuleOutlineGroup">
+                      <label class="form-label">Modules / lesson outline</label>
+                      <textarea class="form-textarea" id="courseModuleOutline" name="courseModuleOutline" placeholder="Module 1: Foundations&#10;Module 2: Workflow setup&#10;Module 3: First implementation&#10;Module 4: Review and next steps"></textarea>
+                    </div>
+                    <div class="form-group full" id="coursePresentationUploadGroup">
+                      <label class="file-drop">
+                        <strong>Upload deck</strong><span>PPTX, PDF, or images</span>
+                        <input id="coursePresentationFile" name="coursePresentationFile" type="file" accept=".ppt,.pptx,.pdf,image/*" hidden onchange="showStudioFileName('coursePresentationFile','coursePresentationFileName')">
+                      </label>
+                      <div class="file-name" id="coursePresentationFileName"></div>
+                    </div>
+                    <div class="form-group full" id="coursePresentationAssetGroup" style="display:none">
+                      <label class="form-label">Presentation asset</label>
+                      <div class="course-source-grid">
+                        <select class="form-select" id="coursePresentationAssetId" name="coursePresentationAssetId">
+                          <option value="">Choose saved presentation or visual asset</option>
+                        </select>
+                        <button class="btn btn-secondary" type="button" onclick="switchTab('assets')">Assets</button>
+                      </div>
+                      <div class="hint">Use a saved image, generated visual, video, or uploaded asset as the course visual reference.</div>
+                    </div>
+                    <div class="form-group full" id="coursePresentationGenerateGroup" style="display:none">
+                      <label class="form-label">Presentation generation brief</label>
+                      <textarea class="form-textarea" id="coursePresentationBrief" name="coursePresentationBrief" placeholder="Generate a clean course deck with one title slide, one roadmap slide, and one simple visual for each module."></textarea>
+                    </div>
+                    <div class="form-group full">
+                      <div class="actions">
+                        <button class="btn btn-secondary" type="button" onclick="buildCourseTimeline()">Build lesson timeline</button>
+                        <button class="btn btn-secondary" type="button" onclick="toggleCourseTimeline()">Show timeline</button>
+                      </div>
+                      <div class="hint">Bloom Studio decides when to show teacher, slides, split screen, or picture-in-picture based on the selected style.</div>
+                    </div>
+                    <div class="course-timeline" id="courseTimeline"></div>
+                  </div>
+                </div>
+
                 <div class="form-group">
                   <label class="form-label">Audio source</label>
                   <select class="form-select" id="studioAudioProvider" name="audioProvider" onchange="setStudioAudio(this.value)">
                     <option value="asset">Saved audio from Library</option>
-                    <option value="upload">Upload MP3/WAV</option>
-                    <option value="chatterbox" selected>Chatterbox Turbo</option>
+                    <option value="upload" selected>Upload MP3/WAV</option>
+                    <option value="chatterbox">Chatterbox Turbo</option>
                     <option value="elevenlabs">ElevenLabs voice</option>
                     <option value="qwen">Qwen audio workflow</option>
                   </select>
+                  <button class="btn btn-secondary compact-config-button" id="studioConfigureVoiceButton" type="button" onclick="toggleVoiceDetails()">Configure voice</button>
                 </div>
 
                 <div class="form-group" id="studioVideoEngineGroup">
-                  <label class="form-label">I2V engine</label>
+                  <label class="form-label">Video model</label>
                   <select class="form-select" id="studioVideoEngine" name="videoEngine" onchange="setStudioVideoEngine(this.value)">
                     <option value="wan-comfy">WAN (ComfyUI)</option>
+                    <option value="seedance2-fast">RunPod Seedance 1.5 Pro I2V</option>
+                    <option value="seedance2-standard">RunPod Seedance fixed camera</option>
                     <option value="wan22-serverless">Wan 2.2 Serverless</option>
+                    <option value="infinitetalk-hd">InfiniteTalk HD</option>
                     <option value="meigen" selected>Meigen lip sync</option>
                     <option value="wan-animate">Wan Animate motion remix</option>
                   </select>
@@ -450,12 +846,13 @@ body[data-theme="light"] #tab-studio[data-create-tool="video"] .create-flow-step
                 </div>
 
                 <div class="form-group" id="studioMeigenQualityGroup" style="display:none">
-                  <label class="form-label">Meigen quality</label>
+                  <label class="form-label">Lip sync quality</label>
                   <select class="form-select" id="studioMeigenSize" name="meigenSize">
-                    <option value="480p" selected>480p - faster, more reliable</option>
-                    <option value="720p">720p - sharper, slower</option>
+                    <option value="480p" selected data-public-meigen>480p - faster, more reliable</option>
+                    <option value="720p">720p - sharper</option>
+                    <option value="1080p" data-infinitetalk-hd>1080p - CodeFormer + Real-ESRGAN upscale</option>
                   </select>
-                  <div class="hint">480p is best for testing. 720p can take longer and may fail more often on the public endpoint.</div>
+                  <div class="hint" id="studioMeigenQualityHint">480p is best for testing on the public endpoint. InfiniteTalk HD supports 720p or 1080p.</div>
                 </div>
 
                 <div class="form-group" id="studioReferenceVideoGroup" style="display:none">
@@ -473,22 +870,24 @@ body[data-theme="light"] #tab-studio[data-create-tool="video"] .create-flow-step
                   <select class="form-select" id="studioAspectRatio" name="aspectRatio">
                     <option value="9:16" selected>9:16 Short</option>
                     <option value="16:9">16:9 Landscape</option>
+                    <option value="4:5">4:5 Social portrait</option>
+                    <option value="3:4">3:4 Portrait</option>
+                    <option value="2:3">2:3 Tall portrait</option>
                     <option value="1:1">1:1 Square</option>
+                    <option value="3:2">3:2 Classic</option>
+                    <option value="4:3">4:3 Standard</option>
+                    <option value="21:9">21:9 Cinematic</option>
                   </select>
                 </div>
 
                 <div class="form-group" id="studioImageGroup">
-                  <label class="form-label">Avatar image</label>
-                  <div class="actions" style="margin:0 0 10px">
-                    <button class="btn btn-secondary" type="button" onclick="switchTab('characters')">Select from Characters</button>
+                  <label class="form-label">Video source</label>
+                  <div class="source-actions">
+                    <button class="btn btn-secondary" type="button" onclick="openCharacterPickerModal()">Select character</button>
                     <button class="btn btn-secondary" type="button" onclick="document.getElementById('studioImage').click()">Upload my own</button>
                   </div>
                   <div class="selected-character" id="selectedCharacter">
                     <img id="selectedCharacterImg" alt="">
-                    <div style="flex:1">
-                      <strong id="selectedCharacterName">No character selected</strong>
-                      <span>Loaded from your Characters library.</span>
-                    </div>
                     <button class="btn btn-secondary" type="button" onclick="clearSelectedCharacter()">Change</button>
                   </div>
                   <label class="file-drop">
@@ -500,6 +899,9 @@ body[data-theme="light"] #tab-studio[data-create-tool="video"] .create-flow-step
 
                 <div class="form-group" id="studioVideoGroup" style="display:none">
                   <label class="form-label">Source video</label>
+                  <div class="source-actions">
+                    <button class="btn btn-secondary" type="button" onclick="document.getElementById('studioVideo').click()">Upload video</button>
+                  </div>
                   <label class="file-drop">
                     <strong>Upload source video</strong><span>MP4 or MOV</span>
                     <input id="studioVideo" name="video" type="file" accept="video/*" hidden onchange="showStudioFileName('studioVideo','studioVideoName'); previewUploadedVideo(this.files?.[0])">
@@ -526,14 +928,21 @@ body[data-theme="light"] #tab-studio[data-create-tool="video"] .create-flow-step
 
                 <div class="form-group" id="studioVoiceGroup" style="display:none">
                   <label class="form-label">ElevenLabs voice ID</label>
-                  <input class="form-input" id="studioVoiceId" name="voiceId" placeholder="Optional. Uses Sarah default if blank.">
+                  <input class="form-input" id="studioVoiceId" name="voiceId" placeholder="Paste an ElevenLabs voice ID, or leave blank for workspace default.">
+                  <div class="hint">Use this for any custom ElevenLabs voice, even if the character was not connected before. Selecting Sarah or Marcus only auto-fills their saved ID.</div>
                 </div>
 
                 <div class="form-group full" id="studioChatterboxGroup" style="display:none">
-                  <label class="form-label">Chatterbox voice</label>
+                  <div class="voice-picker-head">
+                    <div>
+                      <label class="form-label">Chatterbox voice</label>
+                      <strong id="chatterboxVoiceName">Lucy</strong>
+                    </div>
+                    <span class="chip chip-soft">Cached sample</span>
+                  </div>
                   <div class="form-grid">
                     <div class="form-group">
-                      <select class="form-select" id="studioChatterboxVoice" name="chatterboxVoice">
+                      <select class="form-select" id="studioChatterboxVoice" name="chatterboxVoice" onchange="updateChatterboxVoiceLabel()">
                         <option value="lucy" selected>Lucy</option>
                         <option value="laura">Laura</option>
                         <option value="madison">Madison</option>
@@ -555,7 +964,12 @@ body[data-theme="light"] #tab-studio[data-create-tool="video"] .create-flow-step
                         <option value="walter">Walter</option>
                         <option value="evelyn">Evelyn</option>
                       </select>
-                      <div class="hint">Preset voice. Ignored when a custom voice URL or sample is provided.</div>
+                      <div class="source-actions" style="margin-top:7px">
+                        <button class="btn btn-secondary" type="button" onclick="playCachedChatterboxVoiceSample()">Play sample</button>
+                        <button class="btn btn-secondary" type="button" onclick="nextChatterboxVoice()">Next voice</button>
+                      </div>
+                      <audio id="chatterboxSampleAudio" controls style="display:none;width:100%;margin-top:7px"></audio>
+                      <div class="hint" id="chatterboxSampleHint">Preset sample playback is cached and does not call RunPod.</div>
                     </div>
                     <div class="form-group">
                       <select class="form-select" id="studioChatterboxFormat" name="chatterboxFormat">
@@ -579,24 +993,39 @@ body[data-theme="light"] #tab-studio[data-create-tool="video"] .create-flow-step
                   </div>
                 </div>
 
-                <div class="form-group create-video-field">
-                  <label class="form-label">Video style prompt</label>
-                  <textarea class="form-textarea" id="studioPrompt" name="prompt" placeholder="Professional talking head, natural speech, stable face, subtle hand movement, clean studio lighting."></textarea>
+                <div class="form-group create-video-field" id="studioToneGroup">
+                  <label class="form-label">Tone</label>
+                  <select class="form-select" id="studioVoiceTone" name="voiceTone" onchange="applyStudioTonePreset()">
+                    <option value="natural" selected>Natural</option>
+                    <option value="happy">Happy</option>
+                    <option value="excited">Excited</option>
+                    <option value="sincere">Sincere</option>
+                    <option value="training">Training / teacher</option>
+                    <option value="calm">Calm</option>
+                    <option value="urgent">Urgent</option>
+                    <option value="sad">Sad</option>
+                    <option value="playful">Playful</option>
+                  </select>
                 </div>
 
-                <div class="form-group create-video-field">
+                <div class="form-group create-video-field" id="studioPromptGroup">
+                  <label class="form-label">Video direction prompt</label>
+                  <textarea class="form-textarea" id="studioPrompt" name="prompt" placeholder="Describe the video look: studio lighting, natural talking head, subtle hand movement, stable face, product visible, etc."></textarea>
+                </div>
+
+                <div class="form-group create-video-field" id="studioNegativePromptGroup">
                   <label class="form-label">Negative prompt</label>
                   <textarea class="form-textarea" id="studioNegativePrompt" name="negativePrompt" placeholder="singing, dancing, subtitles, text, watermark, extra fingers, deformed hands, blue nails, changing nail color, dramatic gestures, camera movement, low quality"></textarea>
                 </div>
 
-                <div class="form-group create-video-field">
+                <div class="form-group create-video-field" id="studioDurationSecondsGroup" style="display:none">
                   <label class="form-label">Duration seconds</label>
                   <input class="form-input" id="studioDurationSeconds" name="durationSeconds" type="number" min="1" max="14400" step="0.1" placeholder="Auto from audio">
                   <div class="hint">Leave blank to match the uploaded or generated voiceover length. Long videos run as background-length jobs.</div>
                 </div>
 
-                <div class="form-group full">
-                  <label class="form-label" id="studioScriptLabel">Script or notes</label>
+                <div class="form-group full" id="studioScriptGroup">
+                  <label class="form-label" id="studioScriptLabel">Narration script</label>
                   <textarea class="form-textarea" id="studioScript" name="script" placeholder="Paste the narration script here so the job record keeps the creative direction with the video."></textarea>
                 </div>
 
@@ -612,6 +1041,8 @@ body[data-theme="light"] #tab-studio[data-create-tool="video"] .create-flow-step
           </div>
         </div>
 
+        <button class="studio-resize-handle" type="button" aria-label="Resize creator panels" onpointerdown="startStudioResize(event)"></button>
+
         <aside class="panel preview-card">
           <div class="preview-frame" id="studioPreview">
             <div>
@@ -620,6 +1051,7 @@ body[data-theme="light"] #tab-studio[data-create-tool="video"] .create-flow-step
               <p id="previewHint" style="font-size:13px;margin-top:6px;color:rgba(255,255,255,.45)">Select a character or upload an image to preview the frame.</p>
             </div>
           </div>
+          <button class="preview-resize-handle" type="button" aria-label="Resize preview and controls" onpointerdown="startStudioPreviewResize(event)"></button>
           <div class="preview-body">
             <p class="hint" id="cropHint" style="display:none;margin-bottom:12px">Drag the preview image to re-center the crop before generating.</p>
             <div class="audio-preview-panel" id="studioVoicePreview" style="display:none">
@@ -635,27 +1067,30 @@ body[data-theme="light"] #tab-studio[data-create-tool="video"] .create-flow-step
                 <button class="btn btn-secondary" type="button" onclick="usePreviewAudioForVideo()">Use this audio for video</button>
               </div>
             </div>
-            <div class="panel-title">Studio status</div>
-            <div class="mini-list">
-              <div class="mini-row"><span>ComfyUI</span><span class="chip chip-warn" id="comfyStatus">Checking</span></div>
-              <div class="mini-row"><span>RunPod pod</span><span class="chip chip-warn" id="runpodStatus">Checking</span></div>
-              <div class="mini-row"><span>I2V preset</span><span class="chip chip-soft" id="i2vStatus">Checking</span></div>
-              <div class="mini-row"><span>Meigen</span><span class="chip chip-soft" id="meigenStatus">Checking</span></div>
-              <div class="mini-row"><span>V2V preset</span><span class="chip chip-soft" id="v2vStatus">Checking</span></div>
-              <div class="mini-row"><span>Qwen audio</span><span class="chip chip-warn" id="qwenStatus">Needs workflow</span></div>
-              <div class="mini-row"><span>RunPod credits</span><span class="chip chip-warn" id="runpodBalance">Checking</span></div>
+            <div class="preview-control-slot" id="previewControlSlot"></div>
+            <div class="studio-status-panel" id="studioStatusPanel" aria-hidden="true">
+              <div class="panel-title">Studio status</div>
+              <div class="mini-list">
+                <div class="mini-row"><span>ComfyUI</span><span class="chip chip-warn" id="comfyStatus">Checking</span></div>
+                <div class="mini-row"><span>RunPod pod</span><span class="chip chip-warn" id="runpodStatus">Checking</span></div>
+                <div class="mini-row"><span>I2V preset</span><span class="chip chip-soft" id="i2vStatus">Checking</span></div>
+                <div class="mini-row"><span>Meigen</span><span class="chip chip-soft" id="meigenStatus">Checking</span></div>
+                <div class="mini-row"><span>V2V preset</span><span class="chip chip-soft" id="v2vStatus">Checking</span></div>
+                <div class="mini-row"><span>Qwen audio</span><span class="chip chip-warn" id="qwenStatus">Needs workflow</span></div>
+                <div class="mini-row"><span>RunPod credits</span><span class="chip chip-warn" id="runpodBalance">Checking</span></div>
+              </div>
+              <div class="workflow-grid">
+                <div class="workflow-card"><strong>I2V ready</strong><p id="i2vNote">Checks the Sarah image-to-video workflow.</p></div>
+                <div class="workflow-card"><strong>V2V ready</strong><p id="v2vNote">Checks the Bloomies video-to-video workflow.</p></div>
+                <div class="workflow-card"><strong>Qwen next</strong><p id="qwenNote">Waiting for Qwen TTS API workflow export.</p></div>
+              </div>
+              <div class="actions" style="margin-top:14px">
+                <button class="btn btn-secondary" type="button" onclick="startRunPod()">Start pod</button>
+                <button class="btn btn-secondary" type="button" onclick="stopRunPod()">Stop pod</button>
+                <a class="btn btn-secondary" id="migratePodButton" href="https://www.runpod.io/console/pods" target="_blank" rel="noopener" style="display:none">Migrate pod</a>
+              </div>
+              <p class="hint" style="margin-top:8px">Generate will also wake the pod automatically when RunPod is configured.</p>
             </div>
-            <div class="workflow-grid">
-              <div class="workflow-card"><strong>I2V ready</strong><p id="i2vNote">Checks the Sarah image-to-video workflow.</p></div>
-              <div class="workflow-card"><strong>V2V ready</strong><p id="v2vNote">Checks the Bloomies video-to-video workflow.</p></div>
-              <div class="workflow-card"><strong>Qwen next</strong><p id="qwenNote">Waiting for Qwen TTS API workflow export.</p></div>
-            </div>
-            <div class="actions" style="margin-top:14px">
-              <button class="btn btn-secondary" type="button" onclick="startRunPod()">Start pod</button>
-              <button class="btn btn-secondary" type="button" onclick="stopRunPod()">Stop pod</button>
-              <a class="btn btn-secondary" id="migratePodButton" href="https://www.runpod.io/console/pods" target="_blank" rel="noopener" style="display:none">Migrate pod</a>
-            </div>
-            <p class="hint" style="margin-top:8px">Generate will also wake the pod automatically when RunPod is configured.</p>
           </div>
         </aside>
       </div>
@@ -687,7 +1122,7 @@ body[data-theme="light"] #tab-studio[data-create-tool="video"] .create-flow-step
     <section class="tab-content" id="tab-videos">
       <div class="section-head"><div><h2 class="section-title">Library</h2><p class="section-desc">Generated images, completed videos, and jobs in progress.</p></div><div class="actions"><button class="btn btn-secondary" onclick="loadVideos();loadAssets()">Refresh</button><button class="btn btn-secondary" onclick="pollAllJobs()">Poll Seedance</button></div></div>
       <div id="videoProgress" style="display:none;margin-bottom:16px"><div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div><p class="hint" id="progressText"></p></div>
-      <div class="card"><div class="card-header"><div><div class="card-title">Generated images</div><div class="card-subtitle">Nano Banana outputs and approved production stills</div></div><div class="ratio-tabs"><button class="ratio-tab active" type="button" data-image-ratio="portrait" onclick="setLibraryImageRatio('portrait')">9:16</button><button class="ratio-tab" type="button" data-image-ratio="landscape" onclick="setLibraryImageRatio('landscape')">16:9</button></div></div><div class="asset-grid" id="generatedImageGrid"></div></div>
+      <div class="card"><div class="card-header"><div><div class="card-title">Generated images</div><div class="card-subtitle">Image model outputs and approved production stills</div></div><div class="ratio-tabs"><button class="ratio-tab active" type="button" data-image-ratio="portrait" onclick="setLibraryImageRatio('portrait')">9:16</button><button class="ratio-tab" type="button" data-image-ratio="landscape" onclick="setLibraryImageRatio('landscape')">16:9</button></div></div><div class="asset-grid" id="generatedImageGrid"></div></div>
       <div class="card"><div class="card-header"><div><div class="card-title">Generated videos</div><div class="card-subtitle">Completed clips and processing jobs</div></div><div class="ratio-tabs"><button class="ratio-tab active" type="button" data-video-ratio="portrait" onclick="setLibraryVideoRatio('portrait')">9:16</button><button class="ratio-tab" type="button" data-video-ratio="landscape" onclick="setLibraryVideoRatio('landscape')">16:9</button></div></div>
       <div class="video-grid" id="videoGrid"></div>
       </div>
@@ -721,11 +1156,12 @@ body[data-theme="light"] #tab-studio[data-create-tool="video"] .create-flow-step
       <div class="section-head">
         <div>
           <h2 class="section-title">Image Composite</h2>
-          <p class="section-desc">Generate from a prompt alone, or add up to five optional reference images when you want Nano Banana to preserve a person, product, setting, or style.</p>
+          <p class="section-desc">Generate from a prompt alone, or add up to five optional reference images when you want the image model to preserve a person, product, setting, or style.</p>
         </div>
         <span class="chip chip-warn" id="nanoStatus">Checking endpoint</span>
       </div>
-      <div class="product-lab">
+      <div id="legacyProductLabMount">
+      <div class="product-lab" id="productLab">
         <div class="panel">
           <div class="panel-pad">
             <div class="form-group">
@@ -734,10 +1170,28 @@ body[data-theme="light"] #tab-studio[data-create-tool="video"] .create-flow-step
             </div>
             <div class="form-grid">
               <div class="form-group">
+                <label class="form-label">Image model</label>
+                <select class="form-select" id="productPlacementModel">
+                  <option value="runpod:nano-banana" selected>Nano Banana - RunPod</option>
+                  <option value="openrouter:openai/gpt-5.4-image-2">GPT Image 2 - OpenRouter</option>
+                  <option value="openrouter:openai/gpt-5-image">GPT-5 Image - OpenRouter</option>
+                  <option value="openrouter:openai/gpt-5-image-mini">GPT-5 Image Mini - OpenRouter</option>
+                  <option value="openrouter:google/gemini-3.1-flash-image-preview">Nano Banana 2 - OpenRouter</option>
+                  <option value="openrouter:black-forest-labs/flux.2-klein-4b">Flux.2 Klein - OpenRouter test</option>
+                  <option value="openrouter:openrouter/auto">OpenRouter Auto image</option>
+                </select>
+              </div>
+              <div class="form-group">
                 <label class="form-label">Aspect ratio</label>
                 <select class="form-select" id="productPlacementAspect">
                   <option value="9:16" selected>9:16 Short</option>
+                  <option value="4:5">4:5 Portrait post</option>
+                  <option value="3:4">3:4 Portrait</option>
+                  <option value="2:3">2:3 Portrait</option>
                   <option value="16:9">16:9 Landscape</option>
+                  <option value="21:9">21:9 Cinematic wide</option>
+                  <option value="3:2">3:2 Landscape</option>
+                  <option value="4:3">4:3 Landscape</option>
                   <option value="1:1">1:1 Square</option>
                 </select>
               </div>
@@ -780,7 +1234,7 @@ body[data-theme="light"] #tab-studio[data-create-tool="video"] .create-flow-step
             </div>
 
             <div class="actions" style="margin-top:18px">
-              <button class="btn btn-primary" id="productGenerateButton" onclick="generateProductPlacement()">Run Nano Banana</button>
+              <button class="btn btn-primary" id="productGenerateButton" onclick="generateProductPlacement()">Generate image</button>
               <button class="btn btn-secondary" onclick="resetProductPlacement()">Reset</button>
               <span class="hint">Prompt-only is allowed in Bloom Studio. Add references only when you need visual control.</span>
             </div>
@@ -796,12 +1250,22 @@ body[data-theme="light"] #tab-studio[data-create-tool="video"] .create-flow-step
             </div>
             <div class="actions" id="productResultActions" style="display:none">
               <a class="btn btn-secondary" id="productResultDownload" href="#" download="product-placement.png">Download image</a>
+              <button class="btn btn-secondary" type="button" onclick="sendLatestImageToVideo()">Make video from this</button>
               <button class="btn btn-secondary" type="button" onclick="addLatestImageAsCharacter()">Add as character</button>
               <button class="btn btn-primary" type="button" onclick="openPublishModal(latestProductPlacementImage,'image')">Post</button>
+            </div>
+            <div class="form-group" id="productEditActions" style="margin-top:12px">
+              <label class="form-label">Edit this result</label>
+              <div class="source-actions">
+                <input class="form-input" id="productPlacementEditInstruction" placeholder="Example: remove the camera, make sweater blue, change background to office">
+                <button class="btn btn-secondary" id="productPlacementEditButton" type="button" onclick="editProductPlacementResult()">Apply edit</button>
+              </div>
+              <div class="hint">Uses the current generated image as the reference so small changes stay close to the original.</div>
             </div>
             <p class="endpoint-note" id="nanoEndpointNote"></p>
           </div>
         </aside>
+      </div>
       </div>
     </section>
 
@@ -892,7 +1356,7 @@ body[data-theme="light"] #tab-studio[data-create-tool="video"] .create-flow-step
           <div class="form-group"><label class="form-label">Duration</label><select class="form-select" id="genDuration"><option value="5">5s test</option><option value="10">10s</option><option value="15">15s</option><option value="30" selected>30s</option><option value="60">60s</option><option value="custom">Custom</option></select></div>
           <div class="form-group" id="genCustomDurationGroup" style="display:none"><label class="form-label">Custom seconds</label><input class="form-input" id="genCustomDuration" type="number" min="1" max="300" value="30"></div>
           <div class="form-group"><label class="form-label">Resolution</label><select class="form-select" id="genResolution"><option value="480p">480p</option><option value="720p" selected>720p</option><option value="1080p">1080p</option></select></div>
-          <div class="form-group"><label class="form-label">Model</label><select class="form-select" id="genModel"><option value="seedance2-fast" selected>Fast</option><option value="seedance2-standard">Standard</option></select></div>
+          <div class="form-group"><label class="form-label">Model</label><select class="form-select" id="genModel"><option value="seedance2-fast" selected>RunPod Seedance 1.5 Pro I2V</option><option value="seedance2-standard">RunPod Seedance 1.5 Pro I2V fixed camera</option></select></div>
           <div class="form-group"><label class="form-label">Aspect Ratio</label><select class="form-select" id="genAspect"><option value="9:16" selected>9:16</option><option value="16:9">16:9</option><option value="1:1">1:1</option></select></div>
         </div>
         <div class="form-group"><label class="form-label">Formats</label><div class="format-checkboxes">
@@ -927,6 +1391,27 @@ body[data-theme="light"] #tab-studio[data-create-tool="video"] .create-flow-step
       </div>
       <div class="modal-actions"><button class="btn btn-secondary" type="button" onclick="closeUploadModal()">Cancel</button><button class="btn btn-primary" type="submit">Upload</button></div>
     </form>
+  </div>
+</div>
+
+<div class="modal-overlay" id="characterPickerModal" onclick="if(event.target.id==='characterPickerModal')closeCharacterPickerModal()">
+  <div class="modal character-picker-modal" role="dialog" aria-modal="true" aria-labelledby="characterPickerTitle">
+    <div class="agent-modal-head" style="padding:0 0 14px;border-bottom:0">
+      <div>
+        <div class="modal-title" id="characterPickerTitle" style="margin-bottom:4px">Select character</div>
+        <p class="hint">Pick one saved character for this video. The picker closes after selection.</p>
+      </div>
+      <button class="agent-close" type="button" onclick="closeCharacterPickerModal()" aria-label="Close">×</button>
+    </div>
+    <div class="character-tools" style="margin-bottom:12px">
+      <div class="character-tabs">
+        <button class="character-tab active" type="button" data-picker-character-tab="all" onclick="setCharacterPickerTab('all')">All</button>
+        <button class="character-tab" type="button" data-picker-character-tab="library" onclick="setCharacterPickerTab('library')">Library</button>
+        <button class="character-tab" type="button" data-picker-character-tab="mine" onclick="setCharacterPickerTab('mine')">My agents</button>
+      </div>
+      <button class="btn btn-secondary" type="button" onclick="showAgentModal()">Upload new character</button>
+    </div>
+    <div class="character-picker-grid" id="characterPickerGrid"></div>
   </div>
 </div>
 
@@ -968,8 +1453,8 @@ body[data-theme="light"] #tab-studio[data-create-tool="video"] .create-flow-step
                 <div class="file-name" id="agentUploadFileName"></div>
                 <div class="agent-mini-grid" style="margin-top:14px">
                   <div class="form-group">
-                    <label class="form-label">ElevenLabs voice ID</label>
-                    <input class="form-input" id="agentUploadVoiceId" placeholder="Optional default">
+                    <label class="form-label">Character voice</label>
+                    <input class="form-input" id="agentUploadVoiceId" placeholder="Optional ElevenLabs voice ID">
                   </div>
                   <div class="form-group">
                     <label class="form-label">Chatterbox sample</label>
@@ -1057,11 +1542,22 @@ body[data-theme="light"] #tab-studio[data-create-tool="video"] .create-flow-step
                 <label class="form-label">Background</label>
                 <input class="form-input" id="agentBuildBackground" placeholder="Modern creator studio, high-rise office, cozy shop interior">
               </div>
-              <div class="form-group">
-                <label class="form-label">Additional details</label>
-                <textarea class="form-textarea" id="agentBuildDetails" placeholder="Anything else: jewelry, glasses, brand color hints, posture, camera framing, what to avoid."></textarea>
-              </div>
-            </div>
+	              <div class="form-group">
+	                <label class="form-label">Additional details</label>
+	                <textarea class="form-textarea" id="agentBuildDetails" placeholder="Anything else: jewelry, glasses, brand color hints, posture, camera framing, what to avoid."></textarea>
+	              </div>
+	              <div class="agent-mini-grid">
+	                <div class="form-group">
+	                  <label class="form-label">Character voice</label>
+	                  <input class="form-input" id="agentBuildVoiceId" placeholder="Optional ElevenLabs voice ID">
+	                </div>
+	                <div class="form-group">
+	                  <label class="form-label">Chatterbox sample</label>
+	                  <select class="form-select" id="agentBuildVoiceSampleAssetId"><option value="">None</option></select>
+	                </div>
+	              </div>
+	              <div class="hint">Choose one default voice now, or leave it blank and upload audio later. ElevenLabs uses the script text you enter in Create; the voice ID only chooses who says it.</div>
+	            </div>
             <div class="modal-actions">
               <button class="btn btn-secondary" type="button" onclick="closeAgentModal()">Cancel</button>
               <button class="btn btn-primary" id="agentBuildButton" type="button" onclick="generateBuiltAgent()">Generate preview</button>
@@ -1177,6 +1673,6 @@ body[data-theme="light"] #tab-studio[data-create-tool="video"] .create-flow-step
 
 <div class="toast-container" id="toastContainer"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="/js/app.js?v=video-subfolders-3"></script>
+<script src="/js/app.js?v=course-template-1"></script>
 </body>
 </html>

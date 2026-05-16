@@ -1,5 +1,6 @@
-// WaveSpeed AI - Seedance 2.0 API client
-// Docs: docs/wavespeed-api.md
+// Seedance API client.
+// Default route: RunPod public endpoint Seedance 1.5 Pro I2V.
+// Docs: https://docs.runpod.io/public-endpoints/models/seedance-1-5-pro
 const fetch = require('node-fetch');
 const FormData = require('form-data');
 const fs = require('fs');
@@ -7,11 +8,14 @@ const path = require('path');
 const { logger } = require('./logger');
 
 const API_BASE = 'https://api.wavespeed.ai/api/v3';
+const RUNPOD_API_BASE = 'https://api.runpod.ai/v2';
+const RUNPOD_SEEDANCE_ENDPOINT_ID = process.env.RUNPOD_SEEDANCE_ENDPOINT_ID || 'seedance-v1-5-pro-i2v';
 
-// Pricing per second by model and resolution (WaveSpeed Seedance 2.0)
+// Pricing per second. RunPod Seedance 1.5 Pro I2V pricing from public endpoint docs.
 const PRICING = {
-  'seedance2-fast':     { '480p': 0.10, '720p': 0.20, '1080p': 0.30 },
-  'seedance2-standard': { '480p': 0.12, '720p': 0.24, '1080p': 0.36 },
+  'runpod-seedance-v1.5-i2v': { '480p': 0.024, '720p': 0.052 },
+  'seedance2-fast':     { '480p': 0.024, '720p': 0.052 },
+  'seedance2-standard': { '480p': 0.024, '720p': 0.052 },
   'wan25':              { '480p': 0.05, '720p': 0.10, '1080p': 0.15 }
 };
 
@@ -24,11 +28,46 @@ const ENDPOINTS = {
   'wan25-t2v':          '/alibaba/wan-2.5/text-to-video'
 };
 
+function isUsableApiKey(value = '') {
+  const key = String(value || '').trim();
+  if (!key) return false;
+  const lowered = key.toLowerCase();
+  if (['your_api_key_here', 'seedance_api_key', 'wavespeed_api_key'].includes(lowered)) return false;
+  if (key.length < 24) return false;
+  return true;
+}
+
 function getApiKey() {
-  return process.env.WAVESPEED_API_KEY || process.env.SEEDANCE_API_KEY;
+  const candidates = [
+    process.env.RUNPOD_SEEDANCE_API_KEY,
+    process.env.RUNPOD_PUBLIC_ENDPOINT_API_KEY,
+    process.env.RUNPOD_API_KEY,
+    process.env.WAVESPEED_API_KEY,
+    process.env.SEEDANCE_API_KEY
+  ];
+  return candidates.find(isUsableApiKey) || '';
+}
+
+function getRunPodApiKey() {
+  const candidates = [
+    process.env.RUNPOD_SEEDANCE_API_KEY,
+    process.env.RUNPOD_PUBLIC_ENDPOINT_API_KEY,
+    process.env.RUNPOD_API_KEY
+  ];
+  return candidates.find(isUsableApiKey) || '';
+}
+
+function getWaveSpeedApiKey() {
+  const candidates = [process.env.WAVESPEED_API_KEY, process.env.SEEDANCE_API_KEY];
+  return candidates.find(isUsableApiKey) || '';
 }
 
 function estimateCost(model, resolution, durationSec) {
+  if (isRunPodSeedanceModel(model)) {
+    const res = normalizeRunPodResolution(resolution);
+    const rate = PRICING['runpod-seedance-v1.5-i2v'][res] || PRICING['runpod-seedance-v1.5-i2v']['720p'];
+    return +(rate * durationSec).toFixed(3);
+  }
   if ((model || '').startsWith('wan25')) {
     const res = (resolution || '720p').toLowerCase();
     const rate = PRICING.wan25?.[res] || PRICING.wan25['720p'];
@@ -38,6 +77,40 @@ function estimateCost(model, resolution, durationSec) {
   const res = (resolution || '720p').toLowerCase();
   const rate = PRICING[tier]?.[res] || PRICING[tier]['720p'];
   return +(rate * durationSec).toFixed(3);
+}
+
+function isRunPodSeedanceModel(model = '') {
+  const key = String(model || '').toLowerCase();
+  return !key || key === 'seedance2-fast' || key === 'seedance2-standard' || key === 'runpod-seedance-v1.5-i2v';
+}
+
+function normalizeRunPodDuration(value = 5) {
+  const duration = Number(value || 5);
+  return Math.min(12, Math.max(4, Math.round(duration)));
+}
+
+function normalizeRunPodResolution(value = '720p') {
+  return String(value || '720p').toLowerCase() === '480p' ? '480p' : '720p';
+}
+
+function normalizeRunPodStatus(data = {}) {
+  const output = data.output || {};
+  const status = String(data.status || '').toUpperCase();
+  const mappedStatus = status === 'COMPLETED'
+    ? 'completed'
+    : status === 'FAILED'
+      ? 'failed'
+      : status === 'CANCELLED'
+        ? 'failed'
+        : status === 'IN_PROGRESS'
+          ? 'processing'
+          : 'pending';
+  return {
+    status: mappedStatus,
+    video_url: output.video_url || output.videoUrl || output.url || output.result || output.video || (Array.isArray(output.outputs) ? output.outputs[0] : null) || null,
+    error: data.error || output.error || data.error_message || null,
+    raw: data
+  };
 }
 
 async function uploadToTempHost(filePath) {
@@ -78,10 +151,13 @@ async function uploadToTempHost(filePath) {
  *   payload.duration - 5 | 10 | 15
  */
 async function submitGeneration(payload) {
-  const apiKey = getApiKey();
-  if (!apiKey) throw new Error('WAVESPEED_API_KEY not configured');
-
   const modelKey = payload.model || 'seedance2-fast';
+  if (isRunPodSeedanceModel(modelKey)) {
+    return submitRunPodSeedanceGeneration(payload);
+  }
+
+  const apiKey = getWaveSpeedApiKey();
+  if (!apiKey) throw new Error('WAVESPEED_API_KEY not configured for non-RunPod video models.');
   const endpoint = ENDPOINTS[modelKey] || ENDPOINTS['seedance2-fast'];
 
   let body;
@@ -167,6 +243,51 @@ async function submitGeneration(payload) {
   return { request_id: requestId, status: json.data.status, raw: json.data };
 }
 
+async function submitRunPodSeedanceGeneration(payload) {
+  const apiKey = getRunPodApiKey();
+  if (!apiKey) throw new Error('RUNPOD_API_KEY not configured for RunPod Seedance.');
+  if (!payload.image) throw new Error('RunPod Seedance 1.5 Pro I2V requires one source image URL.');
+
+  const body = {
+    input: {
+      prompt: payload.prompt,
+      image: payload.image,
+      duration: normalizeRunPodDuration(payload.duration || 5),
+      resolution: normalizeRunPodResolution(payload.resolution || '720p'),
+      aspect_ratio: payload.aspect_ratio || '9:16',
+      camera_fixed: payload.camera_fixed ?? false,
+      generate_audio: payload.generate_audio ?? false,
+      seed: payload.seed ?? -1
+    }
+  };
+  if (payload.last_image) body.input.last_image = payload.last_image;
+
+  logger.info('Submitting to RunPod Seedance 1.5 Pro I2V', {
+    endpointId: RUNPOD_SEEDANCE_ENDPOINT_ID,
+    resolution: body.input.resolution,
+    duration: body.input.duration
+  });
+
+  const res = await fetch(`${RUNPOD_API_BASE}/${RUNPOD_SEEDANCE_ENDPOINT_ID}/run`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  });
+
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    logger.error('RunPod Seedance submission failed', { status: res.status, body: json });
+    throw new Error(`RunPod Seedance API error ${res.status}: ${json.error || json.message || JSON.stringify(json)}`);
+  }
+
+  const requestId = json.id || json.request_id || json.job_id;
+  if (!requestId) throw new Error('No job id in RunPod Seedance response: ' + JSON.stringify(json));
+  return { request_id: `runpod_${requestId}`, status: json.status || 'IN_QUEUE', provider: 'runpod', raw: json };
+}
+
 function aspectToWanSize(aspectRatio = '16:9', resolution = '720p') {
   const key = `${resolution}:${aspectRatio}`;
   const sizes = {
@@ -181,7 +302,19 @@ function aspectToWanSize(aspectRatio = '16:9', resolution = '720p') {
 }
 
 async function checkStatus(requestId) {
-  const apiKey = getApiKey();
+  if (String(requestId || '').startsWith('runpod_')) {
+    const apiKey = getRunPodApiKey();
+    if (!apiKey) throw new Error('RUNPOD_API_KEY not configured for RunPod Seedance.');
+    const providerRequestId = String(requestId).replace(/^runpod_/, '');
+    const res = await fetch(`${RUNPOD_API_BASE}/${RUNPOD_SEEDANCE_ENDPOINT_ID}/status/${providerRequestId}`, {
+      headers: { Authorization: `Bearer ${apiKey}` }
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(`RunPod Seedance status error ${res.status}: ${json.error || json.message || JSON.stringify(json)}`);
+    return normalizeRunPodStatus(json);
+  }
+
+  const apiKey = getWaveSpeedApiKey();
   if (!apiKey) throw new Error('WAVESPEED_API_KEY not configured');
 
   const res = await fetch(`${API_BASE}/predictions/${requestId}/result`, {
@@ -214,6 +347,7 @@ module.exports = {
   PRICING,
   ENDPOINTS,
   estimateCost,
+  getApiKey,
   uploadToTempHost,
   submitGeneration,
   checkStatus,

@@ -3,6 +3,8 @@ const API = '';
 let currentVariants = null;
 let currentBatchId = null;
 let studioJobs = [];
+let knownVideoStatuses = {};
+let videoStatusWatchStarted = false;
 let authConfig = null;
 let supabaseClient = null;
 let authToken = localStorage.getItem('bloomStudioToken') || '';
@@ -10,10 +12,14 @@ let currentTenant = JSON.parse(localStorage.getItem('bloomStudioTenant') || 'nul
 let assetsCache = { products: [], subjects: [], audio: [], outputs: [], videos: [] };
 let selectedCharacter = null;
 let currentCharacterTab = 'library';
+let currentCharacterPickerTab = 'all';
 let currentCharacterRatio = 'portrait';
 let currentLibraryImageRatio = 'portrait';
 let libraryImageItems = [];
 let libraryVideoItems = [];
+let assetLightboxItems = {};
+let videoErrorDetails = {};
+let videoStatusDetails = {};
 let lightboxCollection = [];
 let lightboxIndex = 0;
 let trendsCache = [];
@@ -30,6 +36,9 @@ let productPlacementReferences = [];
 let productPlacementRequest = null;
 let productPlacementTimedOut = false;
 let latestProductPlacementImage = '';
+let latestProductPlacementPrompt = '';
+let latestProductPlacementAspectRatio = '9:16';
+let latestProductPlacementSize = '1k';
 let latestBuiltAgentImage = '';
 let currentAgentBuildPreviewRatio = 'portrait';
 let studioCrop = { x: 50, y: 50 };
@@ -38,20 +47,30 @@ let previewAudioAsset = null;
 let voicePreviewTimer = null;
 let generationTimer = null;
 let generationStartedAt = 0;
+let generationOverlayMode = 'active';
+let activeBackgroundVideoKey = '';
 let studioStatusCache = null;
+let campaignState = { selectedCharacters: new Set(), assetMap: new Map(), productKey: '', trendId: '', scenePlan: [], frameWorkflow: null };
+let currentCreateImageType = 'products';
 
 const starterCharacters = [
   { slug: 'library-financial-advisor', name: 'Financial Advisor', role: 'Advisor specialist', imageUrl: '/agent-library/financial-advisor.png' },
   { slug: 'library-real-estate-agent', name: 'Real Estate Agent', role: 'Listing specialist', imageUrl: '/agent-library/real-estate-agent.png' },
   { slug: 'library-small-business', name: 'Small Business Owner', role: 'Founder presenter', imageUrl: '/agent-library/small-business-owner.png' },
   { slug: 'library-ecommerce-founder', name: 'Ecommerce Founder', role: 'Product seller', imageUrl: '/agent-library/ecommerce-founder.png' },
-  { slug: 'library-sarah-studio', name: 'Sarah Studio', role: 'Bloomie narrator', imageUrl: '/agent-library/sarah-studio.png' },
+  { slug: 'library-sarah-studio', name: 'Sarah Studio', role: 'Bloomie narrator', imageUrl: '/agent-library/sarah-studio.png', voiceId: 'TOhxx937tpk5BU3jtXir' },
+  { slug: 'library-marcus-chen', name: 'Marcus Chen', role: 'Finance narrator', imageUrl: '/agent-library/marcus-chen.png', voiceId: 'iP95p4xoKVk53GoZ742B' },
   { slug: 'library-rebecca-advisor', name: 'Rebecca Advisor', role: 'Finance narrator', imageUrl: '/agent-library/rebecca-advisor.jpg' },
   { slug: 'library-janelle-real-estate', name: 'Janelle Real Estate', role: 'Market narrator', imageUrl: '/agent-library/janelle-real-estate.jpg' },
   { slug: 'library-andre-founder', name: 'Andre Founder', role: 'Business owner', imageUrl: '/agent-library/andre-founder.jpg' },
   { slug: 'library-studio-presenter', name: 'Studio Presenter', role: 'Podcast host', imageUrl: '/agent-library/studio-presenter.png' },
   { slug: 'library-coach-presenter', name: 'Coach Presenter', role: 'Training coach', imageUrl: '/agent-library/coach-presenter.png' }
 ];
+
+const defaultCharacterVoiceIds = {
+  sarah: 'TOhxx937tpk5BU3jtXir',
+  marcus: 'iP95p4xoKVk53GoZ742B'
+};
 
 const savedTheme = localStorage.getItem('bloomStudioTheme') || 'dark';
 document.body.dataset.theme = savedTheme;
@@ -70,6 +89,9 @@ document.addEventListener('change', (event) => {
   if (event.target?.id === 'studioImage') {
     previewUploadedImage(event.target.files?.[0]);
   }
+  if (event.target?.id === 'productPlacementModel') {
+    updateProductPlacementModelCopy();
+  }
 });
 
 document.addEventListener('pointermove', handlePreviewDragMove);
@@ -77,10 +99,14 @@ document.addEventListener('pointerup', endPreviewDrag);
 document.addEventListener('pointercancel', endPreviewDrag);
 
 function switchTab(tabId) {
-  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-  document.querySelector(`[data-tab="${tabId}"]`)?.classList.add('active');
-  document.getElementById(`tab-${tabId}`)?.classList.add('active');
+  const target = document.getElementById(`tab-${tabId}`);
+  if (!target) return;
+  document.querySelectorAll('.nav-tab').forEach(t => {
+    t.classList.toggle('active', t.dataset.tab === tabId);
+  });
+  document.querySelectorAll('.tab-content').forEach(t => {
+    t.classList.toggle('active', t === target);
+  });
 
   if (tabId === 'assets' || tabId === 'characters' || tabId === 'products') loadAssets();
   if (tabId === 'brands') loadBrands();
@@ -92,24 +118,72 @@ function switchTab(tabId) {
   if (tabId === 'trends') loadTrends();
 }
 
+function isolateStudioTabIfActive() {
+  const studio = document.getElementById('tab-studio');
+  if (!studio?.classList.contains('active')) return;
+  document.querySelectorAll('.tab-content.active').forEach(section => {
+    if (section !== studio) section.classList.remove('active');
+  });
+  document.querySelectorAll('.nav-tab').forEach(tab => {
+    tab.classList.toggle('active', tab.dataset.tab === 'studio');
+  });
+}
+
 function toast(message, type = 'info') {
   const container = document.getElementById('toastContainer');
   const el = document.createElement('div');
   el.className = `toast toast-${type}`;
   el.textContent = message;
   container.appendChild(el);
+  if (type === 'success' || type === 'error') playNotificationSound(type);
   setTimeout(() => el.remove(), 4800);
+}
+
+function playNotificationSound(type = 'success') {
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    const ctx = new AudioContext();
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(type === 'error' ? 0.05 : 0.035, ctx.currentTime + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.22);
+    gain.connect(ctx.destination);
+    [type === 'error' ? 220 : 660, type === 'error' ? 165 : 880].forEach((frequency, index) => {
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = frequency;
+      osc.connect(gain);
+      osc.start(ctx.currentTime + index * 0.08);
+      osc.stop(ctx.currentTime + 0.16 + index * 0.08);
+    });
+    setTimeout(() => ctx.close().catch(() => {}), 420);
+  } catch (error) {}
+}
+
+function startVideoStatusWatcher() {
+  if (videoStatusWatchStarted) return;
+  videoStatusWatchStarted = true;
+  setInterval(() => {
+    if (authToken || currentTenant) loadVideos({ notify: true });
+  }, 20000);
 }
 
 function startGenerationOverlay({ engine = 'wan-comfy', mode = 'i2v' } = {}) {
   const overlay = document.getElementById('generationOverlay');
   if (!overlay) return;
   generationStartedAt = Date.now();
+  generationOverlayMode = 'active';
+  activeBackgroundVideoKey = '';
   overlay.classList.add('active');
   document.getElementById('generationSuccessActions').style.display = 'none';
-  document.getElementById('generationDismissButton').textContent = 'Hide';
-  document.getElementById('generationNote').textContent = 'Progress is estimated while the video endpoint renders.';
-  const label = engine === 'meigen'
+  document.getElementById('generationDismissButton').textContent = 'Keep working';
+  document.getElementById('generationNote').textContent = 'You can navigate away from this page or keep using the app. Bloom Studio will notify you with a popup and sound when this request finishes.';
+  const label = engine === 'infinitetalk-hd'
+    ? 'InfiniteTalk HD'
+    : engine === 'seedance-campaign'
+    ? 'RunPod Seedance campaign'
+    : engine === 'meigen'
     ? 'Meigen lip sync'
     : engine === 'wan22-serverless'
       ? 'Wan 2.2 Serverless'
@@ -122,11 +196,40 @@ function startGenerationOverlay({ engine = 'wan-comfy', mode = 'i2v' } = {}) {
   generationTimer = setInterval(() => updateGenerationOverlay(engine, mode), 1000);
 }
 
+function setBackgroundGenerationOverlay({ engine = 'wan-comfy', mode = 'i2v', jobKey = '' } = {}) {
+  generationOverlayMode = 'background';
+  activeBackgroundVideoKey = jobKey || '';
+  document.getElementById('generationSuccessActions').style.display = 'none';
+  document.getElementById('generationTitle').textContent = 'Success!';
+  document.getElementById('generationDetail').textContent = 'Your video is currently processing in background. You can navigate away from this page or keep using the app while your video is cooking. We will notify you when it is complete.';
+  document.getElementById('generationPercent').textContent = 'Processing';
+  document.getElementById('generationProgressFill').style.width = '18%';
+  document.getElementById('generationNote').textContent = 'Video complete? A green popup will say “Video complete — check your Library to see the completed video.”';
+  document.getElementById('generationDismissButton').textContent = 'Keep working';
+  updateGenerationOverlay(engine, mode);
+  clearInterval(generationTimer);
+  generationTimer = setInterval(() => updateGenerationOverlay(engine, mode), 1000);
+}
+
 function updateGenerationOverlay(engine = 'wan-comfy', mode = 'i2v') {
   const elapsed = Math.max(0, Math.round((Date.now() - generationStartedAt) / 1000));
-  const estimate = engine === 'meigen' ? 180 : engine === 'wan22-serverless' ? 260 : engine === 'wan-animate' ? 420 : mode === 'v2v' ? 300 : 240;
+  const estimate = engine === 'infinitetalk-hd' ? 900 : engine === 'seedance-campaign' ? 260 : engine === 'meigen' ? 180 : engine === 'wan22-serverless' ? 260 : engine === 'wan-animate' ? 420 : mode === 'v2v' ? 300 : 240;
   const progress = Math.min(96, Math.max(3, Math.round((elapsed / estimate) * 92)));
-  const stages = engine === 'meigen'
+  if (generationOverlayMode === 'background') {
+    document.getElementById('generationElapsed').textContent = `${elapsed}s elapsed`;
+    document.getElementById('generationPercent').textContent = `${progress}% estimated`;
+    document.getElementById('generationProgressFill').style.width = `${progress}%`;
+    return;
+  }
+  const stages = engine === 'infinitetalk-hd'
+    ? [
+        [10, 'Uploading references', 'Sending your image and voiceover to InfiniteTalk HD.'],
+        [35, 'Rendering lip sync', 'Wan 2.1 InfiniteTalk is building the talking-head video.'],
+        [70, 'Restoring face', 'CodeFormer is refining the face region.'],
+        [90, 'Upscaling video', 'Real-ESRGAN is preparing the final output when 1080p is selected.'],
+        [96, 'Saving to Library', 'Almost there. Bloom Studio is collecting the finished video.']
+      ]
+    : engine === 'meigen'
     ? [
         [10, 'Uploading references', 'Sending your selected image and voiceover to the lip sync endpoint.'],
         [35, 'Building the face track', 'Matching the speaker motion to the audio.'],
@@ -166,9 +269,11 @@ function stopGenerationOverlay({ success = false } = {}) {
   generationTimer = null;
   const overlay = document.getElementById('generationOverlay');
   if (!overlay) return;
+  generationOverlayMode = success ? 'complete' : 'active';
+  activeBackgroundVideoKey = '';
   if (success) {
     document.getElementById('generationTitle').textContent = 'Video ready';
-    document.getElementById('generationDetail').textContent = 'Your generation was saved. Open the Library tab to preview, download, or post it.';
+    document.getElementById('generationDetail').textContent = 'Video complete — check your Library to see the completed video.';
     document.getElementById('generationPercent').textContent = '100%';
     document.getElementById('generationProgressFill').style.width = '100%';
     document.getElementById('generationNote').textContent = 'This message will stay here until you open Library or dismiss it.';
@@ -182,6 +287,8 @@ function stopGenerationOverlay({ success = false } = {}) {
 function dismissGenerationOverlay() {
   const overlay = document.getElementById('generationOverlay');
   if (overlay) overlay.classList.remove('active');
+  generationOverlayMode = 'active';
+  activeBackgroundVideoKey = '';
 }
 
 function openGeneratedLibrary() {
@@ -215,8 +322,28 @@ function markVideoPlaying(video, isPlaying) {
   if (wrap) wrap.classList.toggle('playing', isPlaying);
 }
 
+function aspectRatioToCssValue(value = '16:9') {
+  const [width, height] = String(value).split(':').map(Number);
+  if (!width || !height) return '16 / 9';
+  return `${width} / ${height}`;
+}
+
+function aspectRatioKind(value = '') {
+  const [width, height] = String(value).split(':').map(Number);
+  if (!width || !height) return 'landscape';
+  if (width === height) return 'square';
+  return width > height ? 'landscape' : 'portrait';
+}
+
 function openLibraryLightbox(kind, index) {
   lightboxCollection = kind === 'videos' ? libraryVideoItems : libraryImageItems;
+  lightboxIndex = Number(index) || 0;
+  renderLibraryLightbox();
+  document.getElementById('libraryLightbox').classList.add('active');
+}
+
+function openAssetImageLightbox(type, index) {
+  lightboxCollection = assetLightboxItems[type] || [];
   lightboxIndex = Number(index) || 0;
   renderLibraryLightbox();
   document.getElementById('libraryLightbox').classList.add('active');
@@ -240,13 +367,26 @@ function renderLibraryLightbox() {
   if (!item || !body) return;
   document.getElementById('lightboxTitle').textContent = item.name || 'Library preview';
   document.getElementById('lightboxMeta').textContent = `${lightboxIndex + 1} of ${lightboxCollection.length}${item.prompt ? ` · ${item.prompt}` : ''}`;
-  body.className = 'lightbox-body';
+  const ratioClass = 'natural';
+  body.className = `lightbox-body ${ratioClass}`;
   const media = item.type === 'video'
     ? `<video class="lightbox-media" controls autoplay playsinline src="${item.url}"></video>`
     : `<img class="lightbox-media" src="${item.url}" alt="${escapeHtml(item.name || 'Library image')}">`;
+  const sourceUrl = item.sourceTrendUrl || '';
+  const sourcePanel = item.type === 'video' && sourceUrl
+    ? `<aside class="lightbox-source-panel">
+        <div class="lightbox-source-title">Trend source</div>
+        <div class="lightbox-source-name">${escapeHtml(item.sourceTrendTitle || item.sourceTrendId || 'Original trend')}</div>
+        <iframe class="lightbox-source-frame" src="${trendEmbedUrl(sourceUrl)}" title="Trend source preview" loading="lazy" referrerpolicy="no-referrer"></iframe>
+        <button class="btn btn-secondary" type="button" onclick="window.open('${sourceUrl.replace(/'/g, "\\'")}','_blank','noopener')">Open source trend</button>
+      </aside>`
+    : '';
   body.innerHTML = `
     <button class="lightbox-nav lightbox-prev" type="button" onclick="moveLibraryLightbox(-1)">‹</button>
-    ${media}
+    <div class="${sourcePanel ? 'lightbox-review-grid' : 'lightbox-single-media'}">
+      <div class="lightbox-generated-panel">${media}</div>
+      ${sourcePanel}
+    </div>
     <button class="lightbox-nav lightbox-next" type="button" onclick="moveLibraryLightbox(1)">›</button>
   `;
   const download = document.getElementById('lightboxDownload');
@@ -406,6 +546,7 @@ function renderTrends() {
         <div class="trend-card-actions">
           <button class="btn btn-secondary" type="button" onclick="event.stopPropagation();openTrendLightbox(${index}, false)">Preview</button>
           <button class="btn btn-primary" type="button" onclick="event.stopPropagation();openTrendLightbox(${index}, true)">Remix</button>
+          <button class="btn btn-secondary btn-campaign" type="button" onclick="event.stopPropagation();useTrendForCampaign('${escapeHtml(trend.id || '')}')">Campaign</button>
         </div>
       </div>
     </article>
@@ -508,12 +649,13 @@ async function renderTrendLightbox() {
 
   body.innerHTML = `
     <div>${renderTrendFrame(trend, true)}</div>
-    <div class="trend-remix-panel ${trendRemixMode ? 'is-remix' : 'is-preview'}">
-      <h3>${trendRemixMode ? 'Confirm remix setup' : 'Preview this trend'}</h3>
-      <p class="trend-preview-guidance">Watch the source if the platform allows it, move through trends with the arrows, or open the original post to analyze the creator profile.</p>
-      <div class="actions trend-preview-guidance" style="margin-top:12px">
-        <button class="btn btn-primary" type="button" onclick="showTrendRemixOptions()">Remix this trend</button>
-      </div>
+      <div class="trend-remix-panel ${trendRemixMode ? 'is-remix' : 'is-preview'}">
+        <h3>${trendRemixMode ? 'Confirm remix setup' : 'Preview this trend'}</h3>
+        <p class="trend-preview-guidance">Watch the source if the platform allows it, move through trends with the arrows, or open the original post to analyze the creator profile.</p>
+        <div class="actions trend-preview-guidance" style="margin-top:12px">
+          <button class="btn btn-primary" type="button" onclick="showTrendRemixOptions()">Remix this trend</button>
+          <button class="btn btn-secondary" type="button" onclick="useTrendForCampaign('${escapeHtml(trend.id || '')}')">Use in Campaign</button>
+        </div>
       <div class="trend-remix-fields">
         <p>Choose the character, brand, and product first. The source hook/script will load into Create as the remix structure.</p>
         <div class="form-group">
@@ -732,9 +874,8 @@ async function hydrateUser() {
   localStorage.setItem('bloomStudioTenant', JSON.stringify(currentTenant));
   document.getElementById('tenantPill').textContent = currentTenant?.name || currentTenant?.slug || currentTenant?.id || 'Workspace';
   hideLogin();
-  switchTab('characters');
-  setCreateType(document.getElementById('studioCreateType')?.value || 'shorts');
   await Promise.all([loadDashboard(), loadStudioStatus(), loadAssets()]);
+  switchTab('characters');
 }
 
 async function logout() {
@@ -779,10 +920,11 @@ async function loadStudioStatus() {
     const qwen = data.audioProviders.find(p => p.id === 'qwen');
     const chatterbox = data.audioProviders.find(p => p.id === 'chatterbox');
     const meigen = data.videoEngines?.find(p => p.id === 'meigen');
+    const infiniteTalkHd = data.videoEngines?.find(p => p.id === 'infinitetalk-hd');
     const wan22 = data.videoEngines?.find(p => p.id === 'wan22-serverless');
     const wanAnimate = data.videoEngines?.find(p => p.id === 'wan-animate');
     setChip('qwenStatus', qwen?.available ? 'Ready' : 'Needs workflow', qwen?.available ? 'soft' : 'warn');
-    const serverlessReady = [meigen, wan22, wanAnimate].filter(Boolean).filter(engine => engine.available).length;
+    const serverlessReady = [meigen, infiniteTalkHd, wan22, wanAnimate].filter(Boolean).filter(engine => engine.available).length;
     setChip('meigenStatus', serverlessReady ? `${serverlessReady} ready` : 'Needs keys', serverlessReady ? 'green' : 'warn');
     const qwenNote = document.getElementById('qwenNote');
     if (qwenNote) qwenNote.textContent = chatterbox?.available
@@ -859,6 +1001,129 @@ function setChip(id, label, state) {
   el.className = `chip chip-${state}`;
 }
 
+function mountStudioControlsUnderPreview() {
+  const form = document.getElementById('studioForm');
+  const slot = document.getElementById('previewControlSlot');
+  if (!form || !slot || form.parentElement === slot) return;
+  slot.appendChild(form);
+}
+
+function mountImageWorkspaceInCreate() {
+  const lab = document.getElementById('productLab');
+  const slot = document.getElementById('previewControlSlot');
+  if (!lab || !slot || lab.parentElement === slot) return;
+  slot.appendChild(lab);
+}
+
+function mountCampaignControlsUnderPreview() {
+  const panel = document.getElementById('seedanceCampaignPanel');
+  const slot = document.getElementById('previewControlSlot');
+  if (!panel || !slot || panel.parentElement === slot) return;
+  slot.appendChild(panel);
+}
+
+function toggleStudioStatusPanel(forceOpen) {
+  const panel = document.getElementById('studioStatusPanel');
+  const button = document.querySelector('.status-pill-button');
+  if (!panel) return;
+  const nextOpen = typeof forceOpen === 'boolean' ? forceOpen : !panel.classList.contains('active');
+  panel.classList.toggle('active', nextOpen);
+  panel.setAttribute('aria-hidden', String(!nextOpen));
+  if (button) button.setAttribute('aria-expanded', String(nextOpen));
+}
+
+function initializeStudioResize() {
+  const width = Number(localStorage.getItem('bloomStudioBuilderWidth'));
+  if (Number.isFinite(width) && width >= 240 && width <= 760) {
+    updateStudioBuilderWidth(width);
+  }
+  if (localStorage.getItem('bloomStudioLeftCollapsed') === 'true') {
+    document.getElementById('tab-studio')?.classList.add('left-collapsed');
+  }
+}
+
+function updateStudioBuilderWidth(width) {
+  const tab = document.getElementById('tab-studio');
+  if (!tab || !Number.isFinite(width)) return;
+  const workbench = tab.querySelector('.creator-workbench');
+  const clamped = Math.max(240, Math.min(760, Math.round(width)));
+  tab.style.setProperty('--studio-builder-width', `${clamped}px`);
+  workbench?.style.setProperty('--studio-builder-width', `${clamped}px`);
+  tab.classList.toggle('narrow-create', clamped < 390);
+}
+
+function initializeStudioPreviewResize() {
+  const height = Number(localStorage.getItem('bloomStudioPreviewHeight'));
+  if (Number.isFinite(height) && height >= 220 && height <= 900) {
+    document.querySelector('#tab-studio .preview-card')?.style.setProperty('--studio-preview-height', `${height}px`);
+  }
+}
+
+function startStudioResize(event) {
+  const tab = document.getElementById('tab-studio');
+  const handle = event.currentTarget;
+  if (!tab || window.innerWidth < 1180) return;
+  event.preventDefault();
+  if (tab.classList.contains('left-collapsed')) {
+    tab.classList.remove('left-collapsed');
+    localStorage.setItem('bloomStudioLeftCollapsed', 'false');
+  }
+  handle?.classList.add('dragging');
+  handle?.setPointerCapture?.(event.pointerId);
+  const move = pointerEvent => {
+    const rect = tab.querySelector('.creator-workbench')?.getBoundingClientRect();
+    if (!rect) return;
+    const width = Math.max(240, Math.min(760, Math.round(pointerEvent.clientX - rect.left)));
+    updateStudioBuilderWidth(width);
+    localStorage.setItem('bloomStudioBuilderWidth', String(width));
+  };
+  const up = () => {
+    handle?.classList.remove('dragging');
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+  };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up, { once: true });
+}
+
+function toggleCreateLeftColumn() {
+  const tab = document.getElementById('tab-studio');
+  if (!tab) return;
+  const collapsed = !tab.classList.contains('left-collapsed');
+  tab.classList.toggle('left-collapsed', collapsed);
+  localStorage.setItem('bloomStudioLeftCollapsed', String(collapsed));
+}
+
+function startStudioPreviewResize(event) {
+  const card = document.querySelector('#tab-studio .preview-card');
+  const handle = event.currentTarget;
+  if (!card) return;
+  event.preventDefault();
+  handle?.classList.add('dragging');
+  handle?.setPointerCapture?.(event.pointerId);
+  const move = pointerEvent => {
+    const rect = card.getBoundingClientRect();
+    const maxHeight = Math.max(220, Math.min(900, rect.height - 190));
+    const height = Math.max(220, Math.min(maxHeight, Math.round(pointerEvent.clientY - rect.top)));
+    card.style.setProperty('--studio-preview-height', `${height}px`);
+    localStorage.setItem('bloomStudioPreviewHeight', String(height));
+  };
+  const up = () => {
+    handle?.classList.remove('dragging');
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+  };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up, { once: true });
+}
+
+function toggleVoiceDetails(forceOpen) {
+  const form = document.getElementById('studioForm');
+  if (!form) return;
+  const nextOpen = typeof forceOpen === 'boolean' ? forceOpen : !form.classList.contains('show-voice-details');
+  form.classList.toggle('show-voice-details', nextOpen);
+}
+
 function flowStatusChip(label, available, note = '') {
   return `<span class="create-flow-status ${available ? 'ready' : 'missing'}" title="${note || label}">${label}: ${available ? 'Ready' : 'Missing'}</span>`;
 }
@@ -871,6 +1136,7 @@ function renderFlowStatus(selected) {
   const audio = id => data.audioProviders?.find(item => item.id === id);
   const statusSets = {
     shorts: [
+      flowStatusChip('InfiniteTalk HD', engine('infinitetalk-hd')?.available, engine('infinitetalk-hd')?.note),
       flowStatusChip('Meigen', engine('meigen')?.available, engine('meigen')?.note),
       flowStatusChip('Chatterbox', audio('chatterbox')?.available, audio('chatterbox')?.note)
     ],
@@ -897,8 +1163,11 @@ function renderFlowStatus(selected) {
 
 function setCreateTool(tool = 'video') {
   const selected = tool || 'video';
+  isolateStudioTabIfActive();
   const studioTab = document.getElementById('tab-studio');
   if (studioTab) studioTab.dataset.createTool = selected;
+  studioTab?.classList.add('focused-create');
+  document.querySelector('#tab-studio .create-tool-grid')?.classList.remove('expanded');
   studioTab?.classList.toggle('create-tool-audio', selected === 'audio');
   document.querySelectorAll('[data-create-tool]').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.createTool === selected);
@@ -915,7 +1184,26 @@ function setCreateTool(tool = 'video') {
     if (script) script.placeholder = 'Paste the exact narration script for Chatterbox or ElevenLabs v3.';
     setAudioPreviewMode();
     setStudioMode('audio');
-    setStudioAudio(document.getElementById('studioAudioProvider')?.value || 'chatterbox', { preserveToast: true });
+    setStudioAudio(document.getElementById('studioAudioProvider')?.value || 'upload', { preserveToast: true });
+    return;
+  }
+
+  if (selected === 'campaign') {
+    if (title) title.textContent = 'Create UGC campaign';
+    if (note) note.textContent = 'Connect creators, products, environments, and trends into editable scenes before generating.';
+    resetPreview();
+    mountCampaignControlsUnderPreview();
+    loadCampaignBuilder();
+    return;
+  }
+
+  if (selected === 'image') {
+    if (title) title.textContent = 'Create image';
+    if (note) note.textContent = 'Choose an image folder, then build prompt-led creative with optional references.';
+    mountImageWorkspaceInCreate();
+    setCreateImageType(currentCreateImageType || 'products');
+    loadProductPlacementStatus();
+    loadAssets();
     return;
   }
 
@@ -923,24 +1211,976 @@ function setCreateTool(tool = 'video') {
   if (note) note.textContent = 'Choose a video type, load a character, add voice, then generate.';
   const scriptLabel = document.getElementById('studioScriptLabel');
   const script = document.getElementById('studioScript');
-  if (scriptLabel) scriptLabel.textContent = 'Script or notes';
+  if (scriptLabel) scriptLabel.textContent = 'Narration script';
   if (script) script.placeholder = 'Paste the narration script here so the job record keeps the creative direction with the video.';
   resetPreview();
   setCreateType(document.getElementById('studioCreateType')?.value || 'shorts');
 }
 
+function setCreateImageType(type = 'products') {
+  currentCreateImageType = type;
+  document.querySelectorAll('[data-image-type]').forEach(btn => btn.classList.toggle('active', btn.dataset.imageType === type));
+  const panel = document.getElementById('createImagePanel');
+  if (!panel) return;
+  const lab = document.getElementById('productLab');
+  if (type === 'products' || type === 'composite') {
+    mountImageWorkspaceInCreate();
+    if (lab) lab.style.display = '';
+    panel.querySelectorAll('[data-placeholder]').forEach(el => el.remove());
+    return;
+  }
+  if (lab) lab.style.display = 'none';
+  const label = type === 'environment' ? 'Environments' : 'Instagram post';
+  panel.insertAdjacentHTML('beforeend', `<div class="create-image-placeholder" data-placeholder="${type}"><strong>${label}</strong><br>This image folder is reserved for the next workspace. Image Composite stays ready now, and this slot can become environment scenes, Instagram posts, product shots, or carousel creative without leaving Create.</div>`);
+  panel.querySelectorAll(`[data-placeholder]:not([data-placeholder="${type}"])`).forEach(el => el.remove());
+}
+
+function toggleCreateTools() {
+  const grid = document.querySelector('#tab-studio .create-tool-grid');
+  if (!grid) return;
+  grid.classList.toggle('expanded');
+}
+
+async function loadCampaignBuilder() {
+  try {
+    if (!assetsCache.products?.length && !assetsCache.subjects?.length) await loadAssets();
+    renderCampaignBuilder(assetsCache);
+    await loadCampaignTrendOptions();
+  } catch (error) {
+    toast(`Could not load campaign assets: ${error.message}`, 'error');
+  }
+}
+
+async function ensureTrendsLoadedForCampaign() {
+  if (trendsCache.length) return trendsCache;
+  const data = await api('/api/trends?limit=1200');
+  trendsCache = data.trends || [];
+  return trendsCache;
+}
+
+async function loadCampaignTrendOptions() {
+  const select = document.getElementById('campaignTrendSelect');
+  if (!select) return;
+  const previous = campaignState.trendId || select.value;
+  try {
+    const trends = await ensureTrendsLoadedForCampaign();
+    select.innerHTML = '<option value="">No trend source</option>' + trends.map(trend => {
+      const label = `${trend.id || 'trend'} · ${trend.hook || trend.platform || 'Untitled trend'}`;
+      return `<option value="${escapeHtml(trend.id || '')}">${escapeHtml(label)}</option>`;
+    }).join('');
+    if (previous && trends.some(trend => trend.id === previous)) select.value = previous;
+    renderCampaignTrendSource();
+  } catch (error) {
+    select.innerHTML = '<option value="">Could not load trends</option>';
+  }
+}
+
+function selectedCampaignTrend() {
+  return trendsCache.find(trend => trend.id === campaignState.trendId) || null;
+}
+
+function renderCampaignTrendSource() {
+  const card = document.getElementById('campaignTrendSource');
+  const analyzeButton = document.getElementById('campaignAnalyzeTrendButton');
+  const frameButton = document.getElementById('campaignFrameAnalyzeButton');
+  const refineButton = document.getElementById('campaignRefineSceneButton');
+  const trend = selectedCampaignTrend();
+  if (!card) return;
+  if (!trend) {
+    card.style.display = 'none';
+    if (analyzeButton) analyzeButton.style.display = 'none';
+    if (frameButton) frameButton.style.display = 'none';
+    if (refineButton) refineButton.style.display = 'none';
+    return;
+  }
+  card.style.display = '';
+  if (analyzeButton) analyzeButton.style.display = '';
+  if (frameButton) frameButton.style.display = '';
+  if (refineButton) refineButton.style.display = campaignState.scenePlan.length ? '' : 'none';
+  const frameSummary = campaignState.frameWorkflow?.frameAnalysis?.summary
+    ? `<div class="campaign-frame-summary">${escapeHtml(String(campaignState.frameWorkflow.frameAnalysis.summary.totalFrames))} exact frames analyzed · ${escapeHtml(String(campaignState.frameWorkflow.frameAnalysis.summary.detectedScenes))} scene beats</div>`
+    : '';
+  card.innerHTML = `<strong>${escapeHtml(trend.hook || 'Selected trend')}</strong>
+    <span class="chip chip-soft">${escapeHtml(trend.id || 'trend')}</span>
+    <span class="chip chip-soft">${escapeHtml(trend.platform || 'Web')}</span>
+    ${(trend.industries || []).slice(0, 2).map(industry => `<span class="chip chip-warn">${escapeHtml(industry)}</span>`).join('')}
+    <div class="hint" style="margin-top:6px">This trend can be broken into timed scenes or cloned from exact frame analysis before any paid generation is submitted.</div>
+    ${frameSummary}`;
+}
+
+async function selectCampaignTrend(trendId = '') {
+  campaignState.trendId = trendId;
+  campaignState.scenePlan = [];
+  campaignState.frameWorkflow = null;
+  renderCampaignTrendSource();
+  renderCampaignScenePlan();
+  renderCampaignNodeView();
+  const submitButton = document.getElementById('campaignSubmitButton');
+  if (submitButton) submitButton.style.display = 'none';
+}
+
+async function useTrendForCampaign(trendId = '') {
+  if (!trendId) return toast('That trend does not have an ID yet.', 'error');
+  await ensureTrendsLoadedForCampaign();
+  const trend = trendsCache.find(item => item.id === trendId);
+  if (!trend) return toast('Could not find that trend in the local library.', 'error');
+  closeTrendLightbox();
+  switchTab('studio');
+  setCreateTool('campaign');
+  await loadCampaignTrendOptions();
+  const select = document.getElementById('campaignTrendSelect');
+  if (select) select.value = trendId;
+  await selectCampaignTrend(trendId);
+  toast('Trend loaded into Campaign. Analyze scenes first; no paid jobs were submitted.', 'success');
+}
+
+function getCampaignAssetImage(asset = {}) {
+  return asset.imageUrl || asset.files?.[0]?.path || asset.path || '';
+}
+
+function getCampaignAssetKey(asset = {}, type = 'subject') {
+  return `${type}:${asset.slug || asset.name || getCampaignAssetImage(asset)}`;
+}
+
+function renderCampaignBuilder(data = assetsCache) {
+  const grid = document.getElementById('campaignCharacterGrid');
+  const characterSelect = document.getElementById('campaignCharacterSelect');
+  const productSelect = document.getElementById('campaignProductSelect');
+  const environmentSelect = document.getElementById('campaignEnvironmentAssetSelect');
+  if (!productSelect) return;
+
+  campaignState.assetMap = new Map();
+  const characters = [
+    ...(starterCharacters || []).map(item => ({ ...item, _campaignType: 'subjects', _library: true })),
+    ...(data.subjects || []).map(item => ({ ...item, _campaignType: 'subjects', _library: false }))
+  ];
+  const products = (data.products || []).map(item => ({ ...item, _campaignType: 'products', _library: false }));
+  const environmentImages = [
+    ...(data.products || []).map(item => ({ ...item, _campaignType: 'products', _library: false })),
+    ...(data.outputs || []).map(item => ({ ...item, _campaignType: 'outputs', _library: false }))
+  ];
+
+  for (const asset of [...characters, ...products, ...environmentImages]) {
+    campaignState.assetMap.set(getCampaignAssetKey(asset, asset._campaignType), asset);
+  }
+
+  if (characterSelect) {
+    const selected = new Set([...campaignState.selectedCharacters]);
+    characterSelect.innerHTML = characters.length
+      ? characters.map(asset => {
+          const key = getCampaignAssetKey(asset, 'subjects');
+          return `<option value="${escapeHtml(key)}" ${selected.has(key) ? 'selected' : ''}>${escapeHtml(asset.name || 'Character')}</option>`;
+        }).join('')
+      : '<option disabled>No characters yet</option>';
+  }
+
+  if (grid && !characters.length) {
+    grid.innerHTML = '<div class="empty-state">Upload or create a character first.</div>';
+  } else if (grid) {
+    grid.innerHTML = characters.map(asset => {
+      const key = getCampaignAssetKey(asset, 'subjects');
+      const imageUrl = authenticatedMediaUrl(getCampaignAssetImage(asset));
+      const active = campaignState.selectedCharacters.has(key);
+      return `<button class="campaign-character-card ${active ? 'active' : ''}" type="button" onclick="toggleCampaignCharacter('${escapeHtml(key)}')">
+        <img src="${imageUrl}" alt="${escapeHtml(asset.name || 'Character')}" loading="lazy">
+        <span><strong>${escapeHtml(asset.name || 'Character')}</strong><span>${escapeHtml(asset.role || (asset._library ? 'Starter character' : 'Saved character'))}</span></span>
+      </button>`;
+    }).join('');
+  }
+
+  const currentProduct = campaignState.productKey || productSelect.value;
+  productSelect.innerHTML = '<option value="">No product image</option>' + products.map(asset => {
+    const key = getCampaignAssetKey(asset, 'products');
+    return `<option value="${escapeHtml(key)}">${escapeHtml(asset.name || 'Product')}</option>`;
+  }).join('');
+  if (currentProduct && campaignState.assetMap.has(currentProduct)) productSelect.value = currentProduct;
+  campaignState.productKey = productSelect.value;
+  productSelect.onchange = () => {
+    campaignState.productKey = productSelect.value;
+    estimateSeedanceCampaign({ quiet: true });
+    renderCampaignNodeView();
+  };
+  if (environmentSelect) {
+    const currentEnvironment = environmentSelect.value;
+    environmentSelect.innerHTML = '<option value="">Choose saved image</option>' + environmentImages.map(asset => {
+      const key = getCampaignAssetKey(asset, asset._campaignType);
+      return `<option value="${escapeHtml(key)}">${escapeHtml(asset.name || 'Image')}</option>`;
+    }).join('');
+    if (currentEnvironment && campaignState.assetMap.has(currentEnvironment)) environmentSelect.value = currentEnvironment;
+  }
+  setCampaignEnvironmentMode(document.getElementById('campaignEnvironmentMode')?.value || 'text');
+  renderCampaignTrendSource();
+  renderCampaignScenePlan();
+  renderCampaignNodeView();
+  estimateSeedanceCampaign({ quiet: true });
+}
+
+function setCampaignEnvironmentMode(mode = 'text') {
+  const textGroup = document.getElementById('campaignEnvironmentTextGroup');
+  const libraryGroup = document.getElementById('campaignEnvironmentLibraryGroup');
+  if (textGroup) textGroup.style.display = mode === 'text' ? '' : 'none';
+  if (libraryGroup) libraryGroup.style.display = mode === 'library' ? '' : 'none';
+}
+
+function syncCampaignCharacterSelection() {
+  const select = document.getElementById('campaignCharacterSelect');
+  campaignState.selectedCharacters = new Set(Array.from(select?.selectedOptions || []).map(option => option.value));
+  estimateSeedanceCampaign({ quiet: true });
+  renderCampaignNodeView();
+}
+
+function toggleCampaignCharacter(key) {
+  if (campaignState.selectedCharacters.has(key)) campaignState.selectedCharacters.delete(key);
+  else campaignState.selectedCharacters.add(key);
+  renderCampaignBuilder(assetsCache);
+  renderCampaignNodeView();
+}
+
+function absolutePublicUrl(url = '') {
+  if (!url) return '';
+  const hydrated = authenticatedMediaUrl(url);
+  return new URL(hydrated, window.location.origin).href;
+}
+
+async function resolveCampaignAssetUrl(asset, type) {
+  const imageUrl = getCampaignAssetImage(asset);
+  if (!imageUrl) throw new Error(`${asset?.name || 'Asset'} has no image file.`);
+  if (/^https?:\/\//i.test(imageUrl)) return imageUrl;
+  if (asset?._library) return absolutePublicUrl(imageUrl);
+  if (asset?.slug) {
+    const data = await api(`/api/assets/${type}/${asset.slug}/temp-url`, { method: 'POST' });
+    return data.url;
+  }
+  return absolutePublicUrl(imageUrl);
+}
+
+function buildCampaignPrompt({ basePrompt, character, product, environment, aspectRatio }) {
+  return [
+    `@image1 is the main creator: ${character.name || 'the selected creator'}. Keep their identity consistent.`,
+    product ? `@image2 is the product to feature. Keep it recognizable and naturally visible.` : '',
+    environment ? `Scene: ${environment}.` : '',
+    basePrompt,
+    `Create a ${aspectRatio} UGC ad clip with natural creator energy, clear product interaction, realistic lighting, no captions, no watermark.`
+  ].filter(Boolean).join('\n');
+}
+
+function getCampaignEngineLabel(engine = '') {
+  if (engine === 'wan-animate') return 'Wan Animate motion mimic';
+  if (engine === 'infinitetalk-hd') return 'InfiniteTalk talking head';
+  if (engine === 'seedance2-standard') return 'Seedance fixed camera';
+  return 'Seedance 1.5';
+}
+
+function getCampaignEngineRequirement(scene = {}) {
+  const engine = scene.engine || 'seedance2-fast';
+  if (engine === 'wan-animate') {
+    return scene.referenceVideoUrl || scene.sourceTrendUrl ? 'Ready: source trend/reference video' : 'Needs reference video URL';
+  }
+  if (engine === 'infinitetalk-hd') {
+    return scene.audioUrl || scene.voiceUrl ? 'Ready: audio URL' : 'Needs audio URL in JSON';
+  }
+  return 'Ready: source image';
+}
+
+function getCampaignWorkflowJson() {
+  const trend = selectedCampaignTrend();
+  const characters = selectedCampaignCharacters();
+  const product = campaignState.productKey ? campaignState.assetMap.get(campaignState.productKey) : null;
+  const environmentMode = document.getElementById('campaignEnvironmentMode')?.value || 'text';
+  const environmentAssetKey = document.getElementById('campaignEnvironmentAssetSelect')?.value || '';
+  const environmentAsset = environmentMode === 'library' && environmentAssetKey ? campaignState.assetMap.get(environmentAssetKey) : null;
+  const sourceTrendUrl = trend?.url || '';
+  return {
+    schema: 'bloom.campaign.workflow.v1',
+    workflowType: 'trend_remix_campaign',
+    source: {
+      trendId: trend?.id || campaignState.trendId || '',
+      url: sourceTrendUrl,
+      hook: trend?.hook || '',
+      platform: trend?.platform || ''
+    },
+    global: {
+      prompt: document.getElementById('campaignPrompt')?.value || '',
+      cta: document.getElementById('campaignCta')?.value || '',
+      outputMode: document.getElementById('campaignOutputMode')?.value || 'separate',
+      aspectRatio: document.getElementById('campaignAspectRatio')?.value || '9:16',
+      resolution: document.getElementById('campaignResolution')?.value || '720p',
+      duration: Number(document.getElementById('campaignDuration')?.value || 5)
+    },
+    assets: {
+      characters: characters.map(character => ({
+        name: character.name || 'Character',
+        key: getCampaignAssetKey(character, character._campaignType || 'subjects'),
+        imagePreview: getCampaignAssetImage(character)
+      })),
+      product: product ? {
+        name: product.name || 'Product',
+        key: campaignState.productKey,
+        imagePreview: getCampaignAssetImage(product)
+      } : null,
+      environment: {
+        mode: environmentMode,
+        text: document.getElementById('campaignEnvironments')?.value || '',
+        key: environmentAssetKey,
+        imagePreview: environmentAsset ? getCampaignAssetImage(environmentAsset) : ''
+      }
+    },
+    frameWorkflow: campaignState.frameWorkflow ? {
+      schema: campaignState.frameWorkflow.schema,
+      source: campaignState.frameWorkflow.source,
+      frameAnalysis: campaignState.frameWorkflow.frameAnalysis,
+      nodeGraph: campaignState.frameWorkflow.nodeGraph,
+      assembly: campaignState.frameWorkflow.assembly,
+      replacements: campaignState.frameWorkflow.replacements
+    } : null,
+    scenes: (campaignState.scenePlan || []).map((scene, index) => ({
+      id: scene.id || `scene-${index + 1}`,
+      title: scene.title || `Scene ${index + 1}`,
+      start: Number(scene.start || 0),
+      end: Number(scene.end || 0),
+      duration: Number(scene.duration || 5),
+      engine: scene.engine || 'seedance2-fast',
+      pacing: scene.pacing || '',
+      script: scene.script || '',
+      visualPrompt: scene.visualPrompt || '',
+      negativePrompt: scene.negativePrompt || '',
+      referenceVideoUrl: scene.referenceVideoUrl || scene.sourceTrendUrl || sourceTrendUrl,
+      audioUrl: scene.audioUrl || '',
+      seed: scene.seed ?? -1,
+      steps: scene.steps || undefined,
+      requirement: getCampaignEngineRequirement(scene)
+    })),
+    assembly: {
+      order: (campaignState.scenePlan || []).map((scene, index) => scene.id || `scene-${index + 1}`),
+      method: campaignState.frameWorkflow?.assembly?.method || 'concat_in_scene_order',
+      preserveSourceTiming: Boolean(campaignState.frameWorkflow?.assembly?.preserveSourceTiming),
+      audio: campaignState.frameWorkflow?.assembly?.audio || 'per_scene_or_post_mix',
+      output: campaignState.frameWorkflow?.assembly?.output || 'assembled_campaign_video',
+      captions: false
+    }
+  };
+}
+
+function syncCampaignWorkflowJson() {
+  const textarea = document.getElementById('campaignWorkflowJson');
+  if (!textarea) return;
+  textarea.value = JSON.stringify(getCampaignWorkflowJson(), null, 2);
+}
+
+function toggleCampaignWorkflowJson() {
+  const panel = document.getElementById('campaignWorkflowJsonPanel');
+  if (!panel) return;
+  panel.classList.toggle('active');
+  if (panel.classList.contains('active')) syncCampaignWorkflowJson();
+}
+
+function applyCampaignWorkflowJson() {
+  const textarea = document.getElementById('campaignWorkflowJson');
+  if (!textarea) return;
+  try {
+    const workflow = JSON.parse(textarea.value || '{}');
+    if (workflow.global) {
+      const set = (id, value) => {
+        const el = document.getElementById(id);
+        if (el && typeof value !== 'undefined' && value !== null) el.value = value;
+      };
+      set('campaignPrompt', workflow.global.prompt);
+      set('campaignCta', workflow.global.cta);
+      set('campaignOutputMode', workflow.global.outputMode);
+      set('campaignAspectRatio', workflow.global.aspectRatio);
+      set('campaignResolution', workflow.global.resolution);
+      set('campaignDuration', workflow.global.duration);
+    }
+    if (workflow.source?.trendId) campaignState.trendId = workflow.source.trendId;
+    if (workflow.frameWorkflow) {
+      campaignState.frameWorkflow = {
+        schema: workflow.frameWorkflow.schema || 'bloom.trend.frame_workflow.v1',
+        source: workflow.frameWorkflow.source || workflow.source || {},
+        frameAnalysis: workflow.frameWorkflow.frameAnalysis || null,
+        nodeGraph: workflow.frameWorkflow.nodeGraph || null,
+        assembly: workflow.frameWorkflow.assembly || workflow.assembly || null,
+        replacements: workflow.frameWorkflow.replacements || {}
+      };
+    }
+    if (Array.isArray(workflow.scenes)) {
+      campaignState.scenePlan = workflow.scenes.map((scene, index) => ({
+        id: scene.id || `scene-${index + 1}`,
+        title: scene.title || `Scene ${index + 1}`,
+        start: Number(scene.start || 0),
+        end: Number(scene.end || Number(scene.start || 0) + Number(scene.duration || 5)),
+        duration: Number(scene.duration || 5),
+        engine: scene.engine || 'seedance2-fast',
+        pacing: scene.pacing || '',
+        script: scene.script || '',
+        visualPrompt: scene.visualPrompt || '',
+        negativePrompt: scene.negativePrompt || '',
+        referenceVideoUrl: scene.referenceVideoUrl || workflow.source?.url || '',
+        sourceTrendUrl: scene.sourceTrendUrl || workflow.source?.url || '',
+        audioUrl: scene.audioUrl || '',
+        seed: scene.seed ?? -1,
+        steps: scene.steps
+      }));
+    }
+    renderCampaignScenePlan();
+    renderCampaignNodeView();
+    syncCampaignWorkflowJson();
+    toast('Workflow JSON applied to the campaign controls.', 'success');
+  } catch (error) {
+    toast(`Workflow JSON is not valid: ${error.message}`, 'error');
+  }
+}
+
+function campaignSceneUpdate(index, field, value) {
+  if (!campaignState.scenePlan[index]) return;
+  campaignState.scenePlan[index][field] = value;
+  renderCampaignNodeView();
+  syncCampaignWorkflowJson();
+}
+
+function renderCampaignScenePlan() {
+  const list = document.getElementById('campaignSceneList');
+  if (!list) return;
+  if (!campaignState.scenePlan.length) {
+    list.innerHTML = '';
+    renderCampaignTrendSource();
+    return;
+  }
+  list.innerHTML = campaignState.scenePlan.map((scene, index) => `
+    <div class="campaign-scene-card">
+      <div class="campaign-scene-head">
+        <strong>${escapeHtml(scene.title || `Scene ${index + 1}`)}</strong>
+        <div class="campaign-scene-time">${escapeHtml(String(scene.start ?? 0))}s-${escapeHtml(String(scene.end ?? 0))}s</div>
+        <select class="form-select" onchange="campaignSceneUpdate(${index}, 'engine', this.value)">
+          <option value="seedance2-fast" ${scene.engine === 'seedance2-fast' ? 'selected' : ''}>RunPod Seedance 1.5</option>
+          <option value="seedance2-standard" ${scene.engine === 'seedance2-standard' ? 'selected' : ''}>RunPod Seedance 1.5 fixed camera</option>
+          <option value="wan-animate" ${scene.engine === 'wan-animate' ? 'selected' : ''}>Wan Animate trend mimic</option>
+          <option value="infinitetalk-hd" ${scene.engine === 'infinitetalk-hd' ? 'selected' : ''}>Talking head</option>
+        </select>
+      </div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label">Scene script</label>
+          <textarea class="form-textarea" oninput="campaignSceneUpdate(${index}, 'script', this.value)">${escapeHtml(scene.script || '')}</textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Visual direction</label>
+          <textarea class="form-textarea" oninput="campaignSceneUpdate(${index}, 'visualPrompt', this.value)">${escapeHtml(scene.visualPrompt || '')}</textarea>
+        </div>
+      </div>
+      <div class="hint">Pacing: ${escapeHtml(scene.pacing || 'match source pacing')} · ${escapeHtml(String(scene.duration || 0))}s · ${escapeHtml(getCampaignEngineRequirement(scene))}</div>
+      ${Array.isArray(scene.refinementNotes) && scene.refinementNotes.length ? `<div class="hint">Refined: ${escapeHtml(scene.refinementNotes.join(' '))}</div>` : ''}
+    </div>
+  `).join('');
+  renderCampaignTrendSource();
+  renderCampaignNodeView();
+  syncCampaignWorkflowJson();
+}
+
+function toggleCampaignNodeView() {
+  const view = document.getElementById('campaignNodeView');
+  if (!view) return;
+  view.style.display = view.style.display === 'none' ? '' : 'none';
+  renderCampaignNodeView();
+}
+
+function renderCampaignNodeView() {
+  const view = document.getElementById('campaignNodeView');
+  if (!view || view.style.display === 'none') return;
+  if (campaignState.frameWorkflow?.nodeGraph?.nodes?.length) {
+    const graph = campaignState.frameWorkflow.nodeGraph;
+    const nodes = graph.nodes || [];
+    const edges = graph.edges || [];
+    const typeLabel = type => String(type || '').replace(/\./g, ' / ');
+    view.innerHTML = `
+      <div class="campaign-node-canvas-head">
+        <strong>Bloom Canvas workflow</strong>
+        <span>${escapeHtml(String(campaignState.frameWorkflow.frameAnalysis?.summary?.totalFrames || 0))} source frames · ${escapeHtml(String(campaignState.frameWorkflow.scenes?.length || campaignState.scenePlan.length || 0))} render scenes · reassemble final video</span>
+      </div>
+      <div class="campaign-node-canvas">
+        ${nodes.map(node => `
+          <div class="campaign-node-box campaign-node-box-${escapeHtml(String(node.type || '').split('.')[0])}">
+            <strong>${escapeHtml(node.label || node.id || 'Node')}</strong>
+            <span>${escapeHtml(typeLabel(node.type))}<br>${escapeHtml(node.id || '')}</span>
+          </div>
+        `).join('')}
+      </div>
+      <div class="campaign-node-edges">
+        ${edges.slice(0, 18).map(edge => `<span>${escapeHtml(edge.from)} → ${escapeHtml(edge.to)} · ${escapeHtml(edge.label || '')}</span>`).join('')}
+        ${edges.length > 18 ? `<span>+ ${escapeHtml(String(edges.length - 18))} more edges in JSON</span>` : ''}
+      </div>
+    `;
+    syncCampaignWorkflowJson();
+    return;
+  }
+  const trend = selectedCampaignTrend();
+  const characters = selectedCampaignCharacters();
+  const product = campaignState.productKey ? campaignState.assetMap.get(campaignState.productKey) : null;
+  const outputMode = document.getElementById('campaignOutputMode')?.value || 'separate';
+  const cta = document.getElementById('campaignCta')?.value.trim() || 'No CTA set';
+  const sceneCount = campaignState.scenePlan.length || 0;
+  const finalCount = outputMode === 'together' ? 1 : Math.max(characters.length, 1);
+  const engineCounts = (campaignState.scenePlan || []).reduce((acc, scene) => {
+    const label = getCampaignEngineLabel(scene.engine || 'seedance2-fast');
+    acc[label] = (acc[label] || 0) + 1;
+    return acc;
+  }, {});
+  const engineSummary = Object.entries(engineCounts).map(([label, count]) => `<span class="campaign-engine-pill">${escapeHtml(label)} x${count}</span>`).join('') || '<span>Analyze trend to create scenes.</span>';
+  view.innerHTML = `
+    <div class="campaign-node-view-row">
+      <div class="campaign-node-box"><strong>Trend</strong><span>${escapeHtml(trend?.id || 'None selected')}<br>${escapeHtml(trend?.hook || 'Choose a trend or write a campaign prompt.')}</span></div>
+      <div class="campaign-node-box"><strong>Inputs</strong><span>${escapeHtml(characters.map(c => c.name).join(', ') || 'No characters')}<br>${escapeHtml(product?.name || 'No product image')}</span></div>
+      <div class="campaign-node-box"><strong>Controls</strong><span>${escapeHtml(outputMode === 'together' ? 'Selected characters together' : 'Separate video per character')}<br>CTA: ${escapeHtml(cta)}</span></div>
+    </div>
+    <div class="campaign-node-arrow">↓</div>
+    <div class="campaign-node-view-row">
+      <div class="campaign-node-box"><strong>Scenes</strong><span>${sceneCount ? `${sceneCount} timed scene${sceneCount === 1 ? '' : 's'}` : 'Analyze trend to create scenes.'}</span></div>
+      <div class="campaign-node-box"><strong>Model Routing</strong><span>${engineSummary}</span></div>
+      <div class="campaign-node-box"><strong>Output</strong><span>${finalCount} final assembled video${finalCount === 1 ? '' : 's'} after scene clips complete.</span></div>
+    </div>
+  `;
+  syncCampaignWorkflowJson();
+}
+
+async function analyzeCampaignTrendScenes(options = {}) {
+  await ensureCampaignAssetsLoaded();
+  await ensureTrendsLoadedForCampaign();
+  const trend = selectedCampaignTrend();
+  if (!trend) return toast('Choose a trend source first.', 'error');
+  const characters = selectedCampaignCharacters();
+  const product = campaignState.productKey ? campaignState.assetMap.get(campaignState.productKey) : null;
+  const environment = (document.getElementById('campaignEnvironments')?.value || '').split('\n').map(line => line.trim()).filter(Boolean)[0] || '';
+  const duration = Number(document.getElementById('campaignDuration')?.value || 10);
+  const cta = document.getElementById('campaignCta')?.value.trim() || '';
+  const button = document.getElementById('campaignAnalyzeTrendButton');
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Analyzing...';
+  }
+  try {
+    const data = await api('/api/trends/scene-plan', {
+      method: 'POST',
+      body: JSON.stringify({
+        trendId: trend.id,
+        duration,
+        productName: product?.name || '',
+        characterName: characters[0]?.name || '',
+        environment,
+        cta
+      })
+    });
+    campaignState.scenePlan = data.scenes || [];
+    renderCampaignScenePlan();
+    syncCampaignWorkflowJson();
+    if (!options.quiet) toast(`Trend analyzed into ${campaignState.scenePlan.length} timed scenes. Review before generating.`, 'success');
+  } catch (error) {
+    toast(`Could not analyze trend scenes: ${error.message}`, 'error');
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = 'Analyze trend into scenes';
+    }
+  }
+}
+
+async function analyzeCampaignTrendFrames(options = {}) {
+  await ensureCampaignAssetsLoaded();
+  await ensureTrendsLoadedForCampaign();
+  const trend = selectedCampaignTrend();
+  if (!trend) return toast('Choose a trend source first.', 'error');
+  const characters = selectedCampaignCharacters();
+  const product = campaignState.productKey ? campaignState.assetMap.get(campaignState.productKey) : null;
+  const environmentMode = document.getElementById('campaignEnvironmentMode')?.value || 'text';
+  const environmentAssetKey = document.getElementById('campaignEnvironmentAssetSelect')?.value || '';
+  const environmentAsset = environmentMode === 'library' && environmentAssetKey ? campaignState.assetMap.get(environmentAssetKey) : null;
+  const environment = environmentAsset
+    ? (environmentAsset.name || 'selected environment image')
+    : (document.getElementById('campaignEnvironments')?.value || '').split('\n').map(line => line.trim()).filter(Boolean)[0] || '';
+  const button = document.getElementById('campaignFrameAnalyzeButton');
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Cloning frames...';
+  }
+  try {
+    const data = await api('/api/trends/frame-workflow', {
+      method: 'POST',
+      body: JSON.stringify({
+        trendId: trend.id,
+        sourceTrendUrl: trend.url || '',
+        maxDuration: Number(document.getElementById('campaignDuration')?.value || 10),
+        aspectRatio: document.getElementById('campaignAspectRatio')?.value || '9:16',
+        prompt: document.getElementById('campaignPrompt')?.value.trim() || '',
+        productName: product?.name || '',
+        characterName: characters[0]?.name || '',
+        environment,
+        cta: document.getElementById('campaignCta')?.value.trim() || '',
+        targetSceneSeconds: 2.0
+      })
+    });
+    campaignState.frameWorkflow = data.workflow || null;
+    campaignState.scenePlan = data.scenes || [];
+    renderCampaignScenePlan();
+    renderCampaignTrendSource();
+    renderCampaignNodeView();
+    syncCampaignWorkflowJson();
+    const output = document.getElementById('campaignOutputList');
+    if (output) {
+      output.insertAdjacentHTML('afterbegin', `<div class="campaign-output-item campaign-frame-report"><strong>Frame clone workflow created</strong><br>${escapeHtml(String(data.frameCount || 0))} exact frames analyzed · ${escapeHtml(String(data.detectedScenes || 0))} Seedance scene beats · ${escapeHtml(String(data.totalDuration || 0))}s source duration<br><span class="hint">The JSON now includes the full frame timeline plus brand replacements for character, product, environment, script, and CTA. No paid render jobs were submitted.</span></div>`);
+    }
+    if (!options.quiet) toast(`Frame clone workflow ready: ${data.frameCount} frames condensed into ${campaignState.scenePlan.length} scenes.`, 'success');
+  } catch (error) {
+    toast(`Could not clone trend frames: ${error.message}`, 'error');
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = 'Clone frames to JSON';
+    }
+  }
+}
+
+async function refineCampaignScenePlan(options = {}) {
+  await ensureCampaignAssetsLoaded();
+  await ensureTrendsLoadedForCampaign();
+  const trend = selectedCampaignTrend();
+  if (!trend) return toast('Choose a trend source first.', 'error');
+  if (!campaignState.scenePlan.length) return toast('Analyze the trend into scenes first.', 'error');
+  const characters = selectedCampaignCharacters();
+  const product = campaignState.productKey ? campaignState.assetMap.get(campaignState.productKey) : null;
+  const environmentMode = document.getElementById('campaignEnvironmentMode')?.value || 'text';
+  const environmentAssetKey = document.getElementById('campaignEnvironmentAssetSelect')?.value || '';
+  const environmentAsset = environmentMode === 'library' && environmentAssetKey ? campaignState.assetMap.get(environmentAssetKey) : null;
+  const environment = environmentAsset
+    ? (environmentAsset.name || 'selected environment image')
+    : (document.getElementById('campaignEnvironments')?.value || '').split('\n').map(line => line.trim()).filter(Boolean)[0] || '';
+  const button = document.getElementById('campaignRefineSceneButton');
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Refining...';
+  }
+  try {
+    syncCampaignWorkflowJson();
+    const data = await api('/api/trends/refine-scene-plan', {
+      method: 'POST',
+      body: JSON.stringify({
+        trendId: trend.id,
+        trend,
+        sourceTrendUrl: trend.url || '',
+        scenes: campaignState.scenePlan,
+        duration: document.getElementById('campaignDuration')?.value || undefined,
+        prompt: document.getElementById('campaignPrompt')?.value.trim() || '',
+        productName: product?.name || '',
+        characterName: characters[0]?.name || '',
+        environment,
+        cta: document.getElementById('campaignCta')?.value.trim() || ''
+      })
+    });
+    campaignState.scenePlan = data.scenes || campaignState.scenePlan;
+    renderCampaignScenePlan();
+    renderCampaignNodeView();
+    syncCampaignWorkflowJson();
+    const output = document.getElementById('campaignOutputList');
+    if (output && !options.quiet) {
+      output.insertAdjacentHTML('afterbegin', `<div class="campaign-output-item"><strong>Scene plan refined</strong><br>${(data.refinementSummary || []).map(item => escapeHtml(item)).join('<br>')}<br><span class="hint">No paid render jobs were submitted.</span></div>`);
+    }
+    if (!options.quiet) toast('Scene plan refined to match the trend more closely. No paid jobs were submitted.', 'success');
+  } catch (error) {
+    toast(`Could not refine scene plan: ${error.message}`, 'error');
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = 'Refine scene plan';
+    }
+  }
+}
+
+function selectedCampaignCharacters() {
+  return [...campaignState.selectedCharacters]
+    .map(key => campaignState.assetMap.get(key))
+    .filter(Boolean);
+}
+
+async function ensureCampaignAssetsLoaded() {
+  if (!assetsCache.products?.length && !assetsCache.subjects?.length && !assetsCache.outputs?.length) {
+    await loadAssets();
+  } else if (!campaignState.assetMap?.size) {
+    renderCampaignBuilder(assetsCache);
+  }
+}
+
+async function estimateSeedanceCampaign(options = {}) {
+  const quiet = options.quiet === true;
+  const count = selectedCampaignCharacters().length;
+  const text = document.getElementById('campaignEstimateText');
+  if (!text) return null;
+  if (!count) {
+    text.textContent = 'Select characters to estimate the batch.';
+    return null;
+  }
+  try {
+    const outputMode = document.getElementById('campaignOutputMode')?.value || 'separate';
+    const sceneMultiplier = campaignState.scenePlan.length || 1;
+    const variants = outputMode === 'together' ? sceneMultiplier : count * sceneMultiplier;
+    const data = await api('/api/generate/estimate', {
+      method: 'POST',
+      body: JSON.stringify({
+        variants,
+        duration: Number(document.getElementById('campaignDuration')?.value || 5),
+        resolution: document.getElementById('campaignResolution')?.value || '720p',
+        model: document.getElementById('campaignModel')?.value || 'seedance2-fast'
+      })
+    });
+    const unit = campaignState.scenePlan.length ? 'scene renders' : 'videos';
+    text.textContent = `${data.count} ${unit} · about $${Number(data.total || 0).toFixed(2)} total.`;
+    if (!quiet) toast(text.textContent, 'info');
+    return data;
+  } catch (error) {
+    text.textContent = `Could not estimate: ${error.message}`;
+    if (!quiet) toast(error.message, 'error');
+    return null;
+  }
+}
+
+async function previewCampaignPlan() {
+  await ensureCampaignAssetsLoaded();
+  const prompt = document.getElementById('campaignPrompt')?.value.trim();
+  const characters = selectedCampaignCharacters();
+  const trend = selectedCampaignTrend();
+  if (!prompt && !trend) return toast('Add a campaign prompt or choose a trend source first.', 'error');
+  if (!characters.length) return toast('Select at least one character.', 'error');
+  if (trend && !campaignState.scenePlan.length) {
+    await analyzeCampaignTrendScenes({ quiet: true });
+  }
+  const output = document.getElementById('campaignOutputList');
+  const submitButton = document.getElementById('campaignSubmitButton');
+  const product = campaignState.productKey ? campaignState.assetMap.get(campaignState.productKey) : null;
+  const environmentMode = document.getElementById('campaignEnvironmentMode')?.value || 'text';
+  const environmentAssetKey = document.getElementById('campaignEnvironmentAssetSelect')?.value || '';
+  const environmentAsset = environmentMode === 'library' && environmentAssetKey ? campaignState.assetMap.get(environmentAssetKey) : null;
+  const environments = (document.getElementById('campaignEnvironments')?.value || '')
+    .split('\n')
+    .map(item => item.trim())
+    .filter(Boolean);
+  const model = document.getElementById('campaignModel')?.value || 'seedance2-fast';
+  const engineLabel = model === 'seedance2-standard' ? 'RunPod Seedance fixed camera' : 'RunPod Seedance 1.5';
+  const resolution = document.getElementById('campaignResolution')?.value || '720p';
+  const duration = Number(document.getElementById('campaignDuration')?.value || 5);
+  const aspectRatio = document.getElementById('campaignAspectRatio')?.value || '9:16';
+
+  if (output) {
+    const sceneSummary = campaignState.scenePlan.length
+      ? `<div class="campaign-output-item"><strong>Trend scene plan</strong><br>${campaignState.scenePlan.map(scene => `${escapeHtml(scene.start)}-${escapeHtml(scene.end)}s ${escapeHtml(scene.title || 'Scene')} · ${escapeHtml(getCampaignEngineLabel(scene.engine || 'seedance2-fast'))}`).join('<br>')}<br><span class="hint">Scene generation and assembly will use these editable beats next. This review did not submit paid jobs.</span></div>`
+      : '';
+    output.innerHTML = characters.map((character, index) => {
+      const visualEnvironment = environmentAsset
+        ? (environmentAsset.name || 'selected environment image')
+        : environments[index % Math.max(environments.length, 1)] || 'creator-style product demo setting';
+      return `<div class="campaign-output-item"><strong>${escapeHtml(character.name || 'Character')}</strong><br>${campaignState.scenePlan.length ? 'Scene-by-scene trend campaign' : escapeHtml(engineLabel)} · ${escapeHtml(aspectRatio)} · ${escapeHtml(resolution)} · ${duration}s<br>${product ? `Product: ${escapeHtml(product.name || 'Selected product')}` : 'No product image'}<br>Environment: ${escapeHtml(visualEnvironment)}${trend ? `<br>Trend: ${escapeHtml(trend.id)} · ${escapeHtml(trend.hook || '')}` : ''}</div>`;
+    }).join('') + sceneSummary;
+  }
+  if (submitButton) {
+    submitButton.style.display = '';
+    submitButton.textContent = campaignState.scenePlan.length ? 'Generate approved scenes' : 'Submit approved jobs';
+  }
+  await estimateSeedanceCampaign({ quiet: true });
+  toast(campaignState.scenePlan.length ? 'Scene plan reviewed. No paid jobs were submitted yet.' : 'Campaign reviewed. No paid jobs were submitted yet.', 'success');
+}
+
+async function submitSeedanceCampaign() {
+  if (campaignState.scenePlan.length) {
+    return submitTrendSceneCampaign();
+  }
+  const prompt = document.getElementById('campaignPrompt')?.value.trim();
+  const characters = selectedCampaignCharacters();
+  if (!prompt) return toast('Add a campaign prompt first.', 'error');
+  if (!characters.length) return toast('Select at least one character.', 'error');
+
+  const button = document.getElementById('campaignGenerateButton');
+  const output = document.getElementById('campaignOutputList');
+  const product = campaignState.productKey ? campaignState.assetMap.get(campaignState.productKey) : null;
+  const environmentMode = document.getElementById('campaignEnvironmentMode')?.value || 'text';
+  const environmentAssetKey = document.getElementById('campaignEnvironmentAssetSelect')?.value || '';
+  const environmentAsset = environmentMode === 'library' && environmentAssetKey ? campaignState.assetMap.get(environmentAssetKey) : null;
+  const environments = (document.getElementById('campaignEnvironments')?.value || '')
+    .split('\n')
+    .map(line => line.trim())
+    .filter(Boolean);
+  const batchId = `campaign-${Date.now()}`;
+  const duration = Number(document.getElementById('campaignDuration')?.value || 5);
+  const resolution = document.getElementById('campaignResolution')?.value || '720p';
+  const model = document.getElementById('campaignModel')?.value || 'seedance2-fast';
+  const aspectRatio = document.getElementById('campaignAspectRatio')?.value || '9:16';
+
+  if (document.getElementById('campaignOutputMode')?.value === 'together' && characters.length > 1) {
+    return toast('RunPod Seedance I2V accepts one source character image. Use separate videos or make a composite image first.', 'error');
+  }
+  if (!confirm(`Submit ${characters.length} RunPod Seedance video${characters.length === 1 ? '' : 's'} now?`)) return;
+
+  button.disabled = true;
+  button.textContent = 'Submitting campaign...';
+  if (output) output.innerHTML = '';
+  showVideoProcessingPreview({
+    imageUrl: getCampaignAssetImage(characters[0]),
+    aspectRatio,
+    title: 'Success! Your campaign video is processing in background.',
+    detail: 'You can navigate away from this page or keep using the app while your video is cooking. We will notify you when it is complete.'
+  });
+  startGenerationOverlay({ engine: 'seedance-campaign', mode: 'campaign' });
+  toast('Campaign started. You can navigate away; completed videos will appear in Library with popup and sound notifications.', 'info');
+
+  try {
+    const productUrl = product ? await resolveCampaignAssetUrl(product, 'products') : '';
+    const environmentUrl = environmentAsset ? await resolveCampaignAssetUrl(environmentAsset, environmentAsset._campaignType || 'products') : '';
+    const results = [];
+    for (let index = 0; index < characters.length; index++) {
+      const character = characters[index];
+      const environment = environments[index % Math.max(environments.length, 1)] || '';
+      const imageUrl = await resolveCampaignAssetUrl(character, 'subjects');
+      const visualEnvironment = environmentAsset ? (environmentAsset.name || 'selected environment image') : environment;
+      const videoPrompt = buildCampaignPrompt({ basePrompt: prompt, character, product, environment: visualEnvironment, aspectRatio });
+      const referenceImageUrls = [imageUrl, productUrl, environmentUrl].filter(Boolean);
+      const result = await api('/api/generate/single', {
+        method: 'POST',
+        body: JSON.stringify({
+          prompt: videoPrompt,
+          imageUrl: environmentUrl ? undefined : imageUrl,
+          productImageUrl: !environmentUrl ? productUrl || undefined : undefined,
+          referenceImageUrls: environmentUrl ? referenceImageUrls : undefined,
+          forceMultiReference: Boolean(environmentUrl),
+          duration,
+          resolution,
+          model,
+          aspectRatio,
+          batchId,
+          variant: character.name || `Character ${index + 1}`,
+          format: 'seedance-campaign'
+        })
+      });
+      results.push({ character, result });
+      if (output) {
+        output.insertAdjacentHTML('beforeend', `<div class="campaign-output-item"><strong>${escapeHtml(character.name || 'Character')}</strong><br>Submitted request ${escapeHtml(result.requestId || '')}</div>`);
+      }
+      if (index === 0) setBackgroundGenerationOverlay({ engine: 'seedance-campaign', mode: 'campaign', jobKey: result.requestId || '' });
+      await new Promise(resolve => setTimeout(resolve, 750));
+    }
+    toast(`${results.length} Seedance campaign videos submitted. You can keep working here or open Library.`, 'success');
+    await loadVideos({ notify: true });
+    if (output) {
+      output.insertAdjacentHTML('beforeend', `<div class="campaign-output-item"><strong>Processing in background</strong><br>Library now has the processing card${results.length === 1 ? '' : 's'} with the selected character preview.<div class="actions" style="margin-top:8px"><button class="btn btn-secondary" type="button" onclick="switchTab('videos')">Open Library</button></div></div>`);
+    }
+  } catch (error) {
+    toast(`Campaign failed: ${error.message}`, 'error');
+    if (output) output.insertAdjacentHTML('beforeend', `<div class="campaign-output-item"><strong>Failed</strong><br>${escapeHtml(error.message)}</div>`);
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Generate campaign';
+  }
+}
+
+async function submitTrendSceneCampaign() {
+  const characters = selectedCampaignCharacters();
+  const trend = selectedCampaignTrend();
+  const prompt = document.getElementById('campaignPrompt')?.value.trim() || trend?.hook || '';
+  if (!characters.length) return toast('Select at least one character.', 'error');
+  if (!campaignState.scenePlan.length) return toast('Analyze or add scenes first.', 'error');
+
+  const submitButton = document.getElementById('campaignSubmitButton');
+  const output = document.getElementById('campaignOutputList');
+  const product = campaignState.productKey ? campaignState.assetMap.get(campaignState.productKey) : null;
+  const environmentMode = document.getElementById('campaignEnvironmentMode')?.value || 'text';
+  const environmentAssetKey = document.getElementById('campaignEnvironmentAssetSelect')?.value || '';
+  const environmentAsset = environmentMode === 'library' && environmentAssetKey ? campaignState.assetMap.get(environmentAssetKey) : null;
+
+  const sceneCount = campaignState.scenePlan.length * characters.length;
+  const outputMode = document.getElementById('campaignOutputMode')?.value || 'separate';
+  const renderCount = outputMode === 'together' ? campaignState.scenePlan.length : sceneCount;
+  const finalCount = outputMode === 'together' ? 1 : characters.length;
+  syncCampaignWorkflowJson();
+  if (!confirm(`Submit ${renderCount} scene render${renderCount === 1 ? '' : 's'} now for ${finalCount} final video${finalCount === 1 ? '' : 's'}? The final campaign video will assemble after all scenes finish.`)) return;
+
+  if (submitButton) {
+    submitButton.disabled = true;
+    submitButton.textContent = 'Submitting scenes...';
+  }
+  showVideoProcessingPreview({
+    imageUrl: getCampaignAssetImage(characters[0]),
+    aspectRatio: document.getElementById('campaignAspectRatio')?.value || '9:16',
+    title: 'Success! Your scene campaign is processing in background.',
+    detail: 'You can navigate away from this page or keep using the app while the scene renders in the background. We will notify you when the campaign video is complete.'
+  });
+  startGenerationOverlay({ engine: 'seedance-campaign', mode: 'campaign' });
+  toast('Scene campaign started. You can navigate away; Library will show scene clips and the assembled final when it finishes.', 'info');
+
+  try {
+    const resolvedCharacters = [];
+    for (const character of characters) {
+      resolvedCharacters.push({
+        name: character.name || 'Character',
+        imageUrl: await resolveCampaignAssetUrl(character, 'subjects')
+      });
+    }
+    const productImageUrl = product ? await resolveCampaignAssetUrl(product, 'products') : '';
+    const environmentImageUrl = environmentAsset ? await resolveCampaignAssetUrl(environmentAsset, environmentAsset._campaignType || 'products') : '';
+    const data = await api('/api/generate/campaign-scenes', {
+      method: 'POST',
+      body: JSON.stringify({
+        campaignId: `trend-campaign-${Date.now()}`,
+        prompt,
+        characters: resolvedCharacters,
+        productImageUrl,
+        environmentImageUrl,
+        scenes: campaignState.scenePlan,
+        resolution: document.getElementById('campaignResolution')?.value || '720p',
+        aspectRatio: document.getElementById('campaignAspectRatio')?.value || '9:16',
+        outputMode,
+        sourceTrendId: trend?.id || '',
+        sourceTrendUrl: trend?.url || '',
+        sourceTrendTitle: trend?.title || trend?.hook || 'Selected trend source',
+        sourceTrendHook: trend?.hook || '',
+        sourceTrendThumbnail: trend?.thumbnailUrl || trend?.thumbnail || trend?.imageUrl || '',
+        workflow: getCampaignWorkflowJson(),
+        assembly: getCampaignWorkflowJson().assembly,
+        cta: document.getElementById('campaignCta')?.value.trim() || ''
+      })
+    });
+    const firstRequestId = data.results?.find(item => item.requestId)?.requestId || '';
+    setBackgroundGenerationOverlay({ engine: 'seedance-campaign', mode: 'campaign', jobKey: firstRequestId });
+    if (output) {
+      const errors = (data.errors || []).map(item => `${escapeHtml(item.character || 'Scene')} ${escapeHtml(String(item.sceneIndex || ''))}: ${escapeHtml(item.error || 'failed')}`).join('<br>');
+      output.insertAdjacentHTML('afterbegin', `<div class="campaign-output-item"><strong>Submitted scene campaign</strong><br>${data.submitted} scene jobs submitted · ${data.failed} failed<br>${(data.batches || []).map(batch => `Batch: ${escapeHtml(batch)}`).join('<br>')}${errors ? `<br><br><strong>Errors</strong><br>${errors}` : ''}<br><span class="hint">When every scene in a batch completes, Bloom Studio assembles the final silent campaign video automatically.</span></div>`);
+      output.insertAdjacentHTML('afterbegin', `<div class="campaign-output-item"><strong>Processing in background</strong><br>Library now has scene processing cards with character previews.<div class="actions" style="margin-top:8px"><button class="btn btn-secondary" type="button" onclick="switchTab('videos')">Open Library</button></div></div>`);
+    }
+    if (data.failed) toast(`${data.submitted} scenes submitted, ${data.failed} failed to submit. Open the review list for details.`, 'error');
+    else toast(`${data.submitted} scenes submitted. Final assembly starts automatically after clips complete.`, 'success');
+    await loadVideos({ notify: true });
+  } catch (error) {
+    toast(`Scene campaign failed: ${error.message}`, 'error');
+    if (output) output.insertAdjacentHTML('afterbegin', `<div class="campaign-output-item"><strong>Failed</strong><br>${escapeHtml(error.message)}</div>`);
+  } finally {
+    if (submitButton) {
+      submitButton.disabled = false;
+      submitButton.textContent = 'Generate approved scenes';
+    }
+  }
+}
+
 function openCreateCharacterBuilder() {
-  setCreateTool('video');
+  switchTab('studio');
   showAgentModal();
   setAgentModalMode('build');
 }
 
+function returnToCharactersTab() {
+  switchTab('characters');
+  setCharacterTab('mine');
+}
+
 function setCreateType(type, options = {}) {
   const selected = type || 'shorts';
+  isolateStudioTabIfActive();
   const studioTab = document.getElementById('tab-studio');
   if (studioTab) {
     studioTab.dataset.createTool = 'video';
     studioTab.dataset.createType = selected;
+    studioTab.classList.add('focused-create');
     studioTab.classList.remove('create-tool-audio');
   }
   document.querySelectorAll('[data-create-tool]').forEach(btn => {
@@ -953,7 +2193,7 @@ function setCreateType(type, options = {}) {
       desc: 'Create a short creator video from a character, script or approved audio, then save it to Library for posting.',
       mode: 'i2v',
       engine: 'meigen',
-      audio: 'chatterbox',
+      audio: 'upload',
       aspect: '9:16',
       steps: [
         ['Choose character', 'Select an influencer or upload a portrait.'],
@@ -962,13 +2202,28 @@ function setCreateType(type, options = {}) {
         ['Save + post', 'Review in Library, then publish.']
       ]
     },
+    scenes: {
+      title: 'B-roll / Scenes workflow',
+      badge: 'Scene clips',
+      desc: 'Create product, environment, or character motion clips that can be used as campaign scenes or edited into a larger video.',
+      mode: 'i2v',
+      engine: 'seedance2-fast',
+      audio: 'upload',
+      aspect: '9:16',
+      steps: [
+        ['Choose image', 'Use a product, character, environment, or generated image.'],
+        ['Pick model', 'Seedance, Wan, InfiniteTalk, Meigen, or Comfy when compatible.'],
+        ['Direct motion', 'Describe camera movement, action, setting, and product use.'],
+        ['Save scene', 'Send the clip to Library for campaigns or edits.']
+      ]
+    },
     remix: {
       title: 'Remix videos workflow',
       badge: 'Motion mimic',
       desc: 'Start from a viral source, extract the script, choose your character/product/voice, then use Wan Animate to mimic the reference movement.',
       mode: 'i2v',
       engine: 'wan-animate',
-      audio: 'chatterbox',
+      audio: 'upload',
       aspect: '9:16',
       steps: [
         ['Pick trend', 'Choose a source from Trends or paste/upload one.'],
@@ -983,7 +2238,7 @@ function setCreateType(type, options = {}) {
       desc: 'Use a longer script or finished voiceover, then generate presenter sections so the output does not depend on one giant render.',
       mode: 'i2v',
       engine: 'wan22-serverless',
-      audio: 'chatterbox',
+      audio: 'upload',
       aspect: '16:9',
       steps: [
         ['Write script', 'Paste the full script or outline.'],
@@ -1013,7 +2268,7 @@ function setCreateType(type, options = {}) {
       desc: 'Create lesson videos from structured scripts and approved narration. Works best as repeatable lesson modules.',
       mode: 'i2v',
       engine: 'wan22-serverless',
-      audio: 'chatterbox',
+      audio: 'elevenlabs',
       aspect: '16:9',
       steps: [
         ['Lesson script', 'Paste one lesson at a time.'],
@@ -1050,11 +2305,22 @@ function setCreateType(type, options = {}) {
     document.getElementById('studioAspectRatio').value = flow.aspect;
     updatePreviewRatio();
   }
+  const scriptLabel = document.getElementById('studioScriptLabel');
+  const script = document.getElementById('studioScript');
+  if (scriptLabel) scriptLabel.textContent = selected === 'remix' ? 'Remix narration script' : 'Narration script';
+  if (script) script.placeholder = selected === 'remix'
+    ? 'Paste the adapted narration script for this remix.'
+    : 'Paste the spoken words Chatterbox or ElevenLabs should turn into voiceover.';
 
   if (selected === 'remix') {
     document.getElementById('studioRemixContext')?.classList.add('active');
   } else {
     document.getElementById('studioRemixContext')?.classList.remove('active');
+  }
+  document.getElementById('studioCourseContext')?.classList.toggle('active', selected === 'course');
+  if (selected === 'course') {
+    if (scriptLabel) scriptLabel.textContent = 'Course narration script';
+    if (script) script.placeholder = 'Paste the spoken lesson narration here. ElevenLabs v3 tags like [warmly], [short pause], and [confident] can guide the delivery.';
   }
 
   setStudioMode(flow.mode);
@@ -1063,6 +2329,162 @@ function setCreateType(type, options = {}) {
     setStudioVideoEngine(flow.engine);
   }
   setStudioAudio(flow.audio, { preserveToast: true });
+  if (selected === 'course') toggleVoiceDetails(true);
+  updateCoursePresentationSource();
+}
+
+function updateCoursePresentationSource() {
+  const source = document.getElementById('coursePresentationSource')?.value || 'upload';
+  const upload = document.getElementById('coursePresentationUploadGroup');
+  const asset = document.getElementById('coursePresentationAssetGroup');
+  const generate = document.getElementById('coursePresentationGenerateGroup');
+  if (upload) upload.style.display = source === 'upload' ? '' : 'none';
+  if (asset) asset.style.display = source === 'asset' ? '' : 'none';
+  if (generate) generate.style.display = source === 'generate' ? '' : 'none';
+  buildCourseTimeline({ quiet: true });
+}
+
+function setCourseStyle(style = 'instructor-led') {
+  const input = document.getElementById('courseStyle');
+  if (input) input.value = style;
+  document.querySelectorAll('[data-course-style]').forEach(button => {
+    button.classList.toggle('active', button.dataset.courseStyle === style);
+  });
+  buildCourseTimeline({ quiet: true });
+}
+
+function estimateScriptSeconds(script = '') {
+  const wordCount = String(script || '').replace(/\[[^\]]+\]/g, '').trim().split(/\s+/).filter(Boolean).length;
+  return Math.max(24, Math.round((wordCount / 135) * 60) || 60);
+}
+
+function secondsLabel(seconds = 0) {
+  const value = Math.max(0, Math.round(Number(seconds || 0)));
+  const minutes = Math.floor(value / 60);
+  const secs = String(value % 60).padStart(2, '0');
+  return `${minutes}:${secs}`;
+}
+
+function splitCourseScriptBeats(script = '') {
+  const cleaned = String(script || '').trim();
+  if (!cleaned) return ['Course intro', 'Core lesson', 'Example or walkthrough', 'Recap and next step'];
+  return cleaned
+    .split(/\n{2,}|(?<=\.)\s+(?=\[|[A-Z])/)
+    .map(part => part.replace(/\[[^\]]+\]/g, '').trim())
+    .filter(Boolean)
+    .slice(0, 6);
+}
+
+function courseLayoutForBeat(style, index, total, beat = '') {
+  const text = beat.toLowerCase();
+  if (index === 0) return 'teacher';
+  if (index === total - 1) return style === 'slide-first' ? 'teacher_slide_split' : 'teacher';
+  if (style === 'demo-walkthrough') return index % 2 ? 'screen_full_teacher_pip' : 'teacher_slide_split';
+  if (style === 'slide-first') return /example|mistake|decision|step|module|framework|list/.test(text) ? 'slide_full' : 'teacher_slide_split';
+  if (style === 'recap') return index % 2 ? 'teacher_slide_split' : 'teacher';
+  return /step|list|framework|example|module|decision/.test(text) ? 'teacher_slide_split' : 'slide_full';
+}
+
+function buildCourseTimeline(options = {}) {
+  const style = document.getElementById('courseStyle')?.value || 'instructor-led';
+  const script = document.getElementById('studioScript')?.value || '';
+  const lessonTitle = document.getElementById('courseLessonTitle')?.value.trim() || 'Lesson';
+  const moduleTitle = document.getElementById('courseModuleTitle')?.value.trim() || 'Module';
+  const source = document.getElementById('coursePresentationSource')?.value || 'upload';
+  const sourceLabel = source === 'asset'
+    ? (document.getElementById('coursePresentationAssetId')?.selectedOptions?.[0]?.textContent || 'Saved asset')
+    : source === 'generate'
+      ? 'Generated presentation'
+      : (document.getElementById('coursePresentationFile')?.files?.[0]?.name || 'Uploaded presentation');
+  const totalSeconds = estimateScriptSeconds(script);
+  const beats = splitCourseScriptBeats(script);
+  const beatLength = totalSeconds / beats.length;
+  let cursor = 0;
+  const timeline = beats.map((beat, index) => {
+    const duration = index === beats.length - 1 ? totalSeconds - cursor : Math.max(6, Math.round(beatLength));
+    const start = cursor;
+    const end = Math.min(totalSeconds, cursor + duration);
+    cursor = end;
+    return {
+      id: `course-scene-${index + 1}`,
+      start,
+      end,
+      startLabel: secondsLabel(start),
+      endLabel: secondsLabel(end),
+      layout: courseLayoutForBeat(style, index, beats.length, beat),
+      slide: index + 1,
+      title: index === 0 ? `${lessonTitle} opening` : index === beats.length - 1 ? `${moduleTitle} recap` : `Teaching beat ${index + 1}`,
+      narrationBeat: beat.slice(0, 180),
+      visualSource: sourceLabel,
+      reason: index === 0 ? 'intro' : index === beats.length - 1 ? 'recap' : 'script concept beat'
+    };
+  });
+  const workflow = {
+    schema: 'bloom.course.timeline.v1',
+    style,
+    moduleTitle,
+    lessonTitle,
+    presentation: {
+      source,
+      assetId: document.getElementById('coursePresentationAssetId')?.value || '',
+      fileName: document.getElementById('coursePresentationFile')?.files?.[0]?.name || '',
+      brief: document.getElementById('coursePresentationBrief')?.value || ''
+    },
+    totalSeconds,
+    scenes: timeline
+  };
+  const hidden = document.getElementById('courseTimelineJson');
+  if (hidden) hidden.value = JSON.stringify(workflow);
+  renderCourseTimeline(workflow);
+  if (!options.quiet) toast('Course timeline built from the script and selected style.', 'success');
+  return workflow;
+}
+
+function renderCourseTimeline(workflow) {
+  const panel = document.getElementById('courseTimeline');
+  if (!panel) return;
+  const scenes = workflow?.scenes || [];
+  panel.innerHTML = `
+    <div class="course-context-head" style="margin-bottom:0">
+      <div>
+        <div class="course-context-title">Auto lesson timeline</div>
+        <div class="hint">${escapeHtml(workflow?.style || 'instructor-led')} · ${secondsLabel(workflow?.totalSeconds || 0)} estimated</div>
+      </div>
+      <button class="btn btn-secondary" type="button" onclick="buildCourseTimeline()">Refresh</button>
+    </div>
+    ${scenes.map(scene => `
+      <div class="course-timeline-row">
+        <strong>${escapeHtml(scene.startLabel)}-${escapeHtml(scene.endLabel)}</strong>
+        <span>${escapeHtml(scene.layout.replace(/_/g, ' '))}<br>Slide ${escapeHtml(String(scene.slide))}</span>
+        <span><strong>${escapeHtml(scene.title)}</strong><br>${escapeHtml(scene.narrationBeat || scene.reason)}</span>
+      </div>
+    `).join('')}
+  `;
+}
+
+function toggleCourseTimeline() {
+  const panel = document.getElementById('courseTimeline');
+  if (!panel) return;
+  if (!document.getElementById('courseTimelineJson')?.value) buildCourseTimeline({ quiet: true });
+  panel.classList.toggle('active');
+}
+
+function fillCourseIntroScript() {
+  const moduleTitle = document.getElementById('courseModuleTitle')?.value.trim() || 'Module 1: The big picture';
+  const lessonTitle = document.getElementById('courseLessonTitle')?.value.trim() || 'Lesson 1: Welcome and course roadmap';
+  const objective = document.getElementById('courseLessonObjective')?.value.trim() || 'understand what we are building, why it matters, and how to get the most out of each lesson';
+  const outline = document.getElementById('courseModuleOutline')?.value.trim();
+  const script = document.getElementById('studioScript');
+  if (!script) return;
+  const moduleLine = outline
+    ? `Here is the path we will follow:\n${outline.split('\n').map(line => line.trim()).filter(Boolean).map(line => `- ${line}`).join('\n')}\n\n`
+    : '';
+  script.value = `[warmly] Welcome to ${lessonTitle}.\n\nIn this first lesson, we are setting the foundation for ${moduleTitle}. By the end, you will ${objective}.\n\n[short pause]\n\nThis course is built to be practical. Each lesson gives you one clear idea, one useful example, and one action step you can apply before moving forward.\n\n${moduleLine}[confident]\nBefore we begin, open the presentation or workbook for this module. As we go, I will point out the key decisions to make, the common mistakes to avoid, and the next step to complete.\n\nLet us start with the big picture.`;
+  const tone = document.getElementById('studioVoiceTone');
+  if (tone) tone.value = 'training';
+  applyStudioTonePreset();
+  buildCourseTimeline({ quiet: true });
+  toast('Course intro script drafted with light ElevenLabs v3 delivery tags.', 'success');
 }
 
 function setRemixContext({ url = '', sourceScript = '' } = {}) {
@@ -1113,7 +2535,32 @@ function setStudioVideoEngine(engine) {
   const hint = document.getElementById('studioVideoEngineHint');
   const quality = document.getElementById('studioMeigenQualityGroup');
   const reference = document.getElementById('studioReferenceVideoGroup');
-  if (quality) quality.style.display = engine === 'meigen' ? '' : 'none';
+  const durationGroup = document.getElementById('studioDurationSecondsGroup');
+  const qualitySelect = document.getElementById('studioMeigenSize');
+  const qualityHint = document.getElementById('studioMeigenQualityHint');
+  const usesLipSyncQuality = ['meigen', 'infinitetalk-hd'].includes(engine);
+  if (quality) quality.style.display = usesLipSyncQuality ? '' : 'none';
+  if (durationGroup) {
+    const showDuration = engine === 'wan-comfy';
+    durationGroup.style.display = showDuration ? '' : 'none';
+    durationGroup.classList.toggle('comfy-visible', showDuration);
+  }
+  if (qualitySelect) {
+    [...qualitySelect.options].forEach(option => {
+      option.hidden = engine === 'meigen'
+        ? option.value === '1080p'
+        : engine === 'infinitetalk-hd'
+          ? option.value === '480p'
+          : false;
+    });
+    if (engine === 'meigen' && qualitySelect.value === '1080p') qualitySelect.value = '480p';
+    if (engine === 'infinitetalk-hd' && qualitySelect.value === '480p') qualitySelect.value = '720p';
+  }
+  if (qualityHint) {
+    qualityHint.textContent = engine === 'infinitetalk-hd'
+      ? 'InfiniteTalk HD renders with CodeFormer and supports 720p or 1080p upscale.'
+      : '480p is best for testing on the public endpoint. 720p can take longer.';
+  }
   if (reference) reference.style.display = engine === 'wan-animate' ? '' : 'none';
   if (hint) hint.textContent = getStudioEngineHint(engine);
   if (document.getElementById('studioMode').value === 'i2v') {
@@ -1122,20 +2569,41 @@ function setStudioVideoEngine(engine) {
 }
 
 function getStudioEngineHint(engine) {
+  if (engine === 'seedance2-fast') return 'Uses RunPod Seedance 1.5 Pro for image-to-video scene motion. No ComfyUI pod required.';
+  if (engine === 'seedance2-standard') return 'Uses RunPod Seedance 1.5 Pro fixed camera mode for steadier product or creator scenes.';
+  if (engine === 'infinitetalk-hd') return 'Uses your custom RunPod InfiniteTalk endpoint with CodeFormer and optional Real-ESRGAN upscale. Requires the network volume mounted at /runpod-volume.';
   if (engine === 'meigen') return 'Uses MeiGen-AI InfiniteTalk through the RunPod public endpoint. No ComfyUI pod required.';
   if (engine === 'wan22-serverless') return 'Uses the Wan 2.2 RunPod serverless endpoint for image-to-video. No ComfyUI pod required.';
   if (engine === 'wan-animate') return 'Uses Wan Animate serverless with a reference video to mimic motion. No ComfyUI pod required.';
   return 'Uses the installed WAN/ComfyUI workflow and RunPod pod.';
 }
 
+function initializeStudioDefaults() {
+  const createType = document.getElementById('studioCreateType')?.value || 'shorts';
+  if (typeof setCreateType === 'function') {
+    setCreateType(createType, { preserveToast: true });
+    return;
+  }
+  const engine = document.getElementById('studioVideoEngine')?.value || 'wan-comfy';
+  setStudioVideoEngine(engine);
+}
+
 function setStudioAudio(provider, options = {}) {
   document.getElementById('studioAudioProvider').value = provider;
+  const form = document.getElementById('studioForm');
+  if (form) {
+    form.classList.remove('voice-provider-upload', 'voice-provider-asset', 'voice-provider-elevenlabs', 'voice-provider-chatterbox', 'voice-provider-qwen');
+    form.classList.add(`voice-provider-${provider}`);
+  }
   document.getElementById('studioAudioGroup').style.display = provider === 'upload' ? '' : 'none';
   document.getElementById('studioAudioAssetGroup').style.display = provider === 'asset' ? '' : 'none';
   document.getElementById('studioVoiceGroup').style.display = provider === 'elevenlabs' ? '' : 'none';
   document.getElementById('studioChatterboxGroup').style.display = provider === 'chatterbox' ? '' : 'none';
+  const configureButton = document.getElementById('studioConfigureVoiceButton');
+  if (configureButton) configureButton.style.display = ['chatterbox', 'elevenlabs'].includes(provider) ? '' : 'none';
   document.getElementById('studioPreviewVoiceButton').style.display = ['chatterbox', 'elevenlabs'].includes(provider) ? '' : 'none';
-  document.getElementById('studioPreviewVoiceButton').textContent = provider === 'elevenlabs' ? 'Preview ElevenLabs voice' : 'Preview Chatterbox voice';
+  document.getElementById('studioPreviewVoiceButton').textContent = provider === 'elevenlabs' ? 'Preview script with ElevenLabs' : 'Preview script with Chatterbox';
+  if (provider === 'elevenlabs') toggleVoiceDetails(true);
   if (options.preserveToast) return;
   if (provider === 'qwen') {
     toast('Qwen audio is visible but needs the third workflow API export before it can run.', 'info');
@@ -1145,6 +2613,26 @@ function setStudioAudio(provider, options = {}) {
   }
   if (provider === 'chatterbox') {
     toast('Chatterbox will generate audio from the script before queuing the video.', 'info');
+  }
+}
+
+function applyStudioTonePreset() {
+  const tone = document.getElementById('studioVoiceTone')?.value || 'natural';
+  const prompt = document.getElementById('studioPrompt');
+  if (!prompt) return;
+  const presets = {
+    natural: 'Natural conversational delivery, relaxed pacing, clear speech.',
+    happy: 'Happy upbeat delivery, smiling energy, bright friendly tone.',
+    excited: 'Excited creator delivery, energetic but not shouty, quick confident pacing.',
+    sincere: 'Sincere empathetic delivery, warm and grounded, thoughtful pauses.',
+    training: 'Clear training delivery, teacher-like pacing, structured and easy to follow.',
+    calm: 'Calm reassuring delivery, steady pacing, soft confidence.',
+    urgent: 'Urgent focused delivery, direct and concise, serious but controlled.',
+    sad: 'Soft reflective delivery, subdued emotion, slower pacing.',
+    playful: 'Playful light delivery, fun and casual, expressive but natural.'
+  };
+  if (!prompt.value.trim() || Object.values(presets).includes(prompt.value.trim())) {
+    prompt.value = presets[tone] || presets.natural;
   }
 }
 
@@ -1186,6 +2674,34 @@ function setPreviewVideo(src, title = 'Selected video') {
   frame.onpointerdown = null;
   frame.innerHTML = `<video src="${src}" controls muted playsinline aria-label="${title}"></video>`;
   document.getElementById('cropHint').style.display = 'none';
+}
+
+function showVideoProcessingPreview({
+  imageUrl = '',
+  aspectRatio = '9:16',
+  title = 'Success! Your video is currently processing in background.',
+  detail = 'You can navigate away from this page or keep using the app while your video is cooking. We will notify you when it is complete.'
+} = {}) {
+  const frame = document.getElementById('studioPreview');
+  if (!frame) return;
+  frame.classList.add('has-media');
+  frame.classList.remove('dragging', 'audio-preview-mode');
+  frame.classList.toggle('ratio-landscape', aspectRatio === '16:9');
+  frame.classList.toggle('ratio-portrait', aspectRatio === '9:16');
+  frame.classList.toggle('ratio-square', aspectRatio === '1:1');
+  frame.onpointerdown = null;
+  const cropHint = document.getElementById('cropHint');
+  if (cropHint) cropHint.style.display = 'none';
+  const displaySrc = imageUrl ? authenticatedMediaUrl(imageUrl) : '';
+  frame.innerHTML = `
+    <div class="processing-preview-frame">
+      ${displaySrc ? `<img src="${displaySrc}" alt="Processing video preview">` : `<div class="processing-preview-empty"><div class="cooking-orb"></div><strong>Video processing</strong></div>`}
+      <div class="processing-preview-overlay">
+        <strong>${escapeHtml(title)}</strong>
+        <p>${escapeHtml(detail)}</p>
+        <div class="processing-bar"><span></span></div>
+      </div>
+    </div>`;
 }
 
 function resetPreview() {
@@ -1363,12 +2879,13 @@ async function submitStudioVideo(e) {
 
   if (mode === 'i2v' && !document.getElementById('studioImage').files[0] && !document.getElementById('studioImageAssetId').value && !document.getElementById('studioImageUrl').value) return toast('Upload a portrait image or select a saved character first.', 'error');
   if (mode === 'v2v' && !document.getElementById('studioVideo').files[0]) return toast('Upload a source video first.', 'error');
-  const engineNeedsAudio = !['wan22-serverless', 'wan-animate'].includes(videoEngine);
+  const serverlessVideoEngines = ['meigen', 'infinitetalk-hd', 'wan22-serverless', 'wan-animate', 'seedance2-fast', 'seedance2-standard'];
+  const engineNeedsAudio = !['wan22-serverless', 'wan-animate', 'seedance2-fast', 'seedance2-standard'].includes(videoEngine);
   if (engineNeedsAudio && document.getElementById('studioAudioProvider').value === 'upload' && !document.getElementById('studioAudio').files[0]) return toast('Upload an audio file first.', 'error');
   if (engineNeedsAudio && document.getElementById('studioAudioProvider').value === 'asset' && !document.getElementById('studioAudioAssetId').value) return toast('Choose saved audio first.', 'error');
   if (engineNeedsAudio && document.getElementById('studioAudioProvider').value === 'elevenlabs' && !document.getElementById('studioScript').value.trim()) return toast('Paste a script for ElevenLabs audio.', 'error');
   if (engineNeedsAudio && document.getElementById('studioAudioProvider').value === 'chatterbox' && !document.getElementById('studioScript').value.trim()) return toast('Paste a script for Chatterbox audio.', 'error');
-  if (['meigen', 'wan22-serverless', 'wan-animate'].includes(videoEngine) && mode !== 'i2v') return toast('Serverless video engines are available in Image to video mode right now.', 'error');
+  if (serverlessVideoEngines.includes(videoEngine) && mode !== 'i2v') return toast('Serverless video engines are available in Image to video mode right now.', 'error');
   if (videoEngine === 'wan-animate' && !document.getElementById('studioReferenceVideo').files[0] && !document.getElementById('studioReferenceVideoUrl').value.trim() && !document.getElementById('studioRemixSourceUrl').value.trim()) {
     return toast('Wan Animate needs a reference motion video upload or URL.', 'error');
   }
@@ -1379,13 +2896,20 @@ async function submitStudioVideo(e) {
   button.textContent = 'Queuing video...';
   startGenerationOverlay({ engine: videoEngine, mode });
   try {
-    toast(['meigen', 'wan22-serverless', 'wan-animate'].includes(videoEngine) ? `Generating with ${getStudioEngineName(videoEngine)}...` : 'Queuing video. If the RunPod is asleep, Bloom Studio will wake it first.', 'info');
+    toast(serverlessVideoEngines.includes(videoEngine) ? `Generating with ${getStudioEngineName(videoEngine)}...` : 'Queuing video. If the RunPod is asleep, Bloom Studio will wake it first.', 'info');
+    toast('You can navigate away from this page or keep using the app. I will notify you with a popup and sound when it finishes.', 'info');
     const result = await api('/api/studio/generate', { method: 'POST', body: data });
-    toast(['meigen', 'wan22-serverless', 'wan-animate'].includes(videoEngine) ? `${getStudioEngineName(videoEngine)} video generated and saved to Library.` : 'Video job queued.', 'success');
     studioJobs.unshift(result.job);
     await loadAssets();
     await loadVideos();
-    stopGenerationOverlay({ success: true });
+    if (result.background) {
+      toast(`${getStudioEngineName(videoEngine)} started. A processing card is in Library now.`, 'info');
+      const jobKey = result.job?.requestId || result.job?.jobId || '';
+      setBackgroundGenerationOverlay({ engine: videoEngine, mode, jobKey });
+    } else {
+      toast(serverlessVideoEngines.includes(videoEngine) ? `${getStudioEngineName(videoEngine)} video generated and saved to Library.` : 'Video job queued.', 'success');
+      stopGenerationOverlay({ success: true });
+    }
   } catch (err) {
     stopGenerationOverlay();
     toast(err.message, 'error');
@@ -1396,6 +2920,9 @@ async function submitStudioVideo(e) {
 }
 
 function getStudioEngineName(engine) {
+  if (engine === 'seedance2-fast') return 'Seedance 1.5';
+  if (engine === 'seedance2-standard') return 'Seedance fixed camera';
+  if (engine === 'infinitetalk-hd') return 'InfiniteTalk HD';
   if (engine === 'meigen') return 'Meigen';
   if (engine === 'wan22-serverless') return 'Wan 2.2 Serverless';
   if (engine === 'wan-animate') return 'Wan Animate';
@@ -1417,9 +2944,50 @@ function previewCurrentVoice() {
   return toast('Choose Chatterbox or ElevenLabs to preview a generated voice.', 'error');
 }
 
+function selectedChatterboxVoice() {
+  return document.getElementById('studioChatterboxVoice')?.value || 'lucy';
+}
+
+function updateChatterboxVoiceLabel() {
+  const voice = selectedChatterboxVoice();
+  const label = `${voice[0].toUpperCase()}${voice.slice(1)}`;
+  const name = document.getElementById('chatterboxVoiceName');
+  if (name) name.textContent = label;
+  const hint = document.getElementById('chatterboxSampleHint');
+  if (hint) hint.textContent = `${label} is selected. Play the cached sample if you want to audition it.`;
+}
+
+async function playCachedChatterboxVoiceSample() {
+  const voice = selectedChatterboxVoice();
+  const hint = document.getElementById('chatterboxSampleHint');
+  const audio = document.getElementById('chatterboxSampleAudio');
+  if (!audio) return;
+  const url = `/api/tts/chatterbox/sample/${encodeURIComponent(voice)}`;
+  const label = `${voice[0].toUpperCase()}${voice.slice(1)}`;
+  const name = document.getElementById('chatterboxVoiceName');
+  if (name) name.textContent = label;
+  try {
+    audio.src = await playableMediaUrl(url);
+    audio.style.display = '';
+    await audio.play().catch(() => {});
+    if (hint) hint.textContent = `Playing cached ${label} sample. No RunPod call used.`;
+  } catch (error) {
+    if (hint) hint.textContent = 'Could not play cached sample.';
+    toast(`Could not play sample: ${error.message}`, 'error');
+  }
+}
+
+function nextChatterboxVoice() {
+  const select = document.getElementById('studioChatterboxVoice');
+  if (!select?.options?.length) return;
+  select.selectedIndex = (select.selectedIndex + 1) % select.options.length;
+  updateChatterboxVoiceLabel();
+  playCachedChatterboxVoiceSample();
+}
+
 async function previewChatterboxVoice(saveOnly = false) {
-  const script = document.getElementById('studioScript').value.trim();
-  if (!script) return toast('Paste a script first.', 'error');
+  const writtenScript = document.getElementById('studioScript').value.trim();
+  const script = writtenScript || 'Hi, I am previewing this voice so you can hear the tone before choosing it for your video.';
   const button = document.getElementById('studioPreviewVoiceButton');
   if (button) {
     button.disabled = true;
@@ -1432,7 +3000,7 @@ async function previewChatterboxVoice(saveOnly = false) {
     data.append('voice', document.getElementById('studioChatterboxVoice').value);
     data.append('format', document.getElementById('studioChatterboxFormat').value);
     data.append('voiceUrl', document.getElementById('studioChatterboxVoiceUrl').value.trim());
-    data.append('name', `Voiceover ${new Date().toLocaleString()}`);
+    data.append('name', `${writtenScript ? 'Voiceover' : 'Voice sample'} ${new Date().toLocaleString()}`);
     const sample = document.getElementById('studioVoiceSample')?.files?.[0];
     if (sample) data.append('voiceSample', sample);
     const response = await api('/api/tts/chatterbox', { method: 'POST', body: data });
@@ -1441,7 +3009,7 @@ async function previewChatterboxVoice(saveOnly = false) {
     if (!url) throw new Error('Chatterbox did not return audio.');
     setVoicePreviewLoading(false);
     document.getElementById('studioVoicePreview').style.display = '';
-    document.getElementById('studioVoicePreviewTitle').textContent = saveOnly ? 'Audio generated and saved' : 'Voice preview saved';
+    document.getElementById('studioVoicePreviewTitle').textContent = saveOnly ? 'Audio generated and saved' : writtenScript ? 'Voice preview saved' : 'Voice sample preview saved';
     document.getElementById('studioVoicePreviewAudio').src = await playableMediaUrl(url);
     toast('Voiceover generated and saved to audio Library.', 'success');
     await loadAssets();
@@ -1451,14 +3019,14 @@ async function previewChatterboxVoice(saveOnly = false) {
   } finally {
     if (button) {
       button.disabled = false;
-      button.textContent = 'Preview Chatterbox voice';
+      button.textContent = 'Preview script with Chatterbox';
     }
   }
 }
 
 async function previewElevenLabsVoice(saveOnly = false) {
-  const script = document.getElementById('studioScript').value.trim();
-  if (!script) return toast('Paste a script first.', 'error');
+  const writtenScript = document.getElementById('studioScript').value.trim();
+  const script = writtenScript || 'Hi, I am previewing this voice so you can hear the tone before choosing it for your video.';
   const button = document.getElementById('studioPreviewVoiceButton');
   if (button) {
     button.disabled = true;
@@ -1471,7 +3039,7 @@ async function previewElevenLabsVoice(saveOnly = false) {
       body: JSON.stringify({
         script,
         voiceId: document.getElementById('studioVoiceId').value.trim(),
-        name: `Voiceover ${new Date().toLocaleString()}`
+        name: `${writtenScript ? 'Voiceover' : 'Voice sample'} ${new Date().toLocaleString()}`
       })
     });
     previewAudioAsset = response.result?.asset || null;
@@ -1479,7 +3047,7 @@ async function previewElevenLabsVoice(saveOnly = false) {
     if (!url) throw new Error('ElevenLabs did not return saved audio.');
     setVoicePreviewLoading(false);
     document.getElementById('studioVoicePreview').style.display = '';
-    document.getElementById('studioVoicePreviewTitle').textContent = saveOnly ? 'Audio generated and saved' : 'Voice preview saved';
+    document.getElementById('studioVoicePreviewTitle').textContent = saveOnly ? 'Audio generated and saved' : writtenScript ? 'Voice preview saved' : 'Voice sample preview saved';
     document.getElementById('studioVoicePreviewAudio').src = await playableMediaUrl(url);
     toast('Voiceover generated and saved to audio Library.', 'success');
     await loadAssets();
@@ -1489,7 +3057,7 @@ async function previewElevenLabsVoice(saveOnly = false) {
   } finally {
     if (button) {
       button.disabled = false;
-      button.textContent = 'Preview ElevenLabs voice';
+      button.textContent = 'Preview script with ElevenLabs';
     }
   }
 }
@@ -1519,6 +3087,9 @@ async function loadAssets() {
     studioAudioSelect.value = current;
   }
   renderProductPlacementPickers(data);
+  if (document.getElementById('tab-studio')?.dataset.createTool === 'campaign') {
+    renderCampaignBuilder(data);
+  }
 }
 
 function setCharacterTab(tab) {
@@ -1569,12 +3140,50 @@ function renderMyAgents(characters) {
   grid.innerHTML = characters.map(character => renderCharacterCard(character, false)).join('');
 }
 
+function openCharacterPickerModal() {
+  const modal = document.getElementById('characterPickerModal');
+  if (!modal) return showAgentModal();
+  currentCharacterPickerTab = currentCharacterPickerTab || 'all';
+  renderCharacterPickerModal();
+  modal.classList.add('active');
+}
+
+function closeCharacterPickerModal() {
+  document.getElementById('characterPickerModal')?.classList.remove('active');
+}
+
+function setCharacterPickerTab(tab = 'all') {
+  currentCharacterPickerTab = tab;
+  document.querySelectorAll('[data-picker-character-tab]').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.pickerCharacterTab === tab);
+  });
+  renderCharacterPickerModal();
+}
+
+function renderCharacterPickerModal() {
+  const grid = document.getElementById('characterPickerGrid');
+  if (!grid) return;
+  grid.classList.toggle('landscape', currentCharacterRatio === 'landscape');
+  const libraryCharacters = starterCharacters.map(character => ({ ...character, _isLibrary: true }));
+  const myCharacters = (assetsCache.subjects || []).map(character => ({ ...character, _isLibrary: false }));
+  const characters = currentCharacterPickerTab === 'library'
+    ? libraryCharacters
+    : currentCharacterPickerTab === 'mine'
+      ? myCharacters
+      : [...libraryCharacters, ...myCharacters];
+  if (!characters.length) {
+    grid.innerHTML = '<div class="character-empty">No uploaded agents yet. Upload a character or use one from the library.</div>';
+    return;
+  }
+  grid.innerHTML = characters.map(character => renderCharacterCard(character, character._isLibrary !== false)).join('');
+}
+
 function renderCharacterCard(character, isLibrary) {
   const file = character.files?.[0];
   const imageUrl = character.imageUrl || file?.path || '';
   const displayUrl = authenticatedMediaUrl(imageUrl);
   const payload = JSON.stringify({ ...character, imageUrl }).replace(/'/g, '&apos;');
-  const voice = character.voiceId ? 'Voice saved' : isLibrary ? character.role : 'No default voice';
+  const voice = getCharacterVoiceId(character) || character.voiceSampleAssetId ? 'Voice saved' : isLibrary ? character.role : 'No default voice';
   const manage = isLibrary
     ? ''
     : `<button class="btn btn-secondary" onclick="event.stopPropagation();editCharacterVoice('${character.slug}', '${(character.voiceId || '').replace(/'/g, "\\'")}')">Voice</button>
@@ -1590,7 +3199,41 @@ function renderCharacterCard(character, isLibrary) {
         ${manage}
       </div>
     </div>
-  </div>`;
+	  </div>`;
+}
+
+function getCharacterVoiceId(character = {}) {
+  if (character.voiceId) return character.voiceId;
+  const name = `${character.name || ''} ${character.slug || ''}`.toLowerCase();
+  if (/\bsarah\b/.test(name)) return defaultCharacterVoiceIds.sarah;
+  if (/\bmarcus\b/.test(name)) return defaultCharacterVoiceIds.marcus;
+  return '';
+}
+
+function applyCharacterAudioDefaults(character = {}) {
+  const voiceId = getCharacterVoiceId(character);
+  const voiceIdInput = document.getElementById('studioVoiceId');
+  const chatterboxUrlInput = document.getElementById('studioChatterboxVoiceUrl');
+  const currentProvider = document.getElementById('studioAudioProvider')?.value || '';
+  const existingVoiceId = voiceIdInput?.value.trim() || '';
+  if (existingVoiceId && currentProvider === 'elevenlabs') {
+    setStudioAudio('elevenlabs', { preserveToast: true });
+    return 'elevenlabs';
+  }
+  if (voiceIdInput) voiceIdInput.value = voiceId || '';
+  if (chatterboxUrlInput && !character.voiceSampleAssetId) chatterboxUrlInput.value = '';
+
+  if (voiceId) {
+    setStudioAudio('elevenlabs', { preserveToast: true });
+    return 'elevenlabs';
+  }
+  if (character.voiceSampleAssetId) {
+    setStudioAudio('chatterbox', { preserveToast: true });
+    hydrateChatterboxVoiceUrl(character.voiceSampleAssetId);
+    return 'chatterbox';
+  }
+  setStudioAudio('upload', { preserveToast: true });
+  return 'upload';
 }
 
 function selectCharacter(character) {
@@ -1602,17 +3245,19 @@ function selectCharacter(character) {
   document.getElementById('studioImageUrl').value = isLibrary ? imageUrl : '';
   document.getElementById('studioImage').value = '';
   document.getElementById('studioImageName').textContent = '';
-  document.getElementById('selectedCharacterName').textContent = character.name;
-  document.getElementById('selectedCharacterImg').src = authenticatedMediaUrl(imageUrl);
-  document.getElementById('selectedCharacter').classList.add('active');
+  const selectedName = document.getElementById('selectedCharacterName');
+  const selectedImg = document.getElementById('selectedCharacterImg');
+  const selectedCard = document.getElementById('selectedCharacter');
+  if (selectedName) selectedName.textContent = character.name;
+  if (selectedImg) {
+    selectedImg.src = authenticatedMediaUrl(imageUrl);
+    selectedImg.alt = character.name || 'Selected character';
+  }
+  selectedCard?.classList.add('active');
   setPreviewImage(imageUrl, character.name);
-  if (character.voiceId) {
-    document.getElementById('studioVoiceId').value = character.voiceId;
-  }
-  if (character.voiceSampleAssetId) {
-    hydrateChatterboxVoiceUrl(character.voiceSampleAssetId);
-  }
   setStudioMode('i2v');
+  applyCharacterAudioDefaults(character);
+  closeCharacterPickerModal();
   switchTab('studio');
   toast(`${character.name} loaded into Create.`, 'success');
 }
@@ -1756,14 +3401,28 @@ function renderProductPlacementReferences() {
 async function loadProductPlacementStatus() {
   try {
     const status = await api('/api/product-placement/status');
-    setChip('nanoStatus', status.configured ? 'Nano ready' : 'Needs key', status.configured ? 'green' : 'warn');
+    setChip('nanoStatus', status.configured ? 'Image ready' : 'Needs key', status.configured ? 'green' : 'warn');
     const note = document.getElementById('nanoEndpointNote');
     if (note) note.textContent = status.configured
-      ? `Connected to ${status.endpointId || 'Nano Banana endpoint'}.`
-      : 'Add the RunPod API key/endpoint on Railway before generation.';
+      ? `Image generation is configured. RunPod endpoint: ${status.endpointId || 'not shown'}. OpenRouter models use OPENROUTER_API_KEY.`
+      : 'Add the image generation keys/endpoints on Railway before generation.';
+    updateProductPlacementModelCopy();
   } catch (error) {
     setChip('nanoStatus', 'Endpoint error', 'red');
   }
+}
+
+function getProductPlacementModelLabel() {
+  const select = document.getElementById('productPlacementModel');
+  const selected = select?.selectedOptions?.[0];
+  return (selected?.textContent || 'selected image model').replace(/\s+-\s+/g, ' ').trim();
+}
+
+function updateProductPlacementModelCopy() {
+  const button = document.getElementById('productGenerateButton');
+  if (button && !button.disabled) button.textContent = 'Generate image';
+  const note = document.getElementById('nanoEndpointNote');
+  if (note) note.dataset.selectedModel = getProductPlacementModelLabel();
 }
 
 function resetProductPlacement() {
@@ -1775,6 +3434,10 @@ function resetProductPlacement() {
   productPlacementCharacter = null;
   productPlacementProduct = null;
   productPlacementReferences = [];
+  latestProductPlacementImage = '';
+  latestProductPlacementPrompt = '';
+  latestProductPlacementAspectRatio = '9:16';
+  latestProductPlacementSize = '1k';
   document.getElementById('productCharacterName').textContent = 'No primary image selected';
   document.getElementById('productImageName').textContent = '0 reference images selected';
   document.getElementById('productCharacterPreview').textContent = 'Optional primary image';
@@ -1784,10 +3447,12 @@ function resetProductPlacement() {
   document.getElementById('productImageUpload').value = '';
   document.getElementById('productPlacementResult').innerHTML = '<div><strong>Preview idle</strong><p class="hint">Enter a prompt, then optionally attach references.</p></div>';
   document.getElementById('productResultActions').style.display = 'none';
+  const editInstruction = document.getElementById('productPlacementEditInstruction');
+  if (editInstruction) editInstruction.value = '';
   const button = document.getElementById('productGenerateButton');
   if (button) {
     button.disabled = false;
-    button.textContent = 'Run Nano Banana';
+    button.textContent = 'Generate image';
   }
 }
 
@@ -1797,7 +3462,11 @@ async function generateProductPlacement() {
   const button = document.getElementById('productGenerateButton');
   const resultFrame = document.getElementById('productPlacementResult');
   const aspectRatio = document.getElementById('productPlacementAspect').value;
-  resultFrame.classList.toggle('ratio-portrait', aspectRatio === '9:16');
+  const size = document.getElementById('productPlacementSize').value;
+  const imageModel = document.getElementById('productPlacementModel')?.value || 'runpod:nano-banana';
+  const imageModelLabel = getProductPlacementModelLabel();
+  resultFrame.style.setProperty('--result-ratio', aspectRatioToCssValue(aspectRatio));
+  resultFrame.classList.toggle('ratio-portrait', aspectRatioKind(aspectRatio) === 'portrait');
   if (productPlacementRequest) productPlacementRequest.abort();
   productPlacementTimedOut = false;
   const controller = new AbortController();
@@ -1807,16 +3476,17 @@ async function generateProductPlacement() {
     controller.abort();
   }, 300000);
   button.disabled = true;
-  button.textContent = 'Running Nano...';
-  resultFrame.innerHTML = '<div class="cooking-state"><div class="cooking-orb"></div><strong>Generating with Nano Banana</strong><p class="hint">Uploading public references and waiting for the /runsync result.</p><div class="cooking-steps">Large edits can take several minutes.</div></div>';
+  button.textContent = 'Generating...';
+  resultFrame.innerHTML = `<div class="cooking-state"><div class="cooking-orb"></div><strong>Generating with ${escapeHtml(imageModelLabel)}</strong><p class="hint">Uploading public references and waiting for the image result.</p><div class="cooking-steps">Large edits can take several minutes.</div></div>`;
   try {
     const data = new FormData();
     data.append('prompt', prompt);
     data.append('aspectRatio', aspectRatio);
-    data.append('size', document.getElementById('productPlacementSize').value);
-    if (productPlacementCharacter.file) data.append('character', productPlacementCharacter.file);
-    else if (productPlacementCharacter.assetId) data.append('characterAssetId', productPlacementCharacter.assetId);
-    else data.append('characterUrl', productPlacementCharacter.imageUrl);
+    data.append('size', size);
+    data.append('imageModel', imageModel);
+    if (productPlacementCharacter?.file) data.append('character', productPlacementCharacter.file);
+    else if (productPlacementCharacter?.assetId) data.append('characterAssetId', productPlacementCharacter.assetId);
+    else if (productPlacementCharacter?.imageUrl) data.append('characterUrl', productPlacementCharacter.imageUrl);
     productPlacementReferences.forEach(reference => {
       if (reference.file) data.append('references', reference.file);
       else if (reference.assetId) data.append('referenceAssetIds', reference.assetId);
@@ -1827,22 +3497,30 @@ async function generateProductPlacement() {
     const image = response.result?.image;
     if (image) {
       latestProductPlacementImage = image;
+      latestProductPlacementPrompt = prompt;
+      latestProductPlacementAspectRatio = aspectRatio;
+      latestProductPlacementSize = size;
       resultFrame.innerHTML = `<img src="${image}" alt="Generated product placement">`;
       const link = document.getElementById('productResultDownload');
       link.href = image;
       document.getElementById('productResultActions').style.display = '';
-      saveGeneratedImageToLibrary(image);
+      saveGeneratedImageToLibrary(image, {
+        source: response.result?.provider || (imageModel.startsWith('openrouter:') ? 'openrouter' : 'runpod'),
+        model: response.result?.model || imageModel.replace(/^openrouter:/, '').replace(/^runpod:/, ''),
+        label: imageModelLabel,
+        aspectRatio
+      });
       toast('Composite image generated.', 'success');
     } else {
-      resultFrame.innerHTML = '<div><strong>No image returned</strong><p class="hint">Nano Banana completed but the response did not include an image URL.</p></div>';
-      toast('Nano Banana did not return an image URL.', 'error');
+      resultFrame.innerHTML = `<div><strong>No image returned</strong><p class="hint">${escapeHtml(imageModelLabel)} completed but the response did not include an image URL.</p></div>`;
+      toast(`${imageModelLabel} did not return an image URL.`, 'error');
     }
   } catch (error) {
     if (error.name === 'AbortError') {
       resultFrame.innerHTML = productPlacementTimedOut
-        ? '<div><strong>Request timed out</strong><p class="hint">Nano Banana did not return within 5 minutes. Check the public endpoint logs or try again.</p></div>'
-        : '<div><strong>Generation stopped</strong><p class="hint">The Nano Banana request was cancelled.</p></div>';
-      toast(productPlacementTimedOut ? 'Nano Banana timed out after 5 minutes.' : 'Nano Banana generation cancelled.', productPlacementTimedOut ? 'error' : 'info');
+        ? `<div><strong>Request timed out</strong><p class="hint">${escapeHtml(imageModelLabel)} did not return within 5 minutes. Check the endpoint logs or try again.</p></div>`
+        : `<div><strong>Generation stopped</strong><p class="hint">The ${escapeHtml(imageModelLabel)} request was cancelled.</p></div>`;
+      toast(productPlacementTimedOut ? `${imageModelLabel} timed out after 5 minutes.` : `${imageModelLabel} generation cancelled.`, productPlacementTimedOut ? 'error' : 'info');
     } else {
       resultFrame.innerHTML = `<div><strong>Generation failed</strong><p class="hint">${escapeHtml(error.message || 'Check endpoint settings or prompt inputs.')}</p></div>`;
       toast(error.message, 'error');
@@ -1852,8 +3530,114 @@ async function generateProductPlacement() {
     if (productPlacementRequest === controller) productPlacementRequest = null;
     productPlacementTimedOut = false;
     button.disabled = false;
-    button.textContent = 'Run Nano Banana';
+    button.textContent = 'Generate image';
   }
+}
+
+function appendProductPlacementReferences(data, maxCount = 4) {
+  let count = 0;
+  productPlacementReferences.forEach(reference => {
+    if (count >= maxCount) return;
+    if (reference.file) data.append('references', reference.file);
+    else if (reference.assetId) data.append('referenceAssetIds', reference.assetId);
+    else if (reference.imageUrl) data.append('referenceUrls', reference.imageUrl);
+    else return;
+    count += 1;
+  });
+}
+
+async function editProductPlacementResult() {
+  if (!latestProductPlacementImage) return toast('Generate an image first, then edit that result.', 'error');
+  if (!/^https?:\/\//i.test(latestProductPlacementImage)) {
+    return toast('This generated image needs a public URL before it can be edited or sent to video.', 'error');
+  }
+  const instruction = document.getElementById('productPlacementEditInstruction')?.value.trim();
+  if (!instruction) return toast('Tell me the small change you want first.', 'error');
+
+  const button = document.getElementById('productPlacementEditButton');
+  const resultFrame = document.getElementById('productPlacementResult');
+  const originalText = button?.textContent || 'Apply edit';
+  const basePrompt = latestProductPlacementPrompt || document.getElementById('productPlacementPrompt').value.trim() || 'Create a polished production-ready image.';
+  const aspectRatio = latestProductPlacementAspectRatio || document.getElementById('productPlacementAspect').value || '9:16';
+  const size = latestProductPlacementSize || document.getElementById('productPlacementSize').value || '1k';
+  const editPrompt = [
+    'Edit the provided generated image. Preserve the same identity, composition, lighting, style, framing, and aspect ratio.',
+    `Make only this change: ${instruction}`,
+    `Original prompt: ${basePrompt}`
+  ].join('\n');
+
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Applying edit...';
+  }
+  resultFrame.innerHTML = '<div class="cooking-state"><div class="cooking-orb"></div><strong>Editing current image</strong><p class="hint">Using the generated image as the reference and changing only what you asked for.</p></div>';
+
+  try {
+    const data = new FormData();
+    data.append('prompt', editPrompt);
+    data.append('aspectRatio', aspectRatio);
+    data.append('size', size);
+    data.append('characterUrl', latestProductPlacementImage);
+    appendProductPlacementReferences(data, 4);
+
+    const response = await api('/api/product-placement/generate', { method: 'POST', body: data });
+    const image = response.result?.image;
+    if (!image) throw new Error('The image endpoint completed but did not return an edited image URL.');
+
+    latestProductPlacementImage = image;
+    latestProductPlacementPrompt = `${basePrompt}\nEdit: ${instruction}`;
+    latestProductPlacementAspectRatio = aspectRatio;
+    latestProductPlacementSize = size;
+    resultFrame.innerHTML = `<img src="${image}" alt="Edited product placement">`;
+    const link = document.getElementById('productResultDownload');
+    link.href = image;
+    document.getElementById('productResultActions').style.display = '';
+    const editInstruction = document.getElementById('productPlacementEditInstruction');
+    if (editInstruction) editInstruction.value = '';
+    saveGeneratedImageToLibrary(image, {
+      source: response.result?.provider || 'image-model',
+      model: response.result?.model || '',
+      label: response.result?.model || 'Edited image'
+    });
+    toast('Image edit applied.', 'success');
+  } catch (error) {
+    resultFrame.innerHTML = `<div><strong>Edit failed</strong><p class="hint">${escapeHtml(error.message || 'Try a smaller edit or check the image endpoint.')}</p></div>`;
+    toast(error.message, 'error');
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+  }
+}
+
+function sendLatestImageToVideo() {
+  if (!latestProductPlacementImage) return toast('Generate an image first.', 'error');
+  if (!/^https?:\/\//i.test(latestProductPlacementImage)) {
+    return toast('Image-to-video needs a public image URL. Save this image to Library first, then select it as a character.', 'error');
+  }
+  switchTab('studio');
+  setCreateTool('video');
+  setCreateType('scenes', { preserveToast: true });
+  setStudioMode('i2v');
+  const preferredAspect = latestProductPlacementAspectRatio || document.getElementById('productPlacementAspect')?.value || '9:16';
+  const aspectSelect = document.getElementById('studioAspectRatio');
+  const engineSelect = document.getElementById('studioVideoEngine');
+  if (aspectSelect && [...aspectSelect.options].some(option => option.value === preferredAspect)) {
+    aspectSelect.value = preferredAspect;
+  }
+  if (engineSelect) {
+    engineSelect.value = 'seedance2-fast';
+    setStudioVideoEngine('seedance2-fast');
+  }
+  document.getElementById('studioImageAssetId').value = '';
+  document.getElementById('studioImageUrl').value = latestProductPlacementImage;
+  document.getElementById('studioImage').value = '';
+  document.getElementById('studioImageName').textContent = 'Generated image from Create Image';
+  document.getElementById('selectedCharacter')?.classList.remove('active');
+  setPreviewImage(latestProductPlacementImage, 'Generated image');
+  updatePreviewRatio();
+  toast('Image moved into B-roll / Scenes. Choose ratio and video model, then generate.', 'success');
 }
 
 function escapeHtml(value = '') {
@@ -1865,15 +3649,64 @@ function escapeHtml(value = '') {
     .replace(/'/g, '&#039;');
 }
 
-async function saveGeneratedImageToLibrary(imageUrl) {
+async function copyFullVideoError(errorKey) {
+  const error = videoErrorDetails[errorKey] || '';
+  if (!error) return toast('No error details available.', 'error');
+  await navigator.clipboard.writeText(error);
+  toast('Full error copied.', 'success');
+}
+
+async function checkVideoStatus(statusKey) {
+  const existing = videoStatusDetails[statusKey];
+  if (!existing) return toast('Status details are not available for this card yet.', 'error');
+  try {
+    await loadVideos({ notify: true });
+    const latest = videoStatusDetails[statusKey] || existing;
+    const label = latest.status === 'completed'
+      ? 'completed and ready'
+      : latest.status === 'failed'
+        ? 'failed'
+        : 'still processing';
+    toast(`${getStudioEngineName(latest.provider || latest.presetId)} is ${label}. ${formatElapsedTime(latest.createdAt)}.`, latest.status === 'failed' ? 'error' : latest.status === 'completed' ? 'success' : 'info');
+  } catch (error) {
+    toast(`Could not refresh status: ${error.message}`, 'error');
+  }
+}
+
+function handleVideoPreviewError(img, status = 'processing') {
+  const wrap = img.closest('.video-thumb-wrap') || img.parentElement;
+  if (!wrap) return;
+  const failed = status === 'failed';
+  wrap.classList.add('failed');
+  wrap.innerHTML = `
+    <div class="video-player" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:14px;text-align:center;color:${failed ? 'var(--red)' : '#777'}">
+      <strong>${failed ? 'Generation failed' : 'Preview unavailable'}</strong>
+      <span style="font-size:12px;line-height:1.35;color:rgba(24,33,45,.72)">The status below is still current. Refresh or check status for the latest result.</span>
+    </div>`;
+}
+
+function formatElapsedTime(value) {
+  const started = value ? new Date(value).getTime() : 0;
+  if (!started || Number.isNaN(started)) return 'Just started';
+  const seconds = Math.max(0, Math.round((Date.now() - started) / 1000));
+  if (seconds < 90) return `${seconds}s elapsed`;
+  const minutes = Math.round(seconds / 60);
+  return `${minutes}m elapsed`;
+}
+
+async function saveGeneratedImageToLibrary(imageUrl, metadata = {}) {
   try {
     const prompt = document.getElementById('productPlacementPrompt').value.trim();
+    const modelLabel = metadata.label || getProductPlacementModelLabel();
+    const source = metadata.model ? `${metadata.source || 'image-model'}:${metadata.model}` : metadata.source || modelLabel;
     await api('/api/assets/generated-image', {
       method: 'POST',
       body: JSON.stringify({
         imageUrl,
-        name: `Nano Banana ${new Date().toLocaleString()}`,
-        prompt
+        name: `${modelLabel} ${new Date().toLocaleString()}`,
+        prompt,
+        source,
+        aspectRatio: metadata.aspectRatio || latestProductPlacementAspectRatio || document.getElementById('productPlacementAspect')?.value || '9:16'
       })
     });
     loadAssets();
@@ -1899,8 +3732,7 @@ async function addLatestImageAsCharacter() {
     });
     toast('Generated image added to My agents.', 'success');
     await loadAssets();
-    switchTab('characters');
-    setCharacterTab('mine');
+    returnToCharactersTab();
   } catch (error) {
     toast(`Could not add character: ${error.message}`, 'error');
   } finally {
@@ -1916,7 +3748,11 @@ function clearSelectedCharacter() {
   selectedCharacter = null;
   document.getElementById('studioImageAssetId').value = '';
   document.getElementById('studioImageUrl').value = '';
-  document.getElementById('selectedCharacter').classList.remove('active');
+  document.getElementById('studioVoiceId').value = '';
+  const chatterboxUrlInput = document.getElementById('studioChatterboxVoiceUrl');
+  if (chatterboxUrlInput) chatterboxUrlInput.value = '';
+  document.getElementById('selectedCharacter')?.classList.remove('active');
+  setStudioAudio('upload', { preserveToast: true });
   resetPreview();
 }
 
@@ -1934,22 +3770,21 @@ async function editCharacterVoice(slug, currentVoiceId = '') {
 function renderAssetGrid(containerId, assets, type) {
   const grid = document.getElementById(containerId);
   if (!grid) return;
-  if (type === 'outputs') {
-    libraryImageItems = assets
-      .map(asset => {
-        const file = asset.files?.[0];
-        if (!file || !/\.(jpg|jpeg|png|webp|gif)$/i.test(file.name)) return null;
-        return {
-          type: 'image',
-          name: asset.name,
-          url: authenticatedMediaUrl(file.path),
-          rawUrl: file.path,
-          prompt: asset.aiContext?.prompt || asset.aiContext?.source || '',
-          aspectRatio: asset.aiContext?.aspectRatio || (currentLibraryImageRatio === 'landscape' ? '16:9' : '9:16')
-        };
-      })
-      .filter(Boolean);
-  }
+  assetLightboxItems[type] = assets
+    .map(asset => {
+      const file = asset.files?.[0];
+      if (!file || !/\.(jpg|jpeg|png|webp|gif)$/i.test(file.name)) return null;
+      return {
+        type: 'image',
+        name: asset.name,
+        url: authenticatedMediaUrl(file.path),
+        rawUrl: file.path,
+        prompt: asset.aiContext?.prompt || asset.aiContext?.source || '',
+        aspectRatio: asset.aiContext?.aspectRatio || ''
+      };
+    })
+    .filter(Boolean);
+  if (type === 'outputs') libraryImageItems = assetLightboxItems[type];
   if (assets.length === 0) {
     grid.innerHTML = `<div class="empty-state">No ${type} uploaded yet</div>`;
     return;
@@ -1961,7 +3796,7 @@ function renderAssetGrid(containerId, assets, type) {
     const isImage = file && /\.(jpg|jpeg|png|webp|gif)$/i.test(file.name);
     const isAudio = file && /\.(mp3|wav|m4a|ogg|aac)$/i.test(file.name);
     const filePath = file?.path ? authenticatedMediaUrl(file.path) : '';
-    const openAttr = type === 'outputs' && isImage ? `onclick="openLibraryLightbox('images',${++imageIndex})"` : '';
+    const openAttr = isImage ? `onclick="openAssetImageLightbox('${type}',${++imageIndex})"` : '';
     const thumb = isImage
       ? `<div class="asset-thumb"><img src="${filePath}" alt="${asset.name}" loading="lazy"></div>`
       : `<div class="asset-thumb">${isAudio ? 'Audio' : 'File'}</div>`;
@@ -2021,6 +3856,7 @@ function showAgentModal() {
   document.getElementById('agentUploadFileName').textContent = '';
   document.getElementById('agentUploadVoiceId').value = '';
   document.getElementById('agentBuildName').value = '';
+  document.getElementById('agentBuildVoiceId').value = '';
   document.getElementById('agentBuildGender').value = 'woman';
   document.getElementById('agentBuildEthnicity').value = 'Black';
   document.getElementById('agentBuildAge').value = '30s';
@@ -2034,6 +3870,11 @@ function showAgentModal() {
   if (sampleSelect) {
     sampleSelect.innerHTML = '<option value="">None</option>' + (assetsCache.audio || []).map(a => `<option value="${a.slug}">${escapeHtml(a.name)}</option>`).join('');
     sampleSelect.value = '';
+  }
+  const buildSampleSelect = document.getElementById('agentBuildVoiceSampleAssetId');
+  if (buildSampleSelect) {
+    buildSampleSelect.innerHTML = '<option value="">None</option>' + (assetsCache.audio || []).map(a => `<option value="${a.slug}">${escapeHtml(a.name)}</option>`).join('');
+    buildSampleSelect.value = '';
   }
   resetAgentUploadPreview();
   resetAgentBuildPreview();
@@ -2116,8 +3957,7 @@ async function uploadAgentFromModal(event) {
     toast('Agent uploaded to My agents.', 'success');
     closeAgentModal();
     await loadAssets();
-    switchTab('characters');
-    setCharacterTab('mine');
+    returnToCharactersTab();
   } catch (error) {
     toast(error.message, 'error');
   } finally {
@@ -2191,16 +4031,17 @@ async function saveBuiltAgent() {
   const original = button.textContent;
   button.disabled = true;
   button.textContent = 'Adding...';
-  try {
-    await api('/api/assets/subjects/from-image-url', {
-      method: 'POST',
-      body: JSON.stringify({ imageUrl: latestBuiltAgentImage, name })
-    });
+	try {
+	  const voiceId = document.getElementById('agentBuildVoiceId')?.value.trim() || '';
+	  const voiceSampleAssetId = document.getElementById('agentBuildVoiceSampleAssetId')?.value || '';
+	  await api('/api/assets/subjects/from-image-url', {
+	    method: 'POST',
+	    body: JSON.stringify({ imageUrl: latestBuiltAgentImage, name, voiceId, voiceSampleAssetId })
+	  });
     toast('Generated character added to My agents.', 'success');
     closeAgentModal();
     await loadAssets();
-    switchTab('characters');
-    setCharacterTab('mine');
+    returnToCharactersTab();
   } catch (error) {
     toast(`Could not add character: ${error.message}`, 'error');
   } finally {
@@ -2237,7 +4078,7 @@ async function uploadAsset(e) {
     toast(`${files.length} ${files.length === 1 ? 'file' : 'files'} uploaded`, 'success');
     closeUploadModal();
     loadAssets();
-    if (type === 'subjects') switchTab('characters');
+    if (type === 'subjects') returnToCharactersTab();
   } catch (err) {
     toast(err.message, 'error');
   } finally {
@@ -2443,7 +4284,8 @@ function authenticatedMediaUrl(path) {
   return url.pathname + url.search;
 }
 
-async function loadVideos() {
+async function loadVideos(options = {}) {
+  const notify = typeof options === 'object' && options.notify === true;
   let seedance = { videos: [], total: 0, completed: 0, pending: 0, failed: 0 };
   let studio = { jobs: [] };
   let assets = assetsCache;
@@ -2497,6 +4339,22 @@ async function loadVideos() {
     seenVideos.add(key);
     return true;
   });
+  const nextStatuses = {};
+  combined.forEach(item => {
+    const key = item.requestId || item.jobId || item.localPath || item.assetId;
+    if (!key) return;
+    const currentStatus = item.status || 'unknown';
+    const previousStatus = knownVideoStatuses[key];
+    nextStatuses[key] = currentStatus;
+    if (notify && previousStatus && previousStatus !== currentStatus) {
+      if (currentStatus === 'completed') {
+        toast('Video complete — check your Library to see the completed video.', 'success');
+        if (activeBackgroundVideoKey && key === activeBackgroundVideoKey) stopGenerationOverlay({ success: true });
+      }
+      if (currentStatus === 'failed') toast('Video generation failed. Open Library and expand the full error.', 'error');
+    }
+  });
+  knownVideoStatuses = nextStatuses;
   libraryVideoItems = combined
     .filter(v => v.status === 'completed' && (v.localPath || '').trim())
     .map(v => ({
@@ -2504,7 +4362,10 @@ async function loadVideos() {
       name: v.prompt || v.format || 'Generated video',
       url: authenticatedMediaUrl(v.localPath || ''),
       prompt: v.prompt || '',
-      aspectRatio: v.aspectRatio || (currentLibraryVideoRatio === 'landscape' ? '16:9' : '9:16')
+      aspectRatio: v.aspectRatio || (currentLibraryVideoRatio === 'landscape' ? '16:9' : '9:16'),
+      sourceTrendUrl: v.sourceTrendUrl || '',
+      sourceTrendTitle: v.sourceTrendTitle || v.sourceTrendHook || '',
+      sourceTrendId: v.sourceTrendId || ''
     }));
 
   if (!combined.length) {
@@ -2513,25 +4374,63 @@ async function loadVideos() {
   }
 
   let videoIndex = -1;
+  videoErrorDetails = {};
+  videoStatusDetails = {};
   grid.innerHTML = combined.map(v => {
-    const statusChip = v.status === 'completed' ? '<span class="chip chip-green">Completed</span>' : v.status === 'failed' ? '<span class="chip chip-red">Failed</span>' : '<span class="chip chip-warn">Processing</span>';
     const mediaUrl = authenticatedMediaUrl(v.localPath || '');
+    const isPlayableComplete = v.status === 'completed' && mediaUrl;
+    const displayStatus = v.status === 'completed' && !mediaUrl ? 'finalizing' : v.status;
+    const statusChip = isPlayableComplete ? '<span class="chip chip-green">Completed</span>' : v.status === 'failed' ? '<span class="chip chip-red">Failed</span>' : displayStatus === 'finalizing' ? '<span class="chip chip-warn">Finalizing</span>' : '<span class="chip chip-warn">Processing</span>';
     const lightboxIndex = v.status === 'completed' && mediaUrl ? ++videoIndex : -1;
+    const errorText = String(v.error || '').trim();
+    const errorKey = `err-${String(v.requestId || v.jobId || Math.random()).replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+    const statusKey = `status-${String(v.requestId || v.jobId || Math.random()).replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+    const aspect = String(v.aspectRatio || '').includes('16:9') ? 'landscape' : String(v.aspectRatio || '').includes('1:1') ? 'square' : 'portrait';
+    if (errorText) videoErrorDetails[errorKey] = errorText;
+    videoStatusDetails[statusKey] = v;
+    const trendTitle = v.sourceTrendTitle || v.sourceTrendHook || (v.sourceTrendId ? `Trend ${v.sourceTrendId}` : '');
+    const trendUrl = v.sourceTrendUrl || '';
+    const trendBlock = trendTitle || trendUrl
+      ? `<div class="video-prompt trend-source-line">Trend source: ${escapeHtml(trendTitle || 'Original trend')}${trendUrl ? ` · <button class="link-button" type="button" onclick="event.stopPropagation();window.open('${trendUrl.replace(/'/g, "\\'")}','_blank','noopener')">Open source</button>` : ''}</div>`
+      : '';
+    const audioBlock = v.audioStatus === 'silent'
+      ? '<div class="video-prompt audio-source-line">No audio on this scene clip. Final assemblies use source audio when available.</div>'
+      : v.audioStatus ? `<div class="video-prompt audio-source-line">Audio: ${escapeHtml(v.audioStatus)}</div>` : '';
+    const errorBlock = errorText
+      ? `<details class="video-error-detail" onclick="event.stopPropagation()" style="margin-top:8px;border:1px solid rgba(217,79,79,.32);border-radius:10px;background:rgba(217,79,79,.06);padding:8px">
+          <summary style="cursor:pointer;font-size:12px;font-weight:900;color:var(--red)">View full error</summary>
+          <pre style="white-space:pre-wrap;word-break:break-word;max-height:220px;overflow:auto;margin:8px 0 0;font-size:11px;line-height:1.35;color:var(--ink)">${escapeHtml(errorText)}</pre>
+          <button class="btn btn-secondary" style="margin-top:8px;padding:6px 8px;font-size:11px" onclick="event.stopPropagation();copyFullVideoError('${errorKey}')">Copy error</button>
+        </details>`
+      : '';
+    const activeBlock = v.status === 'processing' || displayStatus === 'finalizing'
+      ? `<div class="video-prompt" style="color:rgba(255,255,255,.88);margin-top:7px">
+          ${displayStatus === 'finalizing' ? 'Provider render finished. Bloom Studio is saving the playable video now.' : `${escapeHtml(getStudioEngineName(v.provider || v.presetId))} is running in the background.`} ${escapeHtml(formatElapsedTime(v.createdAt))}. Safe to leave this panel.
+        </div>`
+      : '';
     const posterId = `poster-${String(v.requestId || v.jobId || Math.random()).replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+    const previewUrl = authenticatedMediaUrl(v.imagePreviewUrl || '');
     const videoPreviewUrl = mediaUrl ? `${mediaUrl}#t=0.1` : '';
     const videoEl = mediaUrl
-      ? `<div class="video-thumb-wrap" onclick="openLibraryLightbox('videos',${lightboxIndex})">
+      ? `<div class="video-thumb-wrap ${aspect}" onclick="openLibraryLightbox('videos',${lightboxIndex})">
           <img class="video-poster" id="${posterId}" alt="Video preview">
           <video class="video-player" preload="auto" muted playsinline onloadeddata="captureVideoPoster(this,'${posterId}')" onseeked="captureVideoPoster(this,'${posterId}')" onplay="markVideoPlaying(this,true)" onpause="markVideoPlaying(this,false)">
             <source src="${videoPreviewUrl}" type="video/mp4">
           </video>
           <div class="video-play-badge">▶ Preview</div>
         </div>`
-      : `<div class="video-player" style="display:flex;align-items:center;justify-content:center;color:#999">Processing</div>`;
+      : previewUrl
+        ? `<div class="video-thumb-wrap ${aspect} ${v.status === 'failed' ? 'failed' : ''}">
+            <img class="video-player" src="${previewUrl}" alt="Attempted character preview" onerror="handleVideoPreviewError(this,'${escapeHtml(v.status || 'processing')}')">
+            <div class="video-play-badge" style="background:${v.status === 'failed' ? 'rgba(217,79,79,.88)' : 'rgba(0,0,0,.66)'}">${v.status === 'failed' ? 'Failed' : displayStatus === 'finalizing' ? 'Finalizing' : 'Processing'}</div>
+          </div>`
+        : `<div class="video-player" style="display:flex;align-items:center;justify-content:center;color:${v.status === 'failed' ? 'var(--red)' : '#999'}">${v.status === 'failed' ? 'Failed' : displayStatus === 'finalizing' ? 'Finalizing' : 'Processing'}</div>`;
     const actions = v.status === 'completed' && mediaUrl
       ? `<div class="actions"><button class="btn btn-primary" onclick="event.stopPropagation();openPublishModal('${mediaUrl.replace(/'/g, "\\'")}','video')">Post</button><a class="btn btn-secondary" href="${mediaUrl}" download onclick="event.stopPropagation()">Save</a></div>`
-      : '';
-    return `<div class="video-card">${videoEl}<div class="video-info" onclick="${mediaUrl ? `openLibraryLightbox('videos',${lightboxIndex})` : ''}"><div style="display:flex;justify-content:space-between;gap:8px"><span class="chip chip-soft">${v.format || 'custom'}</span>${statusChip}</div><div class="video-prompt">${v.prompt || v.localPath || ''}</div>${v.error ? `<div class="video-prompt" style="color:var(--red)">${v.error}</div>` : ''}${actions}</div></div>`;
+      : v.status === 'processing' || displayStatus === 'finalizing'
+        ? `<div class="actions" style="opacity:1;transform:none;margin-top:8px"><button class="btn btn-secondary" onclick="event.stopPropagation();checkVideoStatus('${statusKey}')">Check status</button><button class="btn btn-secondary" onclick="event.stopPropagation();loadVideos({ notify: true })">Refresh Library</button></div>`
+        : '';
+    return `<div class="video-card ${aspect}">${videoEl}<div class="video-info" onclick="${mediaUrl ? `openLibraryLightbox('videos',${lightboxIndex})` : ''}"><div style="display:flex;justify-content:space-between;gap:8px"><span class="chip chip-soft">${v.format || 'custom'}</span>${statusChip}</div><div class="video-prompt">${escapeHtml(v.prompt || v.localPath || '')}</div>${trendBlock}${audioBlock}${activeBlock}${errorBlock}${actions}</div></div>`;
   }).join('');
 }
 
@@ -2612,6 +4511,13 @@ function formatBytes(bytes) {
 }
 
 initAuth();
+startVideoStatusWatcher();
+initializeStudioResize();
+initializeStudioPreviewResize();
+mountStudioControlsUnderPreview();
+mountImageWorkspaceInCreate();
+initializeStudioDefaults();
 updatePreviewRatio();
 updateThemeButton();
+switchTab('characters');
 setInterval(loadDashboard, 30000);

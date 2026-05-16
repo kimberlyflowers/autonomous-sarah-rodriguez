@@ -11,6 +11,7 @@ const { logger } = require('../services/logger');
 const router = express.Router();
 const ROOT_DIR = path.join(__dirname, '..', '..');
 const UPLOAD_DIR = path.join(ROOT_DIR, 'assets', 'tts');
+const CHATTERBOX_SAMPLE_DIR = path.join(UPLOAD_DIR, 'chatterbox-samples');
 
 const upload = multer({
   storage: multer.diskStorage({
@@ -45,6 +46,18 @@ router.get('/providers', (req, res) => {
       }
     ]
   });
+});
+
+router.get('/chatterbox/sample/:voice', (req, res) => {
+  const voice = CHATTERBOX_VOICES.includes(req.params.voice) ? req.params.voice : '';
+  if (!voice) return res.status(404).json({ error: 'Unknown Chatterbox voice.' });
+  const samplePath = path.join(CHATTERBOX_SAMPLE_DIR, `${voice}.wav`);
+  if (!fs.existsSync(samplePath)) {
+    return res.status(404).json({ error: 'No cached sample for this voice yet.' });
+  }
+  res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  res.type('audio/wav');
+  res.sendFile(samplePath);
 });
 
 router.post('/chatterbox', upload.single('voiceSample'), async (req, res) => {

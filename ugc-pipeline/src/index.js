@@ -20,6 +20,7 @@ const { requireTenant } = require('./services/auth');
 const { getSupabaseConfig } = require('./services/supabase');
 const { getRunPodConfig } = require('./services/runpod');
 const { hasDatabase, initUgcStore } = require('./services/postgres');
+const { getApiKey: getSeedanceApiKey } = require('./services/seedance');
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -68,12 +69,12 @@ app.use('/api/trends', apiKeyAuth, requireTenant, trendsRouter);
 
 // Health check
 app.get('/health', (req, res) => {
-  const hasApiKey = !!(process.env.WAVESPEED_API_KEY || process.env.SEEDANCE_API_KEY);
+  const hasApiKey = !!getSeedanceApiKey();
   res.json({
     status: 'ok',
     service: 'ugc-pipeline',
     version: '1.0.0',
-    provider: 'wavespeed+comfyui',
+    provider: 'runpod-public-endpoints+comfyui',
     apiKeyConfigured: hasApiKey,
     comfyuiConfigured: !!(process.env.COMFYUI_BASE_URL || process.env.RUNPOD_COMFYUI_URL),
     runpodAutoStartConfigured: getRunPodConfig().autoStartConfigured,
@@ -103,21 +104,17 @@ app.get('/api/status', (req, res) => {
   } catch (e) { /* ignore */ }
 
   res.json({
-    apiKeyConfigured: !!(process.env.WAVESPEED_API_KEY || process.env.SEEDANCE_API_KEY),
+    apiKeyConfigured: !!getSeedanceApiKey(),
     comfyuiConfigured: !!(process.env.COMFYUI_BASE_URL || process.env.RUNPOD_COMFYUI_URL),
     runpodAutoStartConfigured: getRunPodConfig().autoStartConfigured,
     databaseConfigured: hasDatabase(),
     supabaseConfigured: getSupabaseConfig().configured,
-    provider: 'wavespeed+comfyui',
+    provider: 'runpod-public-endpoints+comfyui',
     brands: brandCount,
     videosGenerated: videoCount,
     pricing: {
-      'seedance2-fast-480p': '$0.10/sec',
-      'seedance2-fast-720p': '$0.20/sec',
-      'seedance2-fast-1080p': '$0.30/sec',
-      'seedance2-standard-480p': '$0.12/sec',
-      'seedance2-standard-720p': '$0.24/sec',
-      'seedance2-standard-1080p': '$0.36/sec'
+      'runpod-seedance-1.5-i2v-480p': '$0.024/sec',
+      'runpod-seedance-1.5-i2v-720p': '$0.052/sec'
     }
   });
 });
@@ -136,7 +133,13 @@ dirs.forEach(dir => {
 
 initUgcStore()
   .then((ready) => {
-    if (ready) logger.info('UGC database-backed asset storage ready');
+    if (ready) {
+      logger.info('UGC database-backed asset storage ready');
+      if (typeof studioRouter.resumePendingServerlessVideoJobs === 'function') {
+        studioRouter.resumePendingServerlessVideoJobs()
+          .catch((error) => logger.warn(`Could not resume serverless video jobs: ${error.message}`));
+      }
+    }
   })
   .catch((error) => logger.warn(`UGC database storage unavailable: ${error.message}`));
 
