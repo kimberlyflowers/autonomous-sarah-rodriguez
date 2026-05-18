@@ -6,7 +6,7 @@ const { logger } = require('../services/logger');
 const { estimateCost, uploadToTempHost, submitGeneration } = require('../services/seedance');
 const { addJob } = require('../services/poller');
 const { submitInfiniteTalkHdJob } = require('../services/infinitetalkHd');
-const { submitWanAnimateVideoJob } = require('../services/runpodVideo');
+const { submitMuseTalkVideoJob, submitWanAnimateVideoJob } = require('../services/runpodVideo');
 const { downloadSourceVideo, getRunpodToolConfig } = require('../services/runpodTools');
 const { downloadWithYtDlp } = require('../services/localDownloader');
 const templates = require('../templates');
@@ -48,6 +48,7 @@ function normalizeSceneEngine(engine = '') {
   const value = String(engine || '').trim();
   if (value === 'wan-animate') return 'wan-animate';
   if (value === 'infinitetalk-hd') return 'infinitetalk-hd';
+  if (value === 'musetalk') return 'musetalk';
   if (value === 'seedance2-standard') return 'seedance2-standard';
   return 'seedance2-fast';
 }
@@ -453,6 +454,18 @@ router.post('/campaign-scenes', async (req, res) => {
             rawProviderId = talk.id;
             requestId = `infinitetalk_${talk.id}`;
             provider = 'infinitetalk-hd';
+            cost = Number(scene.estimatedCost || 0);
+          } else if (engine === 'musetalk') {
+            const talk = await submitMuseTalkVideoJob({
+              imageUrl: primaryImageUrl,
+              audioUrl: scene.audioUrl || scene.voiceUrl || '',
+              prompt: scenePrompt,
+              fps: scene.fps || 25,
+              bboxShift: scene.bboxShift || scene.bbox_shift || 0
+            });
+            rawProviderId = talk.id;
+            requestId = `musetalk_${talk.id}`;
+            provider = 'musetalk';
             cost = Number(scene.estimatedCost || 0);
           } else {
             const payload = {

@@ -17,6 +17,9 @@ let currentCharacterRatio = 'portrait';
 let currentLibraryImageRatio = 'portrait';
 let libraryImageItems = [];
 let libraryVideoItems = [];
+let renderedVideoItems = [];
+let selectedVideoKeys = new Set();
+let lastSelectedVideoIndex = -1;
 let assetLightboxItems = {};
 let videoErrorDetails = {};
 let videoStatusDetails = {};
@@ -49,6 +52,8 @@ let generationTimer = null;
 let generationStartedAt = 0;
 let generationOverlayMode = 'active';
 let activeBackgroundVideoKey = '';
+let activeBackgroundVideoLastCheck = 0;
+let activeBackgroundVideoCheckInFlight = false;
 let studioStatusCache = null;
 let campaignState = { selectedCharacters: new Set(), assetMap: new Map(), productKey: '', trendId: '', scenePlan: [], frameWorkflow: null };
 let currentCreateImageType = 'products';
@@ -129,6 +134,10 @@ function isolateStudioTabIfActive() {
   });
 }
 
+function isTabActive(tabId) {
+  return !!document.getElementById(`tab-${tabId}`)?.classList.contains('active');
+}
+
 function toast(message, type = 'info') {
   const container = document.getElementById('toastContainer');
   const el = document.createElement('div');
@@ -165,7 +174,8 @@ function startVideoStatusWatcher() {
   if (videoStatusWatchStarted) return;
   videoStatusWatchStarted = true;
   setInterval(() => {
-    if (authToken || currentTenant) loadVideos({ notify: true });
+    if (!authToken && !currentTenant) return;
+    if (isTabActive('videos') || activeBackgroundVideoKey) loadVideos({ notify: true });
   }, 20000);
 }
 
@@ -183,6 +193,8 @@ function startGenerationOverlay({ engine = 'wan-comfy', mode = 'i2v' } = {}) {
     ? 'InfiniteTalk HD'
     : engine === 'seedance-campaign'
     ? 'RunPod Seedance campaign'
+    : engine === 'musetalk'
+    ? 'MuseTalk lip sync'
     : engine === 'meigen'
     ? 'Meigen lip sync'
     : engine === 'wan22-serverless'
@@ -199,6 +211,8 @@ function startGenerationOverlay({ engine = 'wan-comfy', mode = 'i2v' } = {}) {
 function setBackgroundGenerationOverlay({ engine = 'wan-comfy', mode = 'i2v', jobKey = '' } = {}) {
   generationOverlayMode = 'background';
   activeBackgroundVideoKey = jobKey || '';
+  activeBackgroundVideoLastCheck = 0;
+  activeBackgroundVideoCheckInFlight = false;
   document.getElementById('generationSuccessActions').style.display = 'none';
   document.getElementById('generationTitle').textContent = 'Success!';
   document.getElementById('generationDetail').textContent = 'Your video is currently processing in background. You can navigate away from this page or keep using the app while your video is cooking. We will notify you when it is complete.';
@@ -213,12 +227,13 @@ function setBackgroundGenerationOverlay({ engine = 'wan-comfy', mode = 'i2v', jo
 
 function updateGenerationOverlay(engine = 'wan-comfy', mode = 'i2v') {
   const elapsed = Math.max(0, Math.round((Date.now() - generationStartedAt) / 1000));
-  const estimate = engine === 'infinitetalk-hd' ? 900 : engine === 'seedance-campaign' ? 260 : engine === 'meigen' ? 180 : engine === 'wan22-serverless' ? 260 : engine === 'wan-animate' ? 420 : mode === 'v2v' ? 300 : 240;
+  const estimate = engine === 'infinitetalk-hd' ? 900 : engine === 'musetalk' ? 360 : engine === 'seedance-campaign' ? 260 : engine === 'meigen' ? 180 : engine === 'wan22-serverless' ? 260 : engine === 'wan-animate' ? 420 : mode === 'v2v' ? 300 : 240;
   const progress = Math.min(96, Math.max(3, Math.round((elapsed / estimate) * 92)));
   if (generationOverlayMode === 'background') {
     document.getElementById('generationElapsed').textContent = `${elapsed}s elapsed`;
     document.getElementById('generationPercent').textContent = `${progress}% estimated`;
     document.getElementById('generationProgressFill').style.width = `${progress}%`;
+    maybeCheckActiveBackgroundVideo();
     return;
   }
   const stages = engine === 'infinitetalk-hd'
@@ -234,6 +249,13 @@ function updateGenerationOverlay(engine = 'wan-comfy', mode = 'i2v') {
         [10, 'Uploading references', 'Sending your selected image and voiceover to the lip sync endpoint.'],
         [35, 'Building the face track', 'Matching the speaker motion to the audio.'],
         [70, 'Rendering video', 'Generating the final talking-head clip.'],
+        [96, 'Saving to Library', 'Almost there. Bloom Studio is collecting the finished video.']
+      ]
+    : engine === 'musetalk'
+    ? [
+        [10, 'Uploading avatar and audio', 'Sending your selected image and voiceover to the MuseTalk endpoint.'],
+        [32, 'Preparing face region', 'MuseTalk is locating and caching the face region for lip sync.'],
+        [72, 'Rendering lip sync', 'Generating the mouth movement from the audio.'],
         [96, 'Saving to Library', 'Almost there. Bloom Studio is collecting the finished video.']
       ]
     : engine === 'wan22-serverless'
@@ -262,6 +284,30 @@ function updateGenerationOverlay(engine = 'wan-comfy', mode = 'i2v') {
   document.getElementById('generationElapsed').textContent = `${elapsed}s elapsed`;
   document.getElementById('generationPercent').textContent = `${progress}% estimated`;
   document.getElementById('generationProgressFill').style.width = `${progress}%`;
+}
+
+async function maybeCheckActiveBackgroundVideo() {
+  if (!activeBackgroundVideoKey || activeBackgroundVideoCheckInFlight) return;
+  const now = Date.now();
+  if (now - activeBackgroundVideoLastCheck < 5000) return;
+  activeBackgroundVideoLastCheck = now;
+  activeBackgroundVideoCheckInFlight = true;
+  try {
+    const job = await api(`/api/studio/jobs/${encodeURIComponent(activeBackgroundVideoKey)}`);
+    if (job.status === 'completed') {
+      toast('Video complete — check your Library to see the completed video.', 'success');
+      stopGenerationOverlay({ success: true });
+      await loadVideos();
+    } else if (job.status === 'failed') {
+      stopGenerationOverlay();
+      toast(job.error || 'Video generation failed.', 'error');
+      await loadVideos();
+    }
+  } catch (error) {
+    console.warn('Background video status check failed', error);
+  } finally {
+    activeBackgroundVideoCheckInFlight = false;
+  }
 }
 
 function stopGenerationOverlay({ success = false } = {}) {
@@ -919,16 +965,20 @@ async function loadStudioStatus() {
 
     const qwen = data.audioProviders.find(p => p.id === 'qwen');
     const chatterbox = data.audioProviders.find(p => p.id === 'chatterbox');
+    const vibevoice = data.audioProviders.find(p => p.id === 'vibevoice');
     const meigen = data.videoEngines?.find(p => p.id === 'meigen');
     const infiniteTalkHd = data.videoEngines?.find(p => p.id === 'infinitetalk-hd');
+    const museTalk = data.videoEngines?.find(p => p.id === 'musetalk');
     const wan22 = data.videoEngines?.find(p => p.id === 'wan22-serverless');
     const wanAnimate = data.videoEngines?.find(p => p.id === 'wan-animate');
     setChip('qwenStatus', qwen?.available ? 'Ready' : 'Needs workflow', qwen?.available ? 'soft' : 'warn');
-    const serverlessReady = [meigen, infiniteTalkHd, wan22, wanAnimate].filter(Boolean).filter(engine => engine.available).length;
+    const serverlessReady = [meigen, infiniteTalkHd, museTalk, wan22, wanAnimate].filter(Boolean).filter(engine => engine.available).length;
     setChip('meigenStatus', serverlessReady ? `${serverlessReady} ready` : 'Needs keys', serverlessReady ? 'green' : 'warn');
     const qwenNote = document.getElementById('qwenNote');
-    if (qwenNote) qwenNote.textContent = chatterbox?.available
-      ? 'Chatterbox Turbo is ready for preset voices and custom voice_url samples.'
+    if (qwenNote) qwenNote.textContent = vibevoice?.available
+      ? 'VibeVoice longform is ready for English narration.'
+      : chatterbox?.available
+        ? 'Legacy Chatterbox is available for short tests, but VibeVoice is preferred for longform.'
       : qwen?.note || 'Waiting for Qwen TTS API workflow export.';
     const currentCreateType = document.getElementById('studioCreateType')?.value;
     if (currentCreateType) setCreateType(currentCreateType, { preserveToast: true });
@@ -1137,8 +1187,9 @@ function renderFlowStatus(selected) {
   const statusSets = {
     shorts: [
       flowStatusChip('InfiniteTalk HD', engine('infinitetalk-hd')?.available, engine('infinitetalk-hd')?.note),
+      flowStatusChip('MuseTalk', engine('musetalk')?.available, engine('musetalk')?.note),
       flowStatusChip('Meigen', engine('meigen')?.available, engine('meigen')?.note),
-      flowStatusChip('Chatterbox', audio('chatterbox')?.available, audio('chatterbox')?.note)
+      flowStatusChip('VibeVoice', audio('vibevoice')?.available, audio('vibevoice')?.note)
     ],
     remix: [
       flowStatusChip('Wan Animate', engine('wan-animate')?.available, engine('wan-animate')?.note),
@@ -1147,7 +1198,7 @@ function renderFlowStatus(selected) {
     ],
     'long-form': [
       flowStatusChip('Wan 2.2', engine('wan22-serverless')?.available, engine('wan22-serverless')?.note),
-      flowStatusChip('Chatterbox', audio('chatterbox')?.available, audio('chatterbox')?.note)
+      flowStatusChip('VibeVoice', audio('vibevoice')?.available, audio('vibevoice')?.note)
     ],
     webinar: [
       flowStatusChip('WAN/ComfyUI', engine('wan-comfy')?.available, engine('wan-comfy')?.note),
@@ -1155,7 +1206,7 @@ function renderFlowStatus(selected) {
     ],
     course: [
       flowStatusChip('Wan 2.2', engine('wan22-serverless')?.available, engine('wan22-serverless')?.note),
-      flowStatusChip('Chatterbox', audio('chatterbox')?.available, audio('chatterbox')?.note)
+      flowStatusChip('VibeVoice', audio('vibevoice')?.available, audio('vibevoice')?.note)
     ]
   };
   return `<div class="create-flow-status-row">${(statusSets[selected] || statusSets.shorts).join('')}</div>`;
@@ -1177,11 +1228,11 @@ function setCreateTool(tool = 'video') {
   const note = document.querySelector('#tab-studio .panel-note');
   if (selected === 'audio') {
     if (title) title.textContent = 'Create voice-over';
-    if (note) note.textContent = 'Write or paste a script, choose Chatterbox or ElevenLabs v3, preview it, then save the approved audio.';
+    if (note) note.textContent = 'Write or paste a script, choose VibeVoice or ElevenLabs v3, preview it, then save the approved audio.';
     const scriptLabel = document.getElementById('studioScriptLabel');
     const script = document.getElementById('studioScript');
     if (scriptLabel) scriptLabel.textContent = 'Voiceover script';
-    if (script) script.placeholder = 'Paste the exact narration script for Chatterbox or ElevenLabs v3.';
+    if (script) script.placeholder = 'Paste the exact narration script for VibeVoice or ElevenLabs v3.';
     setAudioPreviewMode();
     setStudioMode('audio');
     setStudioAudio(document.getElementById('studioAudioProvider')?.value || 'upload', { preserveToast: true });
@@ -1467,6 +1518,7 @@ function buildCampaignPrompt({ basePrompt, character, product, environment, aspe
 function getCampaignEngineLabel(engine = '') {
   if (engine === 'wan-animate') return 'Wan Animate motion mimic';
   if (engine === 'infinitetalk-hd') return 'InfiniteTalk talking head';
+  if (engine === 'musetalk') return 'MuseTalk talking head';
   if (engine === 'seedance2-standard') return 'Seedance fixed camera';
   return 'Seedance 1.5';
 }
@@ -1477,6 +1529,9 @@ function getCampaignEngineRequirement(scene = {}) {
     return scene.referenceVideoUrl || scene.sourceTrendUrl ? 'Ready: source trend/reference video' : 'Needs reference video URL';
   }
   if (engine === 'infinitetalk-hd') {
+    return scene.audioUrl || scene.voiceUrl ? 'Ready: audio URL' : 'Needs audio URL in JSON';
+  }
+  if (engine === 'musetalk') {
     return scene.audioUrl || scene.voiceUrl ? 'Ready: audio URL' : 'Needs audio URL in JSON';
   }
   return 'Ready: source image';
@@ -1654,7 +1709,8 @@ function renderCampaignScenePlan() {
           <option value="seedance2-fast" ${scene.engine === 'seedance2-fast' ? 'selected' : ''}>RunPod Seedance 1.5</option>
           <option value="seedance2-standard" ${scene.engine === 'seedance2-standard' ? 'selected' : ''}>RunPod Seedance 1.5 fixed camera</option>
           <option value="wan-animate" ${scene.engine === 'wan-animate' ? 'selected' : ''}>Wan Animate trend mimic</option>
-          <option value="infinitetalk-hd" ${scene.engine === 'infinitetalk-hd' ? 'selected' : ''}>Talking head</option>
+          <option value="infinitetalk-hd" ${scene.engine === 'infinitetalk-hd' ? 'selected' : ''}>InfiniteTalk talking head</option>
+          <option value="musetalk" ${scene.engine === 'musetalk' ? 'selected' : ''}>MuseTalk talking head</option>
         </select>
       </div>
       <div class="form-grid">
@@ -2192,13 +2248,13 @@ function setCreateType(type, options = {}) {
       badge: 'Talking-head',
       desc: 'Create a short creator video from a character, script or approved audio, then save it to Library for posting.',
       mode: 'i2v',
-      engine: 'meigen',
+      engine: 'musetalk',
       audio: 'upload',
       aspect: '9:16',
       steps: [
         ['Choose character', 'Select an influencer or upload a portrait.'],
         ['Create audio', 'Upload audio or generate a voice preview.'],
-        ['Lip sync', 'Use Meigen for fast talking-head output.'],
+        ['Lip sync', 'Use MuseTalk or another talking-head model for the render.'],
         ['Save + post', 'Review in Library, then publish.']
       ]
     },
@@ -2237,13 +2293,13 @@ function setCreateType(type, options = {}) {
       badge: 'Script led',
       desc: 'Use a longer script or finished voiceover, then generate presenter sections so the output does not depend on one giant render.',
       mode: 'i2v',
-      engine: 'wan22-serverless',
+      engine: 'musetalk',
       audio: 'upload',
       aspect: '16:9',
       steps: [
         ['Write script', 'Paste the full script or outline.'],
         ['Approve audio', 'Upload or generate voiceover before rendering.'],
-        ['Generate sections', 'Use Wan 2.2 by segment for steadier output.'],
+        ['Lip sync sections', 'Use MuseTalk or another compatible video model by segment.'],
         ['Assemble', 'Save each section to Library for editing.']
       ]
     },
@@ -2251,14 +2307,14 @@ function setCreateType(type, options = {}) {
       title: 'Webinar workflow',
       badge: 'Training',
       desc: 'Build webinar-style content from a teaching script, slides, or long source audio. Best for 16:9 output.',
-      mode: 'v2v',
-      engine: 'wan-comfy',
+      mode: 'i2v',
+      engine: 'musetalk',
       audio: 'upload',
       aspect: '16:9',
       steps: [
-        ['Upload source', 'Use a webinar clip, slide recording, or host video.'],
+        ['Choose presenter', 'Use a character portrait or upload a webinar host image.'],
         ['Add narration', 'Upload final audio or use saved audio.'],
-        ['Render V2V', 'Use the Bloomies video-to-video path.'],
+        ['Lip sync presenter', 'Use MuseTalk or another compatible talking-head model.'],
         ['Review', 'Save finished sections to Library.']
       ]
     },
@@ -2267,7 +2323,7 @@ function setCreateType(type, options = {}) {
       badge: 'Lessons',
       desc: 'Create lesson videos from structured scripts and approved narration. Works best as repeatable lesson modules.',
       mode: 'i2v',
-      engine: 'wan22-serverless',
+      engine: 'musetalk',
       audio: 'elevenlabs',
       aspect: '16:9',
       steps: [
@@ -2310,7 +2366,7 @@ function setCreateType(type, options = {}) {
   if (scriptLabel) scriptLabel.textContent = selected === 'remix' ? 'Remix narration script' : 'Narration script';
   if (script) script.placeholder = selected === 'remix'
     ? 'Paste the adapted narration script for this remix.'
-    : 'Paste the spoken words Chatterbox or ElevenLabs should turn into voiceover.';
+    : 'Paste the spoken words VibeVoice or ElevenLabs should turn into voiceover.';
 
   if (selected === 'remix') {
     document.getElementById('studioRemixContext')?.classList.add('active');
@@ -2527,7 +2583,7 @@ function setStudioMode(mode) {
     setStudioVideoEngine(document.getElementById('studioVideoEngine').value);
   }
   if (actualMode === 'audio' && ['upload', 'asset'].includes(document.getElementById('studioAudioProvider').value)) {
-    setStudioAudio('chatterbox');
+    setStudioAudio('vibevoice');
   }
 }
 
@@ -2572,6 +2628,7 @@ function getStudioEngineHint(engine) {
   if (engine === 'seedance2-fast') return 'Uses RunPod Seedance 1.5 Pro for image-to-video scene motion. No ComfyUI pod required.';
   if (engine === 'seedance2-standard') return 'Uses RunPod Seedance 1.5 Pro fixed camera mode for steadier product or creator scenes.';
   if (engine === 'infinitetalk-hd') return 'Uses your custom RunPod InfiniteTalk endpoint with CodeFormer and optional Real-ESRGAN upscale. Requires the network volume mounted at /runpod-volume.';
+  if (engine === 'musetalk') return 'Uses your custom RunPod MuseTalk endpoint for fast face-region lip sync. No ComfyUI pod required, but the endpoint must be deployed from the MuseTalk worker.';
   if (engine === 'meigen') return 'Uses MeiGen-AI InfiniteTalk through the RunPod public endpoint. No ComfyUI pod required.';
   if (engine === 'wan22-serverless') return 'Uses the Wan 2.2 RunPod serverless endpoint for image-to-video. No ComfyUI pod required.';
   if (engine === 'wan-animate') return 'Uses Wan Animate serverless with a reference video to mimic motion. No ComfyUI pod required.';
@@ -2592,17 +2649,17 @@ function setStudioAudio(provider, options = {}) {
   document.getElementById('studioAudioProvider').value = provider;
   const form = document.getElementById('studioForm');
   if (form) {
-    form.classList.remove('voice-provider-upload', 'voice-provider-asset', 'voice-provider-elevenlabs', 'voice-provider-chatterbox', 'voice-provider-qwen');
+    form.classList.remove('voice-provider-upload', 'voice-provider-asset', 'voice-provider-elevenlabs', 'voice-provider-chatterbox', 'voice-provider-vibevoice', 'voice-provider-qwen');
     form.classList.add(`voice-provider-${provider}`);
   }
   document.getElementById('studioAudioGroup').style.display = provider === 'upload' ? '' : 'none';
   document.getElementById('studioAudioAssetGroup').style.display = provider === 'asset' ? '' : 'none';
   document.getElementById('studioVoiceGroup').style.display = provider === 'elevenlabs' ? '' : 'none';
-  document.getElementById('studioChatterboxGroup').style.display = provider === 'chatterbox' ? '' : 'none';
+  document.getElementById('studioChatterboxGroup').style.display = ['chatterbox', 'vibevoice'].includes(provider) ? '' : 'none';
   const configureButton = document.getElementById('studioConfigureVoiceButton');
-  if (configureButton) configureButton.style.display = ['chatterbox', 'elevenlabs'].includes(provider) ? '' : 'none';
-  document.getElementById('studioPreviewVoiceButton').style.display = ['chatterbox', 'elevenlabs'].includes(provider) ? '' : 'none';
-  document.getElementById('studioPreviewVoiceButton').textContent = provider === 'elevenlabs' ? 'Preview script with ElevenLabs' : 'Preview script with Chatterbox';
+  if (configureButton) configureButton.style.display = ['chatterbox', 'vibevoice', 'elevenlabs'].includes(provider) ? '' : 'none';
+  document.getElementById('studioPreviewVoiceButton').style.display = ['chatterbox', 'vibevoice', 'elevenlabs'].includes(provider) ? '' : 'none';
+  document.getElementById('studioPreviewVoiceButton').textContent = provider === 'elevenlabs' ? 'Preview script with ElevenLabs' : provider === 'vibevoice' ? 'Preview script with VibeVoice' : 'Preview script with Chatterbox';
   if (provider === 'elevenlabs') toggleVoiceDetails(true);
   if (options.preserveToast) return;
   if (provider === 'qwen') {
@@ -2611,8 +2668,11 @@ function setStudioAudio(provider, options = {}) {
   if (provider === 'elevenlabs') {
     toast('ElevenLabs will generate audio from the script before queuing the video.', 'info');
   }
+  if (provider === 'vibevoice') {
+    toast('VibeVoice will generate longform English narration from the script.', 'info');
+  }
   if (provider === 'chatterbox') {
-    toast('Chatterbox will generate audio from the script before queuing the video.', 'info');
+    toast('Legacy Chatterbox is best for short tests only. Use VibeVoice for longform.', 'info');
   }
 }
 
@@ -2723,7 +2783,7 @@ function setAudioPreviewMode() {
   frame.classList.add('audio-preview-mode');
   frame.onpointerdown = null;
   document.getElementById('cropHint').style.display = 'none';
-  frame.innerHTML = `<div><strong id="previewTitle">Audio preview appears here</strong><p id="previewHint" style="font-size:13px;margin-top:6px;color:rgba(255,255,255,.45)">Generate from script with Chatterbox or ElevenLabs v3, then play it here.</p></div>`;
+  frame.innerHTML = `<div><strong id="previewTitle">Audio preview appears here</strong><p id="previewHint" style="font-size:13px;margin-top:6px;color:rgba(255,255,255,.45)">Generate from script with VibeVoice or ElevenLabs v3, then play it here.</p></div>`;
 }
 
 function resetStudioCrop() {
@@ -2879,11 +2939,12 @@ async function submitStudioVideo(e) {
 
   if (mode === 'i2v' && !document.getElementById('studioImage').files[0] && !document.getElementById('studioImageAssetId').value && !document.getElementById('studioImageUrl').value) return toast('Upload a portrait image or select a saved character first.', 'error');
   if (mode === 'v2v' && !document.getElementById('studioVideo').files[0]) return toast('Upload a source video first.', 'error');
-  const serverlessVideoEngines = ['meigen', 'infinitetalk-hd', 'wan22-serverless', 'wan-animate', 'seedance2-fast', 'seedance2-standard'];
+  const serverlessVideoEngines = ['meigen', 'infinitetalk-hd', 'musetalk', 'wan22-serverless', 'wan-animate', 'seedance2-fast', 'seedance2-standard'];
   const engineNeedsAudio = !['wan22-serverless', 'wan-animate', 'seedance2-fast', 'seedance2-standard'].includes(videoEngine);
   if (engineNeedsAudio && document.getElementById('studioAudioProvider').value === 'upload' && !document.getElementById('studioAudio').files[0]) return toast('Upload an audio file first.', 'error');
   if (engineNeedsAudio && document.getElementById('studioAudioProvider').value === 'asset' && !document.getElementById('studioAudioAssetId').value) return toast('Choose saved audio first.', 'error');
   if (engineNeedsAudio && document.getElementById('studioAudioProvider').value === 'elevenlabs' && !document.getElementById('studioScript').value.trim()) return toast('Paste a script for ElevenLabs audio.', 'error');
+  if (engineNeedsAudio && document.getElementById('studioAudioProvider').value === 'vibevoice' && !document.getElementById('studioScript').value.trim()) return toast('Paste a script for VibeVoice audio.', 'error');
   if (engineNeedsAudio && document.getElementById('studioAudioProvider').value === 'chatterbox' && !document.getElementById('studioScript').value.trim()) return toast('Paste a script for Chatterbox audio.', 'error');
   if (serverlessVideoEngines.includes(videoEngine) && mode !== 'i2v') return toast('Serverless video engines are available in Image to video mode right now.', 'error');
   if (videoEngine === 'wan-animate' && !document.getElementById('studioReferenceVideo').files[0] && !document.getElementById('studioReferenceVideoUrl').value.trim() && !document.getElementById('studioRemixSourceUrl').value.trim()) {
@@ -2923,6 +2984,7 @@ function getStudioEngineName(engine) {
   if (engine === 'seedance2-fast') return 'Seedance 1.5';
   if (engine === 'seedance2-standard') return 'Seedance fixed camera';
   if (engine === 'infinitetalk-hd') return 'InfiniteTalk HD';
+  if (engine === 'musetalk') return 'MuseTalk';
   if (engine === 'meigen') return 'Meigen';
   if (engine === 'wan22-serverless') return 'Wan 2.2 Serverless';
   if (engine === 'wan-animate') return 'Wan Animate';
@@ -2931,21 +2993,23 @@ function getStudioEngineName(engine) {
 
 async function submitAudioOnly(form) {
   const provider = document.getElementById('studioAudioProvider').value;
-  if (provider === 'qwen') return toast('Qwen audio is not wired yet. Use Chatterbox or ElevenLabs for now.', 'error');
-  if (!['chatterbox', 'elevenlabs'].includes(provider)) return toast('Choose Chatterbox or ElevenLabs to generate audio from script.', 'error');
+  if (provider === 'qwen') return toast('Qwen audio is not wired yet. Use VibeVoice or ElevenLabs for now.', 'error');
+  if (!['vibevoice', 'chatterbox', 'elevenlabs'].includes(provider)) return toast('Choose VibeVoice or ElevenLabs to generate audio from script.', 'error');
   if (!document.getElementById('studioScript').value.trim()) return toast('Paste a script first.', 'error');
+  if (provider === 'vibevoice') return previewVibeVoice(true);
   return provider === 'elevenlabs' ? previewElevenLabsVoice(true) : previewChatterboxVoice(true);
 }
 
 function previewCurrentVoice() {
   const provider = document.getElementById('studioAudioProvider').value;
   if (provider === 'elevenlabs') return previewElevenLabsVoice(false);
+  if (provider === 'vibevoice') return previewVibeVoice(false);
   if (provider === 'chatterbox') return previewChatterboxVoice(false);
-  return toast('Choose Chatterbox or ElevenLabs to preview a generated voice.', 'error');
+  return toast('Choose VibeVoice or ElevenLabs to preview a generated voice.', 'error');
 }
 
 function selectedChatterboxVoice() {
-  return document.getElementById('studioChatterboxVoice')?.value || 'lucy';
+  return document.getElementById('studioChatterboxVoice')?.value || 'default';
 }
 
 function updateChatterboxVoiceLabel() {
@@ -2958,6 +3022,9 @@ function updateChatterboxVoiceLabel() {
 }
 
 async function playCachedChatterboxVoiceSample() {
+  if (document.getElementById('studioAudioProvider')?.value === 'vibevoice') {
+    return toast('VibeVoice samples come from the configured endpoint. Use Preview script with VibeVoice.', 'info');
+  }
   const voice = selectedChatterboxVoice();
   const hint = document.getElementById('chatterboxSampleHint');
   const audio = document.getElementById('chatterboxSampleAudio');
@@ -2982,7 +3049,46 @@ function nextChatterboxVoice() {
   if (!select?.options?.length) return;
   select.selectedIndex = (select.selectedIndex + 1) % select.options.length;
   updateChatterboxVoiceLabel();
-  playCachedChatterboxVoiceSample();
+  if (document.getElementById('studioAudioProvider')?.value === 'chatterbox') playCachedChatterboxVoiceSample();
+}
+
+async function previewVibeVoice(saveOnly = false) {
+  const writtenScript = document.getElementById('studioScript').value.trim();
+  const script = writtenScript || 'Hi, I am previewing VibeVoice so you can hear the tone before choosing it for your video.';
+  const button = document.getElementById('studioPreviewVoiceButton');
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Creating preview...';
+  }
+  setVoicePreviewLoading(true, 'VibeVoice');
+  try {
+    const data = new FormData();
+    data.append('script', script);
+    data.append('voice', document.getElementById('studioChatterboxVoice').value);
+    data.append('format', document.getElementById('studioChatterboxFormat').value);
+    data.append('voiceUrl', document.getElementById('studioChatterboxVoiceUrl').value.trim());
+    data.append('name', `${writtenScript ? 'VibeVoice voiceover' : 'VibeVoice sample'} ${new Date().toLocaleString()}`);
+    const sample = document.getElementById('studioVoiceSample')?.files?.[0];
+    if (sample) data.append('voiceSample', sample);
+    const response = await api('/api/tts/vibevoice', { method: 'POST', body: data });
+    previewAudioAsset = response.result?.asset || null;
+    const url = response.result?.asset?.files?.[0]?.path || response.result?.audioUrl;
+    if (!url) throw new Error('VibeVoice did not return audio.');
+    setVoicePreviewLoading(false);
+    document.getElementById('studioVoicePreview').style.display = '';
+    document.getElementById('studioVoicePreviewTitle').textContent = saveOnly ? 'Audio generated and saved' : writtenScript ? 'VibeVoice preview saved' : 'VibeVoice sample saved';
+    document.getElementById('studioVoicePreviewAudio').src = await playableMediaUrl(url);
+    toast('VibeVoice generated and saved to audio Library.', 'success');
+    await loadAssets();
+  } catch (error) {
+    setVoicePreviewLoading(false);
+    toast(error.message, 'error');
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = 'Preview script with VibeVoice';
+    }
+  }
 }
 
 async function previewChatterboxVoice(saveOnly = false) {
@@ -3228,9 +3334,9 @@ function applyCharacterAudioDefaults(character = {}) {
     return 'elevenlabs';
   }
   if (character.voiceSampleAssetId) {
-    setStudioAudio('chatterbox', { preserveToast: true });
+    setStudioAudio('vibevoice', { preserveToast: true });
     hydrateChatterboxVoiceUrl(character.voiceSampleAssetId);
-    return 'chatterbox';
+    return 'vibevoice';
   }
   setStudioAudio('upload', { preserveToast: true });
   return 'upload';
@@ -3267,7 +3373,7 @@ async function hydrateChatterboxVoiceUrl(audioAssetId) {
     const data = await api(`/api/assets/audio/${audioAssetId}/temp-url`, { method: 'POST' });
     const input = document.getElementById('studioChatterboxVoiceUrl');
     if (input) input.value = data.url;
-    toast('Default Chatterbox voice URL loaded for this character.', 'success');
+    toast('Default VibeVoice reference URL loaded for this character.', 'success');
   } catch (error) {
     toast(`Could not load character voice sample: ${error.message}`, 'error');
   }
@@ -4091,7 +4197,7 @@ async function copyAudioTempUrl(slug) {
   try {
     const data = await api(`/api/assets/audio/${slug}/temp-url`, { method: 'POST' });
     await navigator.clipboard.writeText(data.url);
-    toast('Temporary voice URL copied. Paste it into Chatterbox custom voice URL.', 'success');
+    toast('Temporary voice URL copied. Paste it into the VibeVoice reference voice URL.', 'success');
   } catch (error) {
     toast(error.message, 'error');
   }
@@ -4284,6 +4390,91 @@ function authenticatedMediaUrl(path) {
   return url.pathname + url.search;
 }
 
+function getVideoSelectionKey(video = {}) {
+  return video.assetId || video.localPath || video.requestId || video.jobId || '';
+}
+
+function updateVideoBulkBar() {
+  const selected = renderedVideoItems.filter(video => selectedVideoKeys.has(getVideoSelectionKey(video)));
+  const bar = document.getElementById('videoBulkBar');
+  const count = document.getElementById('videoBulkCount');
+  if (!bar || !count) return;
+  bar.style.display = selected.length ? 'flex' : 'none';
+  count.textContent = `${selected.length} selected`;
+  document.querySelectorAll('[data-video-key]').forEach(card => {
+    card.classList.toggle('selected', selectedVideoKeys.has(card.dataset.videoKey));
+  });
+  document.querySelectorAll('[data-video-select-key]').forEach(input => {
+    input.checked = selectedVideoKeys.has(input.dataset.videoSelectKey);
+  });
+}
+
+function selectVideoItem(index, checked, event) {
+  const video = renderedVideoItems[index];
+  const key = getVideoSelectionKey(video);
+  if (!video || !key) return;
+  if (event?.shiftKey && lastSelectedVideoIndex >= 0) {
+    const start = Math.min(lastSelectedVideoIndex, index);
+    const end = Math.max(lastSelectedVideoIndex, index);
+    for (let i = start; i <= end; i++) {
+      const rangeKey = getVideoSelectionKey(renderedVideoItems[i]);
+      if (rangeKey) checked ? selectedVideoKeys.add(rangeKey) : selectedVideoKeys.delete(rangeKey);
+    }
+  } else {
+    checked ? selectedVideoKeys.add(key) : selectedVideoKeys.delete(key);
+  }
+  lastSelectedVideoIndex = index;
+  updateVideoBulkBar();
+}
+
+function clearVideoSelection() {
+  selectedVideoKeys.clear();
+  lastSelectedVideoIndex = -1;
+  document.querySelectorAll('.video-select-control input').forEach(input => { input.checked = false; });
+  updateVideoBulkBar();
+}
+
+function selectedDownloadName(video = {}, index = 0) {
+  const clean = String(video.prompt || video.format || video.provider || `video-${index + 1}`)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48) || `video-${index + 1}`;
+  return `${String(index + 1).padStart(2, '0')}-${clean}.mp4`;
+}
+
+async function downloadSelectedVideos() {
+  const selected = renderedVideoItems.filter(video => selectedVideoKeys.has(getVideoSelectionKey(video)) && video.status === 'completed' && video.localPath);
+  if (!selected.length) return toast('Select completed videos to download.', 'error');
+  selected.forEach((video, index) => {
+    setTimeout(() => {
+      const link = document.createElement('a');
+      link.href = authenticatedMediaUrl(video.localPath);
+      link.download = selectedDownloadName(video, index);
+      link.rel = 'noopener';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    }, index * 350);
+  });
+  toast(`Downloading ${selected.length} video${selected.length === 1 ? '' : 's'}...`, 'success');
+}
+
+async function deleteSelectedVideos() {
+  const selected = renderedVideoItems.filter(video => selectedVideoKeys.has(getVideoSelectionKey(video)) && video.assetId);
+  if (!selected.length) return toast('Select saved Library videos to delete.', 'error');
+  if (!confirm(`Delete ${selected.length} selected video${selected.length === 1 ? '' : 's'}?`)) return;
+  let deleted = 0;
+  for (const video of selected) {
+    await api(`/api/assets/videos/${video.assetId}`, { method: 'DELETE' });
+    selectedVideoKeys.delete(getVideoSelectionKey(video));
+    deleted++;
+  }
+  toast(`Deleted ${deleted} video${deleted === 1 ? '' : 's'}.`, 'success');
+  await loadAssets();
+  await loadVideos();
+}
+
 async function loadVideos(options = {}) {
   const notify = typeof options === 'object' && options.notify === true;
   let seedance = { videos: [], total: 0, completed: 0, pending: 0, failed: 0 };
@@ -4305,6 +4496,7 @@ async function loadVideos(options = {}) {
   const libraryVideos = (assets.videos || []).map(asset => ({
     requestId: asset.slug,
     jobId: asset.slug,
+    assetId: asset.slug,
     provider: asset.aiContext?.provider || 'library',
     presetId: asset.aiContext?.source || 'saved-video',
     mode: 'i2v',
@@ -4339,6 +4531,9 @@ async function loadVideos(options = {}) {
     seenVideos.add(key);
     return true;
   });
+  renderedVideoItems = combined;
+  const visibleKeys = new Set(renderedVideoItems.map(getVideoSelectionKey).filter(Boolean));
+  selectedVideoKeys = new Set([...selectedVideoKeys].filter(key => visibleKeys.has(key)));
   const nextStatuses = {};
   combined.forEach(item => {
     const key = item.requestId || item.jobId || item.localPath || item.assetId;
@@ -4376,8 +4571,10 @@ async function loadVideos(options = {}) {
   let videoIndex = -1;
   videoErrorDetails = {};
   videoStatusDetails = {};
-  grid.innerHTML = combined.map(v => {
+  grid.innerHTML = combined.map((v, itemIndex) => {
     const mediaUrl = authenticatedMediaUrl(v.localPath || '');
+    const selectionKey = getVideoSelectionKey(v);
+    const isSelected = selectionKey && selectedVideoKeys.has(selectionKey);
     const isPlayableComplete = v.status === 'completed' && mediaUrl;
     const displayStatus = v.status === 'completed' && !mediaUrl ? 'finalizing' : v.status;
     const statusChip = isPlayableComplete ? '<span class="chip chip-green">Completed</span>' : v.status === 'failed' ? '<span class="chip chip-red">Failed</span>' : displayStatus === 'finalizing' ? '<span class="chip chip-warn">Finalizing</span>' : '<span class="chip chip-warn">Processing</span>';
@@ -4430,8 +4627,15 @@ async function loadVideos(options = {}) {
       : v.status === 'processing' || displayStatus === 'finalizing'
         ? `<div class="actions" style="opacity:1;transform:none;margin-top:8px"><button class="btn btn-secondary" onclick="event.stopPropagation();checkVideoStatus('${statusKey}')">Check status</button><button class="btn btn-secondary" onclick="event.stopPropagation();loadVideos({ notify: true })">Refresh Library</button></div>`
         : '';
-    return `<div class="video-card ${aspect}">${videoEl}<div class="video-info" onclick="${mediaUrl ? `openLibraryLightbox('videos',${lightboxIndex})` : ''}"><div style="display:flex;justify-content:space-between;gap:8px"><span class="chip chip-soft">${v.format || 'custom'}</span>${statusChip}</div><div class="video-prompt">${escapeHtml(v.prompt || v.localPath || '')}</div>${trendBlock}${audioBlock}${activeBlock}${errorBlock}${actions}</div></div>`;
+    const selectControl = selectionKey && isPlayableComplete
+      ? `<label class="video-select-control" onclick="event.stopPropagation()">
+          <input type="checkbox" data-video-select-key="${escapeHtml(selectionKey)}" ${isSelected ? 'checked' : ''} onclick="selectVideoItem(${itemIndex},this.checked,event)">
+          Select
+        </label>`
+      : '';
+    return `<div class="video-card ${aspect} ${isSelected ? 'selected' : ''}" data-video-key="${escapeHtml(selectionKey)}">${selectControl}${videoEl}<div class="video-info" onclick="${mediaUrl ? `openLibraryLightbox('videos',${lightboxIndex})` : ''}"><div style="display:flex;justify-content:space-between;gap:8px"><span class="chip chip-soft">${v.format || 'custom'}</span>${statusChip}</div><div class="video-prompt">${escapeHtml(v.prompt || v.localPath || '')}</div>${trendBlock}${audioBlock}${activeBlock}${errorBlock}${actions}</div></div>`;
   }).join('');
+  updateVideoBulkBar();
 }
 
 function openPublishModal(mediaUrl, mediaType = 'video') {
@@ -4520,4 +4724,6 @@ initializeStudioDefaults();
 updatePreviewRatio();
 updateThemeButton();
 switchTab('characters');
-setInterval(loadDashboard, 30000);
+setInterval(() => {
+  if (document.visibilityState === 'visible') loadDashboard();
+}, 30000);

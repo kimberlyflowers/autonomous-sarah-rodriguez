@@ -17,6 +17,7 @@ const {
 const { ensureComfyReady, getAccountBalance, getPodStatus, getRunPodConfig, isComfyReady, normalizePodState, startPod, stopPod } = require('../services/runpod');
 const { getAssetFile, hasDatabase, initUgcStore, query } = require('../services/postgres');
 const { CHATTERBOX_VOICES, createChatterboxAudio, getChatterboxConfig } = require('../services/chatterbox');
+const { createVibeVoiceAudio, getVibeVoiceConfig } = require('../services/vibevoice');
 const { checkMeigenVideoJob, createMeigenVideo, getMeigenConfig, submitMeigenVideoJob } = require('../services/meigen');
 const { checkInfiniteTalkHdJob, getInfiniteTalkHdConfig, submitInfiniteTalkHdJob } = require('../services/infinitetalkHd');
 const {
@@ -24,6 +25,7 @@ const {
   createWan22Video,
   createWanAnimateVideo,
   getRunpodVideoConfig,
+  submitMuseTalkVideoJob,
   submitWan22VideoJob,
   submitWanAnimateVideoJob
 } = require('../services/runpodVideo');
@@ -430,7 +432,9 @@ function getServerlessOutputDir(tenantSlug, provider) {
   const folder = provider === 'infinitetalk-hd'
     ? 'infinitetalk-hd'
     : provider === 'meigen'
-    ? 'meigen'
+      ? 'meigen'
+      : provider === 'musetalk'
+        ? 'musetalk'
     : provider === 'wan-animate'
       ? 'wan-animate'
       : provider === 'seedance2-fast' || provider === 'seedance2-standard'
@@ -464,6 +468,13 @@ function getProviderStatusKind(provider) {
     label: 'InfiniteTalk HD',
     source: 'runpod-infinitetalk-hd',
     name: 'InfiniteTalk HD lip sync'
+  };
+  if (provider === 'musetalk') return {
+    kind: 'MUSETALK',
+    filePrefix: 'musetalk',
+    label: 'MuseTalk Serverless',
+    source: 'runpod-musetalk',
+    name: 'MuseTalk lip sync'
   };
   if (provider === 'seedance2-fast' || provider === 'seedance2-standard') return {
     kind: 'SEEDANCE',
@@ -627,7 +638,7 @@ async function resumePendingServerlessVideoJobs() {
     select *
     from public.ugc_video_jobs
     where status = 'processing'
-      and provider in ('meigen', 'infinitetalk-hd', 'wan22-serverless', 'wan-animate', 'seedance2-fast', 'seedance2-standard')
+      and provider in ('meigen', 'infinitetalk-hd', 'musetalk', 'wan22-serverless', 'wan-animate', 'seedance2-fast', 'seedance2-standard')
       and metadata ? 'providerJobId'
     order by updated_at asc
     limit 20
@@ -679,11 +690,17 @@ router.get('/status', async (req, res) => {
       { id: 'upload', label: 'Uploaded audio', available: true },
       { id: 'elevenlabs', label: 'ElevenLabs', available: !!process.env.ELEVENLABS_API_KEY },
       {
+        id: 'vibevoice',
+        label: 'VibeVoice longform',
+        available: !!getVibeVoiceConfig().apiKey && !!(getVibeVoiceConfig().endpointId || getVibeVoiceConfig().endpointUrl),
+        note: 'Microsoft VibeVoice longform endpoint. Configure RUNPOD_VIBEVOICE_ENDPOINT_ID or VIBEVOICE_ENDPOINT_URL.'
+      },
+      {
         id: 'chatterbox',
         label: 'Chatterbox Turbo',
         available: !!getChatterboxConfig().apiKey,
         voices: CHATTERBOX_VOICES,
-        note: 'RunPod public Chatterbox Turbo endpoint. Preset voices or custom voice_url reference audio.'
+        note: 'Legacy short-clip fallback. Not recommended for longform narration.'
       },
       { id: 'qwen', label: 'Qwen audio workflow', available: false, note: 'Install ComfyUI-Qwen-TTS on RunPod and export a Qwen API workflow preset before enabling.' }
     ],
@@ -717,6 +734,12 @@ router.get('/status', async (req, res) => {
         label: 'InfiniteTalk HD',
         available: !!getInfiniteTalkHdConfig().apiKey && !!(getInfiniteTalkHdConfig().endpointId || getInfiniteTalkHdConfig().endpointUrl),
         note: 'Custom RunPod InfiniteTalk endpoint with CodeFormer and optional Real-ESRGAN upscaling. Requires network volume mounted at /runpod-volume.'
+      },
+      {
+        id: 'musetalk',
+        label: 'MuseTalk lip sync',
+        available: !!getRunpodVideoConfig('MUSETALK').apiKey && !!(getRunpodVideoConfig('MUSETALK').endpointId || getRunpodVideoConfig('MUSETALK').endpointUrl),
+        note: 'Custom MuseTalk V1.5 RunPod endpoint based on PunithVT/ai-avatar-system. Accepts image_url/audio_url and returns MP4/base64 video.'
       },
       {
         id: 'meigen',
@@ -858,7 +881,11 @@ router.get('/runpod/balance', async (req, res) => {
 
 router.get('/jobs/:requestId', async (req, res) => {
   try {
-    const job = await pollStudioJob(req.params.requestId);
+    let job = await pollStudioJob(req.params.requestId);
+    if (!job && !req.supabase && hasDatabase()) {
+      const row = await getLocalVideoJobByRequest(req.tenant.slug || req.tenant.id, req.params.requestId);
+      if (row) job = mapLocalVideoJob(row);
+    }
     if (!job) return res.status(404).json({ error: 'Job not found' });
     if (req.supabase) {
       await req.supabase
@@ -910,6 +937,18 @@ async function runServerlessVideoJob(req, files, context, options = {}) {
         voiceId: req.body.voiceId,
         tenantId: req.tenant.slug || req.tenant.id
       });
+    }
+    if (engineNeedsAudio && audioProvider === 'vibevoice') {
+      const dir = path.join(UPLOAD_DIR, cleanSlug(req.tenant.slug || req.tenant.id || 'default'), 'vibevoice');
+      const vibevoice = await createVibeVoiceAudio({
+        script: req.body.script,
+        voice: req.body.chatterboxVoice || req.body.vibevoiceVoice,
+        voiceUrl: req.body.chatterboxVoiceUrl || req.body.vibevoiceVoiceUrl,
+        voiceSamplePath: files.voiceSample?.[0]?.path || null,
+        format: req.body.chatterboxFormat || req.body.vibevoiceFormat,
+        outputDir: dir
+      });
+      audioPath = vibevoice.localPath;
     }
     if (engineNeedsAudio && audioProvider === 'chatterbox') {
       const dir = path.join(UPLOAD_DIR, cleanSlug(req.tenant.slug || req.tenant.id || 'default'), 'chatterbox');
@@ -1067,6 +1106,35 @@ async function runServerlessVideoJob(req, files, context, options = {}) {
       return;
     }
 
+    if (videoEngine === 'musetalk') {
+      const musetalk = await submitMuseTalkVideoJob({
+        imagePath,
+        audioPath,
+        imageUrl: req.body.imageUrl || '',
+        audioUrl: req.body.audioUrl || '',
+        prompt: req.body.prompt,
+        fps: req.body.musetalkFps || 25,
+        bboxShift: req.body.musetalkBboxShift || 0
+      });
+      if (!req.supabase && hasDatabase()) {
+        await updateLocalVideoJob(req, clientRequestId, {
+          status: 'processing',
+          metadata: {
+            providerJobId: musetalk.id,
+            rawRequestId: musetalk.id,
+            providerStatus: musetalk.status,
+            fps: Number(req.body.musetalkFps || 25),
+            bboxShift: Number(req.body.musetalkBboxShift || 0),
+            imagePreviewUrl,
+            submittedAt: new Date().toISOString()
+          }
+        });
+      }
+      if (submitOnly) return;
+      await pollPersistedServerlessJob(req.tenant.slug || req.tenant.id, clientRequestId);
+      return;
+    }
+
     if (videoEngine === 'meigen') {
       const meigen = await submitMeigenVideoJob({
         imagePath,
@@ -1126,11 +1194,11 @@ router.post('/generate', upload.fields([
     const mode = req.body.mode || 'i2v';
     const videoEngine = req.body.videoEngine || 'wan-comfy';
 
-    if (mode !== 'i2v' && ['meigen', 'infinitetalk-hd', 'wan22-serverless', 'wan-animate', 'seedance2-fast', 'seedance2-standard'].includes(videoEngine)) {
+    if (mode !== 'i2v' && ['meigen', 'infinitetalk-hd', 'musetalk', 'wan22-serverless', 'wan-animate', 'seedance2-fast', 'seedance2-standard'].includes(videoEngine)) {
       return res.status(400).json({ error: `${videoEngine} is only available for image-to-video style generation right now.` });
     }
 
-    const serverlessEngine = ['meigen', 'infinitetalk-hd', 'wan22-serverless', 'wan-animate', 'seedance2-fast', 'seedance2-standard'].includes(videoEngine);
+    const serverlessEngine = ['meigen', 'infinitetalk-hd', 'musetalk', 'wan22-serverless', 'wan-animate', 'seedance2-fast', 'seedance2-standard'].includes(videoEngine);
 
     if (!serverlessEngine && !getBaseUrl()) {
       return res.status(400).json({
@@ -1271,6 +1339,18 @@ router.post('/generate', upload.fields([
         voiceId: req.body.voiceId,
         tenantId: req.tenant.slug || req.tenant.id
       });
+    }
+    if (engineNeedsAudio && audioProvider === 'vibevoice') {
+      const dir = path.join(UPLOAD_DIR, cleanSlug(req.tenant.slug || req.tenant.id || 'default'), 'vibevoice');
+      const vibevoice = await createVibeVoiceAudio({
+        script: req.body.script,
+        voice: req.body.chatterboxVoice || req.body.vibevoiceVoice,
+        voiceUrl: req.body.chatterboxVoiceUrl || req.body.vibevoiceVoiceUrl,
+        voiceSamplePath: files.voiceSample?.[0]?.path || null,
+        format: req.body.chatterboxFormat || req.body.vibevoiceFormat,
+        outputDir: dir
+      });
+      audioPath = vibevoice.localPath;
     }
     if (engineNeedsAudio && audioProvider === 'chatterbox') {
       const dir = path.join(UPLOAD_DIR, cleanSlug(req.tenant.slug || req.tenant.id || 'default'), 'chatterbox');

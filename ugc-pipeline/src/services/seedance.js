@@ -10,6 +10,7 @@ const { logger } = require('./logger');
 const API_BASE = 'https://api.wavespeed.ai/api/v3';
 const RUNPOD_API_BASE = 'https://api.runpod.ai/v2';
 const RUNPOD_SEEDANCE_ENDPOINT_ID = process.env.RUNPOD_SEEDANCE_ENDPOINT_ID || 'seedance-v1-5-pro-i2v';
+const RUNPOD_SEEDANCE_ENDPOINT_URL = process.env.RUNPOD_SEEDANCE_ENDPOINT_URL || '';
 
 // Pricing per second. RunPod Seedance 1.5 Pro I2V pricing from public endpoint docs.
 const PRICING = {
@@ -51,10 +52,22 @@ function getApiKey() {
 function getRunPodApiKey() {
   const candidates = [
     process.env.RUNPOD_SEEDANCE_API_KEY,
+    process.env.SEEDANCE_API_KEY,
     process.env.RUNPOD_PUBLIC_ENDPOINT_API_KEY,
     process.env.RUNPOD_API_KEY
   ];
   return candidates.find(isUsableApiKey) || '';
+}
+
+function getRunPodSeedanceRoot() {
+  if (RUNPOD_SEEDANCE_ENDPOINT_URL) {
+    return RUNPOD_SEEDANCE_ENDPOINT_URL
+      .replace(/\/runsync(?:\?.*)?$/i, '')
+      .replace(/\/run(?:\?.*)?$/i, '')
+      .replace(/\/status\/?[^/?]*(?:\?.*)?$/i, '')
+      .replace(/\/$/, '');
+  }
+  return `${RUNPOD_API_BASE}/${RUNPOD_SEEDANCE_ENDPOINT_ID}`;
 }
 
 function getWaveSpeedApiKey() {
@@ -264,11 +277,12 @@ async function submitRunPodSeedanceGeneration(payload) {
 
   logger.info('Submitting to RunPod Seedance 1.5 Pro I2V', {
     endpointId: RUNPOD_SEEDANCE_ENDPOINT_ID,
+    endpointUrl: RUNPOD_SEEDANCE_ENDPOINT_URL || undefined,
     resolution: body.input.resolution,
     duration: body.input.duration
   });
 
-  const res = await fetch(`${RUNPOD_API_BASE}/${RUNPOD_SEEDANCE_ENDPOINT_ID}/run`, {
+  const res = await fetch(`${getRunPodSeedanceRoot()}/run`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -306,7 +320,7 @@ async function checkStatus(requestId) {
     const apiKey = getRunPodApiKey();
     if (!apiKey) throw new Error('RUNPOD_API_KEY not configured for RunPod Seedance.');
     const providerRequestId = String(requestId).replace(/^runpod_/, '');
-    const res = await fetch(`${RUNPOD_API_BASE}/${RUNPOD_SEEDANCE_ENDPOINT_ID}/status/${providerRequestId}`, {
+    const res = await fetch(`${getRunPodSeedanceRoot()}/status/${providerRequestId}`, {
       headers: { Authorization: `Bearer ${apiKey}` }
     });
     const json = await res.json().catch(() => ({}));

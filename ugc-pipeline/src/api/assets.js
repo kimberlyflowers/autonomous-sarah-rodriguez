@@ -536,7 +536,7 @@ router.post('/:type/:slug/temp-url', async (req, res) => {
 // Delete an asset folder
 router.delete('/:type/:slug', async (req, res) => {
   const { type, slug } = req.params;
-  if (!['products', 'subjects', 'audio', 'outputs'].includes(type)) {
+  if (!['products', 'subjects', 'audio', 'outputs', 'videos'].includes(type)) {
     return res.status(400).json({ error: 'Invalid asset type' });
   }
   if (!req.supabase && hasDatabase()) {
@@ -547,6 +547,17 @@ router.delete('/:type/:slug', async (req, res) => {
         [req.tenant.slug || req.tenant.id, singularType(type), slug]
       );
       if (!rowCount) return res.status(404).json({ error: 'Not found' });
+      if (type === 'videos') {
+        await query(
+          `delete from public.ugc_video_jobs
+           where tenant_slug = $1
+             and (
+               metadata->>'assetId' = $2
+               or metadata->>'localPath' = $3
+             )`,
+          [req.tenant.slug || req.tenant.id, slug, `/api/assets/file/${slug}`]
+        );
+      }
       return res.json({ success: true });
     } catch (error) {
       return res.status(500).json({ error: error.message });

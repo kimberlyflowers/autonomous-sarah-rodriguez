@@ -17,10 +17,13 @@ function endpointRoot(config) {
 function getRunpodVideoConfig(kind) {
   const upper = kind.toUpperCase().replace(/[^A-Z0-9]/g, '_');
   const defaultEndpointId = upper === 'SEEDANCE' ? 'seedance-v1-5-pro-i2v' : '';
+  const apiKey = upper === 'SEEDANCE'
+    ? process.env.RUNPOD_SEEDANCE_API_KEY || process.env.SEEDANCE_API_KEY || process.env.RUNPOD_PUBLIC_ENDPOINT_API_KEY || process.env.RUNPOD_API_KEY || ''
+    : process.env[`RUNPOD_${upper}_API_KEY`] || process.env.RUNPOD_API_KEY || '';
   return {
     endpointId: process.env[`RUNPOD_${upper}_ENDPOINT_ID`] || defaultEndpointId,
     endpointUrl: process.env[`RUNPOD_${upper}_ENDPOINT_URL`] || '',
-    apiKey: process.env[`RUNPOD_${upper}_API_KEY`] || process.env.RUNPOD_API_KEY || '',
+    apiKey,
     timeoutMs: Number(process.env[`RUNPOD_${upper}_TIMEOUT_MS`] || process.env.RUNPOD_VIDEO_TIMEOUT_MS || 14400000),
     pollIntervalMs: Number(process.env[`RUNPOD_${upper}_POLL_INTERVAL_MS`] || process.env.RUNPOD_VIDEO_POLL_INTERVAL_MS || 5000)
   };
@@ -148,7 +151,7 @@ function rawBase64VideoToBuffer(value = '') {
 
 function extractVideoBuffer(data) {
   const output = data?.output || data || {};
-  const value = output.video || output.video_base64 || output.result || output.url || output.video_url;
+  const value = output.video || output.video_b64 || output.video_base64 || output.output_video_b64 || output.result || output.url || output.video_url;
   if (typeof value === 'string' && value.startsWith('data:video/')) return dataUriToBuffer(value);
   if (typeof value === 'string') return rawBase64VideoToBuffer(value);
   return null;
@@ -242,6 +245,46 @@ async function createWanAnimateVideo({ imagePath, imageUrl, videoPath, videoUrl,
   });
 }
 
+async function createMuseTalkVideo({ imagePath, imageUrl, audioPath, audioUrl, prompt, outputDir, fps, bboxShift }) {
+  const submitted = await submitMuseTalkVideoJob({ imagePath, imageUrl, audioPath, audioUrl, prompt, fps, bboxShift });
+  const data = submitted.status === 'COMPLETED' ? submitted.raw : await pollServerless(getRunpodVideoConfig('MUSETALK'), submitted.id, 'MuseTalk Serverless');
+  return finalizeRunpodVideoResult(data, {
+    outputDir,
+    filePrefix: 'musetalk',
+    provider: 'musetalk',
+    submittedId: submitted.id
+  });
+}
+
+async function submitMuseTalkVideoJob({ imagePath, imageUrl, audioPath, audioUrl, prompt, fps, bboxShift }) {
+  const config = getRunpodVideoConfig('MUSETALK');
+  const image = await resolveInput({ url: imageUrl, filePath: imagePath, preferBase64: false, fallbackMime: 'image/png' });
+  const audio = await resolveInput({ url: audioUrl, filePath: audioPath, preferBase64: false, fallbackMime: 'audio/mpeg' });
+  if (!image.url && !image.dataUri) throw new Error('MuseTalk needs a source avatar image or video.');
+  if (!audio.url && !audio.dataUri) throw new Error('MuseTalk needs a voiceover audio file.');
+
+  const input = {
+    prompt: String(prompt || 'Natural talking-head lip sync, preserve identity, steady face framing.').trim(),
+    fps: Number(fps || 25),
+    bbox_shift: Number(bboxShift || 0)
+  };
+
+  if (image.url) {
+    input.image_url = image.url;
+    input.source_url = image.url;
+    input.video_path = image.url;
+  }
+  if (image.dataUri) input.image_base64 = toRawBase64(image.dataUri);
+  if (audio.url) {
+    input.audio_url = audio.url;
+    input.audio_path = audio.url;
+  }
+  if (audio.dataUri) input.audio_base64 = toRawBase64(audio.dataUri);
+
+  const data = await submitServerless(config, { input }, 'MuseTalk Serverless');
+  return { id: data.id || '', status: data.status || 'IN_QUEUE', raw: data, provider: 'musetalk' };
+}
+
 async function submitWanAnimateVideoJob({ imagePath, imageUrl, videoPath, videoUrl, prompt, negativePrompt, aspectRatio, seed, fps, cfg, steps }) {
   const config = getRunpodVideoConfig('WAN_ANIMATE');
   const image = await resolveInput({ url: imageUrl, filePath: imagePath, preferBase64: true, fallbackMime: 'image/png' });
@@ -296,7 +339,9 @@ async function finalizeRunpodVideoResult(data, { outputDir, filePrefix, provider
 module.exports = {
   createWan22Video,
   createWanAnimateVideo,
+  createMuseTalkVideo,
   checkRunpodVideoJob,
+  submitMuseTalkVideoJob,
   submitWan22VideoJob,
   submitWanAnimateVideoJob,
   getRunpodVideoConfig

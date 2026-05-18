@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const { CHATTERBOX_VOICES, createChatterboxAudio, getChatterboxConfig } = require('../services/chatterbox');
+const { createVibeVoiceAudio, getVibeVoiceConfig } = require('../services/vibevoice');
 const { hasDatabase, initUgcStore, query } = require('../services/postgres');
 const fetch = require('node-fetch');
 const { logger } = require('../services/logger');
@@ -31,8 +32,16 @@ const upload = multer({
 
 router.get('/providers', (req, res) => {
   const chatterbox = getChatterboxConfig();
+  const vibevoice = getVibeVoiceConfig();
   res.json({
     providers: [
+      {
+        id: 'vibevoice',
+        label: 'VibeVoice longform',
+        available: !!vibevoice.apiKey && !!(vibevoice.endpointId || vibevoice.endpointUrl),
+        endpointId: vibevoice.endpointId,
+        note: 'Microsoft VibeVoice longform endpoint. Configure RUNPOD_VIBEVOICE_ENDPOINT_ID or VIBEVOICE_ENDPOINT_URL.'
+      },
       {
         id: 'chatterbox',
         label: 'Chatterbox Turbo',
@@ -46,6 +55,36 @@ router.get('/providers', (req, res) => {
       }
     ]
   });
+});
+
+router.post('/vibevoice', upload.single('voiceSample'), async (req, res) => {
+  const started = Date.now();
+  try {
+    const dir = path.join(UPLOAD_DIR, req.tenant?.slug || req.tenant?.id || 'default', 'generated');
+    const result = await createVibeVoiceAudio({
+      script: req.body.script,
+      voice: req.body.voice,
+      voiceUrl: req.body.voiceUrl,
+      voiceSamplePath: req.file?.path || null,
+      format: req.body.format,
+      outputDir: dir
+    });
+    const asset = await saveGeneratedAudio(req, result.localPath, {
+      name: req.body.name || `VibeVoice ${new Date().toLocaleString()}`,
+      provider: 'vibevoice',
+      voice: result.voice,
+      script: req.body.script || ''
+    });
+    logger.info('VibeVoice preview generated', {
+      tenant: req.tenant?.slug || req.tenant?.id,
+      durationMs: Date.now() - started,
+      voice: result.voice
+    });
+    res.json({ success: true, result: { ...result, asset } });
+  } catch (error) {
+    logger.error('VibeVoice preview failed', { tenant: req.tenant?.slug || req.tenant?.id, durationMs: Date.now() - started, error: error.message });
+    res.status(500).json({ error: error.message });
+  }
 });
 
 router.get('/chatterbox/sample/:voice', (req, res) => {
@@ -76,9 +115,15 @@ router.post('/chatterbox', upload.single('voiceSample'), async (req, res) => {
       name: req.body.name || `Chatterbox ${new Date().toLocaleString()}`,
       provider: 'chatterbox',
       voice: result.voice,
+      chunks: result.chunks || 1,
       script: req.body.script || ''
     });
-    logger.info('Chatterbox preview generated', { tenant: req.tenant?.slug || req.tenant?.id, durationMs: Date.now() - started, voice: result.voice });
+    logger.info('Chatterbox preview generated', {
+      tenant: req.tenant?.slug || req.tenant?.id,
+      durationMs: Date.now() - started,
+      voice: result.voice,
+      chunks: result.chunks || 1
+    });
     res.json({ success: true, result: { ...result, asset } });
   } catch (error) {
     logger.error('Chatterbox preview failed', { tenant: req.tenant?.slug || req.tenant?.id, durationMs: Date.now() - started, error: error.message });
