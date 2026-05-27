@@ -1,9 +1,13 @@
 # Nixpacks config for ugc-pipeline (lovely-wonder)
-# Used instead of Docker Hub to avoid builder rate limits.
+# Nixpacks avoids Docker Hub rate limits on Railway's builder IPs.
 
 [phases.setup]
-# ffmpeg for video processing; yt-dlp for media downloading
-nixPkgs = ["ffmpeg", "yt-dlp"]
+# ffmpeg for video/audio processing
+# python3 + pip for yt-dlp (trend video downloader)
+nixPkgs = ["ffmpeg", "python3", "python3Packages.pip"]
 
 [phases.install]
-cmds = ["npm ci --omit=dev"]
+cmds = [
+  "npm ci --omit=dev",
+  "pip3 install yt-dlp --quiet"
+]
