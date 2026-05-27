@@ -1,4 +1,8 @@
 require('dotenv').config();
+// Polyfill WebSocket for Node.js 20 (required by @supabase/supabase-js Realtime)
+if (typeof globalThis.WebSocket === 'undefined') {
+  globalThis.WebSocket = require('ws');
+}
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
