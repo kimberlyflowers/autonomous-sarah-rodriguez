@@ -15,7 +15,7 @@ RUN npm ci --omit=dev
 
 COPY . .
 
-RUN mkdir -p assets/products assets/subjects assets/audio assets/generated config
+RUN mkdir -p assets/products assets/subjects assets/audio assets/generated assets/studio-uploads config config/brands config/workflows
 
 EXPOSE ${PORT:-8080}
 
