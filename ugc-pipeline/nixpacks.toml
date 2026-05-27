@@ -1,0 +1,9 @@
+# Nixpacks config for ugc-pipeline (lovely-wonder)
+# Used instead of Docker Hub to avoid builder rate limits.
+
+[phases.setup]
+# ffmpeg for video processing; yt-dlp for media downloading
+nixPkgs = ["ffmpeg", "yt-dlp"]
+
+[phases.install]
+cmds = ["npm ci --omit=dev"]
