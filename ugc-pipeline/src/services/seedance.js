@@ -94,7 +94,10 @@ function estimateCost(model, resolution, durationSec) {
 
 function isRunPodSeedanceModel(model = '') {
   const key = String(model || '').toLowerCase();
-  return !key || key === 'seedance2-fast' || key === 'seedance2-standard' || key === 'runpod-seedance-v1.5-i2v';
+  // Only the explicit RunPod 1.5 model routes to RunPod.
+  // seedance2-fast / seedance2-standard are Seedance 2.0 and MUST go through
+  // WaveSpeed or Evolink — RunPod only has Seedance 1.5 Pro.
+  return key === 'runpod-seedance-v1.5-i2v';
 }
 
 function normalizeRunPodDuration(value = 5) {

@@ -20,6 +20,7 @@ const billingRouter = require('./api/billing');
 const productPlacementRouter = require('./api/product-placement');
 const ttsRouter = require('./api/tts');
 const trendsRouter = require('./api/trends');
+const cloneRouter = require('./api/clone');
 const { requireTenant } = require('./services/auth');
 const { getSupabaseConfig } = require('./services/supabase');
 const { getRunPodConfig } = require('./services/runpod');
@@ -73,6 +74,8 @@ app.use('/api/trends', apiKeyAuth, requireTenant, trendsRouter);
 // Public read-only alias — no auth required so videoclone-ai and external tools
 // can fetch the trends feed without a workspace token.
 app.use('/api/public/trends', trendsRouter);
+// Video clone — Evolink Seedance 2.0 (primary) + WaveSpeed fallback. No RunPod.
+app.use('/api/clone', apiKeyAuth, requireTenant, cloneRouter);
 
 // Health check
 app.get('/health', (req, res) => {
