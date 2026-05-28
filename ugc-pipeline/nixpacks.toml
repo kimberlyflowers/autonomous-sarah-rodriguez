@@ -2,12 +2,11 @@
 # Nixpacks avoids Docker Hub rate limits on Railway's builder IPs.
 
 [phases.setup]
-# ffmpeg for video/audio processing
-# python3 + pip for yt-dlp (trend video downloader)
-nixPkgs = ["ffmpeg", "python3", "python3Packages.pip"]
+# ffmpeg for video/audio processing; python3 for yt-dlp install
+nixPkgs = ["ffmpeg", "python3"]
 
 [phases.install]
 cmds = [
   "npm ci --omit=dev",
-  "pip3 install yt-dlp --quiet"
+  "python3 -m pip install yt-dlp --quiet --break-system-packages"
 ]
