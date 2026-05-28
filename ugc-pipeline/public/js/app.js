@@ -3415,14 +3415,24 @@ function applyCharacterAudioDefaults(character = {}) {
   return 'upload';
 }
 
-// Show create-type picker instead of going straight to studio
+// Show create-type picker only when not already inside a specific Create tool
 function selectCharacter(character) {
   selectedCharacter = character;
+  const studioTab = document.getElementById('tab-studio');
+  const isStudioActive = studioTab?.classList.contains('active');
+  const currentTool = studioTab?.dataset.createTool;
+  if (isStudioActive && currentTool === 'video') {
+    _applyCharacterToCreate(character, 'video');
+    return;
+  }
+  if (isStudioActive && currentTool === 'image') {
+    _applyCharacterToCreate(character, 'image');
+    return;
+  }
   const overlay = document.getElementById('charCreatePickerOverlay');
   if (overlay) {
     overlay.classList.add('active');
   } else {
-    // fallback if modal not in DOM
     _applyCharacterToCreate(character, 'video');
   }
 }
