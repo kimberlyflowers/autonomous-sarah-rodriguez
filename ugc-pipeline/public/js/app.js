@@ -10,6 +10,7 @@ let supabaseClient = null;
 let authToken = localStorage.getItem('bloomStudioToken') || '';
 let currentTenant = JSON.parse(localStorage.getItem('bloomStudioTenant') || 'null');
 let assetsCache = { products: [], subjects: [], audio: [], outputs: [], videos: [] };
+let ugcCharactersCache = []; // pulled from Supabase ugc_characters via /api/characters
 let selectedCharacter = null;
 let currentCharacterTab = 'library';
 let currentCharacterPickerTab = 'all';
@@ -3178,8 +3179,21 @@ function usePreviewAudioForVideo() {
 }
 
 async function loadAssets() {
-  const data = await api('/api/assets');
+  const [data, ugcData] = await Promise.all([
+    api('/api/assets'),
+    api('/api/characters').catch(() => ({ characters: [] }))
+  ]);
   assetsCache = data;
+  // Map Supabase ugc_characters into the same shape as subjects
+  ugcCharactersCache = (ugcData.characters || []).map(c => ({
+    slug: c.slug,
+    name: c.name,
+    imageUrl: c.image_url,
+    role: [c.age_group, c.gender].filter(Boolean).map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(' · '),
+    _isUgc: true,
+    _ageGroup: c.age_group,
+    _gender: c.gender
+  }));
   renderAssetGrid('productGrid', data.products || [], 'products');
   renderAssetGrid('generatedImageGrid', data.outputs || [], 'outputs');
   setLibraryImageRatio(currentLibraryImageRatio);
@@ -3238,12 +3252,15 @@ function renderMyAgents(characters) {
   const grid = document.getElementById('myAgentsGrid');
   if (!grid) return;
   grid.classList.toggle('landscape', currentCharacterRatio === 'landscape');
-  if (!characters.length) {
+  // Merge uploaded subjects + Supabase UGC characters (deduped by slug)
+  const uploadedSlugs = new Set((characters || []).map(c => c.slug));
+  const ugcToShow = ugcCharactersCache.filter(c => !uploadedSlugs.has(c.slug));
+  const allAgents = [...(characters || []), ...ugcToShow];
+  if (!allAgents.length) {
     grid.innerHTML = '<div class="character-empty">No agents uploaded yet. Click + New agent to add Sarah, Marcus, or any spokesperson portrait.</div>';
     return;
   }
-
-  grid.innerHTML = characters.map(character => renderCharacterCard(character, false)).join('');
+  grid.innerHTML = allAgents.map(character => renderCharacterCard(character, false)).join('');
 }
 
 function openCharacterPickerModal() {
@@ -3271,7 +3288,10 @@ function renderCharacterPickerModal() {
   if (!grid) return;
   grid.classList.toggle('landscape', currentCharacterRatio === 'landscape');
   const libraryCharacters = starterCharacters.map(character => ({ ...character, _isLibrary: true }));
-  const myCharacters = (assetsCache.subjects || []).map(character => ({ ...character, _isLibrary: false }));
+  const uploadedSubjects = (assetsCache.subjects || []).map(character => ({ ...character, _isLibrary: false }));
+  const uploadedSlugs = new Set(uploadedSubjects.map(c => c.slug));
+  const ugcChars = ugcCharactersCache.filter(c => !uploadedSlugs.has(c.slug)).map(c => ({ ...c, _isLibrary: false }));
+  const myCharacters = [...uploadedSubjects, ...ugcChars];
   const characters = currentCharacterPickerTab === 'library'
     ? libraryCharacters
     : currentCharacterPickerTab === 'mine'
@@ -3289,13 +3309,15 @@ function renderCharacterCard(character, isLibrary) {
   const imageUrl = character.imageUrl || file?.path || '';
   const displayUrl = authenticatedMediaUrl(imageUrl);
   const payload = JSON.stringify({ ...character, imageUrl }).replace(/'/g, '&apos;');
-  const voice = getCharacterVoiceId(character) || character.voiceSampleAssetId ? 'Voice saved' : isLibrary ? character.role : 'No default voice';
-  const manage = isLibrary
+  const voice = getCharacterVoiceId(character) || character.voiceSampleAssetId ? 'Voice saved' : isLibrary ? character.role : (character._isUgc ? character.role : 'No default voice');
+  const ugcBadge = character._isUgc ? '<div class="character-ugc-badge">UGC</div>' : '';
+  const manage = isLibrary || character._isUgc
     ? ''
     : `<button class="btn btn-secondary" onclick="event.stopPropagation();editCharacterVoice('${character.slug}', '${(character.voiceId || '').replace(/'/g, "\\'")}')">Voice</button>
        <button class="btn btn-secondary" onclick="event.stopPropagation();deleteAsset('subjects','${character.slug}')">Delete</button>`;
   return `<div class="character-card" onclick='selectCharacter(${payload})'>
     <img src="${displayUrl}" alt="${character.name}" loading="lazy">
+    ${ugcBadge}
     <div class="character-menu">⋮</div>
     <div class="character-overlay">
       <div class="character-title">${character.name}</div>
