@@ -2596,7 +2596,7 @@ function setStudioVideoEngine(engine) {
   const durationGroup = document.getElementById('studioDurationSecondsGroup');
   const qualitySelect = document.getElementById('studioMeigenSize');
   const qualityHint = document.getElementById('studioMeigenQualityHint');
-  const usesLipSyncQuality = ['meigen', 'infinitetalk-hd'].includes(engine);
+  const usesLipSyncQuality = ['meigen', 'infinitetalk-hd', 'musetalk'].includes(engine);
   if (quality) quality.style.display = usesLipSyncQuality ? '' : 'none';
   if (durationGroup) {
     const showDuration = engine === 'wan-comfy';
@@ -2605,19 +2605,21 @@ function setStudioVideoEngine(engine) {
   }
   if (qualitySelect) {
     [...qualitySelect.options].forEach(option => {
-      option.hidden = engine === 'meigen'
+      option.hidden = (engine === 'meigen' || engine === 'musetalk')
         ? option.value === '1080p'
         : engine === 'infinitetalk-hd'
           ? option.value === '480p'
           : false;
     });
-    if (engine === 'meigen' && qualitySelect.value === '1080p') qualitySelect.value = '480p';
+    if ((engine === 'meigen' || engine === 'musetalk') && qualitySelect.value === '1080p') qualitySelect.value = '480p';
     if (engine === 'infinitetalk-hd' && qualitySelect.value === '480p') qualitySelect.value = '720p';
   }
   if (qualityHint) {
     qualityHint.textContent = engine === 'infinitetalk-hd'
       ? 'InfiniteTalk HD renders with CodeFormer and supports 720p or 1080p upscale.'
-      : '480p is best for testing on the public endpoint. 720p can take longer.';
+      : engine === 'musetalk'
+        ? '480p is faster and more reliable. 720p takes longer but is sharper.'
+        : '480p is best for testing on the public endpoint. 720p can take longer.';
   }
   if (reference) reference.style.display = engine === 'wan-animate' ? '' : 'none';
   if (hint) hint.textContent = getStudioEngineHint(engine);
@@ -3439,7 +3441,7 @@ function _applyCharacterToCreate(character, type) {
   if (!character) return;
   const file = character.files?.[0];
   const imageUrl = character.imageUrl || file?.path || '';
-  const isLibrary = character.slug?.startsWith('library-');
+  const isLibrary = character.slug?.startsWith('library-') || !!character._isUgc;
   document.getElementById('studioImageAssetId').value = isLibrary ? '' : character.slug;
   document.getElementById('studioImageUrl').value = isLibrary ? imageUrl : '';
   document.getElementById('studioImage').value = '';

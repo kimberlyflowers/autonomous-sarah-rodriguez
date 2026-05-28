@@ -1114,7 +1114,8 @@ async function runServerlessVideoJob(req, files, context, options = {}) {
         audioUrl: req.body.audioUrl || '',
         prompt: req.body.prompt,
         fps: req.body.musetalkFps || 25,
-        bboxShift: req.body.musetalkBboxShift || 0
+        bboxShift: req.body.musetalkBboxShift || 0,
+        resolution: req.body.meigenSize || '480p'
       });
       if (!req.supabase && hasDatabase()) {
         await updateLocalVideoJob(req, clientRequestId, {

@@ -256,7 +256,7 @@ async function createMuseTalkVideo({ imagePath, imageUrl, audioPath, audioUrl, p
   });
 }
 
-async function submitMuseTalkVideoJob({ imagePath, imageUrl, audioPath, audioUrl, prompt, fps, bboxShift }) {
+async function submitMuseTalkVideoJob({ imagePath, imageUrl, audioPath, audioUrl, prompt, fps, bboxShift, resolution }) {
   const config = getRunpodVideoConfig('MUSETALK');
   const image = await resolveInput({ url: imageUrl, filePath: imagePath, preferBase64: false, fallbackMime: 'image/png' });
   const audio = await resolveInput({ url: audioUrl, filePath: audioPath, preferBase64: false, fallbackMime: 'audio/mpeg' });
@@ -266,7 +266,8 @@ async function submitMuseTalkVideoJob({ imagePath, imageUrl, audioPath, audioUrl
   const input = {
     prompt: String(prompt || 'Natural talking-head lip sync, preserve identity, steady face framing.').trim(),
     fps: Number(fps || 25),
-    bbox_shift: Number(bboxShift || 0)
+    bbox_shift: Number(bboxShift || 0),
+    resolution: resolution || '480p'
   };
 
   if (image.url) {
