@@ -3245,7 +3245,7 @@ function renderAgentLibrary() {
   const grid = document.getElementById('agentLibraryGrid');
   if (!grid) return;
   grid.classList.toggle('landscape', currentCharacterRatio === 'landscape');
-  // Persona library = hardcoded professional personas + global Supabase UGC characters
+  // Character library = hardcoded professional personas + global Supabase UGC characters
   const starterSlugs = new Set(starterCharacters.map(c => c.slug));
   const ugcToShow = ugcCharactersCache.filter(c => !starterSlugs.has(c.slug));
   const allLibrary = [...starterCharacters.map(c => ({ ...c, _isLibrary: true })), ...ugcToShow];
@@ -3311,40 +3311,55 @@ function renderCharacterPickerModal() {
   grid.innerHTML = characters.map(character => renderCharacterCard(character, character._isLibrary !== false, true)).join('');
 }
 
+// Global slug→character map so onclick handlers never embed serialized JSON.
+// Slugs are alphanumeric+hyphen so safe in HTML attribute values.
+const __charMap = {};
+
 function renderCharacterCard(character, isLibrary, pickerMode = false) {
+  const slug = character.slug || '';
+  __charMap[slug] = character; // register / update
+
   const file = character.files?.[0];
   const imageUrl = character.imageUrl || file?.path || '';
   const displayUrl = authenticatedMediaUrl(imageUrl);
-  const payload = JSON.stringify({ ...character, imageUrl }).replace(/'/g, '&apos;');
   const voice = getCharacterVoiceId(character) || character.voiceSampleAssetId ? 'Voice saved' : isLibrary ? character.role : (character._isUgc ? character.role : 'No default voice');
   const ugcBadge = character._isUgc ? '<div class="character-ugc-badge">UGC</div>' : '';
-  const looksCount = (character._looks || []).length + 1; // main look + extras
+  const looksCount = (character._looks || []).length + 1;
   const looksBadge = `<div class="character-looks-badge">${looksCount} look${looksCount !== 1 ? 's' : ''}</div>`;
   const manage = isLibrary || character._isUgc
     ? ''
-    : `<button class="btn btn-secondary" onclick="event.stopPropagation();editCharacterVoice('${character.slug}', '${(character.voiceId || '').replace(/'/g, "\\'")}')">Voice</button>
-       <button class="btn btn-secondary" onclick="event.stopPropagation();deleteAsset('subjects','${character.slug}')">Delete</button>`;
-  // In picker modal always select directly; on characters page UGC opens the drawer
-  const clickHandler = (!pickerMode && character._isUgc)
-    ? `openCharDrawer(${payload})`
-    : `selectCharacter(${payload})`;
-  const useAction = (!pickerMode && character._isUgc)
-    ? `openCharDrawer(${payload})`
-    : `selectCharacter(${payload})`;
-  return `<div class="character-card" onclick='${clickHandler}'>
-    <img src="${displayUrl}" alt="${character.name}" loading="lazy">
+    : `<button class="btn btn-secondary" onclick="event.stopPropagation();editCharacterVoice('${slug}', '${(character.voiceId || '').replace(/'/g, "\\'")}')">Voice</button>
+       <button class="btn btn-secondary" onclick="event.stopPropagation();deleteAsset('subjects','${slug}')">Delete</button>`;
+
+  // Library-page UGC chars open the detail drawer; picker modal + starter chars select directly
+  const openDrawer = !pickerMode && !!character._isUgc;
+  const cardClick  = openDrawer ? `openCharDrawerBySlug('${slug}')` : `selectCharacterBySlug('${slug}')`;
+  const useClick   = openDrawer ? `openCharDrawerBySlug('${slug}')` : `selectCharacterBySlug('${slug}')`;
+
+  return `<div class="character-card" data-char-slug="${slug}" onclick="${cardClick}">
+    <img src="${displayUrl}" alt="${escapeHtml(character.name)}" loading="lazy">
     ${ugcBadge}
     ${looksBadge}
-    <div class="character-menu">⋮</div>
+    <div class="character-menu">&#8943;</div>
     <div class="character-overlay">
-      <div class="character-title">${character.name}</div>
-      <div class="character-meta">${character.role || voice}</div>
+      <div class="character-title">${escapeHtml(character.name)}</div>
+      <div class="character-meta">${escapeHtml(character.role || voice)}</div>
       <div class="character-actions">
-        <button class="btn btn-primary" onclick='event.stopPropagation();${useAction}'>Use</button>
+        <button class="btn btn-primary" onclick="event.stopPropagation();${useClick}">Use</button>
         ${manage}
       </div>
     </div>
-	  </div>`;
+  </div>`;
+}
+
+function selectCharacterBySlug(slug) {
+  const character = __charMap[slug];
+  if (character) selectCharacter(character);
+}
+
+function openCharDrawerBySlug(slug) {
+  const character = __charMap[slug];
+  if (character) openCharDrawer(character);
 }
 
 function getCharacterVoiceId(character = {}) {
