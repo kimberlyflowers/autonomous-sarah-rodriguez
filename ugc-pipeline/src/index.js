@@ -70,6 +70,9 @@ app.use('/api/billing', apiKeyAuth, requireTenant, billingRouter);
 app.use('/api/product-placement', apiKeyAuth, requireTenant, productPlacementRouter);
 app.use('/api/tts', apiKeyAuth, requireTenant, ttsRouter);
 app.use('/api/trends', apiKeyAuth, requireTenant, trendsRouter);
+// Public read-only alias — no auth required so videoclone-ai and external tools
+// can fetch the trends feed without a workspace token.
+app.use('/api/public/trends', trendsRouter);
 
 // Health check
 app.get('/health', (req, res) => {
