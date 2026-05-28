@@ -921,8 +921,8 @@ async function hydrateUser() {
   localStorage.setItem('bloomStudioTenant', JSON.stringify(currentTenant));
   document.getElementById('tenantPill').textContent = currentTenant?.name || currentTenant?.slug || currentTenant?.id || 'Workspace';
   hideLogin();
+  switchTab('characters'); // land immediately — don't wait for data loads
   await Promise.all([loadDashboard(), loadStudioStatus(), loadAssets()]);
-  switchTab('characters');
 }
 
 async function logout() {
@@ -3396,8 +3396,30 @@ function applyCharacterAudioDefaults(character = {}) {
   return 'upload';
 }
 
+// Show create-type picker instead of going straight to studio
 function selectCharacter(character) {
   selectedCharacter = character;
+  const overlay = document.getElementById('charCreatePickerOverlay');
+  if (overlay) {
+    overlay.classList.add('active');
+  } else {
+    // fallback if modal not in DOM
+    _applyCharacterToCreate(character, 'video');
+  }
+}
+
+function closeCharCreatePicker() {
+  document.getElementById('charCreatePickerOverlay')?.classList.remove('active');
+}
+
+function confirmCharCreate(type) {
+  closeCharCreatePicker();
+  closeCharDrawer();
+  _applyCharacterToCreate(selectedCharacter, type);
+}
+
+function _applyCharacterToCreate(character, type) {
+  if (!character) return;
   const file = character.files?.[0];
   const imageUrl = character.imageUrl || file?.path || '';
   const isLibrary = character.slug?.startsWith('library-');
@@ -3415,11 +3437,18 @@ function selectCharacter(character) {
   }
   selectedCard?.classList.add('active');
   setPreviewImage(imageUrl, character.name);
-  setStudioMode('i2v');
-  applyCharacterAudioDefaults(character);
   closeCharacterPickerModal();
-  switchTab('studio');
-  toast(`${character.name} loaded into Create.`, 'success');
+  if (type === 'image') {
+    switchTab('studio');
+    setCreateTool('image');
+    toast(`${character.name} ready — pick a product and generate a composite image.`, 'success');
+  } else {
+    setStudioMode('i2v');
+    applyCharacterAudioDefaults(character);
+    switchTab('studio');
+    setCreateTool('video');
+    toast(`${character.name} loaded into Create.`, 'success');
+  }
 }
 
 async function hydrateChatterboxVoiceUrl(audioAssetId) {
