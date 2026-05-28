@@ -12,7 +12,7 @@ let currentTenant = JSON.parse(localStorage.getItem('bloomStudioTenant') || 'nul
 let assetsCache = { products: [], subjects: [], audio: [], outputs: [], videos: [] };
 let ugcCharactersCache = []; // pulled from Supabase ugc_characters via /api/characters
 let selectedCharacter = null;
-let currentCharacterTab = 'library';
+let currentCharacterTab = 'mine';
 let currentCharacterPickerTab = 'all';
 let currentCharacterRatio = 'portrait';
 let currentLibraryImageRatio = 'portrait';
@@ -3257,7 +3257,7 @@ function renderMyAgents(characters) {
   const ugcToShow = ugcCharactersCache.filter(c => !uploadedSlugs.has(c.slug));
   const allAgents = [...(characters || []), ...ugcToShow];
   if (!allAgents.length) {
-    grid.innerHTML = '<div class="character-empty">No agents uploaded yet. Click + New agent to add Sarah, Marcus, or any spokesperson portrait.</div>';
+    grid.innerHTML = '<div class="character-empty">No characters yet. Click + New character to upload a spokesperson portrait, or characters will appear here once synced from the library.</div>';
     return;
   }
   grid.innerHTML = allAgents.map(character => renderCharacterCard(character, false)).join('');
@@ -3298,32 +3298,43 @@ function renderCharacterPickerModal() {
       ? myCharacters
       : [...libraryCharacters, ...myCharacters];
   if (!characters.length) {
-    grid.innerHTML = '<div class="character-empty">No uploaded agents yet. Upload a character or use one from the library.</div>';
+    grid.innerHTML = '<div class="character-empty">No characters yet. Upload a character or use one from the library.</div>';
     return;
   }
-  grid.innerHTML = characters.map(character => renderCharacterCard(character, character._isLibrary !== false)).join('');
+  // In picker modal, UGC chars select directly (don't open drawer)
+  grid.innerHTML = characters.map(character => renderCharacterCard(character, character._isLibrary !== false, true)).join('');
 }
 
-function renderCharacterCard(character, isLibrary) {
+function renderCharacterCard(character, isLibrary, pickerMode = false) {
   const file = character.files?.[0];
   const imageUrl = character.imageUrl || file?.path || '';
   const displayUrl = authenticatedMediaUrl(imageUrl);
   const payload = JSON.stringify({ ...character, imageUrl }).replace(/'/g, '&apos;');
   const voice = getCharacterVoiceId(character) || character.voiceSampleAssetId ? 'Voice saved' : isLibrary ? character.role : (character._isUgc ? character.role : 'No default voice');
   const ugcBadge = character._isUgc ? '<div class="character-ugc-badge">UGC</div>' : '';
+  const looksCount = (character._looks || []).length + 1; // main look + extras
+  const looksBadge = `<div class="character-looks-badge">${looksCount} look${looksCount !== 1 ? 's' : ''}</div>`;
   const manage = isLibrary || character._isUgc
     ? ''
     : `<button class="btn btn-secondary" onclick="event.stopPropagation();editCharacterVoice('${character.slug}', '${(character.voiceId || '').replace(/'/g, "\\'")}')">Voice</button>
        <button class="btn btn-secondary" onclick="event.stopPropagation();deleteAsset('subjects','${character.slug}')">Delete</button>`;
-  return `<div class="character-card" onclick='selectCharacter(${payload})'>
+  // In picker modal always select directly; on characters page UGC opens the drawer
+  const clickHandler = (!pickerMode && character._isUgc)
+    ? `openCharDrawer(${payload})`
+    : `selectCharacter(${payload})`;
+  const useAction = (!pickerMode && character._isUgc)
+    ? `openCharDrawer(${payload})`
+    : `selectCharacter(${payload})`;
+  return `<div class="character-card" onclick='${clickHandler}'>
     <img src="${displayUrl}" alt="${character.name}" loading="lazy">
     ${ugcBadge}
+    ${looksBadge}
     <div class="character-menu">⋮</div>
     <div class="character-overlay">
       <div class="character-title">${character.name}</div>
-      <div class="character-meta">${voice}</div>
+      <div class="character-meta">${character.role || voice}</div>
       <div class="character-actions">
-        <button class="btn btn-primary" onclick='event.stopPropagation();selectCharacter(${payload})'>Use</button>
+        <button class="btn btn-primary" onclick='event.stopPropagation();${useAction}'>Use</button>
         ${manage}
       </div>
     </div>
@@ -4734,6 +4745,101 @@ function formatBytes(bytes) {
   const units = ['B', 'KB', 'MB', 'GB'];
   const index = Math.floor(Math.log(bytes) / Math.log(1024));
   return `${(bytes / Math.pow(1024, index)).toFixed(1)} ${units[index]}`;
+}
+
+// ─── Character Detail Drawer ──────────────────────────────────────────────────
+
+let charDrawerCharacter = null;
+
+function openCharDrawer(character) {
+  charDrawerCharacter = character;
+  const overlay = document.getElementById('charDrawerOverlay');
+  const img = document.getElementById('charDrawerImg');
+  const name = document.getElementById('charDrawerName');
+  const role = document.getElementById('charDrawerRole');
+  const badges = document.getElementById('charDrawerBadges');
+  const looks = document.getElementById('charDrawerLooks');
+  const useBtn = document.getElementById('charDrawerUseBtn');
+  const addLookBtn = document.getElementById('charDrawerAddLookBtn');
+  if (!overlay) return selectCharacter(character);
+
+  const imageUrl = character.imageUrl || character.image_url || '';
+  const displayUrl = authenticatedMediaUrl(imageUrl);
+
+  if (img) { img.src = displayUrl; img.alt = character.name || ''; }
+  if (name) name.textContent = character.name || '';
+  if (role) role.textContent = character.role || [character.age_group, character.gender].filter(Boolean).join(' · ') || '';
+
+  // Build badges
+  if (badges) {
+    const parts = [];
+    if (character._ageGroup || character.age_group) parts.push(`<span class="char-drawer-badge">${(character._ageGroup || character.age_group).replace('-', ' ')}</span>`);
+    if (character._gender || character.gender) parts.push(`<span class="char-drawer-badge">${character._gender || character.gender}</span>`);
+    if (character._isUgc) parts.push(`<span class="char-drawer-badge char-drawer-badge-ugc">UGC</span>`);
+    badges.innerHTML = parts.join('');
+  }
+
+  // Render looks: main look + any extras stored in character._looks
+  if (looks) {
+    const extraLooks = character._looks || [];
+    const allLooks = [{ imageUrl: imageUrl, label: 'Main look' }, ...extraLooks];
+    looks.innerHTML = allLooks.map((look, i) => `
+      <div class="char-drawer-look ${i === 0 ? 'active' : ''}" onclick="selectDrawerLook(this, '${(look.imageUrl || '').replace(/'/g, "\\'")}')">
+        <img src="${authenticatedMediaUrl(look.imageUrl || '')}" alt="${look.label || `Look ${i + 1}`}" loading="lazy">
+        <div class="char-drawer-look-label">${look.label || `Look ${i + 1}`}</div>
+      </div>
+    `).join('');
+  }
+
+  if (useBtn) {
+    useBtn.onclick = () => { selectCharacter(charDrawerCharacter); closeCharDrawer(); };
+  }
+
+  if (addLookBtn) {
+    if (character._isUgc) {
+      addLookBtn.style.display = '';
+      addLookBtn.onclick = () => generateCharacterLook(character);
+    } else {
+      addLookBtn.style.display = 'none';
+    }
+  }
+
+  overlay.classList.add('active');
+}
+
+function closeCharDrawer() {
+  document.getElementById('charDrawerOverlay')?.classList.remove('active');
+  charDrawerCharacter = null;
+}
+
+function selectDrawerLook(el, imageUrl) {
+  el.closest('.char-drawer-looks')?.querySelectorAll('.char-drawer-look').forEach(l => l.classList.remove('active'));
+  el.classList.add('active');
+  if (charDrawerCharacter && imageUrl) {
+    charDrawerCharacter = { ...charDrawerCharacter, imageUrl };
+    const heroImg = document.getElementById('charDrawerImg');
+    if (heroImg) heroImg.src = authenticatedMediaUrl(imageUrl);
+  }
+}
+
+async function generateCharacterLook(character) {
+  const btn = document.getElementById('charDrawerAddLookBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Generating…'; }
+  try {
+    const prompt = `Professional portrait photo of ${character.name}, ${character.role || ''}, different outfit and setting from their main look, ${(character._ageGroup || character.age_group || '').replace('-', ' ')}, photorealistic, studio lighting, clean background, 85mm lens`;
+    const resp = await api('/api/images/generate', { method: 'POST', body: JSON.stringify({ prompt, model: 'soul_cast' }) });
+    if (resp?.imageUrl) {
+      const newLook = { imageUrl: resp.imageUrl, label: `Look ${((character._looks || []).length + 2)}` };
+      charDrawerCharacter = { ...charDrawerCharacter, _looks: [...(charDrawerCharacter._looks || []), newLook] };
+      openCharDrawer(charDrawerCharacter);
+    } else {
+      showToast('Could not generate look — check console', 'error');
+    }
+  } catch (e) {
+    showToast('Error generating look: ' + e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '+ Generate new look'; }
+  }
 }
 
 initAuth();
