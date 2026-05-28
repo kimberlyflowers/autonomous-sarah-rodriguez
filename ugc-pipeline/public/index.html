@@ -1232,10 +1232,10 @@ body[data-theme="light"] .campaign-workflow-json{background:#fff!important;borde
                   <div class="pick-body"><strong id="productCharacterName">No primary image selected</strong><span>Optional. Use this when one image should anchor the edit.</span></div>
                 </div>
                 <div class="actions">
-                  <button class="btn btn-secondary" onclick="document.getElementById('productCharacterUpload').click()">Upload primary</button>
+                  <button class="btn btn-secondary" onclick="document.getElementById('productCharacterUpload').click()">Upload image</button>
+                  <button class="btn btn-secondary" onclick="openProductCharacterPickerModal()">Select from characters</button>
                   <input id="productCharacterUpload" type="file" accept="image/*" hidden onchange="previewProductPlacementUpload('character', this.files?.[0])">
                 </div>
-                <div class="mini-pick-grid" id="productCharacterGrid"></div>
               </div>
 
               <div>
@@ -1272,6 +1272,7 @@ body[data-theme="light"] .campaign-workflow-json{background:#fff!important;borde
               <a class="btn btn-secondary" id="productResultDownload" href="#" download="product-placement.png">Download image</a>
               <button class="btn btn-secondary" type="button" onclick="sendLatestImageToVideo()">Make video from this</button>
               <button class="btn btn-secondary" type="button" onclick="addLatestImageAsCharacter()">Add as character</button>
+              <button class="btn btn-secondary" type="button" onclick="addLatestImageToCharacter()">Add to character</button>
               <button class="btn btn-primary" type="button" onclick="openPublishModal(latestProductPlacementImage,'image')">Post</button>
             </div>
             <div class="form-group" id="productEditActions" style="margin-top:12px">
@@ -1743,6 +1744,6 @@ body[data-theme="light"] .campaign-workflow-json{background:#fff!important;borde
 
 <div class="toast-container" id="toastContainer"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="/js/app.js?v=characters-5"></script>
+<script src="/js/app.js?v=characters-6"></script>
 </body>
 </html>

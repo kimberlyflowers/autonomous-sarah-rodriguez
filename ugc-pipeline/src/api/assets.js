@@ -65,6 +65,7 @@ function fileToAsset(row) {
     voiceId: row.metadata?.voiceId || '',
     voiceSampleAssetId: row.metadata?.voiceSampleAssetId || '',
     parentSubjectId: row.metadata?.parentSubjectId || '',
+    parentCharacterSlug: row.metadata?.parentCharacterSlug || '',
     isLook: Boolean(row.metadata?.isLook),
     lookName: row.metadata?.lookName || '',
     aiContext: row.metadata?.aiContext || row.metadata || null,
@@ -79,6 +80,7 @@ async function uploadToDatabase(req, file, type, slug) {
     voiceId: req.body.voiceId || '',
     voiceSampleAssetId: req.body.voiceSampleAssetId || '',
     parentSubjectId: req.body.parentSubjectId || '',
+    parentCharacterSlug: req.body.parentCharacterSlug || '',
     isLook: req.body.isLook === 'true' || req.body.isLook === true,
     lookName: req.body.lookName || ''
   };
@@ -296,7 +298,7 @@ router.post('/subjects/from-image-url', async (req, res) => {
     const outDir = path.join(ASSETS_DIR, 'tenants', tenantSlug, 'subjects', slug);
     fs.mkdirSync(outDir, { recursive: true });
     fs.copyFileSync(file.path, path.join(outDir, file.originalname));
-    fs.writeFileSync(path.join(outDir, 'ai-context.json'), JSON.stringify({ voiceId: voiceId || '', voiceSampleAssetId: voiceSampleAssetId || '' }, null, 2));
+    fs.writeFileSync(path.join(outDir, 'ai-context.json'), JSON.stringify({ voiceId: voiceId || '', voiceSampleAssetId: voiceSampleAssetId || '', parentCharacterSlug: req.body.parentCharacterSlug || '' }, null, 2));
     res.json({ success: true, asset: { type: 'subject', slug, name: name || 'New agent', path: `/assets/tenants/${tenantSlug}/subjects/${slug}/${file.originalname}` } });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -399,7 +401,8 @@ async function uploadToSupabase(req, file, type, slug) {
       size_bytes: file.size,
       metadata: {
         voiceId: req.body.voiceId || '',
-        voiceSampleAssetId: req.body.voiceSampleAssetId || ''
+        voiceSampleAssetId: req.body.voiceSampleAssetId || '',
+        parentCharacterSlug: req.body.parentCharacterSlug || ''
       }
     })
     .select('*')

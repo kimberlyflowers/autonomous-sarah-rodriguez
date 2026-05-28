@@ -14,6 +14,7 @@ let ugcCharactersCache = []; // pulled from Supabase ugc_characters via /api/cha
 let selectedCharacter = null;
 let currentCharacterTab = 'library';
 let currentCharacterPickerTab = 'all';
+let characterPickerContext = 'video'; // 'video' | 'productPlacement' | 'addLook'
 let currentCharacterRatio = 'portrait';
 let currentLibraryImageRatio = 'portrait';
 let libraryImageItems = [];
@@ -3265,12 +3266,17 @@ function renderMyAgents(characters) {
   grid.innerHTML = mine.map(character => renderCharacterCard(character, false)).join('');
 }
 
-function openCharacterPickerModal() {
+function openCharacterPickerModal(context = 'video') {
+  characterPickerContext = context;
   const modal = document.getElementById('characterPickerModal');
   if (!modal) return showAgentModal();
   currentCharacterPickerTab = currentCharacterPickerTab || 'all';
   renderCharacterPickerModal();
   modal.classList.add('active');
+}
+
+function openProductCharacterPickerModal() {
+  openCharacterPickerModal('productPlacement');
 }
 
 function closeCharacterPickerModal() {
@@ -3354,7 +3360,18 @@ function renderCharacterCard(character, isLibrary, pickerMode = false) {
 
 function selectCharacterBySlug(slug) {
   const character = __charMap[slug];
-  if (character) selectCharacter(character);
+  if (!character) return;
+  if (characterPickerContext === 'productPlacement') {
+    selectProductPlacementCharacter(character);
+    closeCharacterPickerModal();
+    characterPickerContext = 'video';
+  } else if (characterPickerContext === 'addLook') {
+    confirmAddLookToCharacter(character);
+    closeCharacterPickerModal();
+    characterPickerContext = 'video';
+  } else {
+    selectCharacter(character);
+  }
 }
 
 function openCharDrawerBySlug(slug) {
@@ -3930,6 +3947,31 @@ async function addLatestImageAsCharacter() {
       button.textContent = button.dataset.originalText || 'Add as character';
       delete button.dataset.originalText;
     });
+  }
+}
+
+async function addLatestImageToCharacter() {
+  if (!latestProductPlacementImage) return toast('Generate an image first.', 'error');
+  openCharacterPickerModal('addLook');
+}
+
+async function confirmAddLookToCharacter(character) {
+  if (!latestProductPlacementImage) return toast('Generate an image first.', 'error');
+  const lookName = prompt(`Name this look for ${character.name}:`, 'Custom look');
+  if (!lookName) return;
+  try {
+    await api('/api/assets/subjects/from-image-url', {
+      method: 'POST',
+      body: JSON.stringify({
+        imageUrl: latestProductPlacementImage,
+        name: `${character.name} — ${lookName}`,
+        parentCharacterSlug: character.slug
+      })
+    });
+    toast(`Look added to ${character.name}.`, 'success');
+    await loadAssets();
+  } catch (error) {
+    toast(`Could not add look: ${error.message}`, 'error');
   }
 }
 
@@ -4829,9 +4871,13 @@ function openCharDrawer(character) {
     badges.innerHTML = parts.join('');
   }
 
-  // Render looks: main look + any extras stored in character._looks
+  // Render looks: main look + tenant-saved looks + any extras stored in character._looks
   if (looks) {
-    const extraLooks = character._looks || [];
+    const slug = character.slug || '';
+    const tenantLooks = (assetsCache.subjects || [])
+      .filter(s => (s.parentCharacterSlug || s.aiContext?.parentCharacterSlug) === slug && slug)
+      .map(s => ({ imageUrl: authenticatedMediaUrl(s.files?.[0]?.path || ''), label: s.name || 'Look' }));
+    const extraLooks = [...(character._looks || []), ...tenantLooks];
     const allLooks = [{ imageUrl: imageUrl, label: 'Main look' }, ...extraLooks];
     looks.innerHTML = allLooks.map((look, i) => `
       <div class="char-drawer-look ${i === 0 ? 'active' : ''}" onclick="selectDrawerLook(this, '${(look.imageUrl || '').replace(/'/g, "\\'")}')">
