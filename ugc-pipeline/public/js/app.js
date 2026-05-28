@@ -12,7 +12,7 @@ let currentTenant = JSON.parse(localStorage.getItem('bloomStudioTenant') || 'nul
 let assetsCache = { products: [], subjects: [], audio: [], outputs: [], videos: [] };
 let ugcCharactersCache = []; // pulled from Supabase ugc_characters via /api/characters
 let selectedCharacter = null;
-let currentCharacterTab = 'mine';
+let currentCharacterTab = 'library';
 let currentCharacterPickerTab = 'all';
 let currentCharacterRatio = 'portrait';
 let currentLibraryImageRatio = 'portrait';
@@ -3245,22 +3245,24 @@ function renderAgentLibrary() {
   const grid = document.getElementById('agentLibraryGrid');
   if (!grid) return;
   grid.classList.toggle('landscape', currentCharacterRatio === 'landscape');
-  grid.innerHTML = starterCharacters.map(character => renderCharacterCard(character, true)).join('');
+  // Persona library = hardcoded professional personas + global Supabase UGC characters
+  const starterSlugs = new Set(starterCharacters.map(c => c.slug));
+  const ugcToShow = ugcCharactersCache.filter(c => !starterSlugs.has(c.slug));
+  const allLibrary = [...starterCharacters.map(c => ({ ...c, _isLibrary: true })), ...ugcToShow];
+  grid.innerHTML = allLibrary.map(character => renderCharacterCard(character, !character._isUgc)).join('');
 }
 
 function renderMyAgents(characters) {
   const grid = document.getElementById('myAgentsGrid');
   if (!grid) return;
   grid.classList.toggle('landscape', currentCharacterRatio === 'landscape');
-  // Merge uploaded subjects + Supabase UGC characters (deduped by slug)
-  const uploadedSlugs = new Set((characters || []).map(c => c.slug));
-  const ugcToShow = ugcCharactersCache.filter(c => !uploadedSlugs.has(c.slug));
-  const allAgents = [...(characters || []), ...ugcToShow];
-  if (!allAgents.length) {
-    grid.innerHTML = '<div class="character-empty">No characters yet. Click + New character to upload a spokesperson portrait, or characters will appear here once synced from the library.</div>';
+  // My characters = only this user's own uploaded subjects (no global UGC merge)
+  const mine = characters || [];
+  if (!mine.length) {
+    grid.innerHTML = '<div class="character-empty">No personal characters yet. Click + New character to upload your own spokesperson portrait.</div>';
     return;
   }
-  grid.innerHTML = allAgents.map(character => renderCharacterCard(character, false)).join('');
+  grid.innerHTML = mine.map(character => renderCharacterCard(character, false)).join('');
 }
 
 function openCharacterPickerModal() {
@@ -3287,11 +3289,15 @@ function renderCharacterPickerModal() {
   const grid = document.getElementById('characterPickerGrid');
   if (!grid) return;
   grid.classList.toggle('landscape', currentCharacterRatio === 'landscape');
-  const libraryCharacters = starterCharacters.map(character => ({ ...character, _isLibrary: true }));
-  const uploadedSubjects = (assetsCache.subjects || []).map(character => ({ ...character, _isLibrary: false }));
-  const uploadedSlugs = new Set(uploadedSubjects.map(c => c.slug));
-  const ugcChars = ugcCharactersCache.filter(c => !uploadedSlugs.has(c.slug)).map(c => ({ ...c, _isLibrary: false }));
-  const myCharacters = [...uploadedSubjects, ...ugcChars];
+  // Library = professional personas + global UGC characters
+  const starterSlugs = new Set(starterCharacters.map(c => c.slug));
+  const ugcLibrary = ugcCharactersCache.filter(c => !starterSlugs.has(c.slug));
+  const libraryCharacters = [
+    ...starterCharacters.map(c => ({ ...c, _isLibrary: true })),
+    ...ugcLibrary
+  ];
+  // My characters = only personally uploaded subjects
+  const myCharacters = (assetsCache.subjects || []).map(c => ({ ...c, _isLibrary: false }));
   const characters = currentCharacterPickerTab === 'library'
     ? libraryCharacters
     : currentCharacterPickerTab === 'mine'
