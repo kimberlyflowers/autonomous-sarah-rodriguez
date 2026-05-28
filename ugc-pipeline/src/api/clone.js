@@ -6,8 +6,38 @@
 // GET  /api/clone/status/:id — poll for result
 
 const express = require('express');
+const { createClient } = require('@supabase/supabase-js');
 const { submitCloneGeneration, checkCloneStatus, estimateCost } = require('../services/evolink');
+const { getSupabaseConfig } = require('../services/supabase');
 const { logger } = require('../services/logger');
+
+// Resolve @slug → { id, image_url } from ugc_characters
+async function resolveCharacterSlug(slug) {
+  const { url, anonKey, available } = getSupabaseConfig();
+  if (!available) return null;
+  try {
+    const supabase = createClient(url, anonKey, { auth: { persistSession: false } });
+    const { data, error } = await supabase
+      .from('ugc_characters')
+      .select('id, name, image_url')
+      .eq('slug', slug.toLowerCase())
+      .eq('active', true)
+      .single();
+    if (error || !data) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+// Strip all resolved @slug tags from prompt text
+function stripSlugTags(prompt, slugs) {
+  let clean = prompt;
+  for (const slug of slugs) {
+    clean = clean.replace(new RegExp(`@${slug}\\b`, 'gi'), '');
+  }
+  return clean.replace(/\s{2,}/g, ' ').trim();
+}
 
 const router = express.Router();
 
@@ -47,8 +77,23 @@ router.post('/generate', async (req, res) => {
       return res.status(400).json({ error: 'Provide at least a productUrl (image anchor) or referenceUrl (video to clone).' });
     }
 
+    // Resolve @slug mentions (e.g. @mia, @naomi) → character image URL
+    let resolvedAvatarUrl = avatarUrl;
+    let cleanPrompt = prompt;
+    const slugMatches = [...new Set((prompt.match(/@([a-z][a-z0-9-]+)/gi) || []).map(m => m.slice(1).toLowerCase()))];
+    if (slugMatches.length > 0) {
+      for (const slug of slugMatches) {
+        const char = await resolveCharacterSlug(slug);
+        if (char) {
+          resolvedAvatarUrl = resolvedAvatarUrl || char.image_url;
+          logger.info(`Resolved @${slug} → ${char.name} (${char.id})`);
+        }
+      }
+      cleanPrompt = stripSlugTags(prompt, slugMatches);
+    }
+
     // Build image_urls: product first, avatar second (both used as visual anchors)
-    const imageUrls = [productUrl, avatarUrl].filter(u => u && /^https?:\/\//i.test(u));
+    const imageUrls = [productUrl, resolvedAvatarUrl].filter(u => u && /^https?:\/\//i.test(u));
 
     // Build video_urls: the reference video to clone style from
     // If it's a social media URL (not a direct .mp4), Evolink's reference-to-video
@@ -60,7 +105,7 @@ router.post('/generate', async (req, res) => {
     const costUser = +(costRaw * UPCHARGE).toFixed(2);
 
     const result = await submitCloneGeneration({
-      prompt,
+      prompt: cleanPrompt,
       imageUrls,
       videoUrls,
       duration: durationSec,

@@ -21,6 +21,7 @@ const productPlacementRouter = require('./api/product-placement');
 const ttsRouter = require('./api/tts');
 const trendsRouter = require('./api/trends');
 const cloneRouter = require('./api/clone');
+const charactersRouter = require('./api/characters');
 const { requireTenant } = require('./services/auth');
 const { getSupabaseConfig } = require('./services/supabase');
 const { getRunPodConfig } = require('./services/runpod');
@@ -76,6 +77,8 @@ app.use('/api/trends', apiKeyAuth, requireTenant, trendsRouter);
 app.use('/api/public/trends', trendsRouter);
 // Video clone — Evolink Seedance 2.0 (primary) + WaveSpeed fallback. No RunPod.
 app.use('/api/clone', apiKeyAuth, requireTenant, cloneRouter);
+// Global character roster — public read (no tenant required)
+app.use('/api/characters', charactersRouter);
 
 // Health check
 app.get('/health', (req, res) => {
