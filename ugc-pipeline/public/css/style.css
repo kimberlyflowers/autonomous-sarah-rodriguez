@@ -206,17 +206,18 @@ body {
 
 /* Buttons */
 .btn {
-  padding: 10px 20px;
+  padding: 7px 14px;
   border-radius: var(--radius-sm);
   border: none;
   font-family: inherit;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.15s;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  line-height: 1.4;
 }
 
 .btn-primary {
@@ -251,7 +252,7 @@ body {
 }
 
 .btn-sm {
-  padding: 6px 12px;
+  padding: 4px 10px;
   font-size: 12px;
 }
 

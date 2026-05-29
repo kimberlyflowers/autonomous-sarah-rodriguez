@@ -2760,7 +2760,7 @@ function showVideoProcessingPreview({
   const displaySrc = imageUrl ? authenticatedMediaUrl(imageUrl) : '';
   frame.innerHTML = `
     <div class="processing-preview-frame">
-      ${displaySrc ? `<img src="${displaySrc}" alt="Processing video preview">` : `<div class="processing-preview-empty"><div class="cooking-orb"></div><strong>Video processing</strong></div>`}
+      ${displaySrc ? `<img src="${displaySrc}" alt="Processing video preview">` : `<div class="processing-preview-empty"><div class="bloom-dots"><span></span><span></span><span></span></div><strong>Video processing</strong></div>`}
       <div class="processing-preview-overlay">
         <strong>${escapeHtml(title)}</strong>
         <p>${escapeHtml(detail)}</p>
@@ -3697,7 +3697,7 @@ async function generateProductPlacement() {
   }, 300000);
   button.disabled = true;
   button.textContent = 'Generating...';
-  resultFrame.innerHTML = `<div class="cooking-state"><div class="cooking-orb"></div><strong>Generating with ${escapeHtml(imageModelLabel)}</strong><p class="hint">Uploading public references and waiting for the image result.</p><div class="cooking-steps">Large edits can take several minutes.</div></div>`;
+  resultFrame.innerHTML = `<div class="cooking-state"><div class="bloom-dots"><span></span><span></span><span></span></div><strong>Generating with ${escapeHtml(imageModelLabel)}</strong><p class="hint">Uploading public references and waiting for the image result.</p><div class="cooking-steps">Large edits can take several minutes.</div></div>`;
   try {
     const data = new FormData();
     data.append('prompt', prompt);
@@ -3790,7 +3790,7 @@ async function editProductPlacementResult() {
     button.disabled = true;
     button.textContent = 'Applying edit...';
   }
-  resultFrame.innerHTML = '<div class="cooking-state"><div class="cooking-orb"></div><strong>Editing current image</strong><p class="hint">Using the generated image as the reference and changing only what you asked for.</p></div>';
+  resultFrame.innerHTML = '<div class="cooking-state"><div class="bloom-dots"><span></span><span></span><span></span></div><strong>Editing current image</strong><p class="hint">Using the generated image as the reference and changing only what you asked for.</p></div>';
 
   try {
     const data = new FormData();
@@ -4245,7 +4245,7 @@ async function generateBuiltAgent() {
   progress?.classList.add('active');
   actions?.classList.remove('active');
   setAgentBuildPreviewRatio(currentAgentBuildPreviewRatio || 'portrait');
-  preview.innerHTML = '<div class="cooking-state"><div class="cooking-orb"></div><strong>Building character</strong><p class="hint">Creating a centered 16:9 source image.</p></div>';
+  preview.innerHTML = '<div class="cooking-state"><div class="bloom-dots"><span></span><span></span><span></span></div><strong>Building character</strong><p class="hint">Creating a centered 16:9 source image.</p></div>';
   try {
     const data = new FormData();
     data.append('prompt', buildAgentImagePrompt());
