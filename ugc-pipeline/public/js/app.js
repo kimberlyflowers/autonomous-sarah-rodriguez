@@ -2339,7 +2339,7 @@ function setCreateType(type, options = {}) {
   };
   const flow = flows[selected] || flows.shorts;
   document.getElementById('studioCreateType').value = selected;
-  document.querySelectorAll('[data-create-type]').forEach(btn => btn.classList.toggle('active', btn.dataset.createType === selected));
+  document.querySelectorAll('[data-create-type]:not(#tab-studio)').forEach(btn => btn.classList.toggle('active', btn.dataset.createType === selected));
   const note = document.querySelector('#tab-studio .panel-note');
   if (note) note.textContent = flow.desc;
 
