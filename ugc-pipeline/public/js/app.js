@@ -923,7 +923,8 @@ async function hydrateUser() {
   document.getElementById('tenantPill').textContent = currentTenant?.name || currentTenant?.slug || currentTenant?.id || 'Workspace';
   hideLogin();
   switchTab('characters'); // land immediately — don't wait for data loads
-  await Promise.all([loadDashboard(), loadStudioStatus(), loadAssets()]);
+  loadStudioStatus(); // fire-and-forget — RunPod polling must NOT block character rendering
+  await Promise.all([loadDashboard(), loadAssets()]);
 }
 
 async function logout() {
@@ -3196,8 +3197,13 @@ async function loadAssets() {
     role: [c.age_group, c.gender].filter(Boolean).map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(' · '),
     _isUgc: true,
     _ageGroup: c.age_group,
-    _gender: c.gender
+    _gender: c.gender,
+    _looks: c._looks || []
   }));
+  // Persist to localStorage so the next page load renders characters instantly
+  try {
+    localStorage.setItem('bloom_ugc_characters', JSON.stringify(ugcCharactersCache));
+  } catch (e) { /* ignore quota errors */ }
   renderAssetGrid('productGrid', data.products || [], 'products');
   renderAssetGrid('generatedImageGrid', data.outputs || [], 'outputs');
   setLibraryImageRatio(currentLibraryImageRatio);
@@ -3249,11 +3255,12 @@ function renderAgentLibrary() {
   const grid = document.getElementById('agentLibraryGrid');
   if (!grid) return;
   grid.classList.toggle('landscape', currentCharacterRatio === 'landscape');
-  // Character library = hardcoded professional personas + global Supabase UGC characters
-  const starterSlugs = new Set(starterCharacters.map(c => c.slug));
-  const ugcToShow = ugcCharactersCache.filter(c => !starterSlugs.has(c.slug));
-  const allLibrary = [...starterCharacters.map(c => ({ ...c, _isLibrary: true })), ...ugcToShow];
-  grid.innerHTML = allLibrary.map(character => renderCharacterCard(character, !character._isUgc)).join('');
+  // Library = UGC characters only — hardcoded starter personas are no longer shown publicly
+  if (!ugcCharactersCache.length) {
+    grid.innerHTML = '<div class="character-empty">Loading characters…</div>';
+    return;
+  }
+  grid.innerHTML = ugcCharactersCache.map(character => renderCharacterCard(character, false)).join('');
 }
 
 function renderMyAgents(characters) {
@@ -3261,7 +3268,7 @@ function renderMyAgents(characters) {
   if (!grid) return;
   grid.classList.toggle('landscape', currentCharacterRatio === 'landscape');
   // My characters = only this user's own uploaded subjects (no global UGC merge)
-  const mine = characters || [];
+  const mine = (characters || []).map(c => ({ ...c, _isPersonal: true }));
   if (!mine.length) {
     grid.innerHTML = '<div class="character-empty">No personal characters yet. Click + New character to upload your own spokesperson portrait.</div>';
     return;
@@ -3333,17 +3340,21 @@ function renderCharacterCard(character, isLibrary, pickerMode = false) {
   const displayUrl = authenticatedMediaUrl(imageUrl);
   const voice = getCharacterVoiceId(character) || character.voiceSampleAssetId ? 'Voice saved' : isLibrary ? character.role : (character._isUgc ? character.role : 'No default voice');
   const ugcBadge = character._isUgc ? '<div class="character-ugc-badge">UGC</div>' : '';
-  const looksCount = (character._looks || []).length + 1;
+  const tenantLooksCount = (assetsCache?.subjects || []).filter(s =>
+    slug && (s.parentCharacterSlug || s.aiContext?.parentCharacterSlug) === slug
+  ).length;
+  const looksCount = (character._looks || []).length + tenantLooksCount + 1;
   const looksBadge = `<div class="character-looks-badge">${looksCount} look${looksCount !== 1 ? 's' : ''}</div>`;
   const manage = isLibrary || character._isUgc
     ? ''
     : `<button class="btn btn-secondary" onclick="event.stopPropagation();editCharacterVoice('${slug}', '${(character.voiceId || '').replace(/'/g, "\\'")}')">Voice</button>
        <button class="btn btn-secondary" onclick="event.stopPropagation();deleteAsset('subjects','${slug}')">Delete</button>`;
 
-  // Library-page UGC chars open the detail drawer; picker modal + starter chars select directly
-  const openDrawer = !pickerMode && !!character._isUgc;
-  const cardClick  = openDrawer ? `openCharDrawerBySlug('${slug}')` : `selectCharacterBySlug('${slug}')`;
-  const useClick   = openDrawer ? `openCharDrawerBySlug('${slug}')` : `selectCharacterBySlug('${slug}')`;
+  // UGC library chars AND personal tenant avatars open the full profile page with looks
+  // Picker modal + starter chars select directly
+  const openProfile = !pickerMode && (!!character._isUgc || !!character._isPersonal);
+  const cardClick  = openProfile ? `openCharProfileBySlug('${slug}')` : `selectCharacterBySlug('${slug}')`;
+  const useClick   = openProfile ? `openCharProfileBySlug('${slug}')` : `selectCharacterBySlug('${slug}')`;
 
   return `<div class="character-card" data-char-slug="${slug}" onclick="${cardClick}">
     <img src="${displayUrl}" alt="${escapeHtml(character.name)}" loading="lazy">
@@ -4899,6 +4910,9 @@ function openCharDrawer(character) {
         <div class="char-drawer-look-label">${look.label || `Look ${i + 1}`}</div>
       </div>
     `).join('');
+    // Update section title count
+    const countEl = document.getElementById('charDrawerLooksCount');
+    if (countEl) countEl.textContent = allLooks.length;
   }
 
   if (useBtn) {
@@ -4932,24 +4946,148 @@ function selectDrawerLook(el, imageUrl) {
   }
 }
 
-async function generateCharacterLook(character) {
-  const btn = document.getElementById('charDrawerAddLookBtn');
-  if (btn) { btn.disabled = true; btn.textContent = 'Generating…'; }
+function generateCharacterLook(character) {
+  // Route to image composite (Nano Banana) with this character pre-selected.
+  // After generating, use "Add latest image as look" to save it back to this character.
+  closeCharDrawer();
+  _applyCharacterToCreate(character, 'image');
+}
+
+// Pre-render UGC characters from localStorage cache — instant, zero API calls.
+// loadAssets() replaces this with fresh data after auth completes.
+(function preCacheRender() {
   try {
-    const prompt = `Professional portrait photo of ${character.name}, ${character.role || ''}, different outfit and setting from their main look, ${(character._ageGroup || character.age_group || '').replace('-', ' ')}, photorealistic, studio lighting, clean background, 85mm lens`;
-    const resp = await api('/api/images/generate', { method: 'POST', body: JSON.stringify({ prompt, model: 'soul_cast' }) });
-    if (resp?.imageUrl) {
-      const newLook = { imageUrl: resp.imageUrl, label: `Look ${((character._looks || []).length + 2)}` };
-      charDrawerCharacter = { ...charDrawerCharacter, _looks: [...(charDrawerCharacter._looks || []), newLook] };
-      openCharDrawer(charDrawerCharacter);
-    } else {
-      showToast('Could not generate look — check console', 'error');
-    }
-  } catch (e) {
-    showToast('Error generating look: ' + e.message, 'error');
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '+ Generate new look'; }
+    const cached = localStorage.getItem('bloom_ugc_characters');
+    if (!cached) return;
+    const chars = JSON.parse(cached);
+    if (!Array.isArray(chars) || !chars.length) return;
+    ugcCharactersCache = chars;
+    renderAgentLibrary();
+  } catch (e) { /* corrupted cache — ignore, fresh data loads after auth */ }
+})();
+
+// ============================================================
+// Character Profile Page (full-screen, HeyGen-style)
+// ============================================================
+let charProfileCharacter = null;
+let charProfileAllLooks = [];
+
+function openCharProfile(character) {
+  charProfileCharacter = character;
+  const overlay = document.getElementById('charProfileOverlay');
+  if (!overlay) return openCharDrawer(character);
+
+  const imageUrl = character.imageUrl || character.image_url || '';
+  const slug = character.slug || '';
+
+  // Header
+  const avatarEl = document.getElementById('charProfileAvatarSm');
+  const titleEl = document.getElementById('charProfileTitle');
+  if (avatarEl) { avatarEl.src = authenticatedMediaUrl(imageUrl); avatarEl.alt = character.name || ''; }
+  if (titleEl) titleEl.textContent = character.name || '';
+
+  // Build full looks list: main + stored _looks + tenant-uploaded looks
+  const tenantLooks = (assetsCache.subjects || [])
+    .filter(s => slug && (s.parentCharacterSlug || s.aiContext?.parentCharacterSlug) === slug)
+    .map(s => ({ imageUrl: s.files?.[0]?.path || '', label: s.name || 'Custom look' }));
+  charProfileAllLooks = [
+    { imageUrl, label: character.name + ' — Main look' },
+    ...(character._looks || []),
+    ...tenantLooks
+  ];
+
+  const countEl = document.getElementById('charProfileLooksCount');
+  if (countEl) countEl.textContent = charProfileAllLooks.length;
+
+  const addBtn = document.getElementById('charProfileAddLookBtn');
+  // Show "Generate new look" for UGC library chars AND personal tenant avatars
+  if (addBtn) addBtn.style.display = (character._isUgc || character._isPersonal) ? '' : 'none';
+
+  setCharProfileTab('looks');
+  overlay.classList.add('active');
+}
+
+function closeCharProfile() {
+  document.getElementById('charProfileOverlay')?.classList.remove('active');
+  charProfileCharacter = null;
+}
+
+function setCharProfileTab(tab) {
+  document.getElementById('charProfileTabLooks')?.classList.toggle('active', tab === 'looks');
+  document.getElementById('charProfileTabVoices')?.classList.toggle('active', tab === 'voices');
+  const body = document.getElementById('charProfileBody');
+  if (!body) return;
+  if (tab === 'looks') {
+    body.innerHTML = '<div class="char-profile-looks-grid" id="charProfileLooksGrid"></div>';
+    _renderCharProfileGrid();
+  } else {
+    body.innerHTML = '<p class="char-profile-empty">Voice samples coming soon — assign a default voice ID from the Characters tab.</p>';
   }
+}
+
+function _renderCharProfileGrid() {
+  const grid = document.getElementById('charProfileLooksGrid');
+  if (!grid) return;
+  if (!charProfileAllLooks.length) {
+    grid.innerHTML = '<div class="char-profile-empty">No looks yet — generate one below.</div>';
+    return;
+  }
+  grid.innerHTML = charProfileAllLooks.map((look, i) => {
+    const url = look.imageUrl || '';
+    const label = look.label || `Look ${i + 1}`;
+    return `<div class="char-profile-look-card" onclick="openLookPreview('${url.replace(/'/g, "\\'")}','${label.replace(/'/g, "\\'")}')">
+      <img src="${authenticatedMediaUrl(url)}" alt="${escapeHtml(label)}" loading="lazy">
+      <div class="char-profile-look-label">${escapeHtml(label)}</div>
+    </div>`;
+  }).join('');
+}
+
+function openCharProfileBySlug(slug) {
+  const character = __charMap[slug];
+  if (character) openCharProfile(character);
+}
+
+function useCharProfileCharacter() {
+  if (!charProfileCharacter) return;
+  selectCharacter(charProfileCharacter);
+  closeCharProfile();
+}
+
+function generateCharProfileLook() {
+  if (!charProfileCharacter) return;
+  const character = charProfileCharacter; // capture BEFORE closeCharProfile nulls it
+  closeCharProfile();
+  _applyCharacterToCreate(character, 'image');
+}
+
+// ============================================================
+// Look Preview Lightbox
+// ============================================================
+function openLookPreview(imageUrl, label) {
+  const overlay = document.getElementById('lookPreviewOverlay');
+  if (!overlay) return;
+  const img = document.getElementById('lookPreviewImg');
+  const titleEl = document.getElementById('lookPreviewTitle');
+  if (img) { img.src = authenticatedMediaUrl(imageUrl); img.alt = label || ''; }
+  if (titleEl) titleEl.textContent = label || '';
+  overlay.dataset.previewUrl = imageUrl;
+  overlay.classList.add('active');
+}
+
+function closeLookPreview() {
+  document.getElementById('lookPreviewOverlay')?.classList.remove('active');
+}
+
+function useLookFromPreview() {
+  const overlay = document.getElementById('lookPreviewOverlay');
+  const imageUrl = overlay?.dataset.previewUrl || '';
+  if (!charProfileCharacter || !imageUrl) return;
+  const character = charProfileCharacter; // capture BEFORE closeCharProfile nulls it
+  const charWithLook = { ...character, imageUrl };
+  selectCharacter(charWithLook);
+  closeLookPreview();
+  closeCharProfile();
+  toast(`${character.name} loaded with selected look.`, 'success');
 }
 
 initAuth();

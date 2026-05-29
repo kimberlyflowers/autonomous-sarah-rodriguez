@@ -23,7 +23,7 @@ router.get('/', async (req, res) => {
 
     let query = supabase
       .from('ugc_characters')
-      .select('id, name, slug, age_group, gender, image_url')
+      .select('id, name, slug, age_group, gender, image_url, metadata')
       .eq('active', true)
       .order('created_at', { ascending: true });
 
@@ -33,7 +33,17 @@ router.get('/', async (req, res) => {
     const { data, error } = await query;
     if (error) throw error;
 
-    res.json({ success: true, characters: data || [] });
+    const characters = (data || []).map(c => ({
+      id: c.id,
+      name: c.name,
+      slug: c.slug,
+      age_group: c.age_group,
+      gender: c.gender,
+      image_url: c.image_url,
+      _looks: c.metadata?.looks || []
+    }));
+
+    res.json({ success: true, characters });
   } catch (err) {
     logger.error('Characters list error:', err);
     res.status(500).json({ success: false, error: err.message });
@@ -48,13 +58,21 @@ router.get('/:slug', async (req, res) => {
 
     const { data, error } = await supabase
       .from('ugc_characters')
-      .select('id, name, slug, age_group, gender, image_url')
+      .select('id, name, slug, age_group, gender, image_url, metadata')
       .eq('slug', req.params.slug)
       .eq('active', true)
       .single();
 
     if (error || !data) return res.status(404).json({ success: false, error: 'Character not found.' });
-    res.json({ success: true, character: data });
+    res.json({ success: true, character: {
+      id: data.id,
+      name: data.name,
+      slug: data.slug,
+      age_group: data.age_group,
+      gender: data.gender,
+      image_url: data.image_url,
+      _looks: data.metadata?.looks || []
+    } });
   } catch (err) {
     logger.error('Character lookup error:', err);
     res.status(500).json({ success: false, error: err.message });
