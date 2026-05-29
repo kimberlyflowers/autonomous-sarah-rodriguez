@@ -206,7 +206,7 @@ body {
 
 /* Buttons */
 .btn {
-  padding: 7px 14px;
+  padding: 8px 16px;
   border-radius: var(--radius-sm);
   border: none;
   font-family: inherit;
@@ -217,7 +217,9 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  line-height: 1.4;
+  line-height: 20px;
+  height: 36px;
+  white-space: nowrap;
 }
 
 .btn-primary {
@@ -252,8 +254,9 @@ body {
 }
 
 .btn-sm {
-  padding: 4px 10px;
+  padding: 0 10px;
   font-size: 12px;
+  height: 28px;
 }
 
 .btn:disabled {
