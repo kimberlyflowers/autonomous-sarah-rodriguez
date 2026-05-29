@@ -48,6 +48,8 @@ let latestBuiltAgentImage = '';
 let currentAgentBuildPreviewRatio = 'portrait';
 let studioCrop = { x: 50, y: 50 };
 let cropDrag = null;
+let productCrop = { x: 50, y: 50 };
+let productCropDrag = null;
 let previewAudioAsset = null;
 let voicePreviewTimer = null;
 let generationTimer = null;
@@ -3543,6 +3545,112 @@ function renderProductAssetPicker(products) {
   }).join('');
 }
 
+// ── Product image crop preview helpers ────────────────────────────────────────
+const _PRODUCT_RATIOS = {
+  '9:16': 9/16, '4:5': 4/5, '3:4': 3/4, '2:3': 2/3,
+  '16:9': 16/9, '21:9': 21/9, '3:2': 3/2, '4:3': 4/3, '1:1': 1
+};
+
+function _findClosestProductRatio(naturalRatio) {
+  let best = '9:16', minDiff = Infinity;
+  for (const [key, val] of Object.entries(_PRODUCT_RATIOS)) {
+    const diff = Math.abs(naturalRatio - val);
+    if (diff < minDiff) { minDiff = diff; best = key; }
+  }
+  return best;
+}
+
+function _setProductPreviewAspect(ratioStr) {
+  const el = document.getElementById('productCharacterPreview');
+  if (!el) return;
+  const [w, h] = (ratioStr || '9:16').split(':').map(Number);
+  if (w && h) el.style.aspectRatio = `${w} / ${h}`;
+}
+
+function onProductAspectChange() {
+  const ratio = document.getElementById('productPlacementAspect')?.value || '9:16';
+  _setProductPreviewAspect(ratio);
+  // Reset crop to center when ratio changes
+  productCrop = { x: 50, y: 50 };
+  const el = document.getElementById('productCharacterPreview');
+  if (el) { el.style.setProperty('--crop-x', '50%'); el.style.setProperty('--crop-y', '50%'); }
+}
+
+function _initProductCropDrag() {
+  const preview = document.getElementById('productCharacterPreview');
+  if (!preview || preview._cropDragReady) return;
+  preview._cropDragReady = true;
+
+  preview.addEventListener('mousedown', e => {
+    if (!preview.classList.contains('has-image')) return;
+    e.preventDefault();
+    productCropDrag = { startX: e.clientX, startY: e.clientY, cropX: productCrop.x, cropY: productCrop.y };
+    preview.classList.add('dragging');
+  });
+  document.addEventListener('mousemove', e => {
+    if (!productCropDrag) return;
+    const rect = preview.getBoundingClientRect();
+    const dx = ((e.clientX - productCropDrag.startX) / Math.max(rect.width, 1)) * 100;
+    const dy = ((e.clientY - productCropDrag.startY) / Math.max(rect.height, 1)) * 100;
+    productCrop.x = Math.max(0, Math.min(100, productCropDrag.cropX - dx));
+    productCrop.y = Math.max(0, Math.min(100, productCropDrag.cropY - dy));
+    preview.style.setProperty('--crop-x', `${productCrop.x}%`);
+    preview.style.setProperty('--crop-y', `${productCrop.y}%`);
+  });
+  document.addEventListener('mouseup', () => {
+    if (!productCropDrag) return;
+    productCropDrag = null;
+    preview.classList.remove('dragging');
+  });
+  // Touch support
+  preview.addEventListener('touchstart', e => {
+    if (!preview.classList.contains('has-image') || !e.touches[0]) return;
+    e.preventDefault();
+    productCropDrag = { startX: e.touches[0].clientX, startY: e.touches[0].clientY, cropX: productCrop.x, cropY: productCrop.y };
+  }, { passive: false });
+  preview.addEventListener('touchmove', e => {
+    if (!productCropDrag || !e.touches[0]) return;
+    e.preventDefault();
+    const rect = preview.getBoundingClientRect();
+    const dx = ((e.touches[0].clientX - productCropDrag.startX) / Math.max(rect.width, 1)) * 100;
+    const dy = ((e.touches[0].clientY - productCropDrag.startY) / Math.max(rect.height, 1)) * 100;
+    productCrop.x = Math.max(0, Math.min(100, productCropDrag.cropX - dx));
+    productCrop.y = Math.max(0, Math.min(100, productCropDrag.cropY - dy));
+    preview.style.setProperty('--crop-x', `${productCrop.x}%`);
+    preview.style.setProperty('--crop-y', `${productCrop.y}%`);
+  }, { passive: false });
+  preview.addEventListener('touchend', () => { productCropDrag = null; });
+}
+
+async function _showProductCropPreview(imageUrl, displayName) {
+  const preview = document.getElementById('productCharacterPreview');
+  if (!preview) return;
+
+  // Reset crop position to center
+  productCrop = { x: 50, y: 50 };
+  preview.style.setProperty('--crop-x', '50%');
+  preview.style.setProperty('--crop-y', '50%');
+
+  // Render image + hint overlay
+  const url = authenticatedMediaUrl(imageUrl);
+  preview.innerHTML = `<img src="${url}" alt="${escapeHtml(displayName || '')}"><div class="pick-crop-hint">Drag to reposition</div>`;
+  preview.classList.add('has-image');
+
+  // Detect natural aspect ratio → set dropdown + preview ratio
+  const img = new Image();
+  img.onload = () => {
+    if (!img.naturalWidth || !img.naturalHeight) return;
+    const naturalRatio = img.naturalWidth / img.naturalHeight;
+    const closest = _findClosestProductRatio(naturalRatio);
+    const select = document.getElementById('productPlacementAspect');
+    if (select && select.value !== closest) select.value = closest;
+    _setProductPreviewAspect(closest);
+  };
+  img.src = url;
+
+  _initProductCropDrag();
+}
+
 function selectProductPlacementCharacter(character) {
   const file = character.files?.[0];
   const imageUrl = character.imageUrl || file?.path || '';
@@ -3555,7 +3663,7 @@ function selectProductPlacementCharacter(character) {
     file: null
   };
   document.getElementById('productCharacterName').textContent = character.name;
-  document.getElementById('productCharacterPreview').innerHTML = `<img src="${authenticatedMediaUrl(imageUrl)}" alt="${character.name}">`;
+  _showProductCropPreview(imageUrl, character.name);
 }
 
 function selectProductPlacementProduct(product) {
@@ -3576,7 +3684,7 @@ function previewProductPlacementUpload(type, file) {
     const url = URL.createObjectURL(file);
     productPlacementCharacter = { name: file.name, imageUrl: url, assetId: '', file };
     document.getElementById('productCharacterName').textContent = file.name;
-    document.getElementById('productCharacterPreview').innerHTML = `<img src="${url}" alt="${file.name}">`;
+    _showProductCropPreview(url, file.name);
   } else {
     const files = Array.from(file instanceof FileList ? file : [file]).slice(0, 5 - productPlacementReferences.length);
     files.forEach(item => addProductPlacementReference({
@@ -3671,8 +3779,10 @@ function resetProductPlacement() {
   latestProductPlacementSize = '1k';
   document.getElementById('productCharacterName').textContent = 'No primary image selected';
   document.getElementById('productImageName').textContent = '0 reference images selected';
-  document.getElementById('productCharacterPreview').textContent = 'Optional primary image';
+  const _pcp = document.getElementById('productCharacterPreview');
+  if (_pcp) { _pcp.textContent = 'Optional primary image'; _pcp.classList.remove('has-image', 'dragging'); _pcp.style.aspectRatio = ''; }
   document.getElementById('productImagePreview').textContent = 'Optional references';
+  productCrop = { x: 50, y: 50 };
   renderProductPlacementReferences();
   document.getElementById('productCharacterUpload').value = '';
   document.getElementById('productImageUpload').value = '';
