@@ -210,7 +210,7 @@ body {
   border-radius: var(--radius-sm);
   border: none;
   font-family: inherit;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s;
