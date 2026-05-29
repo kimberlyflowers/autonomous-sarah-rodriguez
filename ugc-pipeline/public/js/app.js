@@ -1223,7 +1223,7 @@ function setCreateTool(tool = 'video') {
   studioTab?.classList.add('focused-create');
   document.querySelector('#tab-studio .create-tool-grid')?.classList.remove('expanded');
   studioTab?.classList.toggle('create-tool-audio', selected === 'audio');
-  document.querySelectorAll('[data-create-tool]').forEach(btn => {
+  document.querySelectorAll('[data-create-tool]:not(#tab-studio)').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.createTool === selected);
   });
 
@@ -2242,7 +2242,7 @@ function setCreateType(type, options = {}) {
     studioTab.classList.add('focused-create');
     studioTab.classList.remove('create-tool-audio');
   }
-  document.querySelectorAll('[data-create-tool]').forEach(btn => {
+  document.querySelectorAll('[data-create-tool]:not(#tab-studio)').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.createTool === 'video');
   });
   const flows = {
