@@ -3470,6 +3470,7 @@ function _applyCharacterToCreate(character, type) {
   if (type === 'image') {
     switchTab('studio');
     setCreateTool('image');
+    selectProductPlacementCharacter(character);
     toast(`${character.name} ready — pick a product and generate a composite image.`, 'success');
   } else {
     setStudioMode('i2v');
@@ -3534,7 +3535,7 @@ function renderProductAssetPicker(products) {
 function selectProductPlacementCharacter(character) {
   const file = character.files?.[0];
   const imageUrl = character.imageUrl || file?.path || '';
-  const isLibrary = character.slug?.startsWith('library-');
+  const isLibrary = character.slug?.startsWith('library-') || !!character._isUgc;
   productPlacementCharacter = {
     slug: character.slug,
     name: character.name,
