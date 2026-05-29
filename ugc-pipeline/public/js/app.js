@@ -983,7 +983,8 @@ async function loadStudioStatus() {
         ? 'Legacy Chatterbox is available for short tests, but VibeVoice is preferred for longform.'
       : qwen?.note || 'Waiting for Qwen TTS API workflow export.';
     const currentCreateType = document.getElementById('studioCreateType')?.value;
-    if (currentCreateType) setCreateType(currentCreateType, { preserveToast: true });
+    const studioActive = document.getElementById('tab-studio')?.classList.contains('active');
+    if (currentCreateType && !studioActive) setCreateType(currentCreateType, { preserveToast: true });
     loadRunPodBalance();
   } catch (e) {
     setChip('comfyStatus', 'Error', 'red');
@@ -2597,7 +2598,7 @@ function setStudioVideoEngine(engine) {
   const qualitySelect = document.getElementById('studioMeigenSize');
   const qualityHint = document.getElementById('studioMeigenQualityHint');
   const usesLipSyncQuality = ['meigen', 'infinitetalk-hd', 'musetalk'].includes(engine);
-  if (quality) quality.style.display = usesLipSyncQuality ? '' : 'none';
+  if (quality) quality.style.setProperty('display', usesLipSyncQuality ? 'block' : 'none', 'important');
   if (durationGroup) {
     const showDuration = engine === 'wan-comfy';
     durationGroup.style.display = showDuration ? '' : 'none';
@@ -3465,7 +3466,6 @@ function _applyCharacterToCreate(character, type) {
     selectedImg.alt = character.name || 'Selected character';
   }
   selectedCard?.classList.add('active');
-  setPreviewImage(imageUrl, character.name);
   closeCharacterPickerModal();
   if (type === 'image') {
     switchTab('studio');
@@ -3478,6 +3478,7 @@ function _applyCharacterToCreate(character, type) {
     setCreateTool('video');
     toast(`${character.name} loaded into Create.`, 'success');
   }
+  setPreviewImage(imageUrl, character.name);
 }
 
 async function hydrateChatterboxVoiceUrl(audioAssetId) {
