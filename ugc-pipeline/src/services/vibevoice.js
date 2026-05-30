@@ -106,15 +106,14 @@ async function createVibeVoiceAudio({ script, voice, voiceUrl, voiceSamplePath, 
 
   const audioFormat = cleanFormat(format);
   const resolvedVoiceUrl = await resolveVoiceUrl({ voiceUrl, voiceSamplePath });
-  const input = {
-    text,
-    prompt: text,
-    script: text,
-    voice: voice || 'default',
-    speaker: voice || 'default',
-    language: 'en',
-    format: audioFormat
-  };
+
+  // When falling back to the Chatterbox endpoint, only send fields it accepts.
+  // A dedicated VibeVoice endpoint (endpointUrl set) can receive the full payload.
+  const usingChatterboxFallback = !process.env.RUNPOD_VIBEVOICE_ENDPOINT_ID && !process.env.RUNPOD_VIBEVOICE_ENDPOINT_URL && !process.env.VIBEVOICE_ENDPOINT_URL;
+  const resolvedVoice = voice && voice !== 'default' ? voice : 'lucy';
+  const input = usingChatterboxFallback
+    ? { prompt: text, voice: resolvedVoice, format: audioFormat }
+    : { text, prompt: text, script: text, voice: resolvedVoice, speaker: resolvedVoice, language: 'en', format: audioFormat };
   if (resolvedVoiceUrl) input.voice_url = resolvedVoiceUrl;
 
   const response = await fetch(buildRunSyncUrl(config), {
