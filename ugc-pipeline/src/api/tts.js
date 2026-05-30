@@ -4,7 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const { CHATTERBOX_VOICES, createChatterboxAudio, getChatterboxConfig } = require('../services/chatterbox');
-const { createVibeVoiceAudio, getVibeVoiceConfig } = require('../services/vibevoice');
+const { VIBEVOICE_SPEAKERS, createVibeVoiceAudio, getVibeVoiceConfig } = require('../services/vibevoice');
 const { hasDatabase, initUgcStore, query } = require('../services/postgres');
 const fetch = require('node-fetch');
 const { logger } = require('../services/logger');
@@ -55,6 +55,90 @@ router.get('/providers', (req, res) => {
       }
     ]
   });
+});
+
+// ── VibeVoice voice list ─────────────────────────────────────────────────────
+router.get('/vibevoice/voices', (req, res) => {
+  res.json({
+    voices: [
+      { id: 'Alice',         name: 'Alice',         gender: 'Female', tags: ['Warm', 'Natural', 'English'] },
+      { id: 'Carter',        name: 'Carter',        gender: 'Male',   tags: ['Clear', 'Confident', 'English'] },
+      { id: 'Emma',          name: 'Emma',          gender: 'Female', tags: ['Friendly', 'Expressive', 'English'] },
+      { id: 'Frank',         name: 'Frank',         gender: 'Male',   tags: ['Deep', 'Authoritative', 'English'] },
+      { id: 'Mary',          name: 'Mary',          gender: 'Female', tags: ['Professional', 'Calm', 'English'] },
+      { id: 'Maya',          name: 'Maya',          gender: 'Female', tags: ['Young', 'Upbeat', 'English'] },
+      { id: 'Morgan_Freeman',name: 'Morgan Freeman', gender: 'Male',  tags: ['Iconic', 'Smooth', 'English'] }
+    ]
+  });
+});
+
+// ── VibeVoice sample audio ────────────────────────────────────────────────────
+const VIBEVOICE_SAMPLE_DIR = path.join(UPLOAD_DIR, 'vibevoice-samples');
+
+const _vvSampleGenerating = new Set();
+
+router.get('/vibevoice/sample/:speaker', async (req, res) => {
+  const speaker = VIBEVOICE_SPEAKERS.includes(req.params.speaker) ? req.params.speaker : '';
+  if (!speaker) return res.status(404).json({ error: 'Unknown VibeVoice speaker.' });
+
+  fs.mkdirSync(VIBEVOICE_SAMPLE_DIR, { recursive: true });
+  const samplePath = path.join(VIBEVOICE_SAMPLE_DIR, `${speaker}.wav`);
+
+  if (fs.existsSync(samplePath)) {
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.type('audio/wav');
+    return res.sendFile(samplePath);
+  }
+
+  if (_vvSampleGenerating.has(speaker)) {
+    return res.status(202).json({ generating: true, retryAfterMs: 8000,
+      message: `Sample for "${speaker}" is being generated — please try again shortly.` });
+  }
+
+  _vvSampleGenerating.add(speaker);
+  const tmpDir = path.join(VIBEVOICE_SAMPLE_DIR, '_tmp');
+  const sampleText = `Hi! I'm ${speaker.replace('_', ' ')}, your AI voice for creating engaging video content.`;
+
+  try {
+    const result = await createVibeVoiceAudio({ script: sampleText, voice: speaker, format: 'wav', outputDir: tmpDir });
+    fs.mkdirSync(VIBEVOICE_SAMPLE_DIR, { recursive: true });
+    if (result.localPath !== samplePath) fs.renameSync(result.localPath, samplePath);
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.type('audio/wav');
+    res.sendFile(samplePath);
+    logger.info('VibeVoice sample generated and cached', { speaker });
+  } catch (err) {
+    logger.error('VibeVoice sample generation failed', { speaker, error: err.message });
+    res.status(500).json({ error: `Sample generation failed: ${err.message}` });
+  } finally {
+    _vvSampleGenerating.delete(speaker);
+  }
+});
+
+// ── ElevenLabs voice list (proxied from EL API with the server's key) ─────────
+router.get('/elevenlabs/voices', async (req, res) => {
+  const apiKey = process.env.ELEVENLABS_API_KEY;
+  if (!apiKey) return res.status(503).json({ error: 'ELEVENLABS_API_KEY is not configured.' });
+
+  try {
+    const r = await fetch('https://api.elevenlabs.io/v2/voices?page_size=100', {
+      headers: { 'xi-api-key': apiKey }
+    });
+    if (!r.ok) return res.status(r.status).json({ error: `ElevenLabs API returned ${r.status}` });
+    const data = await r.json();
+    // Shape: { voices: [{ voice_id, name, labels, preview_url, category }] }
+    res.json({
+      voices: (data.voices || []).map(v => ({
+        id: v.voice_id,
+        name: v.name,
+        previewUrl: v.preview_url || '',
+        category: v.category || 'generated',
+        tags: Object.values(v.labels || {}).filter(Boolean)
+      }))
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 router.post('/vibevoice', upload.single('voiceSample'), async (req, res) => {

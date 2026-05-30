@@ -926,62 +926,80 @@ body {
 
 /* ─── Voice picker lightbox ──────────────────────────────────── */
 #voiceConfigDialog {
-  /* Properly centered on screen */
   position: fixed !important;
   inset: 0;
   margin: auto;
   border: 1px solid rgba(255,255,255,.10);
   border-radius: 20px;
-  background: var(--surface, #171717);
-  color: var(--ink, #fff);
+  background: #141616;
+  color: #f5f0ec;
   padding: 0;
-  width: min(94vw, 660px);
-  max-height: min(88vh, 780px);
+  width: min(94vw, 560px);
+  max-height: min(88vh, 720px);
   flex-direction: column;
-  box-shadow: 0 32px 80px rgba(0,0,0,.72);
+  box-shadow: 0 32px 80px rgba(0,0,0,.80);
   overflow: hidden;
 }
-/* Hidden when closed — browser sets display:none on <dialog> by default,
-   but only when display is not overridden. Explicitly enforce it. */
-#voiceConfigDialog:not([open]) {
-  display: none !important;
-}
-/* Only show as flex when the dialog is actually open */
-#voiceConfigDialog[open] {
-  display: flex;
-}
-/* ── Voice group visibility inside the dialog ──────────────────
-   The .preview-control-slot CSS hides these groups with !important.
-   Override by class set on the dialog itself before showModal(). */
-#voiceConfigDialog #studioChatterboxGroup,
-#voiceConfigDialog #studioVoiceGroup { display: none !important; }
-#voiceConfigDialog.for-chatterbox #studioChatterboxGroup { display: block !important; }
-#voiceConfigDialog.for-elevenlabs #studioVoiceGroup     { display: block !important; }
-}
-#voiceConfigDialog::backdrop {
-  background: rgba(0, 0, 0, 0.70);
-}
-/* Header */
+#voiceConfigDialog:not([open]) { display: none !important; }
+#voiceConfigDialog[open] { display: flex; }
+#voiceConfigDialog::backdrop { background: rgba(0,0,0,.72); }
+
+/* ── Header ── */
 .voice-dialog-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 20px 22px 16px;
-  border-bottom: 1px solid rgba(255,255,255,.08);
+  gap: 12px;
+  padding: 16px 18px 0;
   flex-shrink: 0;
 }
-.voice-dialog-head .modal-title {
-  font-size: 17px;
-  font-weight: 800;
-  margin: 0;
+/* ── Provider tab bar ── */
+.voice-picker-tabs {
+  display: flex;
+  flex: 1 1 auto;
+  gap: 4px;
+  background: rgba(255,255,255,.05);
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 10px;
+  padding: 3px;
 }
+.voice-picker-tab {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: rgba(255,255,255,.52);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: background 0.14s, color 0.14s;
+  white-space: nowrap;
+}
+.voice-picker-tab:hover { color: rgba(255,255,255,.78); }
+.voice-picker-tab.active {
+  background: var(--primary, #F4A261);
+  color: #fff;
+  box-shadow: 0 2px 10px rgba(244,162,97,.35);
+}
+.voice-picker-tab-badge {
+  font-size: 10px;
+  font-weight: 700;
+  color: inherit;
+  opacity: 0.72;
+}
+.voice-picker-tab.active .voice-picker-tab-badge { opacity: 0.85; }
 .voice-dialog-close {
   background: rgba(255,255,255,.06);
   border: none;
-  color: rgba(255,255,255,.55);
+  color: rgba(255,255,255,.45);
   cursor: pointer;
   width: 30px;
   height: 30px;
+  min-width: 30px;
   border-radius: 8px;
   display: flex;
   align-items: center;
@@ -989,51 +1007,46 @@ body {
   transition: background 0.14s, color 0.14s;
 }
 .voice-dialog-close:hover { background: rgba(255,255,255,.12); color: #fff; }
-/* Scrollable body */
-.voice-dialog-body {
-  flex: 1 1 auto;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-}
-/* ElevenLabs section */
-.voice-el-section {
-  padding: 18px 22px;
-}
-.voice-el-section .form-label { font-size: 12px; }
-/* Search bar */
+
+/* ── Search bar ── */
 .voice-search-wrap {
-  padding: 14px 14px 6px;
+  padding: 12px 14px 4px;
   flex-shrink: 0;
 }
-.voice-search-inner {
-  position: relative;
-}
+.voice-search-inner { position: relative; }
 .voice-search-inner svg {
   position: absolute;
   left: 11px;
   top: 50%;
   transform: translateY(-50%);
-  color: rgba(255,255,255,.35);
+  color: rgba(255,255,255,.32);
   pointer-events: none;
 }
 .voice-search-input {
   width: 100%;
-  background: rgba(255,255,255,.06);
-  border: 1px solid rgba(255,255,255,.10);
-  border-radius: 10px;
-  padding: 9px 12px 9px 36px;
-  color: var(--ink, #fff);
+  background: rgba(255,255,255,.05);
+  border: 1px solid rgba(255,255,255,.09);
+  border-radius: 9px;
+  padding: 8px 12px 8px 34px;
+  color: #f5f0ec;
   font-size: 13px;
   font-weight: 500;
+  font-family: inherit;
+  outline: none;
 }
-.voice-search-input:focus { outline: none; border-color: rgba(244,162,97,.5); background: rgba(255,255,255,.08); }
-.voice-search-input::placeholder { color: rgba(255,255,255,.28); }
-/* Voice list */
-.voice-list {
-  padding: 4px 8px 8px;
+.voice-search-input:focus { border-color: rgba(244,162,97,.45); background: rgba(255,255,255,.07); }
+.voice-search-input::placeholder { color: rgba(255,255,255,.26); }
+
+/* ── Scrollable body ── */
+.voice-dialog-body {
   flex: 1 1 auto;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
+/* ── Voice list ── */
+.voice-list { padding: 4px 8px 8px; flex: 1 1 auto; }
 .voice-row {
   display: flex;
   align-items: center;
@@ -1043,42 +1056,32 @@ body {
   cursor: pointer;
   border: 1px solid transparent;
   background: transparent;
-  color: var(--ink, #fff);
+  color: #f5f0ec;
   text-align: left;
   width: 100%;
   transition: background 0.12s, border-color 0.12s;
-  position: relative;
 }
 .voice-row:hover { background: rgba(255,255,255,.05); }
-.voice-row.selected {
-  background: rgba(244,162,97,.07);
-  border-color: rgba(244,162,97,.28);
-}
-.voice-row[style*="display:none"] { display: none !important; }
+.voice-row.selected { background: rgba(244,162,97,.08); border-color: rgba(244,162,97,.30); }
 /* Per-row play button */
 .voice-play-btn {
-  width: 34px;
-  height: 34px;
-  min-width: 34px;
+  width: 34px; height: 34px; min-width: 34px;
   border-radius: 50%;
-  border: 1.5px solid rgba(255,255,255,.18);
+  border: 1.5px solid rgba(255,255,255,.16);
   background: rgba(255,255,255,.06);
-  color: rgba(255,255,255,.65);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  color: rgba(255,255,255,.60);
+  display: flex; align-items: center; justify-content: center;
   cursor: pointer;
   transition: background 0.14s, border-color 0.14s, color 0.14s;
   flex-shrink: 0;
 }
-.voice-play-btn:hover,
-.voice-play-btn.playing {
+.voice-play-btn:hover, .voice-play-btn.playing {
   background: var(--primary, #F4A261);
   border-color: var(--primary, #F4A261);
   color: #fff;
 }
 .voice-play-btn.loading {
-  background: rgba(244,162,97,.18);
+  background: rgba(244,162,97,.14);
   border-color: var(--primary, #F4A261);
   color: var(--primary, #F4A261);
   cursor: wait;
@@ -1087,97 +1090,139 @@ body {
 .vp-spin { animation: vp-spin 0.75s linear infinite; transform-origin: center; }
 /* Voice info */
 .voice-row-info { flex: 1 1 auto; min-width: 0; }
-.voice-row-name { font-size: 14px; font-weight: 700; line-height: 1.2; }
-.voice-row-tags {
-  display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
-  margin-top: 3px;
-}
+.voice-row-name { font-size: 13px; font-weight: 700; line-height: 1.2; }
+.voice-row-tags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 3px; }
 .voice-tag {
-  font-size: 11px;
-  color: rgba(255,255,255,.45);
-  background: rgba(255,255,255,.07);
+  font-size: 10px;
+  color: rgba(255,255,255,.40);
+  background: rgba(255,255,255,.06);
   border-radius: 4px;
-  padding: 1px 6px;
+  padding: 1px 5px;
   line-height: 1.5;
 }
 /* Selected checkmark */
 .voice-selected-icon {
-  width: 20px;
-  height: 20px;
+  width: 20px; height: 20px;
   border-radius: 50%;
   background: var(--primary, #F4A261);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
   opacity: 0;
   transition: opacity 0.15s;
 }
 .voice-row.selected .voice-selected-icon { opacity: 1; }
-/* Inline sample player */
-.voice-inline-preview {
-  margin: 0 14px 8px;
-  padding: 10px 14px;
-  background: rgba(255,255,255,.04);
-  border-radius: 11px;
-  border: 1px solid rgba(255,255,255,.08);
-  display: none;
-}
-.voice-inline-preview.visible { display: block; }
-.voice-preview-label {
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: .07em;
-  text-transform: uppercase;
-  color: rgba(255,255,255,.4);
-  margin-bottom: 7px;
-}
-.voice-inline-preview audio {
-  width: 100%;
-  height: 32px;
-  display: block;
-}
-/* Clone / reference section */
-.voice-clone-details {
-  margin: 0 14px 8px;
-  border: 1px solid rgba(255,255,255,.08);
-  border-radius: 11px;
-  overflow: hidden;
-}
-.voice-clone-details summary {
-  padding: 10px 14px;
+
+/* ── EL loading / no-key states ── */
+.voice-el-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 48px 24px;
+  color: rgba(255,255,255,.45);
   font-size: 13px;
-  font-weight: 700;
-  color: rgba(255,255,255,.55);
-  cursor: pointer;
+  font-weight: 600;
+}
+.voice-el-nokey {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 8px;
-  list-style: none;
-  user-select: none;
+  justify-content: center;
+  text-align: center;
+  gap: 10px;
+  padding: 40px 28px;
+  color: rgba(255,255,255,.38);
 }
-.voice-clone-details summary:hover { color: #fff; }
-.voice-clone-details[open] summary { border-bottom: 1px solid rgba(255,255,255,.07); color: #fff; }
-.voice-clone-body {
-  padding: 12px 14px;
+.voice-el-nokey strong { font-size: 14px; color: rgba(255,255,255,.62); }
+.voice-el-nokey p { font-size: 12px; line-height: 1.5; max-width: 340px; }
+.voice-el-nokey code {
+  background: rgba(255,255,255,.08);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 11px;
+  color: var(--primary, #F4A261);
 }
-.voice-clone-body .form-label { font-size: 11px; }
-.voice-clone-body .file-drop { min-height: 46px; }
-/* Footer */
+
+/* ── Footer ── */
 .voice-dialog-footer {
-  padding: 12px 22px 16px;
-  border-top: 1px solid rgba(255,255,255,.08);
+  padding: 12px 18px 16px;
+  border-top: 1px solid rgba(255,255,255,.07);
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: 10px;
   flex-shrink: 0;
 }
-/* Legacy compat — hide old grid layout */
+.voice-dialog-footer-hint {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--primary, #F4A261);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Selected voice card (HeyGen-style, appears after Done) ── */
+.selected-voice-card {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  background: rgba(244,162,97,.08);
+  border: 1px solid rgba(244,162,97,.28);
+  border-radius: 11px;
+  padding: 8px 10px 8px 8px;
+  margin-top: 7px;
+}
+.voice-card-play {
+  width: 30px; height: 30px; min-width: 30px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(244,162,97,.45);
+  background: rgba(244,162,97,.10);
+  color: var(--primary, #F4A261);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  transition: background 0.14s;
+  flex-shrink: 0;
+}
+.voice-card-play:hover, .voice-card-play.playing {
+  background: var(--primary, #F4A261);
+  color: #fff;
+}
+.voice-card-info { flex: 1 1 auto; min-width: 0; }
+.voice-card-name {
+  display: block;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--ink, #f5f0ec);
+  line-height: 1.2;
+}
+.voice-card-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--primary, #F4A261);
+  background: rgba(244,162,97,.12);
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-top: 2px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.voice-card-switch {
+  font-size: 11px !important;
+  padding: 5px 10px !important;
+  height: auto !important;
+  border-radius: 7px !important;
+  flex-shrink: 0;
+}
+
+/* Legacy compat */
 .voice-dialog-grid { display: none !important; }
 .voice-picker-head { display: none !important; }
+.voice-el-section { display: none !important; }
+.voice-inline-preview { display: none !important; }
+.voice-clone-details { display: none !important; }
 
 /* ─── Library pagination ─────────────────────────────────────── */
 .library-pagination {

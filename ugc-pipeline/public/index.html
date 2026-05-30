@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bloom UGC Studio</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%23F4A261'/><text x='16' y='22' font-size='16' text-anchor='middle' fill='white' font-weight='bold'>B</text></svg>">
-  <link rel="stylesheet" href="/css/style.css?v=dialog-fix-3">
+  <link rel="stylesheet" href="/css/style.css?v=voicepicker-hg1">
   <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 :root{--bg:#101010;--surface:#171717;--ink:#f5f0ec;--muted:#9d9892;--soft:#232323;--line:#2b2b2b;--primary:#F4A261;--pink:#E76F8B;--green:#2fb36d;--red:#d94f4f;--dark:#0d0d0d;--grad:linear-gradient(135deg,#F4A261,#E76F8B);--shadow:0 18px 60px rgba(0,0,0,.28);--r:18px;--rs:10px}
@@ -834,13 +834,24 @@ body[data-theme="light"] .campaign-workflow-json{background:#fff!important;borde
                 <div class="form-group">
                   <label class="form-label">Audio source</label>
                   <select class="form-select" id="studioAudioProvider" name="audioProvider" onchange="setStudioAudio(this.value)">
+                    <option value="vibevoice" selected>VibeVoice (AI voice library)</option>
+                    <option value="elevenlabs">ElevenLabs (your account)</option>
+                    <option value="upload">Upload MP3/WAV</option>
                     <option value="asset">Saved audio from Library</option>
-                    <option value="upload" selected>Upload MP3/WAV</option>
-                    <option value="vibevoice">VibeVoice longform</option>
-                    <option value="elevenlabs">ElevenLabs voice</option>
                     <option value="qwen">Qwen audio workflow</option>
                   </select>
-                  <button class="btn btn-secondary compact-config-button" id="studioConfigureVoiceButton" type="button" onclick="toggleVoiceDetails()">Configure voice</button>
+                  <button class="btn btn-secondary compact-config-button" id="studioConfigureVoiceButton" type="button" onclick="toggleVoiceDetails()">Choose voice</button>
+                  <!-- Voice card — shows after a voice is selected (HeyGen style) -->
+                  <div id="selectedVoiceCard" class="selected-voice-card" style="display:none">
+                    <button class="voice-card-play" type="button" aria-label="Play sample" onclick="playSelectedVoiceSample()">
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5,3 19,12 5,21"/></svg>
+                    </button>
+                    <div class="voice-card-info">
+                      <span class="voice-card-name" id="selectedVoiceCardName">Alice</span>
+                      <span class="voice-card-badge" id="selectedVoiceCardBadge">VibeVoice</span>
+                    </div>
+                    <button class="btn btn-secondary voice-card-switch" type="button" onclick="toggleVoiceDetails(true)">Switch</button>
+                  </div>
                 </div>
 
                 <div class="form-group" id="studioVideoEngineGroup">
@@ -985,121 +996,77 @@ body[data-theme="light"] .campaign-workflow-json{background:#fff!important;borde
                 <span class="hint" id="studioSubmitHint">Uses the Sarah I2V workflow preset.</span>
               </div>
 
-              <!-- Voice config lightbox — dialog lives inside the form so all named inputs
-                   remain part of studioForm's FormData when the dialog is open or closed -->
+              <!-- Voice picker lightbox — 2-tab HeyGen-style dialog -->
               <dialog id="voiceConfigDialog">
-                <!-- ── Header ── -->
+
+                <!-- ── Header: provider tabs + close ── -->
                 <div class="voice-dialog-head">
-                  <strong class="modal-title" id="voiceConfigTitle">Choose voice</strong>
+                  <div class="voice-picker-tabs" id="voicePickerTabs">
+                    <button class="voice-picker-tab active" id="vptab-vibevoice" data-provider="vibevoice" type="button" onclick="switchVoicePickerTab('vibevoice')">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+                      VibeVoice
+                      <span class="voice-picker-tab-badge">7 voices</span>
+                    </button>
+                    <button class="voice-picker-tab" id="vptab-elevenlabs" data-provider="elevenlabs" type="button" onclick="switchVoicePickerTab('elevenlabs')">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+                      ElevenLabs
+                      <span class="voice-picker-tab-badge">Your library</span>
+                    </button>
+                  </div>
                   <button class="voice-dialog-close" type="button" aria-label="Close" onclick="document.getElementById('voiceConfigDialog').close()">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                   </button>
                 </div>
 
-                <!-- ── Scrollable body ── -->
-                <div class="voice-dialog-body">
-
-                  <!-- ElevenLabs: just a voice-ID field -->
-                  <div id="studioVoiceGroup" class="voice-el-section" style="display:none">
-                    <label class="form-label">ElevenLabs voice ID</label>
-                    <input class="form-input" id="studioVoiceId" name="voiceId" placeholder="Paste an ElevenLabs voice ID, or leave blank for workspace default.">
-                    <div class="hint" style="margin-top:6px">Use this for any custom ElevenLabs voice. Selecting Sarah or Marcus auto-fills their saved ID.</div>
+                <!-- ── Search ── -->
+                <div class="voice-search-wrap">
+                  <div class="voice-search-inner">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    <input type="search" id="voicePickerSearch" class="voice-search-input" placeholder="Search voices..." oninput="filterVoiceList(this.value)" autocomplete="off">
                   </div>
+                </div>
 
-                  <!-- Chatterbox / VibeVoice: full voice picker list -->
-                  <div id="studioChatterboxGroup" style="display:none">
+                <!-- ── Voice list body ── -->
+                <div class="voice-dialog-body">
+                  <!-- ElevenLabs loading spinner -->
+                  <div id="voiceELLoading" class="voice-el-loading" style="display:none">
+                    <div class="agent-modal-spinner" style="width:20px;height:20px;border-width:2px"></div>
+                    <span>Loading ElevenLabs voices...</span>
+                  </div>
+                  <!-- EL not configured notice -->
+                  <div id="voiceELNoKey" class="voice-el-nokey" style="display:none">
+                    <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><circle cx="12" cy="16" r=".6" fill="currentColor"/></svg>
+                    <strong>ElevenLabs not connected</strong>
+                    <p>Add <code>ELEVENLABS_API_KEY</code> to your environment to browse your ElevenLabs voice library here.</p>
+                  </div>
+                  <!-- Voice rows — populated by JS -->
+                  <div class="voice-list" id="voicePickerList"></div>
+                </div>
 
-                    <!-- Search -->
-                    <div class="voice-search-wrap">
-                      <div class="voice-search-inner">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                        <input type="search" id="voicePickerSearch" class="voice-search-input" placeholder="Search voices..." oninput="filterVoiceList(this.value)" autocomplete="off">
-                      </div>
-                    </div>
-
-                    <!-- Voice rows — populated by buildVoicePickerList() in JS -->
-                    <div class="voice-list" id="voicePickerList"></div>
-
-                    <!-- Hidden <select> keeps chatterboxVoice in FormData -->
-                    <select id="studioChatterboxVoice" name="chatterboxVoice" style="display:none" aria-hidden="true">
-                      <option value="default">Default English</option>
-                      <option value="josh">Josh</option>
-                      <option value="lucy">Lucy</option>
-                      <option value="laura">Laura</option>
-                      <option value="madison">Madison</option>
-                      <option value="marisol">Marisol</option>
-                      <option value="meera">Meera</option>
-                      <option value="chloe">Chloe</option>
-                      <option value="abigail">Abigail</option>
-                      <option value="anaya">Anaya</option>
-                      <option value="aaron">Aaron</option>
-                      <option value="andy">Andy</option>
-                      <option value="archer">Archer</option>
-                      <option value="brian">Brian</option>
-                      <option value="dylan">Dylan</option>
-                      <option value="emmanuel">Emmanuel</option>
-                      <option value="ethan">Ethan</option>
-                      <option value="gavin">Gavin</option>
-                      <option value="gordon">Gordon</option>
-                      <option value="ivan">Ivan</option>
-                      <option value="walter">Walter</option>
-                      <option value="evelyn">Evelyn</option>
-                    </select>
-
-                    <!-- Inline sample preview (shows when play btn on a row is clicked) -->
-                    <div class="voice-inline-preview" id="voiceInlineSamplePreview">
-                      <div class="voice-preview-label" id="voiceInlineSampleLabel">Sample — Lucy</div>
-                      <audio id="voiceInlineSampleAudio" controls></audio>
-                    </div>
-
-                    <!-- Inline generated preview (shows after Preview button generates audio) -->
-                    <div class="voice-inline-preview" id="voiceInlineGenPreview">
-                      <div class="voice-preview-label">Generated preview</div>
-                      <audio id="voiceInlineGenAudio" controls></audio>
-                      <div style="margin-top:10px;display:flex;gap:8px">
-                        <button class="btn btn-secondary" type="button" style="font-size:12px;padding:6px 14px" onclick="usePreviewAudioForVideo()">Use this audio for video</button>
-                      </div>
-                    </div>
-
-                    <!-- Clone with your voice (expandable) -->
-                    <details class="voice-clone-details">
-                      <summary>
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                        Clone with your own voice
-                      </summary>
-                      <div class="voice-clone-body">
-                        <div class="form-group">
-                          <label class="form-label">Reference voice URL</label>
-                          <input class="form-input" id="studioChatterboxVoiceUrl" name="chatterboxVoiceUrl" placeholder="Optional public audio URL for voice cloning">
-                          <div class="hint" style="margin-top:4px">The endpoint will clone the speaker style from this audio.</div>
-                        </div>
-                        <div class="form-group" style="margin-top:10px">
-                          <label class="form-label">Upload reference audio</label>
-                          <label class="file-drop">
-                            <strong>Optional WAV / MP3</strong>
-                            <input id="studioVoiceSample" name="voiceSample" type="file" accept="audio/*" hidden onchange="showStudioFileName('studioVoiceSample','studioVoiceSampleName')">
-                          </label>
-                          <div class="file-name" id="studioVoiceSampleName"></div>
-                        </div>
-                        <div class="form-group" style="margin-top:10px">
-                          <label class="form-label">Audio format</label>
-                          <select class="form-select" id="studioChatterboxFormat" name="chatterboxFormat">
-                            <option value="wav" selected>WAV (best for lip sync)</option>
-                            <option value="flac">FLAC</option>
-                            <option value="ogg">OGG</option>
-                          </select>
-                        </div>
-                      </div>
-                    </details>
-
-                  </div><!-- /studioChatterboxGroup -->
-                </div><!-- /voice-dialog-body -->
+                <!-- Hidden FormData inputs — keep all IDs intact for backend -->
+                <select id="studioChatterboxVoice" name="chatterboxVoice" style="display:none" aria-hidden="true">
+                  <option value="Alice">Alice</option>
+                  <option value="Carter">Carter</option>
+                  <option value="Emma">Emma</option>
+                  <option value="Frank">Frank</option>
+                  <option value="Mary">Mary</option>
+                  <option value="Maya">Maya</option>
+                  <option value="Morgan_Freeman">Morgan Freeman</option>
+                </select>
+                <input type="hidden" id="studioVoiceId" name="voiceId">
+                <input type="hidden" id="studioChatterboxVoiceUrl" name="chatterboxVoiceUrl">
+                <select id="studioChatterboxFormat" name="chatterboxFormat" style="display:none" aria-hidden="true">
+                  <option value="wav" selected>WAV</option>
+                  <option value="mp3">MP3</option>
+                </select>
+                <input id="studioVoiceSample" name="voiceSample" type="file" accept="audio/*" hidden>
 
                 <!-- ── Footer ── -->
                 <div class="voice-dialog-footer">
-                  <button class="btn btn-secondary" type="button" id="studioPreviewVoiceButton" onclick="previewCurrentVoice()" style="display:none">Preview voice</button>
-                  <button class="btn btn-primary" type="button" onclick="document.getElementById('voiceConfigDialog').close()">Done</button>
+                  <span class="voice-dialog-footer-hint" id="voicePickerHint"></span>
+                  <button class="btn btn-primary" type="button" onclick="onVoicePickerDone()">Done</button>
                 </div>
+
               </dialog>
             </form>
           </div>
@@ -1843,6 +1810,6 @@ body[data-theme="light"] .campaign-workflow-json{background:#fff!important;borde
 
 <div class="toast-container" id="toastContainer"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="/js/app.js?v=voicepicker-3"></script>
+<script src="/js/app.js?v=voicepicker-hg1"></script>
 </body>
 </html>

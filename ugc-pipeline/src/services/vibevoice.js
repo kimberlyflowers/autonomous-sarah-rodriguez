@@ -3,6 +3,11 @@ const path = require('path');
 const fetch = require('node-fetch');
 const { uploadToTempHost } = require('./seedance');
 
+// Official VibeVoice speaker names for the RunPod serverless worker
+const VIBEVOICE_SPEAKERS = [
+  'Alice', 'Carter', 'Emma', 'Frank', 'Mary', 'Maya', 'Morgan_Freeman'
+];
+
 function getVibeVoiceConfig() {
   // Fall back to Chatterbox endpoint/key when no dedicated VibeVoice endpoint is configured.
   // This lets VibeVoice work out-of-the-box if Chatterbox is already deployed.
@@ -107,13 +112,16 @@ async function createVibeVoiceAudio({ script, voice, voiceUrl, voiceSamplePath, 
   const audioFormat = cleanFormat(format);
   const resolvedVoiceUrl = await resolveVoiceUrl({ voiceUrl, voiceSamplePath });
 
-  // When falling back to the Chatterbox endpoint, only send fields it accepts.
-  // A dedicated VibeVoice endpoint (endpointUrl set) can receive the full payload.
-  const usingChatterboxFallback = !process.env.RUNPOD_VIBEVOICE_ENDPOINT_ID && !process.env.RUNPOD_VIBEVOICE_ENDPOINT_URL && !process.env.VIBEVOICE_ENDPOINT_URL;
-  const resolvedVoice = voice && voice !== 'default' ? voice : 'lucy';
-  const input = usingChatterboxFallback
-    ? { prompt: text, voice: resolvedVoice, format: audioFormat }
-    : { text, prompt: text, script: text, voice: resolvedVoice, speaker: resolvedVoice, language: 'en', format: audioFormat };
+  // VibeVoice RunPod worker uses speaker_name (not voice/speaker).
+  // Valid speakers: Alice, Carter, Emma, Frank, Mary, Maya, Morgan_Freeman
+  const resolvedVoice = VIBEVOICE_SPEAKERS.includes(voice) ? voice : 'Alice';
+  const input = {
+    text,
+    speaker_name: resolvedVoice,
+    cfg_scale: 1.3,
+    disable_prefill: false
+  };
+  // Voice cloning via reference audio URL
   if (resolvedVoiceUrl) input.voice_url = resolvedVoiceUrl;
 
   const response = await fetch(buildRunSyncUrl(config), {
@@ -149,6 +157,7 @@ async function createVibeVoiceAudio({ script, voice, voiceUrl, voiceSamplePath, 
 }
 
 module.exports = {
+  VIBEVOICE_SPEAKERS,
   getVibeVoiceConfig,
   createVibeVoiceAudio
 };

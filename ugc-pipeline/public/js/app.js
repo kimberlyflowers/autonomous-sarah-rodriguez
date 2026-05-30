@@ -1183,14 +1183,35 @@ function toggleVoiceDetails(forceOpen) {
   if (!dialog) return;
   const shouldOpen = typeof forceOpen === 'boolean' ? forceOpen : !dialog.open;
   if (shouldOpen && !dialog.open) {
-    // Set a class on the dialog so CSS can show the right section,
-    // overriding the preview-control-slot display:none !important rules.
+    // Default tab to match current provider selection
     const provider = document.getElementById('studioAudioProvider')?.value || 'vibevoice';
-    dialog.classList.remove('for-chatterbox', 'for-elevenlabs');
-    if (['chatterbox', 'vibevoice'].includes(provider)) dialog.classList.add('for-chatterbox');
-    else if (provider === 'elevenlabs') dialog.classList.add('for-elevenlabs');
-    // Build/refresh the voice list before opening
-    buildVoicePickerList();
+    const tab = (provider === 'elevenlabs') ? 'elevenlabs' : 'vibevoice';
+    _voicePickerActiveTab = tab;
+
+    // Sync tab button active states
+    document.querySelectorAll('.voice-picker-tab').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.provider === tab);
+    });
+
+    // Reset search
+    const search = document.getElementById('voicePickerSearch');
+    if (search) search.value = '';
+
+    // Load the right voice list
+    document.getElementById('voiceELLoading').style.display = 'none';
+    document.getElementById('voiceELNoKey').style.display = 'none';
+    document.getElementById('voicePickerList').innerHTML = '';
+    if (tab === 'vibevoice') {
+      buildVoicePickerList();
+    } else {
+      buildElevenLabsVoiceList();
+    }
+
+    // Restore footer hint if a voice was already selected
+    const hint = document.getElementById('voicePickerHint');
+    if (hint && _selectedVoiceData) hint.textContent = _selectedVoiceData.name + ' selected';
+    else if (hint) hint.textContent = '';
+
     dialog.showModal();
   } else if (!shouldOpen && dialog.open) {
     dialog.close();
@@ -2694,22 +2715,30 @@ function setStudioAudio(provider, options = {}) {
     previewBtn.style.display = ['chatterbox', 'vibevoice', 'elevenlabs'].includes(provider) ? '' : 'none';
     previewBtn.textContent = provider === 'elevenlabs' ? 'Preview with ElevenLabs' : provider === 'vibevoice' ? 'Preview with VibeVoice' : 'Preview with Chatterbox';
   }
+  // Show "Choose voice" button only for AI providers; hide it for upload/asset
   const configureButton = document.getElementById('studioConfigureVoiceButton');
-  if (configureButton) configureButton.style.display = ['chatterbox', 'vibevoice', 'elevenlabs'].includes(provider) ? '' : 'none';
-  if (provider === 'elevenlabs') toggleVoiceDetails(true);
+  const voiceCard = document.getElementById('selectedVoiceCard');
+  const isAiProvider = ['vibevoice', 'elevenlabs'].includes(provider);
+  if (configureButton) {
+    // Show configure button only if no voice selected yet OR provider changed
+    if (isAiProvider) {
+      const cardVisible = voiceCard && voiceCard.style.display !== 'none';
+      const cardProvider = _selectedVoiceData?.provider;
+      const providerChanged = cardProvider && cardProvider !== provider;
+      if (!cardVisible || providerChanged) {
+        configureButton.style.display = '';
+        if (voiceCard) voiceCard.style.display = 'none';
+        if (providerChanged) _selectedVoiceData = null; // reset selection on provider switch
+      }
+    } else {
+      configureButton.style.display = 'none';
+    }
+  }
+  if (provider === 'elevenlabs' && !options.preserveToast) toggleVoiceDetails(true);
   if (options.preserveToast) return;
-  if (provider === 'qwen') {
-    toast('Qwen audio is visible but needs the third workflow API export before it can run.', 'info');
-  }
-  if (provider === 'elevenlabs') {
-    toast('ElevenLabs will generate audio from the script before queuing the video.', 'info');
-  }
-  if (provider === 'vibevoice') {
-    toast('VibeVoice will generate longform English narration from the script.', 'info');
-  }
-  if (provider === 'chatterbox') {
-    toast('Legacy Chatterbox is best for short tests only. Use VibeVoice for longform.', 'info');
-  }
+  if (provider === 'qwen') toast('Qwen audio needs the third workflow API export before it can run.', 'info');
+  if (provider === 'elevenlabs') toast('ElevenLabs will generate audio from your script before queuing the video.', 'info');
+  if (provider === 'vibevoice') toast('VibeVoice will generate narration from your script. Choose a voice first.', 'info');
 }
 
 function applyStudioTonePreset() {
@@ -3044,79 +3073,31 @@ function previewCurrentVoice() {
   return toast('Choose VibeVoice or ElevenLabs to preview a generated voice.', 'error');
 }
 
-// ─── Voice picker data ────────────────────────────────────────
+// ─── Voice picker: VibeVoice native library ───────────────────
+// These are the 7 real Microsoft VibeVoice speakers available on RunPod.
 const VOICE_PICKER_VOICES = [
-  { id: 'default', name: 'Default',   tags: ['Female', 'Natural', 'English'] },
-  { id: 'lucy',    name: 'Lucy',      tags: ['Female', 'Warm', 'English'] },
-  { id: 'laura',   name: 'Laura',     tags: ['Female', 'Calm', 'English'] },
-  { id: 'madison', name: 'Madison',   tags: ['Female', 'Upbeat', 'English'] },
-  { id: 'marisol', name: 'Marisol',   tags: ['Female', 'Expressive', 'English'] },
-  { id: 'meera',   name: 'Meera',     tags: ['Female', 'Professional', 'English'] },
-  { id: 'chloe',   name: 'Chloe',     tags: ['Female', 'Young', 'English'] },
-  { id: 'abigail', name: 'Abigail',   tags: ['Female', 'Warm', 'English'] },
-  { id: 'anaya',   name: 'Anaya',     tags: ['Female', 'Smooth', 'English'] },
-  { id: 'evelyn',  name: 'Evelyn',    tags: ['Female', 'Mature', 'English'] },
-  { id: 'aaron',   name: 'Aaron',     tags: ['Male', 'Deep', 'English'] },
-  { id: 'andy',    name: 'Andy',      tags: ['Male', 'Casual', 'English'] },
-  { id: 'archer',  name: 'Archer',    tags: ['Male', 'Authoritative', 'English'] },
-  { id: 'brian',   name: 'Brian',     tags: ['Male', 'Friendly', 'English'] },
-  { id: 'dylan',   name: 'Dylan',     tags: ['Male', 'Young', 'English'] },
-  { id: 'emmanuel',name: 'Emmanuel',  tags: ['Male', 'Warm', 'English'] },
-  { id: 'ethan',   name: 'Ethan',     tags: ['Male', 'Clear', 'English'] },
-  { id: 'gavin',   name: 'Gavin',     tags: ['Male', 'Confident', 'English'] },
-  { id: 'gordon',  name: 'Gordon',    tags: ['Male', 'Mature', 'English'] },
-  { id: 'ivan',    name: 'Ivan',      tags: ['Male', 'Deep', 'English'] },
-  { id: 'walter',  name: 'Walter',    tags: ['Male', 'Authoritative', 'English'] },
+  { id: 'Alice',          name: 'Alice',          gender: 'Female', tags: ['Warm', 'Natural', 'English'] },
+  { id: 'Carter',         name: 'Carter',         gender: 'Male',   tags: ['Clear', 'Confident', 'English'] },
+  { id: 'Emma',           name: 'Emma',           gender: 'Female', tags: ['Friendly', 'Expressive', 'English'] },
+  { id: 'Frank',          name: 'Frank',           gender: 'Male',   tags: ['Deep', 'Authoritative', 'English'] },
+  { id: 'Mary',           name: 'Mary',           gender: 'Female', tags: ['Professional', 'Calm', 'English'] },
+  { id: 'Maya',           name: 'Maya',           gender: 'Female', tags: ['Young', 'Upbeat', 'English'] },
+  { id: 'Morgan_Freeman', name: 'Morgan Freeman', gender: 'Male',   tags: ['Iconic', 'Smooth', 'English'] },
 ];
 
-function selectedChatterboxVoice() {
-  return document.getElementById('studioChatterboxVoice')?.value || 'default';
-}
+// ─── Voice picker state ───────────────────────────────────────
+let _voicePickerActiveTab = 'vibevoice'; // 'vibevoice' | 'elevenlabs'
+let _elVoicesCache = null;              // cached EL voices from /api/tts/elevenlabs/voices
+let _selectedVoiceData = null;          // { id, name, provider, previewUrl }
 
-// Build (or rebuild) the voice picker rows
-function buildVoicePickerList() {
-  const listEl = document.getElementById('voicePickerList');
-  if (!listEl) return;
-  const currentVoice = selectedChatterboxVoice();
-  // Play SVG icon
-  const playSvg = `<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5,3 19,12 5,21"/></svg>`;
-  // Stop/pause SVG (shown when that row is playing)
-  const stopSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`;
-  // Check SVG for selected state
-  const checkSvg = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>`;
-
-  listEl.innerHTML = VOICE_PICKER_VOICES.map(v => {
-    const selected = v.id === currentVoice;
-    const tags = v.tags.map(t => `<span class="voice-tag">${t}</span>`).join('');
-    return `<div class="voice-row${selected ? ' selected' : ''}" data-voice="${v.id}" onclick="selectVoiceRow('${v.id}')">
-  <button class="voice-play-btn" type="button" id="vpb-${v.id}"
-          onclick="event.stopPropagation(); previewVoiceRowSample('${v.id}', this)"
-          title="Play sample">
-    ${playSvg}
-  </button>
-  <div class="voice-row-info">
-    <div class="voice-row-name">${v.name}</div>
-    <div class="voice-row-tags">${tags}</div>
-  </div>
-  <div class="voice-selected-icon">${checkSvg}</div>
-</div>`;
-  }).join('');
-}
-
-// Select a voice row (highlight + update hidden select)
-function selectVoiceRow(voiceId) {
-  const select = document.getElementById('studioChatterboxVoice');
-  if (select) select.value = voiceId;
-  // Update row highlight
-  document.querySelectorAll('#voicePickerList .voice-row').forEach(row => {
-    row.classList.toggle('selected', row.dataset.voice === voiceId);
-  });
-}
-
-// SVG constants for voice play button states
 const _vp_playSvg  = `<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5,3 19,12 5,21"/></svg>`;
 const _vp_pauseSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`;
 const _vp_spinSvg  = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" class="vp-spin"><path d="M12 2a10 10 0 0 1 10 10"/></svg>`;
+const _vp_checkSvg = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+
+function selectedChatterboxVoice() {
+  return document.getElementById('studioChatterboxVoice')?.value || 'Alice';
+}
 
 function _vpResetButtons() {
   document.querySelectorAll('.voice-play-btn.playing, .voice-play-btn.loading').forEach(b => {
@@ -3125,10 +3106,166 @@ function _vpResetButtons() {
   });
 }
 
-// Play a cached sample inline inside the dialog — audio plays silently,
-// only the row's play button changes state (loading → pause → play).
+// ─── Switch between VibeVoice and ElevenLabs tabs ─────────────
+async function switchVoicePickerTab(tab) {
+  _voicePickerActiveTab = tab;
+  document.querySelectorAll('.voice-picker-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.provider === tab);
+  });
+  // Reset search
+  const search = document.getElementById('voicePickerSearch');
+  if (search) search.value = '';
+  // Hide states
+  const el = id => document.getElementById(id);
+  el('voiceELLoading').style.display = 'none';
+  el('voiceELNoKey').style.display = 'none';
+  el('voicePickerList').innerHTML = '';
+
+  if (tab === 'vibevoice') {
+    buildVoicePickerList();
+  } else {
+    await buildElevenLabsVoiceList();
+  }
+}
+
+// ─── Build VibeVoice rows ─────────────────────────────────────
+function buildVoicePickerList() {
+  const listEl = document.getElementById('voicePickerList');
+  if (!listEl) return;
+  const currentVoice = selectedChatterboxVoice();
+  listEl.innerHTML = VOICE_PICKER_VOICES.map(v => {
+    const selected = v.id === currentVoice;
+    const tags = v.tags.map(t => `<span class="voice-tag">${t}</span>`).join('');
+    return `<div class="voice-row${selected ? ' selected' : ''}" data-voice="${v.id}" data-provider="vibevoice" onclick="selectVoiceRow('${v.id}','vibevoice','${v.name}','')">
+  <button class="voice-play-btn" type="button" id="vpb-${v.id}"
+          onclick="event.stopPropagation(); previewVoiceRowSample('${v.id}', this)"
+          title="Play sample">${_vp_playSvg}</button>
+  <div class="voice-row-info">
+    <div class="voice-row-name">${v.name}</div>
+    <div class="voice-row-tags">${tags}</div>
+  </div>
+  <div class="voice-selected-icon">${_vp_checkSvg}</div>
+</div>`;
+  }).join('');
+}
+
+// ─── Fetch & render ElevenLabs rows ──────────────────────────
+async function buildElevenLabsVoiceList() {
+  const loadEl = document.getElementById('voiceELLoading');
+  const noKeyEl = document.getElementById('voiceELNoKey');
+  const listEl = document.getElementById('voicePickerList');
+  if (!listEl) return;
+
+  if (_elVoicesCache) { renderELVoiceRows(_elVoicesCache); return; }
+
+  loadEl.style.display = 'flex';
+  try {
+    const data = await api('/api/tts/elevenlabs/voices');
+    _elVoicesCache = data.voices || [];
+    loadEl.style.display = 'none';
+    if (!_elVoicesCache.length) { noKeyEl.style.display = 'flex'; return; }
+    renderELVoiceRows(_elVoicesCache);
+  } catch (_) {
+    loadEl.style.display = 'none';
+    noKeyEl.style.display = 'flex';
+  }
+}
+
+function renderELVoiceRows(voices) {
+  const listEl = document.getElementById('voicePickerList');
+  if (!listEl) return;
+  const currentId = document.getElementById('studioVoiceId')?.value || '';
+  listEl.innerHTML = voices.map(v => {
+    const selected = v.id === currentId;
+    const tags = (v.tags || []).slice(0, 3).map(t => `<span class="voice-tag">${t}</span>`).join('')
+      || `<span class="voice-tag">${v.category || 'generated'}</span>`;
+    const pu = (v.previewUrl || '').replace(/'/g, '%27');
+    const vname = (v.name || '').replace(/'/g, '&#39;');
+    return `<div class="voice-row${selected ? ' selected' : ''}" data-voice="${v.id}" data-provider="elevenlabs" onclick="selectVoiceRow('${v.id}','elevenlabs','${vname}','${pu}')">
+  <button class="voice-play-btn" type="button" id="vpb-${v.id}"
+          onclick="event.stopPropagation(); previewELVoiceSample('${pu}', this)"
+          title="Play sample">${_vp_playSvg}</button>
+  <div class="voice-row-info">
+    <div class="voice-row-name">${v.name}</div>
+    <div class="voice-row-tags">${tags}</div>
+  </div>
+  <div class="voice-selected-icon">${_vp_checkSvg}</div>
+</div>`;
+  }).join('');
+}
+
+// ─── Select a voice row ───────────────────────────────────────
+function selectVoiceRow(voiceId, provider, voiceName, previewUrl) {
+  // Store selected voice data
+  const name = voiceName || voiceId;
+  _selectedVoiceData = { id: voiceId, name, provider: provider || _voicePickerActiveTab, previewUrl: previewUrl || null };
+
+  // Update the correct hidden input
+  if (provider === 'vibevoice') {
+    const sel = document.getElementById('studioChatterboxVoice');
+    if (sel) sel.value = voiceId;
+  } else if (provider === 'elevenlabs') {
+    const inp = document.getElementById('studioVoiceId');
+    if (inp) inp.value = voiceId;
+  }
+
+  // Highlight row
+  document.querySelectorAll('#voicePickerList .voice-row').forEach(row => {
+    row.classList.toggle('selected', row.dataset.voice === voiceId);
+  });
+
+  // Update footer hint
+  const hint = document.getElementById('voicePickerHint');
+  if (hint) hint.textContent = name + ' selected';
+}
+
+// ─── Play VibeVoice pre-rendered sample ──────────────────────
+// Hits /api/tts/vibevoice/sample/:speaker — generates & caches on first call.
 async function previewVoiceRowSample(voiceId, btnEl) {
-  // Use or create a shared hidden audio element
+  let audio = _vpGetAudioEl();
+  const alreadyPlaying = btnEl && btnEl.classList.contains('playing');
+  _vpResetButtons();
+  if (alreadyPlaying) { audio.pause(); return; }
+
+  const url = `/api/tts/vibevoice/sample/${encodeURIComponent(voiceId)}`;
+  try {
+    if (btnEl) { btnEl.classList.add('loading'); btnEl.innerHTML = _vp_spinSvg; }
+    const resolved = typeof playableMediaUrl === 'function' ? await playableMediaUrl(url) : url;
+    audio.src = resolved;
+    await audio.play();
+    if (btnEl) { btnEl.classList.remove('loading'); btnEl.classList.add('playing'); btnEl.innerHTML = _vp_pauseSvg; }
+    audio.onended = () => { if (btnEl) { btnEl.classList.remove('playing'); btnEl.innerHTML = _vp_playSvg; } };
+  } catch (err) {
+    _vpResetButtons();
+    const msg = String(err?.message || err);
+    if (msg.includes('202') || msg.includes('generating') || msg.includes('retry')) {
+      toast(`Generating ${voiceId} sample… tap play again in a moment.`, 'info');
+    } else {
+      toast(`Could not play sample: ${msg}`, 'error');
+    }
+  }
+}
+
+// ─── Play ElevenLabs preview URL directly (no generation needed) ──
+async function previewELVoiceSample(previewUrl, btnEl) {
+  if (!previewUrl) { toast('No preview available for this voice.', 'info'); return; }
+  let audio = _vpGetAudioEl();
+  const alreadyPlaying = btnEl && btnEl.classList.contains('playing');
+  _vpResetButtons();
+  if (alreadyPlaying) { audio.pause(); return; }
+  if (btnEl) { btnEl.classList.add('loading'); btnEl.innerHTML = _vp_spinSvg; }
+  try {
+    audio.src = previewUrl;
+    await audio.play();
+    if (btnEl) { btnEl.classList.remove('loading'); btnEl.classList.add('playing'); btnEl.innerHTML = _vp_pauseSvg; }
+    audio.onended = () => { if (btnEl) { btnEl.classList.remove('playing'); btnEl.innerHTML = _vp_playSvg; } };
+  } catch (err) {
+    _vpResetButtons();
+    toast('Could not play EL preview: ' + (err?.message || err), 'error');
+  }
+}
+
+function _vpGetAudioEl() {
   let audio = document.getElementById('voiceRowSampleAudio');
   if (!audio) {
     audio = document.createElement('audio');
@@ -3136,40 +3273,60 @@ async function previewVoiceRowSample(voiceId, btnEl) {
     audio.style.display = 'none';
     document.body.appendChild(audio);
   }
+  return audio;
+}
 
-  // Toggle pause if already playing this exact voice
-  const alreadyPlaying = btnEl && btnEl.classList.contains('playing');
-  _vpResetButtons();
+// ─── Done button: close dialog + show voice card ──────────────
+function onVoicePickerDone() {
+  document.getElementById('voiceConfigDialog').close();
+  if (!_selectedVoiceData) return;
+
+  // Sync audio provider select to the chosen voice's provider
+  const providerSel = document.getElementById('studioAudioProvider');
+  if (providerSel && ['vibevoice','elevenlabs'].includes(_selectedVoiceData.provider)) {
+    providerSel.value = _selectedVoiceData.provider;
+    setStudioAudio(_selectedVoiceData.provider, { preserveToast: true });
+  }
+
+  // Show voice card, hide "Choose voice" button
+  const card    = document.getElementById('selectedVoiceCard');
+  const nameEl  = document.getElementById('selectedVoiceCardName');
+  const badgeEl = document.getElementById('selectedVoiceCardBadge');
+  const cfgBtn  = document.getElementById('studioConfigureVoiceButton');
+  if (card && nameEl) {
+    nameEl.textContent  = _selectedVoiceData.name;
+    if (badgeEl) badgeEl.textContent = _selectedVoiceData.provider === 'elevenlabs' ? 'ElevenLabs' : 'VibeVoice';
+    card.style.display = '';
+    if (cfgBtn) cfgBtn.style.display = 'none';
+  }
+}
+
+// ─── Play sample from the selected voice card ─────────────────
+async function playSelectedVoiceSample() {
+  if (!_selectedVoiceData) return;
+  const btn = document.querySelector('#selectedVoiceCard .voice-card-play');
+  const audio = _vpGetAudioEl();
+
+  const alreadyPlaying = btn && btn.classList.contains('playing');
+  if (btn) btn.classList.remove('playing');
   if (alreadyPlaying) { audio.pause(); return; }
 
-  const url = `/api/tts/chatterbox/sample/${encodeURIComponent(voiceId === 'default' ? 'lucy' : voiceId)}`;
+  let src = '';
+  if (_selectedVoiceData.provider === 'vibevoice') {
+    const url = `/api/tts/vibevoice/sample/${encodeURIComponent(_selectedVoiceData.id)}`;
+    src = typeof playableMediaUrl === 'function' ? await playableMediaUrl(url) : url;
+  } else if (_selectedVoiceData.previewUrl) {
+    src = _selectedVoiceData.previewUrl;
+  } else {
+    toast('No preview available for this voice.', 'info'); return;
+  }
 
   try {
-    // Show loading spinner
-    if (btnEl) { btnEl.classList.add('loading'); btnEl.innerHTML = _vp_spinSvg; }
-
-    // Resolve URL (handles auth token if needed)
-    const resolvedUrl = typeof playableMediaUrl === 'function' ? await playableMediaUrl(url) : url;
-
-    audio.src = resolvedUrl;
+    audio.src = src;
     await audio.play();
-
-    // Now switch to pause icon while playing
-    if (btnEl) { btnEl.classList.remove('loading'); btnEl.classList.add('playing'); btnEl.innerHTML = _vp_pauseSvg; }
-
-    audio.onended = () => {
-      if (btnEl) { btnEl.classList.remove('playing'); btnEl.innerHTML = _vp_playSvg; }
-    };
-  } catch (error) {
-    _vpResetButtons();
-    // Sample may be generating — show a friendly message
-    const msg = error?.message || String(error);
-    if (msg.includes('404') || msg.includes('No cached')) {
-      toast(`Generating sample for ${voiceId}… click play again in a moment.`, 'info');
-    } else {
-      toast(`Could not play sample: ${msg}`, 'error');
-    }
-  }
+    if (btn) btn.classList.add('playing');
+    audio.onended = () => { if (btn) btn.classList.remove('playing'); };
+  } catch (err) { toast('Could not play sample.', 'error'); }
 }
 
 // Filter voice list by name search
@@ -3186,11 +3343,10 @@ function filterVoiceList(query) {
 function updateChatterboxVoiceLabel() {}
 function playCachedChatterboxVoiceSample() { previewVoiceRowSample(selectedChatterboxVoice(), null); }
 function nextChatterboxVoice() {
-  const voices = VOICE_PICKER_VOICES;
   const cur = selectedChatterboxVoice();
-  const idx = voices.findIndex(v => v.id === cur);
-  const next = voices[(idx + 1) % voices.length];
-  selectVoiceRow(next.id);
+  const idx = VOICE_PICKER_VOICES.findIndex(v => v.id === cur);
+  const next = VOICE_PICKER_VOICES[(idx + 1) % VOICE_PICKER_VOICES.length];
+  selectVoiceRow(next.id, 'vibevoice', next.name, '');
 }
 
 // Show generated preview audio inside the voice dialog
