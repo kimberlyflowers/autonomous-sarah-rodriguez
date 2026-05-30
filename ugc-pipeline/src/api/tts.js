@@ -87,16 +87,58 @@ router.post('/vibevoice', upload.single('voiceSample'), async (req, res) => {
   }
 });
 
-router.get('/chatterbox/sample/:voice', (req, res) => {
+// In-flight generation tracker so concurrent requests for the same voice don't double-generate
+const _sampleGenerating = new Set();
+
+router.get('/chatterbox/sample/:voice', async (req, res) => {
   const voice = CHATTERBOX_VOICES.includes(req.params.voice) ? req.params.voice : '';
-  if (!voice) return res.status(404).json({ error: 'Unknown Chatterbox voice.' });
+  if (!voice) return res.status(404).json({ error: 'Unknown voice.' });
+
+  fs.mkdirSync(CHATTERBOX_SAMPLE_DIR, { recursive: true });
   const samplePath = path.join(CHATTERBOX_SAMPLE_DIR, `${voice}.wav`);
-  if (!fs.existsSync(samplePath)) {
-    return res.status(404).json({ error: 'No cached sample for this voice yet.' });
+
+  // Serve cached sample immediately
+  if (fs.existsSync(samplePath)) {
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.type('audio/wav');
+    return res.sendFile(samplePath);
   }
-  res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-  res.type('audio/wav');
-  res.sendFile(samplePath);
+
+  // If already generating, tell the client to retry shortly
+  if (_sampleGenerating.has(voice)) {
+    return res.status(202).json({ generating: true, retryAfterMs: 5000,
+      message: `Sample for "${voice}" is being generated — please try again shortly.` });
+  }
+
+  // Generate a short sample on demand
+  _sampleGenerating.add(voice);
+  const capitalize = s => s.charAt(0).toUpperCase() + s.slice(1);
+  const sampleText = `Hi! I'm ${capitalize(voice)}, your AI voice for creating engaging UGC video content.`;
+  const tmpDir = path.join(CHATTERBOX_SAMPLE_DIR, '_tmp');
+
+  try {
+    let result;
+    try {
+      // Try VibeVoice first (better quality)
+      result = await createVibeVoiceAudio({ script: sampleText, voice, format: 'wav', outputDir: tmpDir });
+    } catch (e1) {
+      logger.warn('VibeVoice sample failed, trying Chatterbox', { voice, error: e1.message });
+      result = await createChatterboxAudio({ script: sampleText, voice, format: 'wav', outputDir: tmpDir });
+    }
+    // Move to canonical cached path
+    fs.mkdirSync(CHATTERBOX_SAMPLE_DIR, { recursive: true });
+    if (result.localPath !== samplePath) fs.renameSync(result.localPath, samplePath);
+
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.type('audio/wav');
+    res.sendFile(samplePath);
+    logger.info('Voice sample generated and cached', { voice });
+  } catch (err) {
+    logger.error('Voice sample generation failed', { voice, error: err.message });
+    res.status(500).json({ error: `Sample generation failed: ${err.message}` });
+  } finally {
+    _sampleGenerating.delete(voice);
+  }
 });
 
 router.post('/chatterbox', upload.single('voiceSample'), async (req, res) => {

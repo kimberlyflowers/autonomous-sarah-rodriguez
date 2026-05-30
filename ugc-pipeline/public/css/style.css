@@ -1069,6 +1069,14 @@ body {
   border-color: var(--primary, #F4A261);
   color: #fff;
 }
+.voice-play-btn.loading {
+  background: rgba(244,162,97,.18);
+  border-color: var(--primary, #F4A261);
+  color: var(--primary, #F4A261);
+  cursor: wait;
+}
+@keyframes vp-spin { to { transform: rotate(360deg); } }
+.vp-spin { animation: vp-spin 0.75s linear infinite; transform-origin: center; }
 /* Voice info */
 .voice-row-info { flex: 1 1 auto; min-width: 0; }
 .voice-row-name { font-size: 14px; font-weight: 700; line-height: 1.2; }

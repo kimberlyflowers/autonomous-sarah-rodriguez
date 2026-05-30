@@ -1183,6 +1183,12 @@ function toggleVoiceDetails(forceOpen) {
   if (!dialog) return;
   const shouldOpen = typeof forceOpen === 'boolean' ? forceOpen : !dialog.open;
   if (shouldOpen && !dialog.open) {
+    // Ensure the correct section is visible based on current provider
+    const provider = document.getElementById('studioAudioProvider')?.value || 'vibevoice';
+    const voiceGroup = document.getElementById('studioVoiceGroup');
+    const chatterboxGroup = document.getElementById('studioChatterboxGroup');
+    if (voiceGroup) voiceGroup.style.display = provider === 'elevenlabs' ? '' : 'none';
+    if (chatterboxGroup) chatterboxGroup.style.display = ['chatterbox', 'vibevoice'].includes(provider) ? '' : 'none';
     // Build/refresh the voice list before opening
     buildVoicePickerList();
     dialog.showModal();
@@ -2680,7 +2686,7 @@ function setStudioAudio(provider, options = {}) {
   if (chatterboxGroup) chatterboxGroup.style.display = ['chatterbox', 'vibevoice'].includes(provider) ? '' : 'none';
   // Update dialog title and preview button
   const dialogTitle = document.getElementById('voiceConfigTitle');
-  if (dialogTitle) dialogTitle.textContent = provider === 'elevenlabs' ? 'ElevenLabs voice' : provider === 'vibevoice' ? 'VibeVoice settings' : provider === 'chatterbox' ? 'Chatterbox voice' : 'Voice settings';
+  if (dialogTitle) dialogTitle.textContent = 'Choose voice';
   const previewBtn = document.getElementById('studioPreviewVoiceButton');
   if (previewBtn) {
     previewBtn.style.display = ['chatterbox', 'vibevoice', 'elevenlabs'].includes(provider) ? '' : 'none';
@@ -3048,7 +3054,6 @@ const VOICE_PICKER_VOICES = [
   { id: 'abigail', name: 'Abigail',   tags: ['Female', 'Warm', 'English'] },
   { id: 'anaya',   name: 'Anaya',     tags: ['Female', 'Smooth', 'English'] },
   { id: 'evelyn',  name: 'Evelyn',    tags: ['Female', 'Mature', 'English'] },
-  { id: 'josh',    name: 'Josh',      tags: ['Male', 'Energetic', 'English'] },
   { id: 'aaron',   name: 'Aaron',     tags: ['Male', 'Deep', 'English'] },
   { id: 'andy',    name: 'Andy',      tags: ['Male', 'Casual', 'English'] },
   { id: 'archer',  name: 'Archer',    tags: ['Male', 'Authoritative', 'English'] },
@@ -3106,47 +3111,62 @@ function selectVoiceRow(voiceId) {
   });
 }
 
-// Play a cached sample inline inside the dialog
-async function previewVoiceRowSample(voiceId, btnEl) {
-  const previewPanel = document.getElementById('voiceInlineSamplePreview');
-  const audio = document.getElementById('voiceInlineSampleAudio');
-  const label = document.getElementById('voiceInlineSampleLabel');
-  if (!audio || !previewPanel) return;
+// SVG constants for voice play button states
+const _vp_playSvg  = `<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5,3 19,12 5,21"/></svg>`;
+const _vp_pauseSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`;
+const _vp_spinSvg  = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" class="vp-spin"><path d="M12 2a10 10 0 0 1 10 10"/></svg>`;
 
-  // Pause if already playing this voice
-  const alreadyPlaying = btnEl && btnEl.classList.contains('playing');
-  // Reset all play buttons
-  document.querySelectorAll('.voice-play-btn.playing').forEach(b => {
-    b.classList.remove('playing');
-    b.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5,3 19,12 5,21"/></svg>`;
+function _vpResetButtons() {
+  document.querySelectorAll('.voice-play-btn.playing, .voice-play-btn.loading').forEach(b => {
+    b.classList.remove('playing', 'loading');
+    b.innerHTML = _vp_playSvg;
   });
+}
+
+// Play a cached sample inline inside the dialog — audio plays silently,
+// only the row's play button changes state (loading → pause → play).
+async function previewVoiceRowSample(voiceId, btnEl) {
+  // Use or create a shared hidden audio element
+  let audio = document.getElementById('voiceRowSampleAudio');
+  if (!audio) {
+    audio = document.createElement('audio');
+    audio.id = 'voiceRowSampleAudio';
+    audio.style.display = 'none';
+    document.body.appendChild(audio);
+  }
+
+  // Toggle pause if already playing this exact voice
+  const alreadyPlaying = btnEl && btnEl.classList.contains('playing');
+  _vpResetButtons();
   if (alreadyPlaying) { audio.pause(); return; }
 
-  const voice = VOICE_PICKER_VOICES.find(v => v.id === voiceId);
-  const displayName = voice ? voice.name : voiceId;
-  if (label) label.textContent = `Sample — ${displayName}`;
-
   const url = `/api/tts/chatterbox/sample/${encodeURIComponent(voiceId === 'default' ? 'lucy' : voiceId)}`;
+
   try {
-    if (btnEl) {
-      btnEl.classList.add('playing');
-      btnEl.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`;
-    }
-    audio.src = await playableMediaUrl(url);
-    previewPanel.classList.add('visible');
+    // Show loading spinner
+    if (btnEl) { btnEl.classList.add('loading'); btnEl.innerHTML = _vp_spinSvg; }
+
+    // Resolve URL (handles auth token if needed)
+    const resolvedUrl = typeof playableMediaUrl === 'function' ? await playableMediaUrl(url) : url;
+
+    audio.src = resolvedUrl;
     await audio.play();
+
+    // Now switch to pause icon while playing
+    if (btnEl) { btnEl.classList.remove('loading'); btnEl.classList.add('playing'); btnEl.innerHTML = _vp_pauseSvg; }
+
     audio.onended = () => {
-      if (btnEl) {
-        btnEl.classList.remove('playing');
-        btnEl.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5,3 19,12 5,21"/></svg>`;
-      }
+      if (btnEl) { btnEl.classList.remove('playing'); btnEl.innerHTML = _vp_playSvg; }
     };
   } catch (error) {
-    if (btnEl) {
-      btnEl.classList.remove('playing');
-      btnEl.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5,3 19,12 5,21"/></svg>`;
+    _vpResetButtons();
+    // Sample may be generating — show a friendly message
+    const msg = error?.message || String(error);
+    if (msg.includes('404') || msg.includes('No cached')) {
+      toast(`Generating sample for ${voiceId}… click play again in a moment.`, 'info');
+    } else {
+      toast(`Could not play sample: ${msg}`, 'error');
     }
-    toast(`Could not load sample: ${error.message}`, 'error');
   }
 }
 
