@@ -1183,6 +1183,8 @@ function toggleVoiceDetails(forceOpen) {
   if (!dialog) return;
   const shouldOpen = typeof forceOpen === 'boolean' ? forceOpen : !dialog.open;
   if (shouldOpen && !dialog.open) {
+    // Build/refresh the voice list before opening
+    buildVoicePickerList();
     dialog.showModal();
   } else if (!shouldOpen && dialog.open) {
     dialog.close();
@@ -3034,65 +3036,172 @@ function previewCurrentVoice() {
   return toast('Choose VibeVoice or ElevenLabs to preview a generated voice.', 'error');
 }
 
+// ─── Voice picker data ────────────────────────────────────────
+const VOICE_PICKER_VOICES = [
+  { id: 'default', name: 'Default',   tags: ['Female', 'Natural', 'English'] },
+  { id: 'lucy',    name: 'Lucy',      tags: ['Female', 'Warm', 'English'] },
+  { id: 'laura',   name: 'Laura',     tags: ['Female', 'Calm', 'English'] },
+  { id: 'madison', name: 'Madison',   tags: ['Female', 'Upbeat', 'English'] },
+  { id: 'marisol', name: 'Marisol',   tags: ['Female', 'Expressive', 'English'] },
+  { id: 'meera',   name: 'Meera',     tags: ['Female', 'Professional', 'English'] },
+  { id: 'chloe',   name: 'Chloe',     tags: ['Female', 'Young', 'English'] },
+  { id: 'abigail', name: 'Abigail',   tags: ['Female', 'Warm', 'English'] },
+  { id: 'anaya',   name: 'Anaya',     tags: ['Female', 'Smooth', 'English'] },
+  { id: 'evelyn',  name: 'Evelyn',    tags: ['Female', 'Mature', 'English'] },
+  { id: 'josh',    name: 'Josh',      tags: ['Male', 'Energetic', 'English'] },
+  { id: 'aaron',   name: 'Aaron',     tags: ['Male', 'Deep', 'English'] },
+  { id: 'andy',    name: 'Andy',      tags: ['Male', 'Casual', 'English'] },
+  { id: 'archer',  name: 'Archer',    tags: ['Male', 'Authoritative', 'English'] },
+  { id: 'brian',   name: 'Brian',     tags: ['Male', 'Friendly', 'English'] },
+  { id: 'dylan',   name: 'Dylan',     tags: ['Male', 'Young', 'English'] },
+  { id: 'emmanuel',name: 'Emmanuel',  tags: ['Male', 'Warm', 'English'] },
+  { id: 'ethan',   name: 'Ethan',     tags: ['Male', 'Clear', 'English'] },
+  { id: 'gavin',   name: 'Gavin',     tags: ['Male', 'Confident', 'English'] },
+  { id: 'gordon',  name: 'Gordon',    tags: ['Male', 'Mature', 'English'] },
+  { id: 'ivan',    name: 'Ivan',      tags: ['Male', 'Deep', 'English'] },
+  { id: 'walter',  name: 'Walter',    tags: ['Male', 'Authoritative', 'English'] },
+];
+
 function selectedChatterboxVoice() {
   return document.getElementById('studioChatterboxVoice')?.value || 'default';
 }
 
-function updateChatterboxVoiceLabel() {
-  const voice = selectedChatterboxVoice();
-  const label = `${voice[0].toUpperCase()}${voice.slice(1)}`;
-  const name = document.getElementById('chatterboxVoiceName');
-  if (name) name.textContent = label;
-  const hint = document.getElementById('chatterboxSampleHint');
-  if (hint) hint.textContent = `${label} is selected. Play the cached sample if you want to audition it.`;
+// Build (or rebuild) the voice picker rows
+function buildVoicePickerList() {
+  const listEl = document.getElementById('voicePickerList');
+  if (!listEl) return;
+  const currentVoice = selectedChatterboxVoice();
+  // Play SVG icon
+  const playSvg = `<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5,3 19,12 5,21"/></svg>`;
+  // Stop/pause SVG (shown when that row is playing)
+  const stopSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`;
+  // Check SVG for selected state
+  const checkSvg = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+
+  listEl.innerHTML = VOICE_PICKER_VOICES.map(v => {
+    const selected = v.id === currentVoice;
+    const tags = v.tags.map(t => `<span class="voice-tag">${t}</span>`).join('');
+    return `<div class="voice-row${selected ? ' selected' : ''}" data-voice="${v.id}" onclick="selectVoiceRow('${v.id}')">
+  <button class="voice-play-btn" type="button" id="vpb-${v.id}"
+          onclick="event.stopPropagation(); previewVoiceRowSample('${v.id}', this)"
+          title="Play sample">
+    ${playSvg}
+  </button>
+  <div class="voice-row-info">
+    <div class="voice-row-name">${v.name}</div>
+    <div class="voice-row-tags">${tags}</div>
+  </div>
+  <div class="voice-selected-icon">${checkSvg}</div>
+</div>`;
+  }).join('');
 }
 
-async function playCachedChatterboxVoiceSample() {
-  if (document.getElementById('studioAudioProvider')?.value === 'vibevoice') {
-    return toast('VibeVoice samples come from the configured endpoint. Use Preview script with VibeVoice.', 'info');
-  }
-  const voice = selectedChatterboxVoice();
-  const hint = document.getElementById('chatterboxSampleHint');
-  const audio = document.getElementById('chatterboxSampleAudio');
-  if (!audio) return;
-  const url = `/api/tts/chatterbox/sample/${encodeURIComponent(voice)}`;
-  const label = `${voice[0].toUpperCase()}${voice.slice(1)}`;
-  const name = document.getElementById('chatterboxVoiceName');
-  if (name) name.textContent = label;
-  try {
-    audio.src = await playableMediaUrl(url);
-    audio.style.display = '';
-    await audio.play().catch(() => {});
-    if (hint) hint.textContent = `Playing cached ${label} sample. No RunPod call used.`;
-  } catch (error) {
-    if (hint) hint.textContent = 'Could not play cached sample.';
-    toast(`Could not play sample: ${error.message}`, 'error');
-  }
-}
-
-function nextChatterboxVoice() {
+// Select a voice row (highlight + update hidden select)
+function selectVoiceRow(voiceId) {
   const select = document.getElementById('studioChatterboxVoice');
-  if (!select?.options?.length) return;
-  select.selectedIndex = (select.selectedIndex + 1) % select.options.length;
-  updateChatterboxVoiceLabel();
-  if (document.getElementById('studioAudioProvider')?.value === 'chatterbox') playCachedChatterboxVoiceSample();
+  if (select) select.value = voiceId;
+  // Update row highlight
+  document.querySelectorAll('#voicePickerList .voice-row').forEach(row => {
+    row.classList.toggle('selected', row.dataset.voice === voiceId);
+  });
+}
+
+// Play a cached sample inline inside the dialog
+async function previewVoiceRowSample(voiceId, btnEl) {
+  const previewPanel = document.getElementById('voiceInlineSamplePreview');
+  const audio = document.getElementById('voiceInlineSampleAudio');
+  const label = document.getElementById('voiceInlineSampleLabel');
+  if (!audio || !previewPanel) return;
+
+  // Pause if already playing this voice
+  const alreadyPlaying = btnEl && btnEl.classList.contains('playing');
+  // Reset all play buttons
+  document.querySelectorAll('.voice-play-btn.playing').forEach(b => {
+    b.classList.remove('playing');
+    b.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5,3 19,12 5,21"/></svg>`;
+  });
+  if (alreadyPlaying) { audio.pause(); return; }
+
+  const voice = VOICE_PICKER_VOICES.find(v => v.id === voiceId);
+  const displayName = voice ? voice.name : voiceId;
+  if (label) label.textContent = `Sample — ${displayName}`;
+
+  const url = `/api/tts/chatterbox/sample/${encodeURIComponent(voiceId === 'default' ? 'lucy' : voiceId)}`;
+  try {
+    if (btnEl) {
+      btnEl.classList.add('playing');
+      btnEl.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`;
+    }
+    audio.src = await playableMediaUrl(url);
+    previewPanel.classList.add('visible');
+    await audio.play();
+    audio.onended = () => {
+      if (btnEl) {
+        btnEl.classList.remove('playing');
+        btnEl.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5,3 19,12 5,21"/></svg>`;
+      }
+    };
+  } catch (error) {
+    if (btnEl) {
+      btnEl.classList.remove('playing');
+      btnEl.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5,3 19,12 5,21"/></svg>`;
+    }
+    toast(`Could not load sample: ${error.message}`, 'error');
+  }
+}
+
+// Filter voice list by name search
+function filterVoiceList(query) {
+  const q = (query || '').toLowerCase().trim();
+  document.querySelectorAll('#voicePickerList .voice-row').forEach(row => {
+    const name = (row.querySelector('.voice-row-name')?.textContent || '').toLowerCase();
+    const tags = (row.querySelector('.voice-row-tags')?.textContent || '').toLowerCase();
+    row.style.display = (!q || name.includes(q) || tags.includes(q)) ? '' : 'none';
+  });
+}
+
+// Legacy compat — keep these so any remaining inline callers don't throw
+function updateChatterboxVoiceLabel() {}
+function playCachedChatterboxVoiceSample() { previewVoiceRowSample(selectedChatterboxVoice(), null); }
+function nextChatterboxVoice() {
+  const voices = VOICE_PICKER_VOICES;
+  const cur = selectedChatterboxVoice();
+  const idx = voices.findIndex(v => v.id === cur);
+  const next = voices[(idx + 1) % voices.length];
+  selectVoiceRow(next.id);
+}
+
+// Show generated preview audio inside the voice dialog
+async function _showInlineGenPreview(url, label) {
+  const panel = document.getElementById('voiceInlineGenPreview');
+  const audio = document.getElementById('voiceInlineGenAudio');
+  if (!panel || !audio) return;
+  audio.src = await playableMediaUrl(url);
+  panel.classList.add('visible');
+  try { await audio.play(); } catch (_) {}
+  // Also update the external panel for "Use this audio" flow
+  const extPanel = document.getElementById('studioVoicePreview');
+  const extTitle = document.getElementById('studioVoicePreviewTitle');
+  const extAudio = document.getElementById('studioVoicePreviewAudio');
+  if (extPanel && extTitle && extAudio) {
+    extPanel.style.display = '';
+    extTitle.textContent = label;
+    extAudio.src = audio.src;
+  }
 }
 
 async function previewVibeVoice(saveOnly = false) {
   const writtenScript = document.getElementById('studioScript').value.trim();
   const script = writtenScript || 'Hi, I am previewing VibeVoice so you can hear the tone before choosing it for your video.';
   const button = document.getElementById('studioPreviewVoiceButton');
-  if (button) {
-    button.disabled = true;
-    button.textContent = 'Creating preview...';
-  }
+  if (button) { button.disabled = true; button.textContent = 'Creating preview...'; }
   setVoicePreviewLoading(true, 'VibeVoice');
   try {
     const data = new FormData();
     data.append('script', script);
     data.append('voice', document.getElementById('studioChatterboxVoice').value);
-    data.append('format', document.getElementById('studioChatterboxFormat').value);
-    data.append('voiceUrl', document.getElementById('studioChatterboxVoiceUrl').value.trim());
+    data.append('format', document.getElementById('studioChatterboxFormat')?.value || 'wav');
+    data.append('voiceUrl', document.getElementById('studioChatterboxVoiceUrl')?.value.trim() || '');
     data.append('name', `${writtenScript ? 'VibeVoice voiceover' : 'VibeVoice sample'} ${new Date().toLocaleString()}`);
     const sample = document.getElementById('studioVoiceSample')?.files?.[0];
     if (sample) data.append('voiceSample', sample);
@@ -3101,19 +3210,14 @@ async function previewVibeVoice(saveOnly = false) {
     const url = response.result?.asset?.files?.[0]?.path || response.result?.audioUrl;
     if (!url) throw new Error('VibeVoice did not return audio.');
     setVoicePreviewLoading(false);
-    document.getElementById('studioVoicePreview').style.display = '';
-    document.getElementById('studioVoicePreviewTitle').textContent = saveOnly ? 'Audio generated and saved' : writtenScript ? 'VibeVoice preview saved' : 'VibeVoice sample saved';
-    document.getElementById('studioVoicePreviewAudio').src = await playableMediaUrl(url);
+    await _showInlineGenPreview(url, saveOnly ? 'Audio generated and saved' : writtenScript ? 'VibeVoice preview saved' : 'VibeVoice sample saved');
     toast('VibeVoice generated and saved to audio Library.', 'success');
     await loadAssets();
   } catch (error) {
     setVoicePreviewLoading(false);
     toast(error.message, 'error');
   } finally {
-    if (button) {
-      button.disabled = false;
-      button.textContent = 'Preview script with VibeVoice';
-    }
+    if (button) { button.disabled = false; button.textContent = 'Preview script with VibeVoice'; }
   }
 }
 
@@ -3121,17 +3225,14 @@ async function previewChatterboxVoice(saveOnly = false) {
   const writtenScript = document.getElementById('studioScript').value.trim();
   const script = writtenScript || 'Hi, I am previewing this voice so you can hear the tone before choosing it for your video.';
   const button = document.getElementById('studioPreviewVoiceButton');
-  if (button) {
-    button.disabled = true;
-    button.textContent = 'Creating preview...';
-  }
+  if (button) { button.disabled = true; button.textContent = 'Creating preview...'; }
   setVoicePreviewLoading(true, 'Chatterbox');
   try {
     const data = new FormData();
     data.append('script', script);
     data.append('voice', document.getElementById('studioChatterboxVoice').value);
-    data.append('format', document.getElementById('studioChatterboxFormat').value);
-    data.append('voiceUrl', document.getElementById('studioChatterboxVoiceUrl').value.trim());
+    data.append('format', document.getElementById('studioChatterboxFormat')?.value || 'wav');
+    data.append('voiceUrl', document.getElementById('studioChatterboxVoiceUrl')?.value.trim() || '');
     data.append('name', `${writtenScript ? 'Voiceover' : 'Voice sample'} ${new Date().toLocaleString()}`);
     const sample = document.getElementById('studioVoiceSample')?.files?.[0];
     if (sample) data.append('voiceSample', sample);
@@ -3140,19 +3241,14 @@ async function previewChatterboxVoice(saveOnly = false) {
     const url = response.result?.asset?.files?.[0]?.path || response.result?.audioUrl;
     if (!url) throw new Error('Chatterbox did not return audio.');
     setVoicePreviewLoading(false);
-    document.getElementById('studioVoicePreview').style.display = '';
-    document.getElementById('studioVoicePreviewTitle').textContent = saveOnly ? 'Audio generated and saved' : writtenScript ? 'Voice preview saved' : 'Voice sample preview saved';
-    document.getElementById('studioVoicePreviewAudio').src = await playableMediaUrl(url);
+    await _showInlineGenPreview(url, saveOnly ? 'Audio generated and saved' : writtenScript ? 'Voice preview saved' : 'Voice sample preview saved');
     toast('Voiceover generated and saved to audio Library.', 'success');
     await loadAssets();
   } catch (error) {
     setVoicePreviewLoading(false);
     toast(error.message, 'error');
   } finally {
-    if (button) {
-      button.disabled = false;
-      button.textContent = 'Preview script with Chatterbox';
-    }
+    if (button) { button.disabled = false; button.textContent = 'Preview script with Chatterbox'; }
   }
 }
 
