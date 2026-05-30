@@ -937,10 +937,18 @@ body {
   padding: 0;
   width: min(94vw, 660px);
   max-height: min(88vh, 780px);
-  display: flex;
   flex-direction: column;
   box-shadow: 0 32px 80px rgba(0,0,0,.72);
   overflow: hidden;
+}
+/* Hidden when closed — browser sets display:none on <dialog> by default,
+   but only when display is not overridden. Explicitly enforce it. */
+#voiceConfigDialog:not([open]) {
+  display: none !important;
+}
+/* Only show as flex when the dialog is actually open */
+#voiceConfigDialog[open] {
+  display: flex;
 }
 #voiceConfigDialog::backdrop {
   background: rgba(0, 0, 0, 0.70);
