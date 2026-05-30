@@ -19,6 +19,10 @@ let currentCharacterRatio = 'portrait';
 let currentLibraryImageRatio = 'portrait';
 let libraryImageItems = [];
 let libraryVideoItems = [];
+let libraryImageVisible = 15;
+let libraryVideoVisible = 15;
+let _lastLibraryOutputs = [];
+let _lastCombinedVideos = [];
 let renderedVideoItems = [];
 let selectedVideoKeys = new Set();
 let lastSelectedVideoIndex = -1;
@@ -3206,6 +3210,7 @@ async function loadAssets() {
   try {
     localStorage.setItem('bloom_ugc_characters', JSON.stringify(ugcCharactersCache));
   } catch (e) { /* ignore quota errors */ }
+  libraryImageVisible = 15;
   renderAssetGrid('productGrid', data.products || [], 'products');
   renderAssetGrid('generatedImageGrid', data.outputs || [], 'outputs');
   setLibraryImageRatio(currentLibraryImageRatio);
@@ -4153,6 +4158,27 @@ async function editCharacterVoice(slug, currentVoiceId = '') {
   loadAssets();
 }
 
+function _updateLibraryPagination(grid, shown, total, onClickFn) {
+  const prev = grid.parentElement?.querySelector('.library-pagination');
+  if (prev) prev.remove();
+  if (!onClickFn || shown >= total) return;
+  const remaining = total - shown;
+  const el = document.createElement('div');
+  el.className = 'library-pagination';
+  el.innerHTML = `<button class="btn btn-secondary lib-show-more" onclick="${onClickFn}">Show ${remaining} more &nbsp;·&nbsp; ${total} total</button>`;
+  grid.insertAdjacentElement('afterend', el);
+}
+
+function showMoreLibraryImages() {
+  libraryImageVisible += 15;
+  renderAssetGrid('generatedImageGrid', _lastLibraryOutputs, 'outputs');
+}
+
+function showMoreLibraryVideos() {
+  libraryVideoVisible += 15;
+  _renderVideoGrid(_lastCombinedVideos);
+}
+
 function renderAssetGrid(containerId, assets, type) {
   const grid = document.getElementById(containerId);
   if (!grid) return;
@@ -4170,14 +4196,19 @@ function renderAssetGrid(containerId, assets, type) {
       };
     })
     .filter(Boolean);
-  if (type === 'outputs') libraryImageItems = assetLightboxItems[type];
+  if (type === 'outputs') {
+    libraryImageItems = assetLightboxItems[type];
+    _lastLibraryOutputs = assets;
+  }
   if (assets.length === 0) {
     grid.innerHTML = `<div class="empty-state">No ${type} uploaded yet</div>`;
+    _updateLibraryPagination(grid, 0, 0, null);
     return;
   }
 
+  const visibleAssets = type === 'outputs' ? assets.slice(0, libraryImageVisible) : assets;
   let imageIndex = -1;
-  grid.innerHTML = assets.map(asset => {
+  grid.innerHTML = visibleAssets.map(asset => {
     const file = asset.files[0];
     const isImage = file && /\.(jpg|jpeg|png|webp|gif)$/i.test(file.name);
     const isAudio = file && /\.(mp3|wav|m4a|ogg|aac)$/i.test(file.name);
@@ -4201,6 +4232,9 @@ function renderAssetGrid(containerId, assets, type) {
       </div>
     </div>`;
   }).join('');
+  if (type === 'outputs') {
+    _updateLibraryPagination(grid, visibleAssets.length, assets.length, 'showMoreLibraryImages()');
+  }
 }
 
 async function addImageUrlAsCharacter(imageUrl) {
@@ -4843,15 +4877,25 @@ async function loadVideos(options = {}) {
       sourceTrendId: v.sourceTrendId || ''
     }));
 
+  _lastCombinedVideos = combined;
+  _renderVideoGrid(combined);
+}
+
+function _renderVideoGrid(combined) {
+  const grid = document.getElementById('videoGrid');
+  if (!grid) return;
+
   if (!combined.length) {
     grid.innerHTML = '<div class="empty-state">No videos generated yet. Create your first clip from the Create tab.</div>';
+    _updateLibraryPagination(grid, 0, 0, null);
     return;
   }
 
+  const visibleCombined = combined.slice(0, libraryVideoVisible);
   let videoIndex = -1;
   videoErrorDetails = {};
   videoStatusDetails = {};
-  grid.innerHTML = combined.map((v, itemIndex) => {
+  grid.innerHTML = visibleCombined.map((v, itemIndex) => {
     const mediaUrl = authenticatedMediaUrl(v.localPath || '');
     const selectionKey = getVideoSelectionKey(v);
     const isSelected = selectionKey && selectedVideoKeys.has(selectionKey);
@@ -4916,6 +4960,7 @@ async function loadVideos(options = {}) {
     return `<div class="video-card ${aspect} ${isSelected ? 'selected' : ''}" data-video-key="${escapeHtml(selectionKey)}">${selectControl}${videoEl}<div class="video-info" onclick="${mediaUrl ? `openLibraryLightbox('videos',${lightboxIndex})` : ''}"><div style="display:flex;justify-content:space-between;gap:8px"><span class="chip chip-soft">${v.format || 'custom'}</span>${statusChip}</div><div class="video-prompt">${escapeHtml(v.prompt || v.localPath || '')}</div>${trendBlock}${audioBlock}${activeBlock}${errorBlock}${actions}</div></div>`;
   }).join('');
   updateVideoBulkBar();
+  _updateLibraryPagination(grid, visibleCombined.length, combined.length, 'showMoreLibraryVideos()');
 }
 
 function openPublishModal(mediaUrl, mediaType = 'video') {
