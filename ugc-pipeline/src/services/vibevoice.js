@@ -16,18 +16,22 @@ function getVibeVoiceConfig() {
   };
 }
 
+// RunPod runsync ?wait= must be between 1000 and 300000 ms.
+const RUNPOD_MAX_WAIT_MS = 300000;
+
 function buildRunSyncUrl(config) {
+  const waitMs = Math.min(Math.max(config.timeoutMs, 1000), RUNPOD_MAX_WAIT_MS);
   if (config.endpointUrl) {
     const url = new URL(config.endpointUrl);
     if (!/\/runsync$/i.test(url.pathname) && !/\/run$/i.test(url.pathname)) {
       url.pathname = `${url.pathname.replace(/\/$/, '')}/runsync`;
     }
-    if (!url.searchParams.has('wait')) url.searchParams.set('wait', String(config.timeoutMs));
+    if (!url.searchParams.has('wait')) url.searchParams.set('wait', String(waitMs));
     return url.toString();
   }
   if (!config.endpointId) return '';
   const url = new URL(`https://api.runpod.ai/v2/${config.endpointId}/runsync`);
-  url.searchParams.set('wait', String(config.timeoutMs));
+  url.searchParams.set('wait', String(waitMs));
   return url.toString();
 }
 
@@ -120,7 +124,7 @@ async function createVibeVoiceAudio({ script, voice, voiceUrl, voiceSamplePath, 
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({ input }),
-    timeout: Math.min(config.timeoutMs + 5000, 905000)
+    timeout: RUNPOD_MAX_WAIT_MS + 5000
   });
 
   const data = await response.json().catch(() => ({}));
