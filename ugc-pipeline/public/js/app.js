@@ -3570,11 +3570,31 @@ function _setProductPreviewAspect(ratioStr) {
 function onProductAspectChange() {
   const ratio = document.getElementById('productPlacementAspect')?.value || '9:16';
   _setProductPreviewAspect(ratio);
+
+  // Sync result frame shape so it shows the right ratio idle (before any generation)
+  const resultFrame = document.getElementById('productPlacementResult');
+  if (resultFrame) {
+    resultFrame.style.setProperty('--result-ratio', aspectRatioToCssValue(ratio));
+    const kind = aspectRatioKind(ratio);
+    resultFrame.classList.toggle('ratio-portrait', kind === 'portrait');
+    resultFrame.classList.toggle('ratio-landscape', kind === 'landscape');
+    resultFrame.classList.toggle('ratio-square', kind === 'square');
+  }
+
   // Reset crop to center when ratio changes
   productCrop = { x: 50, y: 50 };
   const el = document.getElementById('productCharacterPreview');
   if (el) { el.style.setProperty('--crop-x', '50%'); el.style.setProperty('--crop-y', '50%'); }
 }
+
+// Call once on page load so the idle result frame matches the dropdown default (9:16)
+(function _initProductResultRatio() {
+  // Runs after DOM ready — defer one tick to let the select render its default value
+  requestAnimationFrame(() => {
+    const select = document.getElementById('productPlacementAspect');
+    if (select) onProductAspectChange();
+  });
+})();
 
 function _initProductCropDrag() {
   const preview = document.getElementById('productCharacterPreview');

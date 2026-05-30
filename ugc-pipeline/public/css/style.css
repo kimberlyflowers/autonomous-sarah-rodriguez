@@ -872,6 +872,13 @@ body {
   to { transform: rotate(360deg); }
 }
 
+/* ─── Result frame: remove forced min-height that clips the panel ─────────── */
+/* The inline block sets min-height:min(72vh,780px) which pushes actions out    */
+/* of view. Let flex:1 fill the parent naturally instead.                        */
+.create-image-panel .result-frame {
+  min-height: 0 !important;
+}
+
 /* ─── Product placement crop preview ─────────────────────── */
 /* ID selector wins over the inline .pick-preview class rule */
 #productCharacterPreview {
