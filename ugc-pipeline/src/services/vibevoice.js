@@ -130,7 +130,8 @@ async function createVibeVoiceAudio({ script, voice, voiceUrl, voiceSamplePath, 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || data.detail || `VibeVoice request failed: ${response.status}`);
   if (data.status && data.status !== 'COMPLETED') {
-    throw new Error(`VibeVoice returned ${data.status}. The endpoint did not return completed audio.`);
+    const workerErr = data.error || (data.output && (data.output.error || data.output.message)) || JSON.stringify(data).slice(0, 300);
+    throw new Error(`VibeVoice returned ${data.status}: ${workerErr}`);
   }
 
   const result = normalizeResult(data);
