@@ -4179,13 +4179,15 @@ function _updateLibraryPagination(grid, page, totalPages, prevFn, nextFn) {
 }
 
 function setLibraryImagePage(page) {
-  libraryImagePage = page;
+  if (!_lastLibraryOutputs.length) return;
+  libraryImagePage = Math.max(1, page);
   renderAssetGrid('generatedImageGrid', _lastLibraryOutputs, 'outputs');
   document.getElementById('generatedImageGrid')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function setLibraryVideoPage(page) {
-  libraryVideoPage = page;
+  if (!_lastCombinedVideos.length) return;
+  libraryVideoPage = Math.max(1, page);
   _renderVideoGrid(_lastCombinedVideos);
   document.getElementById('videoGrid')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -4217,6 +4219,11 @@ function renderAssetGrid(containerId, assets, type) {
     return;
   }
 
+  // Auto-reset to page 1 if the current page is out of range (e.g. after data refresh)
+  if (type === 'outputs' && libraryImagePage > 1) {
+    const maxPage = Math.ceil(assets.length / LIBRARY_PAGE_SIZE);
+    if (libraryImagePage > maxPage) libraryImagePage = 1;
+  }
   const start = type === 'outputs' ? (libraryImagePage - 1) * LIBRARY_PAGE_SIZE : 0;
   const visibleAssets = type === 'outputs' ? assets.slice(start, start + LIBRARY_PAGE_SIZE) : assets;
   // imageIndex must offset to match the full libraryImageItems array position
@@ -4907,6 +4914,11 @@ function _renderVideoGrid(combined) {
     return;
   }
 
+  // Auto-reset to page 1 if the current page is out of range (e.g. after background poll)
+  if (libraryVideoPage > 1) {
+    const maxPage = Math.ceil(combined.length / LIBRARY_PAGE_SIZE);
+    if (libraryVideoPage > maxPage) libraryVideoPage = 1;
+  }
   const videoStart = (libraryVideoPage - 1) * LIBRARY_PAGE_SIZE;
   const visibleCombined = combined.slice(videoStart, videoStart + LIBRARY_PAGE_SIZE);
   // videoIndex must reflect position within the full libraryVideoItems array
