@@ -19,8 +19,9 @@ let currentCharacterRatio = 'portrait';
 let currentLibraryImageRatio = 'portrait';
 let libraryImageItems = [];
 let libraryVideoItems = [];
-let libraryImageVisible = 15;
-let libraryVideoVisible = 15;
+const LIBRARY_PAGE_SIZE = 15;
+let libraryImagePage = 1;
+let libraryVideoPage = 1;
 let _lastLibraryOutputs = [];
 let _lastCombinedVideos = [];
 let renderedVideoItems = [];
@@ -3210,7 +3211,7 @@ async function loadAssets() {
   try {
     localStorage.setItem('bloom_ugc_characters', JSON.stringify(ugcCharactersCache));
   } catch (e) { /* ignore quota errors */ }
-  libraryImageVisible = 15;
+  libraryImagePage = 1;
   renderAssetGrid('productGrid', data.products || [], 'products');
   renderAssetGrid('generatedImageGrid', data.outputs || [], 'outputs');
   setLibraryImageRatio(currentLibraryImageRatio);
@@ -4158,25 +4159,35 @@ async function editCharacterVoice(slug, currentVoiceId = '') {
   loadAssets();
 }
 
-function _updateLibraryPagination(grid, shown, total, onClickFn) {
+function _updateLibraryPagination(grid, page, totalPages, prevFn, nextFn) {
   const prev = grid.parentElement?.querySelector('.library-pagination');
   if (prev) prev.remove();
-  if (!onClickFn || shown >= total) return;
-  const remaining = total - shown;
+  if (totalPages <= 1) return;
   const el = document.createElement('div');
   el.className = 'library-pagination';
-  el.innerHTML = `<button class="btn btn-secondary lib-show-more" onclick="${onClickFn}">Show ${remaining} more &nbsp;·&nbsp; ${total} total</button>`;
+  el.innerHTML = `
+    <button class="lib-page-btn" ${page <= 1 ? 'disabled' : `onclick="${prevFn}"`}>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+      Prev
+    </button>
+    <span class="lib-page-indicator">Page ${page} of ${totalPages}</span>
+    <button class="lib-page-btn" ${page >= totalPages ? 'disabled' : `onclick="${nextFn}"`}>
+      Next
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+    </button>`;
   grid.insertAdjacentElement('afterend', el);
 }
 
-function showMoreLibraryImages() {
-  libraryImageVisible += 15;
+function setLibraryImagePage(page) {
+  libraryImagePage = page;
   renderAssetGrid('generatedImageGrid', _lastLibraryOutputs, 'outputs');
+  document.getElementById('generatedImageGrid')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-function showMoreLibraryVideos() {
-  libraryVideoVisible += 15;
+function setLibraryVideoPage(page) {
+  libraryVideoPage = page;
   _renderVideoGrid(_lastCombinedVideos);
+  document.getElementById('videoGrid')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function renderAssetGrid(containerId, assets, type) {
@@ -4206,8 +4217,10 @@ function renderAssetGrid(containerId, assets, type) {
     return;
   }
 
-  const visibleAssets = type === 'outputs' ? assets.slice(0, libraryImageVisible) : assets;
-  let imageIndex = -1;
+  const start = type === 'outputs' ? (libraryImagePage - 1) * LIBRARY_PAGE_SIZE : 0;
+  const visibleAssets = type === 'outputs' ? assets.slice(start, start + LIBRARY_PAGE_SIZE) : assets;
+  // imageIndex must offset to match the full libraryImageItems array position
+  let imageIndex = type === 'outputs' ? start - 1 : -1;
   grid.innerHTML = visibleAssets.map(asset => {
     const file = asset.files[0];
     const isImage = file && /\.(jpg|jpeg|png|webp|gif)$/i.test(file.name);
@@ -4233,7 +4246,10 @@ function renderAssetGrid(containerId, assets, type) {
     </div>`;
   }).join('');
   if (type === 'outputs') {
-    _updateLibraryPagination(grid, visibleAssets.length, assets.length, 'showMoreLibraryImages()');
+    const totalPages = Math.ceil(assets.length / LIBRARY_PAGE_SIZE);
+    _updateLibraryPagination(grid, libraryImagePage, totalPages,
+      `setLibraryImagePage(${libraryImagePage - 1})`,
+      `setLibraryImagePage(${libraryImagePage + 1})`);
   }
 }
 
@@ -4891,8 +4907,11 @@ function _renderVideoGrid(combined) {
     return;
   }
 
-  const visibleCombined = combined.slice(0, libraryVideoVisible);
-  let videoIndex = -1;
+  const videoStart = (libraryVideoPage - 1) * LIBRARY_PAGE_SIZE;
+  const visibleCombined = combined.slice(videoStart, videoStart + LIBRARY_PAGE_SIZE);
+  // videoIndex must reflect position within the full libraryVideoItems array
+  // count how many completed playable videos exist before videoStart
+  let videoIndex = combined.slice(0, videoStart).filter(v => v.status === 'completed' && (v.localPath || '').trim()).length - 1;
   videoErrorDetails = {};
   videoStatusDetails = {};
   grid.innerHTML = visibleCombined.map((v, itemIndex) => {
@@ -4960,7 +4979,10 @@ function _renderVideoGrid(combined) {
     return `<div class="video-card ${aspect} ${isSelected ? 'selected' : ''}" data-video-key="${escapeHtml(selectionKey)}">${selectControl}${videoEl}<div class="video-info" onclick="${mediaUrl ? `openLibraryLightbox('videos',${lightboxIndex})` : ''}"><div style="display:flex;justify-content:space-between;gap:8px"><span class="chip chip-soft">${v.format || 'custom'}</span>${statusChip}</div><div class="video-prompt">${escapeHtml(v.prompt || v.localPath || '')}</div>${trendBlock}${audioBlock}${activeBlock}${errorBlock}${actions}</div></div>`;
   }).join('');
   updateVideoBulkBar();
-  _updateLibraryPagination(grid, visibleCombined.length, combined.length, 'showMoreLibraryVideos()');
+  const videoTotalPages = Math.ceil(combined.length / LIBRARY_PAGE_SIZE);
+  _updateLibraryPagination(grid, libraryVideoPage, videoTotalPages,
+    `setLibraryVideoPage(${libraryVideoPage - 1})`,
+    `setLibraryVideoPage(${libraryVideoPage + 1})`);
 }
 
 function openPublishModal(mediaUrl, mediaType = 'video') {

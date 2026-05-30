@@ -927,25 +927,41 @@ body {
 /* ─── Library pagination ─────────────────────────────────────── */
 .library-pagination {
   display: flex;
+  align-items: center;
   justify-content: center;
-  padding: 20px 0 8px;
+  gap: 12px;
+  padding: 24px 0 8px;
 }
-.lib-show-more {
-  min-width: 200px;
-  padding: 10px 24px;
+.lib-page-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 18px;
   font-size: 13px;
   font-weight: 700;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.02em;
   border-radius: 999px;
-  border: 1.5px solid var(--border, rgba(255,255,255,.12));
+  border: 1.5px solid var(--border, rgba(255,255,255,.14));
   background: transparent;
   color: var(--ink, #fff);
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  transition: background 0.14s, border-color 0.14s, opacity 0.14s;
 }
-.lib-show-more:hover {
+.lib-page-btn:hover:not(:disabled) {
   background: rgba(255,255,255,.07);
-  border-color: rgba(255,255,255,.28);
+  border-color: rgba(255,255,255,.3);
+}
+.lib-page-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+.lib-page-indicator {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255,255,255,.5);
+  letter-spacing: 0.04em;
+  min-width: 90px;
+  text-align: center;
 }
 
 /* Responsive */
