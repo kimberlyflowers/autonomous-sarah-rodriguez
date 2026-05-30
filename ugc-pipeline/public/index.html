@@ -939,74 +939,7 @@ body[data-theme="light"] .campaign-workflow-json{background:#fff!important;borde
                   <div class="hint">Use an approved voiceover from Library.</div>
                 </div>
 
-                <div class="form-group" id="studioVoiceGroup" style="display:none">
-                  <label class="form-label">ElevenLabs voice ID</label>
-                  <input class="form-input" id="studioVoiceId" name="voiceId" placeholder="Paste an ElevenLabs voice ID, or leave blank for workspace default.">
-                  <div class="hint">Use this for any custom ElevenLabs voice, even if the character was not connected before. Selecting Sarah or Marcus only auto-fills their saved ID.</div>
-                </div>
-
-                <div class="form-group full" id="studioChatterboxGroup" style="display:none">
-                  <div class="voice-picker-head">
-                    <div>
-                      <label class="form-label">VibeVoice speaker</label>
-                      <strong id="chatterboxVoiceName">Default English</strong>
-                    </div>
-                    <span class="chip chip-soft">Longform</span>
-                  </div>
-                  <div class="form-grid">
-                    <div class="form-group">
-                      <select class="form-select" id="studioChatterboxVoice" name="chatterboxVoice" onchange="updateChatterboxVoiceLabel()">
-                        <option value="default" selected>Default English</option>
-                        <option value="josh">Josh</option>
-                        <option value="lucy">Lucy legacy</option>
-                        <option value="laura">Laura</option>
-                        <option value="madison">Madison</option>
-                        <option value="marisol">Marisol</option>
-                        <option value="meera">Meera</option>
-                        <option value="chloe">Chloe</option>
-                        <option value="abigail">Abigail</option>
-                        <option value="anaya">Anaya</option>
-                        <option value="aaron">Aaron</option>
-                        <option value="andy">Andy</option>
-                        <option value="archer">Archer</option>
-                        <option value="brian">Brian</option>
-                        <option value="dylan">Dylan</option>
-                        <option value="emmanuel">Emmanuel</option>
-                        <option value="ethan">Ethan</option>
-                        <option value="gavin">Gavin</option>
-                        <option value="gordon">Gordon</option>
-                        <option value="ivan">Ivan</option>
-                        <option value="walter">Walter</option>
-                        <option value="evelyn">Evelyn</option>
-                      </select>
-                      <div class="source-actions" style="margin-top:7px">
-                        <button class="btn btn-secondary" type="button" onclick="playCachedChatterboxVoiceSample()">Play sample</button>
-                        <button class="btn btn-secondary" type="button" onclick="nextChatterboxVoice()">Next speaker</button>
-                      </div>
-                      <audio id="chatterboxSampleAudio" controls style="display:none;width:100%;margin-top:7px"></audio>
-                      <div class="hint" id="chatterboxSampleHint">VibeVoice is intended for long English narration. Samples depend on the configured endpoint.</div>
-                    </div>
-                    <div class="form-group">
-                      <select class="form-select" id="studioChatterboxFormat" name="chatterboxFormat">
-                        <option value="wav" selected>WAV</option>
-                        <option value="flac">FLAC</option>
-                        <option value="ogg">OGG</option>
-                      </select>
-                      <div class="hint">WAV is best for ComfyUI lip sync.</div>
-                    </div>
-                    <div class="form-group">
-                      <input class="form-input" id="studioChatterboxVoiceUrl" name="chatterboxVoiceUrl" placeholder="Optional public reference voice URL">
-                      <div class="hint">Optional. Bloom passes this as <code>voice_url</code> if the VibeVoice worker supports reference audio.</div>
-                    </div>
-                    <div class="form-group">
-                      <label class="file-drop">
-                        <strong>Upload reference voice</strong><span>Optional WAV/MP3 if the endpoint supports it</span>
-                        <input id="studioVoiceSample" name="voiceSample" type="file" accept="audio/*" hidden onchange="showStudioFileName('studioVoiceSample','studioVoiceSampleName')">
-                      </label>
-                      <div class="file-name" id="studioVoiceSampleName"></div>
-                    </div>
-                  </div>
-                </div>
+                <!-- studioVoiceGroup and studioChatterboxGroup moved into #voiceConfigDialog below -->
 
                 <div class="form-group create-video-field" id="studioToneGroup">
                   <label class="form-label">Tone</label>
@@ -1047,11 +980,101 @@ body[data-theme="light"] .campaign-workflow-json{background:#fff!important;borde
               </div>
 
               <div class="actions">
-                <button class="btn btn-secondary" id="studioPreviewVoiceButton" type="button" onclick="previewCurrentVoice()" style="display:none">Preview VibeVoice</button>
                 <button class="btn btn-primary" id="studioSubmitButton" type="submit">▶ Generate video</button>
                 <button class="btn btn-secondary" type="button" onclick="resetStudioForm()">Clear</button>
                 <span class="hint" id="studioSubmitHint">Uses the Sarah I2V workflow preset.</span>
               </div>
+
+              <!-- Voice config lightbox — dialog lives inside the form so all named inputs
+                   remain part of studioForm's FormData when the dialog is open or closed -->
+              <dialog id="voiceConfigDialog">
+                <div class="voice-dialog-head">
+                  <strong class="modal-title" id="voiceConfigTitle">Voice settings</strong>
+                  <button class="voice-dialog-close" type="button" aria-label="Close" onclick="document.getElementById('voiceConfigDialog').close()">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  </button>
+                </div>
+
+                <!-- ElevenLabs voice ID -->
+                <div class="form-group" id="studioVoiceGroup" style="display:none">
+                  <label class="form-label">ElevenLabs voice ID</label>
+                  <input class="form-input" id="studioVoiceId" name="voiceId" placeholder="Paste an ElevenLabs voice ID, or leave blank for workspace default.">
+                  <div class="hint">Use this for any custom ElevenLabs voice, even if the character was not connected before. Selecting Sarah or Marcus only auto-fills their saved ID.</div>
+                </div>
+
+                <!-- VibeVoice / Chatterbox speaker config -->
+                <div class="form-group" id="studioChatterboxGroup" style="display:none">
+                  <div class="voice-picker-head" style="margin-bottom:12px">
+                    <div>
+                      <label class="form-label" style="margin-bottom:2px" id="voiceDialogSpeakerLabel">Speaker</label>
+                      <strong id="chatterboxVoiceName">Default English</strong>
+                    </div>
+                    <span class="chip chip-soft">Longform narration</span>
+                  </div>
+                  <div class="voice-dialog-grid">
+                    <div class="form-group">
+                      <label class="form-label">Speaker voice</label>
+                      <select class="form-select" id="studioChatterboxVoice" name="chatterboxVoice" onchange="updateChatterboxVoiceLabel()">
+                        <option value="default" selected>Default English</option>
+                        <option value="josh">Josh</option>
+                        <option value="lucy">Lucy legacy</option>
+                        <option value="laura">Laura</option>
+                        <option value="madison">Madison</option>
+                        <option value="marisol">Marisol</option>
+                        <option value="meera">Meera</option>
+                        <option value="chloe">Chloe</option>
+                        <option value="abigail">Abigail</option>
+                        <option value="anaya">Anaya</option>
+                        <option value="aaron">Aaron</option>
+                        <option value="andy">Andy</option>
+                        <option value="archer">Archer</option>
+                        <option value="brian">Brian</option>
+                        <option value="dylan">Dylan</option>
+                        <option value="emmanuel">Emmanuel</option>
+                        <option value="ethan">Ethan</option>
+                        <option value="gavin">Gavin</option>
+                        <option value="gordon">Gordon</option>
+                        <option value="ivan">Ivan</option>
+                        <option value="walter">Walter</option>
+                        <option value="evelyn">Evelyn</option>
+                      </select>
+                      <div class="source-actions" style="margin-top:8px">
+                        <button class="btn btn-secondary" type="button" onclick="playCachedChatterboxVoiceSample()">Play sample</button>
+                        <button class="btn btn-secondary" type="button" onclick="nextChatterboxVoice()">Next speaker</button>
+                      </div>
+                      <audio id="chatterboxSampleAudio" controls style="display:none;width:100%;margin-top:8px"></audio>
+                      <div class="hint" id="chatterboxSampleHint" style="margin-top:6px">Samples depend on the configured TTS endpoint.</div>
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">Audio format</label>
+                      <select class="form-select" id="studioChatterboxFormat" name="chatterboxFormat">
+                        <option value="wav" selected>WAV</option>
+                        <option value="flac">FLAC</option>
+                        <option value="ogg">OGG</option>
+                      </select>
+                      <div class="hint">WAV is best for lip sync.</div>
+                      <div class="form-group" style="margin-top:12px">
+                        <label class="form-label">Reference voice URL</label>
+                        <input class="form-input" id="studioChatterboxVoiceUrl" name="chatterboxVoiceUrl" placeholder="Optional public audio URL for voice cloning">
+                        <div class="hint">If supported by the endpoint, this audio clips the speaker style.</div>
+                      </div>
+                      <div class="form-group" style="margin-top:8px">
+                        <label class="form-label">Upload reference voice</label>
+                        <label class="file-drop" style="min-height:52px">
+                          <strong>Optional WAV/MP3</strong>
+                          <input id="studioVoiceSample" name="voiceSample" type="file" accept="audio/*" hidden onchange="showStudioFileName('studioVoiceSample','studioVoiceSampleName')">
+                        </label>
+                        <div class="file-name" id="studioVoiceSampleName"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="modal-actions" style="margin-top:18px">
+                  <button class="btn btn-secondary" type="button" id="studioPreviewVoiceButton" onclick="previewCurrentVoice()" style="display:none">Preview voice</button>
+                  <button class="btn btn-primary" type="button" onclick="document.getElementById('voiceConfigDialog').close()">Done</button>
+                </div>
+              </dialog>
             </form>
           </div>
         </div>
@@ -1794,6 +1817,6 @@ body[data-theme="light"] .campaign-workflow-json{background:#fff!important;borde
 
 <div class="toast-container" id="toastContainer"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="/js/app.js?v=libpagination-3"></script>
+<script src="/js/app.js?v=voicedialog-1"></script>
 </body>
 </html>

@@ -4,10 +4,14 @@ const fetch = require('node-fetch');
 const { uploadToTempHost } = require('./seedance');
 
 function getVibeVoiceConfig() {
+  // Fall back to Chatterbox endpoint/key when no dedicated VibeVoice endpoint is configured.
+  // This lets VibeVoice work out-of-the-box if Chatterbox is already deployed.
+  const chatterboxFallbackId = process.env.RUNPOD_CHATTERBOX_ENDPOINT_ID || 'chatterbox-turbo';
+  const chatterboxFallbackKey = process.env.RUNPOD_CHATTERBOX_API_KEY || '';
   return {
-    endpointId: process.env.RUNPOD_VIBEVOICE_ENDPOINT_ID || '',
+    endpointId: process.env.RUNPOD_VIBEVOICE_ENDPOINT_ID || chatterboxFallbackId,
     endpointUrl: process.env.RUNPOD_VIBEVOICE_ENDPOINT_URL || process.env.VIBEVOICE_ENDPOINT_URL || '',
-    apiKey: process.env.RUNPOD_VIBEVOICE_API_KEY || process.env.VIBEVOICE_API_KEY || process.env.RUNPOD_API_KEY || '',
+    apiKey: process.env.RUNPOD_VIBEVOICE_API_KEY || process.env.VIBEVOICE_API_KEY || chatterboxFallbackKey || process.env.RUNPOD_API_KEY || '',
     timeoutMs: Number(process.env.VIBEVOICE_RUNSYNC_TIMEOUT_MS || 900000)
   };
 }

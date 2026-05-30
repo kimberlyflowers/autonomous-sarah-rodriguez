@@ -1179,10 +1179,14 @@ function startStudioPreviewResize(event) {
 }
 
 function toggleVoiceDetails(forceOpen) {
-  const form = document.getElementById('studioForm');
-  if (!form) return;
-  const nextOpen = typeof forceOpen === 'boolean' ? forceOpen : !form.classList.contains('show-voice-details');
-  form.classList.toggle('show-voice-details', nextOpen);
+  const dialog = document.getElementById('voiceConfigDialog');
+  if (!dialog) return;
+  const shouldOpen = typeof forceOpen === 'boolean' ? forceOpen : !dialog.open;
+  if (shouldOpen && !dialog.open) {
+    dialog.showModal();
+  } else if (!shouldOpen && dialog.open) {
+    dialog.close();
+  }
 }
 
 function flowStatusChip(label, available, note = '') {
@@ -2667,12 +2671,21 @@ function setStudioAudio(provider, options = {}) {
   }
   document.getElementById('studioAudioGroup').style.display = provider === 'upload' ? '' : 'none';
   document.getElementById('studioAudioAssetGroup').style.display = provider === 'asset' ? '' : 'none';
-  document.getElementById('studioVoiceGroup').style.display = provider === 'elevenlabs' ? '' : 'none';
-  document.getElementById('studioChatterboxGroup').style.display = ['chatterbox', 'vibevoice'].includes(provider) ? '' : 'none';
+  // Voice config groups live inside #voiceConfigDialog — show the right one for this provider
+  const voiceGroup = document.getElementById('studioVoiceGroup');
+  const chatterboxGroup = document.getElementById('studioChatterboxGroup');
+  if (voiceGroup) voiceGroup.style.display = provider === 'elevenlabs' ? '' : 'none';
+  if (chatterboxGroup) chatterboxGroup.style.display = ['chatterbox', 'vibevoice'].includes(provider) ? '' : 'none';
+  // Update dialog title and preview button
+  const dialogTitle = document.getElementById('voiceConfigTitle');
+  if (dialogTitle) dialogTitle.textContent = provider === 'elevenlabs' ? 'ElevenLabs voice' : provider === 'vibevoice' ? 'VibeVoice settings' : provider === 'chatterbox' ? 'Chatterbox voice' : 'Voice settings';
+  const previewBtn = document.getElementById('studioPreviewVoiceButton');
+  if (previewBtn) {
+    previewBtn.style.display = ['chatterbox', 'vibevoice', 'elevenlabs'].includes(provider) ? '' : 'none';
+    previewBtn.textContent = provider === 'elevenlabs' ? 'Preview with ElevenLabs' : provider === 'vibevoice' ? 'Preview with VibeVoice' : 'Preview with Chatterbox';
+  }
   const configureButton = document.getElementById('studioConfigureVoiceButton');
   if (configureButton) configureButton.style.display = ['chatterbox', 'vibevoice', 'elevenlabs'].includes(provider) ? '' : 'none';
-  document.getElementById('studioPreviewVoiceButton').style.display = ['chatterbox', 'vibevoice', 'elevenlabs'].includes(provider) ? '' : 'none';
-  document.getElementById('studioPreviewVoiceButton').textContent = provider === 'elevenlabs' ? 'Preview script with ElevenLabs' : provider === 'vibevoice' ? 'Preview script with VibeVoice' : 'Preview script with Chatterbox';
   if (provider === 'elevenlabs') toggleVoiceDetails(true);
   if (options.preserveToast) return;
   if (provider === 'qwen') {

@@ -924,6 +924,56 @@ body {
   opacity: 1;
 }
 
+/* ─── Voice config dialog lightbox ──────────────────────────── */
+#voiceConfigDialog {
+  border: 1px solid var(--line, rgba(255,255,255,.10));
+  border-radius: 18px;
+  background: var(--surface, #181a1a);
+  color: var(--ink, #fff);
+  padding: 24px;
+  max-width: 680px;
+  width: min(92vw, 680px);
+  box-shadow: 0 24px 64px rgba(0,0,0,.6);
+}
+#voiceConfigDialog::backdrop {
+  background: rgba(0, 0, 0, 0.62);
+}
+.voice-dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+.voice-dialog-head .modal-title {
+  font-size: 18px;
+  font-weight: 800;
+  margin-bottom: 0;
+}
+.voice-dialog-close {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,.45);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s;
+}
+.voice-dialog-close:hover { color: #fff; }
+.voice-dialog-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+#voiceConfigDialog .voice-picker-head { margin-bottom: 14px; }
+#voiceConfigDialog .form-label { font-size: 11px; }
+#voiceConfigDialog .file-drop { min-height: 52px; }
+@media (max-width: 560px) {
+  .voice-dialog-grid { grid-template-columns: 1fr; }
+}
+
 /* ─── Library pagination ─────────────────────────────────────── */
 .library-pagination {
   display: flex;
