@@ -950,6 +950,14 @@ body {
 #voiceConfigDialog[open] {
   display: flex;
 }
+/* ── Voice group visibility inside the dialog ──────────────────
+   The .preview-control-slot CSS hides these groups with !important.
+   Override by class set on the dialog itself before showModal(). */
+#voiceConfigDialog #studioChatterboxGroup,
+#voiceConfigDialog #studioVoiceGroup { display: none !important; }
+#voiceConfigDialog.for-chatterbox #studioChatterboxGroup { display: block !important; }
+#voiceConfigDialog.for-elevenlabs #studioVoiceGroup     { display: block !important; }
+}
 #voiceConfigDialog::backdrop {
   background: rgba(0, 0, 0, 0.70);
 }

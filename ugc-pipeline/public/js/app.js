@@ -1183,12 +1183,12 @@ function toggleVoiceDetails(forceOpen) {
   if (!dialog) return;
   const shouldOpen = typeof forceOpen === 'boolean' ? forceOpen : !dialog.open;
   if (shouldOpen && !dialog.open) {
-    // Ensure the correct section is visible based on current provider
+    // Set a class on the dialog so CSS can show the right section,
+    // overriding the preview-control-slot display:none !important rules.
     const provider = document.getElementById('studioAudioProvider')?.value || 'vibevoice';
-    const voiceGroup = document.getElementById('studioVoiceGroup');
-    const chatterboxGroup = document.getElementById('studioChatterboxGroup');
-    if (voiceGroup) voiceGroup.style.display = provider === 'elevenlabs' ? '' : 'none';
-    if (chatterboxGroup) chatterboxGroup.style.display = ['chatterbox', 'vibevoice'].includes(provider) ? '' : 'none';
+    dialog.classList.remove('for-chatterbox', 'for-elevenlabs');
+    if (['chatterbox', 'vibevoice'].includes(provider)) dialog.classList.add('for-chatterbox');
+    else if (provider === 'elevenlabs') dialog.classList.add('for-elevenlabs');
     // Build/refresh the voice list before opening
     buildVoicePickerList();
     dialog.showModal();
@@ -2679,11 +2679,13 @@ function setStudioAudio(provider, options = {}) {
   }
   document.getElementById('studioAudioGroup').style.display = provider === 'upload' ? '' : 'none';
   document.getElementById('studioAudioAssetGroup').style.display = provider === 'asset' ? '' : 'none';
-  // Voice config groups live inside #voiceConfigDialog — show the right one for this provider
-  const voiceGroup = document.getElementById('studioVoiceGroup');
-  const chatterboxGroup = document.getElementById('studioChatterboxGroup');
-  if (voiceGroup) voiceGroup.style.display = provider === 'elevenlabs' ? '' : 'none';
-  if (chatterboxGroup) chatterboxGroup.style.display = ['chatterbox', 'vibevoice'].includes(provider) ? '' : 'none';
+  // Keep the dialog class in sync so CSS shows the right voice section
+  const voiceDialog = document.getElementById('voiceConfigDialog');
+  if (voiceDialog) {
+    voiceDialog.classList.remove('for-chatterbox', 'for-elevenlabs');
+    if (['chatterbox', 'vibevoice'].includes(provider)) voiceDialog.classList.add('for-chatterbox');
+    else if (provider === 'elevenlabs') voiceDialog.classList.add('for-elevenlabs');
+  }
   // Update dialog title and preview button
   const dialogTitle = document.getElementById('voiceConfigTitle');
   if (dialogTitle) dialogTitle.textContent = 'Choose voice';
