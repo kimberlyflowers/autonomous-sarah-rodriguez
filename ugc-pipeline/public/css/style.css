@@ -1112,6 +1112,26 @@ body {
 }
 .voice-row.selected .voice-selected-icon { opacity: 1; }
 
+/* ── Kokoro accent group headers ── */
+.voice-group-header {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,.35);
+  padding: 10px 10px 4px;
+  margin-top: 2px;
+}
+.voice-group-header:first-child { padding-top: 6px; }
+.voice-gender-badge {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  color: rgba(255,255,255,.35);
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
 /* ── EL loading / no-key states ── */
 .voice-el-loading {
   display: flex;

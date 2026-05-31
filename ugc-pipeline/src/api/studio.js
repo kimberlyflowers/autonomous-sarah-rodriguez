@@ -16,8 +16,7 @@ const {
 } = require('../services/comfyui');
 const { ensureComfyReady, getAccountBalance, getPodStatus, getRunPodConfig, isComfyReady, normalizePodState, startPod, stopPod } = require('../services/runpod');
 const { getAssetFile, hasDatabase, initUgcStore, query } = require('../services/postgres');
-const { CHATTERBOX_VOICES, createChatterboxAudio, getChatterboxConfig } = require('../services/chatterbox');
-const { createVibeVoiceAudio, getVibeVoiceConfig } = require('../services/vibevoice');
+const { KOKORO_VOICES, createKokoroAudio, getKokoroConfig } = require('../services/kokoro');
 const { checkMeigenVideoJob, createMeigenVideo, getMeigenConfig, submitMeigenVideoJob } = require('../services/meigen');
 const { checkInfiniteTalkHdJob, getInfiniteTalkHdConfig, submitInfiniteTalkHdJob } = require('../services/infinitetalkHd');
 const {
@@ -687,22 +686,14 @@ router.get('/status', async (req, res) => {
     },
     presets,
     audioProviders: [
-      { id: 'upload', label: 'Uploaded audio', available: true },
-      { id: 'elevenlabs', label: 'ElevenLabs', available: !!process.env.ELEVENLABS_API_KEY },
+      { id: 'upload',     label: 'Uploaded audio', available: true },
+      { id: 'elevenlabs', label: 'ElevenLabs',     available: !!process.env.ELEVENLABS_API_KEY },
       {
-        id: 'vibevoice',
-        label: 'VibeVoice longform',
-        available: !!getVibeVoiceConfig().apiKey && !!(getVibeVoiceConfig().endpointId || getVibeVoiceConfig().endpointUrl),
-        note: 'Microsoft VibeVoice longform endpoint. Configure RUNPOD_VIBEVOICE_ENDPOINT_ID or VIBEVOICE_ENDPOINT_URL.'
-      },
-      {
-        id: 'chatterbox',
-        label: 'Chatterbox Turbo',
-        available: !!getChatterboxConfig().apiKey,
-        voices: CHATTERBOX_VOICES,
-        note: 'Legacy short-clip fallback. Not recommended for longform narration.'
-      },
-      { id: 'qwen', label: 'Qwen audio workflow', available: false, note: 'Install ComfyUI-Qwen-TTS on RunPod and export a Qwen API workflow preset before enabling.' }
+        id:        'kokoro',
+        label:     'Kokoro (54 voices)',
+        available: !!getKokoroConfig().apiKey && !!(getKokoroConfig().endpointId || getKokoroConfig().endpointUrl),
+        note:      'Deploy lucataco/kokoro-82m on RunPod Serverless and set RUNPOD_KOKORO_ENDPOINT_ID.'
+      }
     ],
     videoEngines: [
       {
@@ -938,29 +929,16 @@ async function runServerlessVideoJob(req, files, context, options = {}) {
         tenantId: req.tenant.slug || req.tenant.id
       });
     }
-    if (engineNeedsAudio && audioProvider === 'vibevoice') {
-      const dir = path.join(UPLOAD_DIR, cleanSlug(req.tenant.slug || req.tenant.id || 'default'), 'vibevoice');
-      const vibevoice = await createVibeVoiceAudio({
-        script: req.body.script,
-        voice: req.body.chatterboxVoice || req.body.vibevoiceVoice,
-        voiceUrl: req.body.chatterboxVoiceUrl || req.body.vibevoiceVoiceUrl,
-        voiceSamplePath: files.voiceSample?.[0]?.path || null,
-        format: req.body.chatterboxFormat || req.body.vibevoiceFormat,
+    if (engineNeedsAudio && audioProvider === 'kokoro') {
+      const dir = path.join(UPLOAD_DIR, cleanSlug(req.tenant.slug || req.tenant.id || 'default'), 'kokoro');
+      const kokoro = await createKokoroAudio({
+        script:    req.body.script,
+        voice:     req.body.kokoroVoice || req.body.voice || 'af_heart',
+        speed:     req.body.speed,
+        format:    'wav',
         outputDir: dir
       });
-      audioPath = vibevoice.localPath;
-    }
-    if (engineNeedsAudio && audioProvider === 'chatterbox') {
-      const dir = path.join(UPLOAD_DIR, cleanSlug(req.tenant.slug || req.tenant.id || 'default'), 'chatterbox');
-      const chatterbox = await createChatterboxAudio({
-        script: req.body.script,
-        voice: req.body.chatterboxVoice,
-        voiceUrl: req.body.chatterboxVoiceUrl,
-        voiceSamplePath: files.voiceSample?.[0]?.path || null,
-        format: req.body.chatterboxFormat,
-        outputDir: dir
-      });
-      audioPath = chatterbox.localPath;
+      audioPath = kokoro.localPath;
     }
     if (!audioPath && req.body.audioUrl) {
       audioPath = await downloadTempFile(req.body.audioUrl, req.tenant.slug || req.tenant.id, 'voiceover.mp3', req);
@@ -1341,29 +1319,16 @@ router.post('/generate', upload.fields([
         tenantId: req.tenant.slug || req.tenant.id
       });
     }
-    if (engineNeedsAudio && audioProvider === 'vibevoice') {
-      const dir = path.join(UPLOAD_DIR, cleanSlug(req.tenant.slug || req.tenant.id || 'default'), 'vibevoice');
-      const vibevoice = await createVibeVoiceAudio({
-        script: req.body.script,
-        voice: req.body.chatterboxVoice || req.body.vibevoiceVoice,
-        voiceUrl: req.body.chatterboxVoiceUrl || req.body.vibevoiceVoiceUrl,
-        voiceSamplePath: files.voiceSample?.[0]?.path || null,
-        format: req.body.chatterboxFormat || req.body.vibevoiceFormat,
+    if (engineNeedsAudio && audioProvider === 'kokoro') {
+      const dir = path.join(UPLOAD_DIR, cleanSlug(req.tenant.slug || req.tenant.id || 'default'), 'kokoro');
+      const kokoro = await createKokoroAudio({
+        script:    req.body.script,
+        voice:     req.body.kokoroVoice || req.body.voice || 'af_heart',
+        speed:     req.body.speed,
+        format:    'wav',
         outputDir: dir
       });
-      audioPath = vibevoice.localPath;
-    }
-    if (engineNeedsAudio && audioProvider === 'chatterbox') {
-      const dir = path.join(UPLOAD_DIR, cleanSlug(req.tenant.slug || req.tenant.id || 'default'), 'chatterbox');
-      const chatterbox = await createChatterboxAudio({
-        script: req.body.script,
-        voice: req.body.chatterboxVoice,
-        voiceUrl: req.body.chatterboxVoiceUrl,
-        voiceSamplePath: files.voiceSample?.[0]?.path || null,
-        format: req.body.chatterboxFormat,
-        outputDir: dir
-      });
-      audioPath = chatterbox.localPath;
+      audioPath = kokoro.localPath;
     }
     if (!audioPath && req.body.audioUrl) {
       audioPath = await downloadTempFile(req.body.audioUrl, req.tenant.slug || req.tenant.id, 'voiceover.mp3', req);

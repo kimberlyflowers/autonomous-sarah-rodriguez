@@ -973,23 +973,18 @@ async function loadStudioStatus() {
     setWorkflowChip('i2vStatus', 'i2vNote', i2v, data.comfyReady, 'Sarah image-to-video workflow is installed and ready to queue.');
     setWorkflowChip('v2vStatus', 'v2vNote', v2v, data.comfyReady, 'Bloomies video-to-video workflow is installed and ready to queue.');
 
-    const qwen = data.audioProviders.find(p => p.id === 'qwen');
-    const chatterbox = data.audioProviders.find(p => p.id === 'chatterbox');
-    const vibevoice = data.audioProviders.find(p => p.id === 'vibevoice');
+    const kokoro = data.audioProviders.find(p => p.id === 'kokoro');
     const meigen = data.videoEngines?.find(p => p.id === 'meigen');
     const infiniteTalkHd = data.videoEngines?.find(p => p.id === 'infinitetalk-hd');
     const museTalk = data.videoEngines?.find(p => p.id === 'musetalk');
     const wan22 = data.videoEngines?.find(p => p.id === 'wan22-serverless');
     const wanAnimate = data.videoEngines?.find(p => p.id === 'wan-animate');
-    setChip('qwenStatus', qwen?.available ? 'Ready' : 'Needs workflow', qwen?.available ? 'soft' : 'warn');
     const serverlessReady = [meigen, infiniteTalkHd, museTalk, wan22, wanAnimate].filter(Boolean).filter(engine => engine.available).length;
     setChip('meigenStatus', serverlessReady ? `${serverlessReady} ready` : 'Needs keys', serverlessReady ? 'green' : 'warn');
     const qwenNote = document.getElementById('qwenNote');
-    if (qwenNote) qwenNote.textContent = vibevoice?.available
-      ? 'VibeVoice longform is ready for English narration.'
-      : chatterbox?.available
-        ? 'Legacy Chatterbox is available for short tests, but VibeVoice is preferred for longform.'
-      : qwen?.note || 'Waiting for Qwen TTS API workflow export.';
+    if (qwenNote) qwenNote.textContent = kokoro?.available
+      ? 'Kokoro is ready — 54 voices across 8 languages.'
+      : 'Deploy Kokoro on RunPod and set RUNPOD_KOKORO_ENDPOINT_ID to enable voice generation.';
     const currentCreateType = document.getElementById('studioCreateType')?.value;
     const studioActive = document.getElementById('tab-studio')?.classList.contains('active');
     if (currentCreateType && !studioActive) setCreateType(currentCreateType, { preserveToast: true });
@@ -1184,8 +1179,8 @@ function toggleVoiceDetails(forceOpen) {
   const shouldOpen = typeof forceOpen === 'boolean' ? forceOpen : !dialog.open;
   if (shouldOpen && !dialog.open) {
     // Default tab to match current provider selection
-    const provider = document.getElementById('studioAudioProvider')?.value || 'vibevoice';
-    const tab = (provider === 'elevenlabs') ? 'elevenlabs' : 'vibevoice';
+    const provider = document.getElementById('studioAudioProvider')?.value || 'kokoro';
+    const tab = (provider === 'elevenlabs') ? 'elevenlabs' : 'kokoro';
     _voicePickerActiveTab = tab;
 
     // Sync tab button active states
@@ -1201,7 +1196,7 @@ function toggleVoiceDetails(forceOpen) {
     document.getElementById('voiceELLoading').style.display = 'none';
     document.getElementById('voiceELNoKey').style.display = 'none';
     document.getElementById('voicePickerList').innerHTML = '';
-    if (tab === 'vibevoice') {
+    if (tab === 'kokoro') {
       buildVoicePickerList();
     } else {
       buildElevenLabsVoiceList();
@@ -1233,7 +1228,7 @@ function renderFlowStatus(selected) {
       flowStatusChip('InfiniteTalk HD', engine('infinitetalk-hd')?.available, engine('infinitetalk-hd')?.note),
       flowStatusChip('MuseTalk', engine('musetalk')?.available, engine('musetalk')?.note),
       flowStatusChip('Meigen', engine('meigen')?.available, engine('meigen')?.note),
-      flowStatusChip('VibeVoice', audio('vibevoice')?.available, audio('vibevoice')?.note)
+      flowStatusChip('Kokoro', audio('kokoro')?.available, audio('kokoro')?.note)
     ],
     remix: [
       flowStatusChip('Wan Animate', engine('wan-animate')?.available, engine('wan-animate')?.note),
@@ -1242,7 +1237,7 @@ function renderFlowStatus(selected) {
     ],
     'long-form': [
       flowStatusChip('Wan 2.2', engine('wan22-serverless')?.available, engine('wan22-serverless')?.note),
-      flowStatusChip('VibeVoice', audio('vibevoice')?.available, audio('vibevoice')?.note)
+      flowStatusChip('Kokoro', audio('kokoro')?.available, audio('kokoro')?.note)
     ],
     webinar: [
       flowStatusChip('WAN/ComfyUI', engine('wan-comfy')?.available, engine('wan-comfy')?.note),
@@ -1250,7 +1245,7 @@ function renderFlowStatus(selected) {
     ],
     course: [
       flowStatusChip('Wan 2.2', engine('wan22-serverless')?.available, engine('wan22-serverless')?.note),
-      flowStatusChip('VibeVoice', audio('vibevoice')?.available, audio('vibevoice')?.note)
+      flowStatusChip('Kokoro', audio('kokoro')?.available, audio('kokoro')?.note)
     ]
   };
   return `<div class="create-flow-status-row">${(statusSets[selected] || statusSets.shorts).join('')}</div>`;
@@ -1272,11 +1267,11 @@ function setCreateTool(tool = 'video') {
   const note = document.querySelector('#tab-studio .panel-note');
   if (selected === 'audio') {
     if (title) title.textContent = 'Create voice-over';
-    if (note) note.textContent = 'Write or paste a script, choose VibeVoice or ElevenLabs v3, preview it, then save the approved audio.';
+    if (note) note.textContent = 'Write or paste a script, choose Kokoro or ElevenLabs v3, preview it, then save the approved audio.';
     const scriptLabel = document.getElementById('studioScriptLabel');
     const script = document.getElementById('studioScript');
     if (scriptLabel) scriptLabel.textContent = 'Voiceover script';
-    if (script) script.placeholder = 'Paste the exact narration script for VibeVoice or ElevenLabs v3.';
+    if (script) script.placeholder = 'Paste the exact narration script for Kokoro or ElevenLabs v3.';
     setAudioPreviewMode();
     setStudioMode('audio');
     setStudioAudio(document.getElementById('studioAudioProvider')?.value || 'upload', { preserveToast: true });
@@ -2410,7 +2405,7 @@ function setCreateType(type, options = {}) {
   if (scriptLabel) scriptLabel.textContent = selected === 'remix' ? 'Remix narration script' : 'Narration script';
   if (script) script.placeholder = selected === 'remix'
     ? 'Paste the adapted narration script for this remix.'
-    : 'Paste the spoken words VibeVoice or ElevenLabs should turn into voiceover.';
+    : 'Paste the spoken words Kokoro or ElevenLabs should turn into voiceover.';
 
   if (selected === 'remix') {
     document.getElementById('studioRemixContext')?.classList.add('active');
@@ -2627,7 +2622,7 @@ function setStudioMode(mode) {
     setStudioVideoEngine(document.getElementById('studioVideoEngine').value);
   }
   if (actualMode === 'audio' && ['upload', 'asset'].includes(document.getElementById('studioAudioProvider').value)) {
-    setStudioAudio('vibevoice');
+    setStudioAudio('kokoro');
   }
 }
 
@@ -2695,7 +2690,7 @@ function setStudioAudio(provider, options = {}) {
   document.getElementById('studioAudioProvider').value = provider;
   const form = document.getElementById('studioForm');
   if (form) {
-    form.classList.remove('voice-provider-upload', 'voice-provider-asset', 'voice-provider-elevenlabs', 'voice-provider-chatterbox', 'voice-provider-vibevoice', 'voice-provider-qwen');
+    form.classList.remove('voice-provider-upload', 'voice-provider-asset', 'voice-provider-elevenlabs', 'voice-provider-kokoro', 'voice-provider-qwen');
     form.classList.add(`voice-provider-${provider}`);
   }
   document.getElementById('studioAudioGroup').style.display = provider === 'upload' ? '' : 'none';
@@ -2703,8 +2698,8 @@ function setStudioAudio(provider, options = {}) {
   // Keep the dialog class in sync so CSS shows the right voice section
   const voiceDialog = document.getElementById('voiceConfigDialog');
   if (voiceDialog) {
-    voiceDialog.classList.remove('for-chatterbox', 'for-elevenlabs');
-    if (['chatterbox', 'vibevoice'].includes(provider)) voiceDialog.classList.add('for-chatterbox');
+    voiceDialog.classList.remove('for-kokoro', 'for-elevenlabs');
+    if (provider === 'kokoro') voiceDialog.classList.add('for-kokoro');
     else if (provider === 'elevenlabs') voiceDialog.classList.add('for-elevenlabs');
   }
   // Update dialog title and preview button
@@ -2712,13 +2707,13 @@ function setStudioAudio(provider, options = {}) {
   if (dialogTitle) dialogTitle.textContent = 'Choose voice';
   const previewBtn = document.getElementById('studioPreviewVoiceButton');
   if (previewBtn) {
-    previewBtn.style.display = ['chatterbox', 'vibevoice', 'elevenlabs'].includes(provider) ? '' : 'none';
-    previewBtn.textContent = provider === 'elevenlabs' ? 'Preview with ElevenLabs' : provider === 'vibevoice' ? 'Preview with VibeVoice' : 'Preview with Chatterbox';
+    previewBtn.style.display = ['kokoro', 'elevenlabs'].includes(provider) ? '' : 'none';
+    previewBtn.textContent = provider === 'elevenlabs' ? 'Preview with ElevenLabs' : 'Preview with Kokoro';
   }
   // Show "Choose voice" button only for AI providers; hide it for upload/asset
   const configureButton = document.getElementById('studioConfigureVoiceButton');
   const voiceCard = document.getElementById('selectedVoiceCard');
-  const isAiProvider = ['vibevoice', 'elevenlabs'].includes(provider);
+  const isAiProvider = ['kokoro', 'elevenlabs'].includes(provider);
   if (configureButton) {
     // Show configure button only if no voice selected yet OR provider changed
     if (isAiProvider) {
@@ -2738,7 +2733,7 @@ function setStudioAudio(provider, options = {}) {
   if (options.preserveToast) return;
   if (provider === 'qwen') toast('Qwen audio needs the third workflow API export before it can run.', 'info');
   if (provider === 'elevenlabs') toast('ElevenLabs will generate audio from your script before queuing the video.', 'info');
-  if (provider === 'vibevoice') toast('VibeVoice will generate narration from your script. Choose a voice first.', 'info');
+  if (provider === 'kokoro') toast('Kokoro will generate narration from your script. Choose a voice first.', 'info');
 }
 
 function applyStudioTonePreset() {
@@ -2848,7 +2843,7 @@ function setAudioPreviewMode() {
   frame.classList.add('audio-preview-mode');
   frame.onpointerdown = null;
   document.getElementById('cropHint').style.display = 'none';
-  frame.innerHTML = `<div><strong id="previewTitle">Audio preview appears here</strong><p id="previewHint" style="font-size:13px;margin-top:6px;color:rgba(255,255,255,.45)">Generate from script with VibeVoice or ElevenLabs v3, then play it here.</p></div>`;
+  frame.innerHTML = `<div><strong id="previewTitle">Audio preview appears here</strong><p id="previewHint" style="font-size:13px;margin-top:6px;color:rgba(255,255,255,.45)">Generate from script with Kokoro or ElevenLabs v3, then play it here.</p></div>`;
 }
 
 function resetStudioCrop() {
@@ -3009,8 +3004,7 @@ async function submitStudioVideo(e) {
   if (engineNeedsAudio && document.getElementById('studioAudioProvider').value === 'upload' && !document.getElementById('studioAudio').files[0]) return toast('Upload an audio file first.', 'error');
   if (engineNeedsAudio && document.getElementById('studioAudioProvider').value === 'asset' && !document.getElementById('studioAudioAssetId').value) return toast('Choose saved audio first.', 'error');
   if (engineNeedsAudio && document.getElementById('studioAudioProvider').value === 'elevenlabs' && !document.getElementById('studioScript').value.trim()) return toast('Paste a script for ElevenLabs audio.', 'error');
-  if (engineNeedsAudio && document.getElementById('studioAudioProvider').value === 'vibevoice' && !document.getElementById('studioScript').value.trim()) return toast('Paste a script for VibeVoice audio.', 'error');
-  if (engineNeedsAudio && document.getElementById('studioAudioProvider').value === 'chatterbox' && !document.getElementById('studioScript').value.trim()) return toast('Paste a script for Chatterbox audio.', 'error');
+  if (engineNeedsAudio && document.getElementById('studioAudioProvider').value === 'kokoro' && !document.getElementById('studioScript').value.trim()) return toast('Paste a script for Kokoro audio.', 'error');
   if (serverlessVideoEngines.includes(videoEngine) && mode !== 'i2v') return toast('Serverless video engines are available in Image to video mode right now.', 'error');
   if (videoEngine === 'wan-animate' && !document.getElementById('studioReferenceVideo').files[0] && !document.getElementById('studioReferenceVideoUrl').value.trim() && !document.getElementById('studioRemixSourceUrl').value.trim()) {
     return toast('Wan Animate needs a reference motion video upload or URL.', 'error');
@@ -3058,35 +3052,87 @@ function getStudioEngineName(engine) {
 
 async function submitAudioOnly(form) {
   const provider = document.getElementById('studioAudioProvider').value;
-  if (provider === 'qwen') return toast('Qwen audio is not wired yet. Use VibeVoice or ElevenLabs for now.', 'error');
-  if (!['vibevoice', 'chatterbox', 'elevenlabs'].includes(provider)) return toast('Choose VibeVoice or ElevenLabs to generate audio from script.', 'error');
+  if (!['kokoro', 'elevenlabs'].includes(provider)) return toast('Choose Kokoro or ElevenLabs to generate audio from script.', 'error');
   if (!document.getElementById('studioScript').value.trim()) return toast('Paste a script first.', 'error');
-  if (provider === 'vibevoice') return previewVibeVoice(true);
-  return provider === 'elevenlabs' ? previewElevenLabsVoice(true) : previewChatterboxVoice(true);
+  if (provider === 'kokoro') return previewKokoroVoice(true);
+  return previewElevenLabsVoice(true);
 }
 
 function previewCurrentVoice() {
   const provider = document.getElementById('studioAudioProvider').value;
   if (provider === 'elevenlabs') return previewElevenLabsVoice(false);
-  if (provider === 'vibevoice') return previewVibeVoice(false);
-  if (provider === 'chatterbox') return previewChatterboxVoice(false);
-  return toast('Choose VibeVoice or ElevenLabs to preview a generated voice.', 'error');
+  if (provider === 'kokoro') return previewKokoroVoice(false);
+  return toast('Choose Kokoro or ElevenLabs to preview a generated voice.', 'error');
 }
 
-// ─── Voice picker: VibeVoice native library ───────────────────
-// These are the 7 real Microsoft VibeVoice speakers available on RunPod.
+// ─── Voice picker: Kokoro 54 voices (grouped by accent) ──────
 const VOICE_PICKER_VOICES = [
-  { id: 'Alice',          name: 'Alice',          gender: 'Female', tags: ['Warm', 'Natural', 'English'] },
-  { id: 'Carter',         name: 'Carter',         gender: 'Male',   tags: ['Clear', 'Confident', 'English'] },
-  { id: 'Emma',           name: 'Emma',           gender: 'Female', tags: ['Friendly', 'Expressive', 'English'] },
-  { id: 'Frank',          name: 'Frank',           gender: 'Male',   tags: ['Deep', 'Authoritative', 'English'] },
-  { id: 'Mary',           name: 'Mary',           gender: 'Female', tags: ['Professional', 'Calm', 'English'] },
-  { id: 'Maya',           name: 'Maya',           gender: 'Female', tags: ['Young', 'Upbeat', 'English'] },
-  { id: 'Morgan_Freeman', name: 'Morgan Freeman', gender: 'Male',   tags: ['Iconic', 'Smooth', 'English'] },
+  // American English — Female
+  { id: 'af_heart',    name: 'Heart',      gender: 'Female', accent: 'American English', tags: ['Warm', 'Expressive'] },
+  { id: 'af_sarah',    name: 'Sarah',      gender: 'Female', accent: 'American English', tags: ['Natural', 'Clear'] },
+  { id: 'af_bella',    name: 'Bella',      gender: 'Female', accent: 'American English', tags: ['Friendly', 'Bright'] },
+  { id: 'af_nicole',   name: 'Nicole',     gender: 'Female', accent: 'American English', tags: ['Calm', 'Professional'] },
+  { id: 'af_sky',      name: 'Sky',        gender: 'Female', accent: 'American English', tags: ['Upbeat', 'Young'] },
+  { id: 'af_nova',     name: 'Nova',       gender: 'Female', accent: 'American English', tags: ['Smooth', 'Confident'] },
+  { id: 'af_alloy',    name: 'Alloy',      gender: 'Female', accent: 'American English', tags: ['Versatile', 'Clear'] },
+  { id: 'af_jessica',  name: 'Jessica',    gender: 'Female', accent: 'American English', tags: ['Warm', 'Engaging'] },
+  { id: 'af_river',    name: 'River',      gender: 'Female', accent: 'American English', tags: ['Soothing', 'Natural'] },
+  { id: 'af_kore',     name: 'Kore',       gender: 'Female', accent: 'American English', tags: ['Crisp', 'Modern'] },
+  { id: 'af_aoede',    name: 'Aoede',      gender: 'Female', accent: 'American English', tags: ['Melodic', 'Smooth'] },
+  // American English — Male
+  { id: 'am_michael',  name: 'Michael',    gender: 'Male',   accent: 'American English', tags: ['Deep', 'Authoritative'] },
+  { id: 'am_adam',     name: 'Adam',       gender: 'Male',   accent: 'American English', tags: ['Strong', 'Clear'] },
+  { id: 'am_echo',     name: 'Echo',       gender: 'Male',   accent: 'American English', tags: ['Smooth', 'Confident'] },
+  { id: 'am_liam',     name: 'Liam',       gender: 'Male',   accent: 'American English', tags: ['Friendly', 'Natural'] },
+  { id: 'am_onyx',     name: 'Onyx',       gender: 'Male',   accent: 'American English', tags: ['Deep', 'Rich'] },
+  { id: 'am_orion',    name: 'Orion',      gender: 'Male',   accent: 'American English', tags: ['Bold', 'Expressive'] },
+  { id: 'am_eric',     name: 'Eric',       gender: 'Male',   accent: 'American English', tags: ['Calm', 'Professional'] },
+  { id: 'am_fenrir',   name: 'Fenrir',     gender: 'Male',   accent: 'American English', tags: ['Powerful', 'Dynamic'] },
+  { id: 'am_puck',     name: 'Puck',       gender: 'Male',   accent: 'American English', tags: ['Playful', 'Upbeat'] },
+  { id: 'am_santa',    name: 'Santa',      gender: 'Male',   accent: 'American English', tags: ['Warm', 'Jolly'] },
+  // British English — Female
+  { id: 'bf_emma',     name: 'Emma',       gender: 'Female', accent: 'British English',  tags: ['Polished', 'Elegant'] },
+  { id: 'bf_alice',    name: 'Alice',      gender: 'Female', accent: 'British English',  tags: ['Clear', 'Professional'] },
+  { id: 'bf_isabella', name: 'Isabella',   gender: 'Female', accent: 'British English',  tags: ['Warm', 'Sophisticated'] },
+  { id: 'bf_lily',     name: 'Lily',       gender: 'Female', accent: 'British English',  tags: ['Soft', 'Natural'] },
+  // British English — Male
+  { id: 'bm_george',   name: 'George',     gender: 'Male',   accent: 'British English',  tags: ['Authoritative', 'Crisp'] },
+  { id: 'bm_daniel',   name: 'Daniel',     gender: 'Male',   accent: 'British English',  tags: ['Deep', 'Smooth'] },
+  { id: 'bm_lewis',    name: 'Lewis',      gender: 'Male',   accent: 'British English',  tags: ['Confident', 'Clear'] },
+  { id: 'bm_fable',    name: 'Fable',      gender: 'Male',   accent: 'British English',  tags: ['Storytelling', 'Rich'] },
+  // French
+  { id: 'ff_siwis',   name: 'Siwis',      gender: 'Female', accent: 'French',           tags: ['Elegant', 'Smooth'] },
+  { id: 'fm_gaston',  name: 'Gaston',     gender: 'Male',   accent: 'French',           tags: ['Warm', 'Deep'] },
+  // Japanese
+  { id: 'jf_nezuko',  name: 'Nezuko',     gender: 'Female', accent: 'Japanese',         tags: ['Soft', 'Natural'] },
+  { id: 'jf_alpha',   name: 'Alpha',      gender: 'Female', accent: 'Japanese',         tags: ['Clear', 'Calm'] },
+  { id: 'jf_gongitsune', name: 'Gongitsune', gender: 'Female', accent: 'Japanese',      tags: ['Gentle', 'Smooth'] },
+  { id: 'jf_tebukuro', name: 'Tebukuro',  gender: 'Female', accent: 'Japanese',         tags: ['Warm', 'Natural'] },
+  { id: 'jm_kumo',    name: 'Kumo',       gender: 'Male',   accent: 'Japanese',         tags: ['Deep', 'Calm'] },
+  // Korean
+  { id: 'kf_alpha',   name: 'Alpha (F)',  gender: 'Female', accent: 'Korean',           tags: ['Clear', 'Natural'] },
+  { id: 'km_alpha',   name: 'Alpha (M)',  gender: 'Male',   accent: 'Korean',           tags: ['Calm', 'Deep'] },
+  // Spanish
+  { id: 'ef_dora',    name: 'Dora',       gender: 'Female', accent: 'Spanish',          tags: ['Warm', 'Expressive'] },
+  { id: 'em_alex',    name: 'Alex',       gender: 'Male',   accent: 'Spanish',          tags: ['Confident', 'Clear'] },
+  { id: 'em_santa',   name: 'Santa',      gender: 'Male',   accent: 'Spanish',          tags: ['Warm', 'Friendly'] },
+  // Mandarin Chinese
+  { id: 'zf_xiaoxiao', name: 'Xiaoxiao',  gender: 'Female', accent: 'Mandarin Chinese', tags: ['Natural', 'Bright'] },
+  { id: 'zf_xiaoni',  name: 'Xiaoni',     gender: 'Female', accent: 'Mandarin Chinese', tags: ['Soft', 'Warm'] },
+  { id: 'zf_xiaobei', name: 'Xiaobei',    gender: 'Female', accent: 'Mandarin Chinese', tags: ['Clear', 'Young'] },
+  { id: 'zf_xiaoyi',  name: 'Xiaoyi',     gender: 'Female', accent: 'Mandarin Chinese', tags: ['Calm', 'Smooth'] },
+  { id: 'zm_yunxi',   name: 'Yunxi',      gender: 'Male',   accent: 'Mandarin Chinese', tags: ['Clear', 'Professional'] },
+  { id: 'zm_yunjian', name: 'Yunjian',    gender: 'Male',   accent: 'Mandarin Chinese', tags: ['Deep', 'Strong'] },
+  { id: 'zm_yunxia',  name: 'Yunxia',     gender: 'Male',   accent: 'Mandarin Chinese', tags: ['Smooth', 'Natural'] },
+  { id: 'zm_yunyang', name: 'Yunyang',    gender: 'Male',   accent: 'Mandarin Chinese', tags: ['Confident', 'Clear'] },
+  // Brazilian Portuguese
+  { id: 'pf_dora',    name: 'Dora',       gender: 'Female', accent: 'Brazilian Portuguese', tags: ['Warm', 'Expressive'] },
+  { id: 'pm_alex',    name: 'Alex',       gender: 'Male',   accent: 'Brazilian Portuguese', tags: ['Clear', 'Natural'] },
+  { id: 'pm_santa',   name: 'Santa',      gender: 'Male',   accent: 'Brazilian Portuguese', tags: ['Warm', 'Friendly'] },
 ];
 
 // ─── Voice picker state ───────────────────────────────────────
-let _voicePickerActiveTab = 'vibevoice'; // 'vibevoice' | 'elevenlabs'
+let _voicePickerActiveTab = 'kokoro'; // 'kokoro' | 'elevenlabs'
 let _elVoicesCache = null;              // cached EL voices from /api/tts/elevenlabs/voices
 let _selectedVoiceData = null;          // { id, name, provider, previewUrl }
 
@@ -3095,8 +3141,8 @@ const _vp_pauseSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="curr
 const _vp_spinSvg  = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" class="vp-spin"><path d="M12 2a10 10 0 0 1 10 10"/></svg>`;
 const _vp_checkSvg = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>`;
 
-function selectedChatterboxVoice() {
-  return document.getElementById('studioChatterboxVoice')?.value || 'Alice';
+function selectedKokoroVoice() {
+  return document.getElementById('studioKokoroVoice')?.value || 'af_heart';
 }
 
 function _vpResetButtons() {
@@ -3121,32 +3167,48 @@ async function switchVoicePickerTab(tab) {
   el('voiceELNoKey').style.display = 'none';
   el('voicePickerList').innerHTML = '';
 
-  if (tab === 'vibevoice') {
+  if (tab === 'kokoro') {
     buildVoicePickerList();
   } else {
     await buildElevenLabsVoiceList();
   }
 }
 
-// ─── Build VibeVoice rows ─────────────────────────────────────
+// ─── Build Kokoro voice rows (grouped by accent) ──────────────
 function buildVoicePickerList() {
   const listEl = document.getElementById('voicePickerList');
   if (!listEl) return;
-  const currentVoice = selectedChatterboxVoice();
-  listEl.innerHTML = VOICE_PICKER_VOICES.map(v => {
-    const selected = v.id === currentVoice;
-    const tags = v.tags.map(t => `<span class="voice-tag">${t}</span>`).join('');
-    return `<div class="voice-row${selected ? ' selected' : ''}" data-voice="${v.id}" data-provider="vibevoice" onclick="selectVoiceRow('${v.id}','vibevoice','${v.name}','')">
+  const currentVoice = selectedKokoroVoice();
+
+  // Group voices by accent
+  const accentOrder = ['American English', 'British English', 'French', 'Japanese', 'Korean', 'Spanish', 'Mandarin Chinese', 'Brazilian Portuguese'];
+  const groups = {};
+  VOICE_PICKER_VOICES.forEach(v => {
+    if (!groups[v.accent]) groups[v.accent] = [];
+    groups[v.accent].push(v);
+  });
+
+  let html = '';
+  accentOrder.forEach(accent => {
+    if (!groups[accent]) return;
+    html += `<div class="voice-group-header">${accent}</div>`;
+    groups[accent].forEach(v => {
+      const selected = v.id === currentVoice;
+      const tags = v.tags.map(t => `<span class="voice-tag">${t}</span>`).join('');
+      const genderLabel = `<span class="voice-gender-badge">${v.gender === 'Female' ? 'F' : 'M'}</span>`;
+      html += `<div class="voice-row${selected ? ' selected' : ''}" data-voice="${v.id}" data-provider="kokoro" onclick="selectVoiceRow('${v.id}','kokoro','${v.name}','')">
   <button class="voice-play-btn" type="button" id="vpb-${v.id}"
           onclick="event.stopPropagation(); previewVoiceRowSample('${v.id}', this)"
           title="Play sample">${_vp_playSvg}</button>
   <div class="voice-row-info">
-    <div class="voice-row-name">${v.name}</div>
+    <div class="voice-row-name">${v.name} ${genderLabel}</div>
     <div class="voice-row-tags">${tags}</div>
   </div>
   <div class="voice-selected-icon">${_vp_checkSvg}</div>
 </div>`;
-  }).join('');
+    });
+  });
+  listEl.innerHTML = html;
 }
 
 // ─── Fetch & render ElevenLabs rows ──────────────────────────
@@ -3201,8 +3263,8 @@ function selectVoiceRow(voiceId, provider, voiceName, previewUrl) {
   _selectedVoiceData = { id: voiceId, name, provider: provider || _voicePickerActiveTab, previewUrl: previewUrl || null };
 
   // Update the correct hidden input
-  if (provider === 'vibevoice') {
-    const sel = document.getElementById('studioChatterboxVoice');
+  if (provider === 'kokoro') {
+    const sel = document.getElementById('studioKokoroVoice');
     if (sel) sel.value = voiceId;
   } else if (provider === 'elevenlabs') {
     const inp = document.getElementById('studioVoiceId');
@@ -3219,15 +3281,15 @@ function selectVoiceRow(voiceId, provider, voiceName, previewUrl) {
   if (hint) hint.textContent = name + ' selected';
 }
 
-// ─── Play VibeVoice pre-rendered sample ──────────────────────
-// Hits /api/tts/vibevoice/sample/:speaker — generates & caches on first call.
+// ─── Play Kokoro pre-rendered sample ─────────────────────────
+// Hits /api/tts/kokoro/sample/:voice — generates & caches on first call.
 async function previewVoiceRowSample(voiceId, btnEl) {
   let audio = _vpGetAudioEl();
   const alreadyPlaying = btnEl && btnEl.classList.contains('playing');
   _vpResetButtons();
   if (alreadyPlaying) { audio.pause(); return; }
 
-  const url = `/api/tts/vibevoice/sample/${encodeURIComponent(voiceId)}`;
+  const url = `/api/tts/kokoro/sample/${encodeURIComponent(voiceId)}`;
   try {
     if (btnEl) { btnEl.classList.add('loading'); btnEl.innerHTML = _vp_spinSvg; }
     const resolved = typeof playableMediaUrl === 'function' ? await playableMediaUrl(url) : url;
@@ -3283,7 +3345,7 @@ function onVoicePickerDone() {
 
   // Sync audio provider select to the chosen voice's provider
   const providerSel = document.getElementById('studioAudioProvider');
-  if (providerSel && ['vibevoice','elevenlabs'].includes(_selectedVoiceData.provider)) {
+  if (providerSel && ['kokoro','elevenlabs'].includes(_selectedVoiceData.provider)) {
     providerSel.value = _selectedVoiceData.provider;
     setStudioAudio(_selectedVoiceData.provider, { preserveToast: true });
   }
@@ -3295,7 +3357,7 @@ function onVoicePickerDone() {
   const cfgBtn  = document.getElementById('studioConfigureVoiceButton');
   if (card && nameEl) {
     nameEl.textContent  = _selectedVoiceData.name;
-    if (badgeEl) badgeEl.textContent = _selectedVoiceData.provider === 'elevenlabs' ? 'ElevenLabs' : 'VibeVoice';
+    if (badgeEl) badgeEl.textContent = _selectedVoiceData.provider === 'elevenlabs' ? 'ElevenLabs' : 'Kokoro';
     card.style.display = '';
     if (cfgBtn) cfgBtn.style.display = 'none';
   }
@@ -3312,8 +3374,8 @@ async function playSelectedVoiceSample() {
   if (alreadyPlaying) { audio.pause(); return; }
 
   let src = '';
-  if (_selectedVoiceData.provider === 'vibevoice') {
-    const url = `/api/tts/vibevoice/sample/${encodeURIComponent(_selectedVoiceData.id)}`;
+  if (_selectedVoiceData.provider === 'kokoro') {
+    const url = `/api/tts/kokoro/sample/${encodeURIComponent(_selectedVoiceData.id)}`;
     src = typeof playableMediaUrl === 'function' ? await playableMediaUrl(url) : url;
   } else if (_selectedVoiceData.previewUrl) {
     src = _selectedVoiceData.previewUrl;
@@ -3339,14 +3401,14 @@ function filterVoiceList(query) {
   });
 }
 
-// Legacy compat — keep these so any remaining inline callers don't throw
+// Legacy compat stubs
 function updateChatterboxVoiceLabel() {}
-function playCachedChatterboxVoiceSample() { previewVoiceRowSample(selectedChatterboxVoice(), null); }
+function playCachedChatterboxVoiceSample() { previewVoiceRowSample(selectedKokoroVoice(), null); }
 function nextChatterboxVoice() {
-  const cur = selectedChatterboxVoice();
+  const cur = selectedKokoroVoice();
   const idx = VOICE_PICKER_VOICES.findIndex(v => v.id === cur);
   const next = VOICE_PICKER_VOICES[(idx + 1) % VOICE_PICKER_VOICES.length];
-  selectVoiceRow(next.id, 'vibevoice', next.name, '');
+  selectVoiceRow(next.id, 'kokoro', next.name, '');
 }
 
 // Show generated preview audio inside the voice dialog
@@ -3368,65 +3430,36 @@ async function _showInlineGenPreview(url, label) {
   }
 }
 
-async function previewVibeVoice(saveOnly = false) {
+async function previewKokoroVoice(saveOnly = false) {
   const writtenScript = document.getElementById('studioScript').value.trim();
-  const script = writtenScript || 'Hi, I am previewing VibeVoice so you can hear the tone before choosing it for your video.';
+  const script = writtenScript || 'Hi, this is a preview of your Kokoro voice. Choose any of the 54 voices to find the perfect sound for your video.';
   const button = document.getElementById('studioPreviewVoiceButton');
   if (button) { button.disabled = true; button.textContent = 'Creating preview...'; }
-  setVoicePreviewLoading(true, 'VibeVoice');
+  setVoicePreviewLoading(true, 'Kokoro');
   try {
-    const data = new FormData();
-    data.append('script', script);
-    data.append('voice', document.getElementById('studioChatterboxVoice').value);
-    data.append('format', document.getElementById('studioChatterboxFormat')?.value || 'wav');
-    data.append('voiceUrl', document.getElementById('studioChatterboxVoiceUrl')?.value.trim() || '');
-    data.append('name', `${writtenScript ? 'VibeVoice voiceover' : 'VibeVoice sample'} ${new Date().toLocaleString()}`);
-    const sample = document.getElementById('studioVoiceSample')?.files?.[0];
-    if (sample) data.append('voiceSample', sample);
-    const response = await api('/api/tts/vibevoice', { method: 'POST', body: data });
+    const voiceId = selectedKokoroVoice();
+    const response = await api('/api/tts/kokoro', {
+      method: 'POST',
+      body: JSON.stringify({
+        script,
+        voice: voiceId,
+        speed: 1.0,
+        format: 'wav',
+        name: `${writtenScript ? 'Kokoro voiceover' : 'Kokoro sample'} ${new Date().toLocaleString()}`
+      })
+    });
     previewAudioAsset = response.result?.asset || null;
     const url = response.result?.asset?.files?.[0]?.path || response.result?.audioUrl;
-    if (!url) throw new Error('VibeVoice did not return audio.');
+    if (!url) throw new Error('Kokoro did not return audio.');
     setVoicePreviewLoading(false);
-    await _showInlineGenPreview(url, saveOnly ? 'Audio generated and saved' : writtenScript ? 'VibeVoice preview saved' : 'VibeVoice sample saved');
-    toast('VibeVoice generated and saved to audio Library.', 'success');
+    await _showInlineGenPreview(url, saveOnly ? 'Audio generated and saved' : writtenScript ? 'Kokoro preview saved' : 'Kokoro sample saved');
+    toast('Kokoro audio generated and saved to Library.', 'success');
     await loadAssets();
   } catch (error) {
     setVoicePreviewLoading(false);
     toast(error.message, 'error');
   } finally {
-    if (button) { button.disabled = false; button.textContent = 'Preview script with VibeVoice'; }
-  }
-}
-
-async function previewChatterboxVoice(saveOnly = false) {
-  const writtenScript = document.getElementById('studioScript').value.trim();
-  const script = writtenScript || 'Hi, I am previewing this voice so you can hear the tone before choosing it for your video.';
-  const button = document.getElementById('studioPreviewVoiceButton');
-  if (button) { button.disabled = true; button.textContent = 'Creating preview...'; }
-  setVoicePreviewLoading(true, 'Chatterbox');
-  try {
-    const data = new FormData();
-    data.append('script', script);
-    data.append('voice', document.getElementById('studioChatterboxVoice').value);
-    data.append('format', document.getElementById('studioChatterboxFormat')?.value || 'wav');
-    data.append('voiceUrl', document.getElementById('studioChatterboxVoiceUrl')?.value.trim() || '');
-    data.append('name', `${writtenScript ? 'Voiceover' : 'Voice sample'} ${new Date().toLocaleString()}`);
-    const sample = document.getElementById('studioVoiceSample')?.files?.[0];
-    if (sample) data.append('voiceSample', sample);
-    const response = await api('/api/tts/chatterbox', { method: 'POST', body: data });
-    previewAudioAsset = response.result?.asset || null;
-    const url = response.result?.asset?.files?.[0]?.path || response.result?.audioUrl;
-    if (!url) throw new Error('Chatterbox did not return audio.');
-    setVoicePreviewLoading(false);
-    await _showInlineGenPreview(url, saveOnly ? 'Audio generated and saved' : writtenScript ? 'Voice preview saved' : 'Voice sample preview saved');
-    toast('Voiceover generated and saved to audio Library.', 'success');
-    await loadAssets();
-  } catch (error) {
-    setVoicePreviewLoading(false);
-    toast(error.message, 'error');
-  } finally {
-    if (button) { button.disabled = false; button.textContent = 'Preview script with Chatterbox'; }
+    if (button) { button.disabled = false; button.textContent = 'Preview script with Kokoro'; }
   }
 }
 
@@ -3699,7 +3732,6 @@ function getCharacterVoiceId(character = {}) {
 function applyCharacterAudioDefaults(character = {}) {
   const voiceId = getCharacterVoiceId(character);
   const voiceIdInput = document.getElementById('studioVoiceId');
-  const chatterboxUrlInput = document.getElementById('studioChatterboxVoiceUrl');
   const currentProvider = document.getElementById('studioAudioProvider')?.value || '';
   const existingVoiceId = voiceIdInput?.value.trim() || '';
   if (existingVoiceId && currentProvider === 'elevenlabs') {
@@ -3707,16 +3739,10 @@ function applyCharacterAudioDefaults(character = {}) {
     return 'elevenlabs';
   }
   if (voiceIdInput) voiceIdInput.value = voiceId || '';
-  if (chatterboxUrlInput && !character.voiceSampleAssetId) chatterboxUrlInput.value = '';
 
   if (voiceId) {
     setStudioAudio('elevenlabs', { preserveToast: true });
     return 'elevenlabs';
-  }
-  if (character.voiceSampleAssetId) {
-    setStudioAudio('vibevoice', { preserveToast: true });
-    hydrateChatterboxVoiceUrl(character.voiceSampleAssetId);
-    return 'vibevoice';
   }
   setStudioAudio('upload', { preserveToast: true });
   return 'upload';
@@ -3789,14 +3815,8 @@ function _applyCharacterToCreate(character, type) {
 }
 
 async function hydrateChatterboxVoiceUrl(audioAssetId) {
-  try {
-    const data = await api(`/api/assets/audio/${audioAssetId}/temp-url`, { method: 'POST' });
-    const input = document.getElementById('studioChatterboxVoiceUrl');
-    if (input) input.value = data.url;
-    toast('Default VibeVoice reference URL loaded for this character.', 'success');
-  } catch (error) {
-    toast(`Could not load character voice sample: ${error.message}`, 'error');
-  }
+  // No-op: Kokoro uses preset voices only and does not support voice cloning via URL.
+  // This stub is kept so any legacy callers don't throw.
 }
 
 function renderProductPlacementPickers(data = {}) {
@@ -4428,8 +4448,6 @@ function clearSelectedCharacter() {
   document.getElementById('studioImageAssetId').value = '';
   document.getElementById('studioImageUrl').value = '';
   document.getElementById('studioVoiceId').value = '';
-  const chatterboxUrlInput = document.getElementById('studioChatterboxVoiceUrl');
-  if (chatterboxUrlInput) chatterboxUrlInput.value = '';
   document.getElementById('selectedCharacter')?.classList.remove('active');
   setStudioAudio('upload', { preserveToast: true });
   resetPreview();
@@ -4821,7 +4839,7 @@ async function copyAudioTempUrl(slug) {
   try {
     const data = await api(`/api/assets/audio/${slug}/temp-url`, { method: 'POST' });
     await navigator.clipboard.writeText(data.url);
-    toast('Temporary voice URL copied. Paste it into the VibeVoice reference voice URL.', 'success');
+    toast('Temporary voice URL copied.', 'success');
   } catch (error) {
     toast(error.message, 'error');
   }

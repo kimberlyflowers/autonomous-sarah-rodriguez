@@ -1,18 +1,16 @@
 const express = require('express');
-const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
+const multer  = require('multer');
+const path    = require('path');
+const fs      = require('fs');
 const { v4: uuidv4 } = require('uuid');
-const { CHATTERBOX_VOICES, createChatterboxAudio, getChatterboxConfig } = require('../services/chatterbox');
-const { VIBEVOICE_SPEAKERS, createVibeVoiceAudio, getVibeVoiceConfig } = require('../services/vibevoice');
+const { KOKORO_VOICES, KOKORO_VOICE_IDS, createKokoroAudio, getKokoroConfig } = require('../services/kokoro');
 const { hasDatabase, initUgcStore, query } = require('../services/postgres');
-const fetch = require('node-fetch');
+const fetch   = require('node-fetch');
 const { logger } = require('../services/logger');
 
-const router = express.Router();
+const router   = express.Router();
 const ROOT_DIR = path.join(__dirname, '..', '..');
 const UPLOAD_DIR = path.join(ROOT_DIR, 'assets', 'tts');
-const CHATTERBOX_SAMPLE_DIR = path.join(UPLOAD_DIR, 'chatterbox-samples');
 
 const upload = multer({
   storage: multer.diskStorage({
@@ -30,88 +28,154 @@ const upload = multer({
   limits: { fileSize: 50 * 1024 * 1024 }
 });
 
+// ── Provider status (used by the UI health check) ────────────────────────────
 router.get('/providers', (req, res) => {
-  const chatterbox = getChatterboxConfig();
-  const vibevoice = getVibeVoiceConfig();
+  const kokoro = getKokoroConfig();
   res.json({
     providers: [
       {
-        id: 'vibevoice',
-        label: 'VibeVoice longform',
-        available: !!vibevoice.apiKey && !!(vibevoice.endpointId || vibevoice.endpointUrl),
-        endpointId: vibevoice.endpointId,
-        note: 'Microsoft VibeVoice longform endpoint. Configure RUNPOD_VIBEVOICE_ENDPOINT_ID or VIBEVOICE_ENDPOINT_URL.'
+        id:        'kokoro',
+        label:     'Kokoro (54 voices)',
+        available: !!kokoro.apiKey && !!(kokoro.endpointId || kokoro.endpointUrl),
+        endpointId: kokoro.endpointId,
+        note:      'Deploy lucataco/kokoro-82m on RunPod Serverless and set RUNPOD_KOKORO_ENDPOINT_ID.'
       },
       {
-        id: 'chatterbox',
-        label: 'Chatterbox Turbo',
-        available: !!chatterbox.apiKey,
-        endpointId: chatterbox.endpointId,
-        voices: CHATTERBOX_VOICES,
-        customVoice: {
-          field: 'voice_url',
-          note: 'Use a public URL to a short voice reference audio file, or upload a sample and Bloom Studio will host it before calling RunPod.'
-        }
+        id:        'elevenlabs',
+        label:     'ElevenLabs',
+        available: !!process.env.ELEVENLABS_API_KEY
       }
     ]
   });
 });
 
-// ── VibeVoice voice list ─────────────────────────────────────────────────────
-router.get('/vibevoice/voices', (req, res) => {
-  res.json({
-    voices: [
-      { id: 'Alice',         name: 'Alice',         gender: 'Female', tags: ['Warm', 'Natural', 'English'] },
-      { id: 'Carter',        name: 'Carter',        gender: 'Male',   tags: ['Clear', 'Confident', 'English'] },
-      { id: 'Emma',          name: 'Emma',          gender: 'Female', tags: ['Friendly', 'Expressive', 'English'] },
-      { id: 'Frank',         name: 'Frank',         gender: 'Male',   tags: ['Deep', 'Authoritative', 'English'] },
-      { id: 'Mary',          name: 'Mary',          gender: 'Female', tags: ['Professional', 'Calm', 'English'] },
-      { id: 'Maya',          name: 'Maya',          gender: 'Female', tags: ['Young', 'Upbeat', 'English'] },
-      { id: 'Morgan_Freeman',name: 'Morgan Freeman', gender: 'Male',  tags: ['Iconic', 'Smooth', 'English'] }
-    ]
-  });
+// ── Kokoro voice list ─────────────────────────────────────────────────────────
+router.get('/kokoro/voices', (req, res) => {
+  res.json({ voices: KOKORO_VOICES });
 });
 
-// ── VibeVoice sample audio ────────────────────────────────────────────────────
-const VIBEVOICE_SAMPLE_DIR = path.join(UPLOAD_DIR, 'vibevoice-samples');
+// ── Kokoro sample audio (generated on demand, cached forever) ─────────────────
+const KOKORO_SAMPLE_DIR  = path.join(UPLOAD_DIR, 'kokoro-samples');
+const _kokoroSampleGenerating = new Set();
 
-const _vvSampleGenerating = new Set();
+const SAMPLE_TEXTS = {
+  'af_heart':    'Hi! I\'m Heart — warm, expressive, and ready to bring your video to life.',
+  'af_sarah':    'Hi! I\'m Sarah — clear, natural, and here to help you sound your best.',
+  'af_bella':    'Hi! I\'m Bella — bright, friendly, and built for engaging content.',
+  'af_nicole':   'Hi! I\'m Nicole — calm, professional, and perfect for clear narration.',
+  'af_sky':      'Hi! I\'m Sky — upbeat, young, and here to energize your content.',
+  'af_nova':     'Hi! I\'m Nova — smooth, confident, and great for polished voiceovers.',
+  'af_alloy':    'Hi! I\'m Alloy — versatile and clear, ready for any kind of content.',
+  'af_jessica':  'Hi! I\'m Jessica — warm, engaging, and here to connect with your audience.',
+  'af_river':    'Hi! I\'m River — soothing and natural, perfect for relaxed narration.',
+  'af_kore':     'Hi! I\'m Kore — crisp, modern, and ready to deliver.',
+  'af_aoede':    'Hi! I\'m Aoede — melodic and smooth, built for beautiful storytelling.',
+  'am_michael':  'Hi! I\'m Michael — deep, authoritative, and here to command attention.',
+  'am_adam':     'Hi! I\'m Adam — strong, clear, and built for confident delivery.',
+  'am_echo':     'Hi! I\'m Echo — smooth, confident, and ready to narrate your vision.',
+  'am_liam':     'Hi! I\'m Liam — friendly, natural, and here to sound just like you.',
+  'am_onyx':     'Hi! I\'m Onyx — deep, rich, and made for powerful narration.',
+  'am_orion':    'Hi! I\'m Orion — bold, expressive, and built to stand out.',
+  'am_eric':     'Hi! I\'m Eric — calm, professional, and great for instructional content.',
+  'am_fenrir':   'Hi! I\'m Fenrir — powerful and dynamic, built for high-energy scripts.',
+  'am_puck':     'Hi! I\'m Puck — playful, upbeat, and here to bring the fun.',
+  'am_santa':    'Hi! I\'m Santa — warm, jolly, and perfect for holiday cheer.',
+  'bf_emma':     'Hi! I\'m Emma — polished, elegant, and built for premium British narration.',
+  'bf_alice':    'Hi! I\'m Alice — clear, professional, and classically British.',
+  'bf_isabella': 'Hi! I\'m Isabella — warm, sophisticated, and here to elevate your content.',
+  'bf_lily':     'Hi! I\'m Lily — soft, natural, and perfectly balanced.',
+  'bm_george':   'Hi! I\'m George — authoritative, crisp, and classically British.',
+  'bm_daniel':   'Hi! I\'m Daniel — deep, smooth, and built for polished delivery.',
+  'bm_lewis':    'Hi! I\'m Lewis — confident, clear, and perfect for premium voiceovers.',
+  'bm_fable':    'Hi! I\'m Fable — rich and perfect for storytelling.',
+};
 
-router.get('/vibevoice/sample/:speaker', async (req, res) => {
-  const speaker = VIBEVOICE_SPEAKERS.includes(req.params.speaker) ? req.params.speaker : '';
-  if (!speaker) return res.status(404).json({ error: 'Unknown VibeVoice speaker.' });
+function getSampleText(voiceId) {
+  if (SAMPLE_TEXTS[voiceId]) return SAMPLE_TEXTS[voiceId];
+  const voice = KOKORO_VOICES.find(v => v.id === voiceId);
+  if (!voice) return 'Hi! This is a sample of the Kokoro voice — smooth, clear, and ready for your content.';
+  return `Hi! I\'m ${voice.name} — a ${voice.gender.toLowerCase()} voice with a ${voice.accent} accent, built for Bloom UGC Studio.`;
+}
 
-  fs.mkdirSync(VIBEVOICE_SAMPLE_DIR, { recursive: true });
-  const samplePath = path.join(VIBEVOICE_SAMPLE_DIR, `${speaker}.wav`);
+router.get('/kokoro/sample/:voice', async (req, res) => {
+  const voiceId = KOKORO_VOICE_IDS.has(req.params.voice) ? req.params.voice : '';
+  if (!voiceId) return res.status(404).json({ error: 'Unknown Kokoro voice.' });
 
+  fs.mkdirSync(KOKORO_SAMPLE_DIR, { recursive: true });
+  const samplePath = path.join(KOKORO_SAMPLE_DIR, `${voiceId}.wav`);
+
+  // Serve cached sample immediately
   if (fs.existsSync(samplePath)) {
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
     res.type('audio/wav');
     return res.sendFile(samplePath);
   }
 
-  if (_vvSampleGenerating.has(speaker)) {
-    return res.status(202).json({ generating: true, retryAfterMs: 8000,
-      message: `Sample for "${speaker}" is being generated — please try again shortly.` });
+  // If already generating, tell the client to retry
+  if (_kokoroSampleGenerating.has(voiceId)) {
+    return res.status(202).json({
+      generating: true,
+      retryAfterMs: 8000,
+      message: `Sample for "${voiceId}" is being generated — please try again in a moment.`
+    });
   }
 
-  _vvSampleGenerating.add(speaker);
-  const tmpDir = path.join(VIBEVOICE_SAMPLE_DIR, '_tmp');
-  const sampleText = `Hi! I'm ${speaker.replace('_', ' ')}, your AI voice for creating engaging video content.`;
+  _kokoroSampleGenerating.add(voiceId);
+  const tmpDir = path.join(KOKORO_SAMPLE_DIR, '_tmp');
 
   try {
-    const result = await createVibeVoiceAudio({ script: sampleText, voice: speaker, format: 'wav', outputDir: tmpDir });
-    fs.mkdirSync(VIBEVOICE_SAMPLE_DIR, { recursive: true });
+    const result = await createKokoroAudio({
+      script:    getSampleText(voiceId),
+      voice:     voiceId,
+      speed:     1.0,
+      format:    'wav',
+      outputDir: tmpDir
+    });
+    fs.mkdirSync(KOKORO_SAMPLE_DIR, { recursive: true });
     if (result.localPath !== samplePath) fs.renameSync(result.localPath, samplePath);
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
     res.type('audio/wav');
     res.sendFile(samplePath);
-    logger.info('VibeVoice sample generated and cached', { speaker });
+    logger.info('Kokoro sample generated and cached', { voiceId });
   } catch (err) {
-    logger.error('VibeVoice sample generation failed', { speaker, error: err.message });
+    logger.error('Kokoro sample generation failed', { voiceId, error: err.message });
     res.status(500).json({ error: `Sample generation failed: ${err.message}` });
   } finally {
-    _vvSampleGenerating.delete(speaker);
+    _kokoroSampleGenerating.delete(voiceId);
+  }
+});
+
+// ── Kokoro TTS (full generation, saved to asset library) ─────────────────────
+router.post('/kokoro', upload.none(), async (req, res) => {
+  const started = Date.now();
+  try {
+    const dir = path.join(UPLOAD_DIR, req.tenant?.slug || req.tenant?.id || 'default', 'generated');
+    const result = await createKokoroAudio({
+      script:    req.body.script,
+      voice:     req.body.voice,
+      speed:     req.body.speed,
+      format:    req.body.format,
+      outputDir: dir
+    });
+    const asset = await saveGeneratedAudio(req, result.localPath, {
+      name:     req.body.name || `Kokoro ${new Date().toLocaleString()}`,
+      provider: 'kokoro',
+      voice:    result.voice,
+      script:   req.body.script || ''
+    });
+    logger.info('Kokoro audio generated', {
+      tenant:     req.tenant?.slug || req.tenant?.id,
+      durationMs: Date.now() - started,
+      voice:      result.voice
+    });
+    res.json({ success: true, result: { ...result, asset } });
+  } catch (error) {
+    logger.error('Kokoro generation failed', {
+      tenant:     req.tenant?.slug || req.tenant?.id,
+      durationMs: Date.now() - started,
+      error:      error.message
+    });
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -126,14 +190,13 @@ router.get('/elevenlabs/voices', async (req, res) => {
     });
     if (!r.ok) return res.status(r.status).json({ error: `ElevenLabs API returned ${r.status}` });
     const data = await r.json();
-    // Shape: { voices: [{ voice_id, name, labels, preview_url, category }] }
     res.json({
       voices: (data.voices || []).map(v => ({
-        id: v.voice_id,
-        name: v.name,
+        id:         v.voice_id,
+        name:       v.name,
         previewUrl: v.preview_url || '',
-        category: v.category || 'generated',
-        tags: Object.values(v.labels || {}).filter(Boolean)
+        category:   v.category || 'generated',
+        tags:       Object.values(v.labels || {}).filter(Boolean)
       }))
     });
   } catch (err) {
@@ -141,165 +204,58 @@ router.get('/elevenlabs/voices', async (req, res) => {
   }
 });
 
-router.post('/vibevoice', upload.single('voiceSample'), async (req, res) => {
-  const started = Date.now();
-  try {
-    const dir = path.join(UPLOAD_DIR, req.tenant?.slug || req.tenant?.id || 'default', 'generated');
-    const result = await createVibeVoiceAudio({
-      script: req.body.script,
-      voice: req.body.voice,
-      voiceUrl: req.body.voiceUrl,
-      voiceSamplePath: req.file?.path || null,
-      format: req.body.format,
-      outputDir: dir
-    });
-    const asset = await saveGeneratedAudio(req, result.localPath, {
-      name: req.body.name || `VibeVoice ${new Date().toLocaleString()}`,
-      provider: 'vibevoice',
-      voice: result.voice,
-      script: req.body.script || ''
-    });
-    logger.info('VibeVoice preview generated', {
-      tenant: req.tenant?.slug || req.tenant?.id,
-      durationMs: Date.now() - started,
-      voice: result.voice
-    });
-    res.json({ success: true, result: { ...result, asset } });
-  } catch (error) {
-    logger.error('VibeVoice preview failed', { tenant: req.tenant?.slug || req.tenant?.id, durationMs: Date.now() - started, error: error.message });
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// In-flight generation tracker so concurrent requests for the same voice don't double-generate
-const _sampleGenerating = new Set();
-
-router.get('/chatterbox/sample/:voice', async (req, res) => {
-  const voice = CHATTERBOX_VOICES.includes(req.params.voice) ? req.params.voice : '';
-  if (!voice) return res.status(404).json({ error: 'Unknown voice.' });
-
-  fs.mkdirSync(CHATTERBOX_SAMPLE_DIR, { recursive: true });
-  const samplePath = path.join(CHATTERBOX_SAMPLE_DIR, `${voice}.wav`);
-
-  // Serve cached sample immediately
-  if (fs.existsSync(samplePath)) {
-    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-    res.type('audio/wav');
-    return res.sendFile(samplePath);
-  }
-
-  // If already generating, tell the client to retry shortly
-  if (_sampleGenerating.has(voice)) {
-    return res.status(202).json({ generating: true, retryAfterMs: 5000,
-      message: `Sample for "${voice}" is being generated — please try again shortly.` });
-  }
-
-  // Generate a short sample on demand
-  _sampleGenerating.add(voice);
-  const capitalize = s => s.charAt(0).toUpperCase() + s.slice(1);
-  const sampleText = `Hi! I'm ${capitalize(voice)}, your AI voice for creating engaging UGC video content.`;
-  const tmpDir = path.join(CHATTERBOX_SAMPLE_DIR, '_tmp');
-
-  try {
-    let result;
-    try {
-      // Try VibeVoice first (better quality)
-      result = await createVibeVoiceAudio({ script: sampleText, voice, format: 'wav', outputDir: tmpDir });
-    } catch (e1) {
-      logger.warn('VibeVoice sample failed, trying Chatterbox', { voice, error: e1.message });
-      result = await createChatterboxAudio({ script: sampleText, voice, format: 'wav', outputDir: tmpDir });
-    }
-    // Move to canonical cached path
-    fs.mkdirSync(CHATTERBOX_SAMPLE_DIR, { recursive: true });
-    if (result.localPath !== samplePath) fs.renameSync(result.localPath, samplePath);
-
-    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-    res.type('audio/wav');
-    res.sendFile(samplePath);
-    logger.info('Voice sample generated and cached', { voice });
-  } catch (err) {
-    logger.error('Voice sample generation failed', { voice, error: err.message });
-    res.status(500).json({ error: `Sample generation failed: ${err.message}` });
-  } finally {
-    _sampleGenerating.delete(voice);
-  }
-});
-
-router.post('/chatterbox', upload.single('voiceSample'), async (req, res) => {
-  const started = Date.now();
-  try {
-    const dir = path.join(UPLOAD_DIR, req.tenant?.slug || req.tenant?.id || 'default', 'generated');
-    const result = await createChatterboxAudio({
-      script: req.body.script,
-      voice: req.body.voice,
-      voiceUrl: req.body.voiceUrl,
-      voiceSamplePath: req.file?.path || null,
-      format: req.body.format,
-      outputDir: dir
-    });
-    const asset = await saveGeneratedAudio(req, result.localPath, {
-      name: req.body.name || `Chatterbox ${new Date().toLocaleString()}`,
-      provider: 'chatterbox',
-      voice: result.voice,
-      chunks: result.chunks || 1,
-      script: req.body.script || ''
-    });
-    logger.info('Chatterbox preview generated', {
-      tenant: req.tenant?.slug || req.tenant?.id,
-      durationMs: Date.now() - started,
-      voice: result.voice,
-      chunks: result.chunks || 1
-    });
-    res.json({ success: true, result: { ...result, asset } });
-  } catch (error) {
-    logger.error('Chatterbox preview failed', { tenant: req.tenant?.slug || req.tenant?.id, durationMs: Date.now() - started, error: error.message });
-    res.status(500).json({ error: error.message });
-  }
-});
-
+// ── ElevenLabs TTS (full generation) ─────────────────────────────────────────
 router.post('/elevenlabs', async (req, res) => {
   const started = Date.now();
   try {
     const dir = path.join(UPLOAD_DIR, req.tenant?.slug || req.tenant?.id || 'default', 'generated');
     const result = await createElevenLabsAudio({
-      script: req.body.script,
-      voiceId: req.body.voiceId,
+      script:   req.body.script,
+      voiceId:  req.body.voiceId,
       outputDir: dir
     });
     const asset = await saveGeneratedAudio(req, result.localPath, {
-      name: req.body.name || `ElevenLabs ${new Date().toLocaleString()}`,
+      name:     req.body.name || `ElevenLabs ${new Date().toLocaleString()}`,
       provider: 'elevenlabs',
-      voice: result.voice,
-      script: req.body.script || ''
+      voice:    result.voice,
+      script:   req.body.script || ''
     });
-    logger.info('ElevenLabs preview generated', { tenant: req.tenant?.slug || req.tenant?.id, durationMs: Date.now() - started, voice: result.voice });
+    logger.info('ElevenLabs audio generated', {
+      tenant:     req.tenant?.slug || req.tenant?.id,
+      durationMs: Date.now() - started,
+      voice:      result.voice
+    });
     res.json({ success: true, result: { ...result, asset } });
   } catch (error) {
-    logger.error('ElevenLabs preview failed', { tenant: req.tenant?.slug || req.tenant?.id, durationMs: Date.now() - started, error: error.message });
+    logger.error('ElevenLabs generation failed', {
+      tenant:     req.tenant?.slug || req.tenant?.id,
+      durationMs: Date.now() - started,
+      error:      error.message
+    });
     res.status(500).json({ error: error.message });
   }
 });
 
 async function createElevenLabsAudio({ script, voiceId, outputDir }) {
-  const apiKey = process.env.ELEVENLABS_API_KEY;
+  const apiKey       = process.env.ELEVENLABS_API_KEY;
   const selectedVoice = voiceId || process.env.ELEVENLABS_SARAH_VOICE_ID || process.env.ELEVENLABS_DEFAULT_VOICE_ID;
-  const text = String(script || '').trim();
-  if (!apiKey) throw new Error('ELEVENLABS_API_KEY is not configured.');
-  if (!selectedVoice) throw new Error('Set an ElevenLabs voice ID or ELEVENLABS_DEFAULT_VOICE_ID.');
+  const text         = String(script || '').trim();
+  if (!apiKey)          throw new Error('ELEVENLABS_API_KEY is not configured.');
+  if (!selectedVoice)   throw new Error('Set an ElevenLabs voice ID or ELEVENLABS_DEFAULT_VOICE_ID.');
   if (!text || text.length < 3) throw new Error('Paste a script before using ElevenLabs audio.');
 
   const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${selectedVoice}`, {
-    method: 'POST',
+    method:  'POST',
     headers: {
-      'xi-api-key': apiKey,
+      'xi-api-key':   apiKey,
       'Content-Type': 'application/json',
-      Accept: 'audio/mpeg'
+      Accept:         'audio/mpeg'
     },
     body: JSON.stringify({
       text,
       model_id: process.env.ELEVENLABS_MODEL_ID || 'eleven_v3',
       voice_settings: {
-        stability: Number(process.env.ELEVENLABS_STABILITY || 0.45),
+        stability:        Number(process.env.ELEVENLABS_STABILITY  || 0.45),
         similarity_boost: Number(process.env.ELEVENLABS_SIMILARITY || 0.85)
       }
     })
@@ -320,9 +276,12 @@ async function createElevenLabsAudio({ script, voiceId, outputDir }) {
 
 async function saveGeneratedAudio(req, filePath, metadata) {
   const tenantSlug = req.tenant?.slug || req.tenant?.id || 'default';
-  const fileName = path.basename(filePath);
-  const bytes = fs.readFileSync(filePath);
-  const mimeType = fileName.endsWith('.mp3') ? 'audio/mpeg' : fileName.endsWith('.ogg') ? 'audio/ogg' : fileName.endsWith('.flac') ? 'audio/flac' : 'audio/wav';
+  const fileName   = path.basename(filePath);
+  const bytes      = fs.readFileSync(filePath);
+  const mimeType   = fileName.endsWith('.mp3')  ? 'audio/mpeg'
+                   : fileName.endsWith('.ogg')  ? 'audio/ogg'
+                   : fileName.endsWith('.flac') ? 'audio/flac'
+                   : 'audio/wav';
   if (hasDatabase()) {
     await initUgcStore();
     const { rows } = await query(`
@@ -330,33 +289,25 @@ async function saveGeneratedAudio(req, filePath, metadata) {
         (tenant_slug, type, name, file_name, mime_type, size_bytes, file_data, metadata)
       values ($1, 'audio', $2, $3, $4, $5, $6, $7::jsonb)
       returning *
-    `, [
-      tenantSlug,
-      metadata.name,
-      fileName,
-      mimeType,
-      bytes.length,
-      bytes,
-      JSON.stringify(metadata)
-    ]);
+    `, [tenantSlug, metadata.name, fileName, mimeType, bytes.length, bytes, JSON.stringify(metadata)]);
     return {
-      slug: rows[0].id,
-      name: rows[0].name,
-      type: 'audio',
+      slug:  rows[0].id,
+      name:  rows[0].name,
+      type:  'audio',
       files: [{ name: rows[0].file_name, path: `/api/assets/file/${rows[0].id}`, size: Number(rows[0].size_bytes || 0), mimeType }]
     };
   }
 
   const slug = cleanSlug(metadata.name) || `audio-${Date.now()}`;
-  const dir = path.join(ROOT_DIR, 'assets', 'tenants', tenantSlug, 'audio', slug);
+  const dir  = path.join(ROOT_DIR, 'assets', 'tenants', tenantSlug, 'audio', slug);
   fs.mkdirSync(dir, { recursive: true });
   const finalPath = path.join(dir, fileName);
   fs.copyFileSync(filePath, finalPath);
   fs.writeFileSync(path.join(dir, 'ai-context.json'), JSON.stringify(metadata, null, 2));
   return {
     slug,
-    name: metadata.name,
-    type: 'audio',
+    name:  metadata.name,
+    type:  'audio',
     files: [{ name: fileName, path: `/assets/tenants/${tenantSlug}/audio/${slug}/${fileName}`, size: bytes.length, mimeType }]
   };
 }

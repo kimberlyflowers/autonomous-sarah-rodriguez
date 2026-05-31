@@ -166,41 +166,8 @@ app.listen(PORT, () => {
 });
 
 async function prewarmVoiceSamples() {
-  const { CHATTERBOX_VOICES, createChatterboxAudio } = require('./services/chatterbox');
-  const { createVibeVoiceAudio } = require('./services/vibevoice');
-  const path = require('path');
-  const fs = require('fs');
-  const SAMPLE_DIR = path.join(__dirname, '..', 'assets', 'tts', 'chatterbox-samples');
-  const TMP_DIR = path.join(SAMPLE_DIR, '_tmp');
-  fs.mkdirSync(SAMPLE_DIR, { recursive: true });
-
-  const missing = CHATTERBOX_VOICES.filter(v => !fs.existsSync(path.join(SAMPLE_DIR, `${v}.wav`)));
-  if (missing.length === 0) {
-    logger.info(`Voice samples: all ${CHATTERBOX_VOICES.length} cached`);
-    return;
-  }
-  logger.info(`Voice samples: pre-generating ${missing.length} missing samples…`);
-
-  const capitalize = s => s.charAt(0).toUpperCase() + s.slice(1);
-  let ok = 0, fail = 0;
-
-  for (const voice of missing) {
-    const samplePath = path.join(SAMPLE_DIR, `${voice}.wav`);
-    const sampleText = `Hi! I'm ${capitalize(voice)}, your AI voice for creating engaging UGC video content.`;
-    try {
-      let result;
-      try {
-        result = await createVibeVoiceAudio({ script: sampleText, voice, format: 'wav', outputDir: TMP_DIR });
-      } catch {
-        result = await createChatterboxAudio({ script: sampleText, voice, format: 'wav', outputDir: TMP_DIR });
-      }
-      if (result.localPath !== samplePath) fs.renameSync(result.localPath, samplePath);
-      ok++;
-      logger.info(`Voice sample ready: ${voice} (${ok}/${missing.length})`);
-    } catch (err) {
-      fail++;
-      logger.warn(`Voice sample failed: ${voice} — ${err.message}`);
-    }
-  }
-  logger.info(`Voice samples pre-warm complete: ${ok} ready, ${fail} failed`);
+  // Kokoro samples are generated on demand via GET /api/tts/kokoro/sample/:voice
+  // and cached permanently under assets/tts/kokoro-samples/.
+  // No startup pre-warm needed — the first play press triggers generation.
+  logger.info('Voice samples: on-demand Kokoro caching enabled (no startup pre-warm needed).');
 }
