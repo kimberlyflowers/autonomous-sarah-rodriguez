@@ -28,6 +28,140 @@ const upload = multer({
   limits: { fileSize: 50 * 1024 * 1024 }
 });
 
+// ── Kokoro sample persistence ─────────────────────────────────────────────────
+// Samples are stored in Postgres so they survive Railway redeploys. Local disk
+// is used as a fast secondary cache. Pre-generation runs in the background at
+// startup so all voices are ready before any user opens the voice picker.
+
+const KOKORO_SAMPLE_DIR     = path.join(UPLOAD_DIR, 'kokoro-samples');
+const _kokoroSampleGenerating = new Set();
+let   _samplesStoreReady    = false;
+
+async function ensureSamplesStore() {
+  if (_samplesStoreReady || !hasDatabase()) return;
+  await initUgcStore();
+  await query(`
+    create table if not exists public.kokoro_voice_samples (
+      voice_id   text        primary key,
+      audio_data bytea       not null,
+      mime_type  text        not null default 'audio/wav',
+      created_at timestamptz not null default now()
+    )
+  `);
+  _samplesStoreReady = true;
+}
+
+async function getSampleFromDb(voiceId) {
+  if (!hasDatabase()) return null;
+  try {
+    await ensureSamplesStore();
+    const { rows } = await query(
+      'select audio_data, mime_type from public.kokoro_voice_samples where voice_id = $1',
+      [voiceId]
+    );
+    return rows[0] || null;
+  } catch (err) {
+    logger.warn('Kokoro: failed to read sample from DB', { voiceId, error: err.message });
+    return null;
+  }
+}
+
+async function saveSampleToDb(voiceId, filePath) {
+  if (!hasDatabase()) return;
+  try {
+    await ensureSamplesStore();
+    const bytes = fs.readFileSync(filePath);
+    await query(`
+      insert into public.kokoro_voice_samples (voice_id, audio_data, mime_type)
+      values ($1, $2, 'audio/wav')
+      on conflict (voice_id) do nothing
+    `, [voiceId, bytes]);
+  } catch (err) {
+    logger.warn('Kokoro: failed to save sample to DB', { voiceId, error: err.message });
+  }
+}
+
+// Pre-generate all voice samples in the background so the voice picker is
+// instant for every user. Runs non-blocking — never delays server startup.
+// Skips voices already cached in DB. On cold endpoints, waits patiently and
+// retries after failures so the whole batch completes over time.
+async function preGenerateAllSamples() {
+  if (!hasDatabase()) return;
+  const cfg = getKokoroConfig();
+  if (!cfg.apiKey || (!cfg.endpointId && !cfg.endpointUrl)) {
+    logger.info('Kokoro pre-generation skipped — endpoint not configured');
+    return;
+  }
+
+  logger.info('Kokoro voice sample pre-generation starting', { total: KOKORO_VOICES.length });
+  fs.mkdirSync(KOKORO_SAMPLE_DIR, { recursive: true });
+  const tmpDir = path.join(KOKORO_SAMPLE_DIR, '_tmp');
+
+  let generated = 0, skipped = 0, failed = 0;
+
+  for (const voice of KOKORO_VOICES) {
+    const { id: voiceId } = voice;
+    try {
+      // Already in DB — nothing to do
+      const existing = await getSampleFromDb(voiceId);
+      if (existing) { skipped++; continue; }
+
+      // Already on local disk — save to DB and skip generation
+      const diskPath = path.join(KOKORO_SAMPLE_DIR, `${voiceId}.wav`);
+      if (fs.existsSync(diskPath)) {
+        await saveSampleToDb(voiceId, diskPath);
+        skipped++;
+        continue;
+      }
+
+      // Mark in-progress so on-demand requests know to retry
+      _kokoroSampleGenerating.add(voiceId);
+      try {
+        const result = await Promise.race([
+          createKokoroAudio({
+            script:    getSampleText(voiceId),
+            voice:     voiceId,
+            speed:     1.0,
+            format:    'wav',
+            outputDir: tmpDir
+          }),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('timeout')), 40000)
+          )
+        ]);
+
+        // Persist to disk (local cache) and DB (survives redeploys)
+        const finalPath = path.join(KOKORO_SAMPLE_DIR, `${voiceId}.wav`);
+        try {
+          if (result.localPath !== finalPath) fs.renameSync(result.localPath, finalPath);
+        } catch {
+          fs.copyFileSync(result.localPath, finalPath);
+        }
+        await saveSampleToDb(voiceId, finalPath);
+        generated++;
+        logger.info('Kokoro sample pre-generated', {
+          voiceId,
+          progress: `${generated + skipped + failed}/${KOKORO_VOICES.length}`
+        });
+      } finally {
+        _kokoroSampleGenerating.delete(voiceId);
+      }
+
+      // Small gap so we don't hammer RunPod between voices
+      await new Promise(r => setTimeout(r, 1200));
+
+    } catch (err) {
+      failed++;
+      _kokoroSampleGenerating.delete(voiceId);
+      logger.warn('Kokoro sample pre-generation failed', { voiceId, error: err.message });
+      // Longer pause after failure — endpoint may still be cold-starting
+      await new Promise(r => setTimeout(r, 8000));
+    }
+  }
+
+  logger.info('Kokoro voice sample pre-generation complete', { generated, skipped, failed });
+}
+
 // ── Provider status (used by the UI health check) ────────────────────────────
 router.get('/providers', (req, res) => {
   const kokoro = getKokoroConfig();
@@ -54,9 +188,29 @@ router.get('/kokoro/voices', (req, res) => {
   res.json({ voices: KOKORO_VOICES });
 });
 
-// ── Kokoro sample audio (generated on demand, cached forever) ─────────────────
-const KOKORO_SAMPLE_DIR  = path.join(UPLOAD_DIR, 'kokoro-samples');
-const _kokoroSampleGenerating = new Set();
+// ── Kokoro sample status (how many are pre-generated) ────────────────────────
+router.get('/kokoro/samples/status', async (req, res) => {
+  try {
+    let dbCount = 0;
+    if (hasDatabase()) {
+      await ensureSamplesStore();
+      const { rows } = await query('select count(*)::int as n from public.kokoro_voice_samples');
+      dbCount = rows[0]?.n || 0;
+    }
+    const diskCount = fs.existsSync(KOKORO_SAMPLE_DIR)
+      ? fs.readdirSync(KOKORO_SAMPLE_DIR).filter(f => f.endsWith('.wav')).length
+      : 0;
+    res.json({
+      total:      KOKORO_VOICES.length,
+      inDatabase: dbCount,
+      onDisk:     diskCount,
+      generating: [..._kokoroSampleGenerating],
+      ready:      dbCount >= KOKORO_VOICES.length
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 const SAMPLE_TEXTS = {
   'af_heart':    'Hi! I\'m Heart — warm, expressive, and ready to bring your video to life.',
@@ -94,43 +248,55 @@ function getSampleText(voiceId) {
   if (SAMPLE_TEXTS[voiceId]) return SAMPLE_TEXTS[voiceId];
   const voice = KOKORO_VOICES.find(v => v.id === voiceId);
   if (!voice) return 'Hi! This is a sample of the Kokoro voice — smooth, clear, and ready for your content.';
-  return `Hi! I\'m ${voice.name} — a ${voice.gender.toLowerCase()} voice with a ${voice.accent} accent, built for Bloom UGC Studio.`;
+  return `Hi! I\'m ${voice.name} — a ${voice.gender.toLowerCase()} voice with a ${voice.accent} accent.`;
 }
 
+// ── Kokoro voice sample ───────────────────────────────────────────────────────
+// Lookup order:
+//   1. Postgres DB  — always fastest, persists across redeploys
+//   2. Local disk   — fast, but wiped on Railway redeploy
+//   3. Generate now — last resort; returns 202 if background job is already running
 router.get('/kokoro/sample/:voice', async (req, res) => {
   const voiceId = KOKORO_VOICE_IDS.has(req.params.voice) ? req.params.voice : '';
   if (!voiceId) return res.status(404).json({ error: 'Unknown Kokoro voice.' });
 
-  // Fast-fail if endpoint not configured — don't hang the browser
-  const kokoroCfg = getKokoroConfig();
-  if (!kokoroCfg.apiKey || (!kokoroCfg.endpointId && !kokoroCfg.endpointUrl)) {
-    return res.status(503).json({ error: 'Kokoro endpoint not configured. Set RUNPOD_KOKORO_ENDPOINT_ID and RUNPOD_API_KEY.' });
+  // 1. DB — instant, survives redeploys
+  const dbSample = await getSampleFromDb(voiceId);
+  if (dbSample) {
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.setHeader('Content-Type', dbSample.mime_type || 'audio/wav');
+    return res.send(dbSample.audio_data);
   }
 
-  fs.mkdirSync(KOKORO_SAMPLE_DIR, { recursive: true });
+  // 2. Local disk — fast, may be absent after redeploy
   const samplePath = path.join(KOKORO_SAMPLE_DIR, `${voiceId}.wav`);
-
-  // Serve cached sample immediately
   if (fs.existsSync(samplePath)) {
+    saveSampleToDb(voiceId, samplePath).catch(() => {}); // opportunistically persist
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
     res.type('audio/wav');
     return res.sendFile(samplePath);
   }
 
-  // If already generating, tell the client to retry
-  if (_kokoroSampleGenerating.has(voiceId)) {
-    return res.status(202).json({
-      generating: true,
-      retryAfterMs: 8000,
-      message: `Sample for "${voiceId}" is being generated — please try again in a moment.`
+  // 3. Fast-fail if endpoint not configured
+  const kokoroCfg = getKokoroConfig();
+  if (!kokoroCfg.apiKey || (!kokoroCfg.endpointId && !kokoroCfg.endpointUrl)) {
+    return res.status(503).json({
+      error: 'Kokoro endpoint not configured. Set RUNPOD_KOKORO_ENDPOINT_ID and RUNPOD_KOKORO_API_KEY.'
     });
   }
 
+  // 4. If the background pre-gen is already working on this voice, tell client to retry
+  if (_kokoroSampleGenerating.has(voiceId)) {
+    return res.status(202).json({
+      generating:   true,
+      retryAfterMs: 8000,
+      message:      `Sample for "${voiceId}" is being generated — try again in a moment.`
+    });
+  }
+
+  // 5. Generate on demand (should rarely reach here after startup)
   _kokoroSampleGenerating.add(voiceId);
   const tmpDir = path.join(KOKORO_SAMPLE_DIR, '_tmp');
-
-  // Use a 25s timeout for samples — never hang the voice picker
-  const sampleTimeout = 25000;
 
   try {
     const result = await Promise.race([
@@ -142,21 +308,31 @@ router.get('/kokoro/sample/:voice', async (req, res) => {
         outputDir: tmpDir
       }),
       new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Kokoro sample timeout — endpoint may be cold-starting. Try again in 30s.')), sampleTimeout)
+        setTimeout(
+          () => reject(new Error('Kokoro sample timeout — endpoint is cold-starting. Try again in 30s.')),
+          25000
+        )
       )
     ]);
+
     fs.mkdirSync(KOKORO_SAMPLE_DIR, { recursive: true });
-    if (result.localPath !== samplePath) fs.renameSync(result.localPath, samplePath);
+    if (result.localPath !== samplePath) {
+      try { fs.renameSync(result.localPath, samplePath); }
+      catch { fs.copyFileSync(result.localPath, samplePath); }
+    }
+    await saveSampleToDb(voiceId, samplePath);
+
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
     res.type('audio/wav');
     res.sendFile(samplePath);
-    logger.info('Kokoro sample generated and cached', { voiceId });
+    logger.info('Kokoro sample generated on demand', { voiceId });
+
   } catch (err) {
     logger.error('Kokoro sample generation failed', { voiceId, error: err.message });
     const isColdStart = err.message.includes('timeout') || err.message.includes('cold');
     res.status(isColdStart ? 503 : 500).json({
-      error: err.message,
-      coldStart: isColdStart,
+      error:        err.message,
+      coldStart:    isColdStart,
       retryAfterMs: isColdStart ? 30000 : null
     });
   } finally {
@@ -334,5 +510,13 @@ async function saveGeneratedAudio(req, filePath, metadata) {
 function cleanSlug(value) {
   return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 }
+
+// ── Background pre-generation — starts 10s after server boots ─────────────────
+// Gives the server time to fully initialize before hitting RunPod.
+setTimeout(() => {
+  preGenerateAllSamples().catch(err =>
+    logger.warn('Kokoro background pre-generation exited early', { error: err.message })
+  );
+}, 10000);
 
 module.exports = router;
