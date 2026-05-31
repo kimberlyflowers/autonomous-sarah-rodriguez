@@ -52,13 +52,18 @@ function mimeToExt(mimeType = '') {
 }
 
 function fileToAsset(row) {
+  const filePath = `/api/assets/file/${row.id}`;
   return {
     slug: row.id,
     name: row.name,
     type: row.type,
+    // imageUrl is always set so every frontend component can use character.imageUrl directly
+    // without needing to know about files[0].path or storage backend differences
+    imageUrl: filePath,
+    image_url: filePath,
     files: [{
       name: row.file_name,
-      path: `/api/assets/file/${row.id}`,
+      path: filePath,
       size: Number(row.size_bytes || 0),
       mimeType: row.mime_type
     }],
