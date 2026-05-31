@@ -244,14 +244,25 @@ router.delete('/kokoro/samples/all', async (req, res) => {
 
 // ── Kokoro voice sample ───────────────────────────────────────────────────────
 // Lookup order:
-//   1. Postgres DB  — always fastest, persists across redeploys
-//   2. Local disk   — fast, but wiped on Railway redeploy
-//   3. Generate now — last resort; returns 202 if background job is already running
+//   1. Static bundled WAV  — committed to git, zero latency, survives every redeploy
+//   2. Postgres DB         — persists across redeploys, populated by pre-gen job
+//   3. Local disk cache    — fast, wiped on Railway redeploy
+//   4. Generate on demand  — last resort; returns 202 immediately (background gen)
+const STATIC_SAMPLES_DIR = path.join(__dirname, '../../public/audio/kokoro-samples');
+
 router.get('/kokoro/sample/:voice', async (req, res) => {
   const voiceId = KOKORO_VOICE_IDS.has(req.params.voice) ? req.params.voice : '';
   if (!voiceId) return res.status(404).json({ error: 'Unknown Kokoro voice.' });
 
-  // 1. DB — instant, survives redeploys
+  // 1. Static bundled file — committed to git, instant forever
+  const staticPath = path.join(STATIC_SAMPLES_DIR, `${voiceId}.wav`);
+  if (fs.existsSync(staticPath) && fs.statSync(staticPath).size > 1000) {
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.type('audio/wav');
+    return res.sendFile(staticPath);
+  }
+
+  // 2. DB — instant, survives redeploys
   const dbSample = await getSampleFromDb(voiceId);
   if (dbSample) {
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
@@ -259,7 +270,7 @@ router.get('/kokoro/sample/:voice', async (req, res) => {
     return res.send(dbSample.audio_data);
   }
 
-  // 2. Local disk — fast, may be absent after redeploy
+  // 3. Local disk — fast, may be absent after redeploy
   const samplePath = path.join(KOKORO_SAMPLE_DIR, `${voiceId}.wav`);
   if (fs.existsSync(samplePath)) {
     saveSampleToDb(voiceId, samplePath).catch(() => {}); // opportunistically persist
