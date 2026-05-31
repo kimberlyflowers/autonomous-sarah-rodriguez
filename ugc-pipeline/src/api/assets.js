@@ -107,8 +107,13 @@ router.get('/', async (req, res) => {
   if (!req.supabase && hasDatabase()) {
     try {
       await initUgcStore();
+      // Exclude file_data — binary blobs can be tens of MB each.
+      // File content is served on demand via /api/assets/file/:id.
       const { rows } = await query(
-        'select * from public.ugc_asset_files where tenant_slug = $1 order by created_at desc',
+        `select id, tenant_slug, type, name, file_name, mime_type, size_bytes, metadata, created_at
+         from public.ugc_asset_files
+         where tenant_slug = $1
+         order by created_at desc`,
         [req.tenant.slug || req.tenant.id]
       );
       const result = { products: [], subjects: [], audio: [], outputs: [], videos: [] };
@@ -657,16 +662,27 @@ router.patch('/subjects/:slug', async (req, res) => {
   if (!req.supabase && hasDatabase()) {
     try {
       await initUgcStore();
-      const existing = await getAssetFile(req.tenant.slug || req.tenant.id, slug, 'subject');
-      if (!existing) return res.status(404).json({ error: 'Character not found' });
+      // Read only metadata — no need to pull file_data bytea
+      const { rows: existingRows } = await query(
+        `select id, tenant_slug, type, name, file_name, mime_type, size_bytes, metadata, created_at
+         from public.ugc_asset_files
+         where tenant_slug = $1 and id::text = $2 and type = 'subject' limit 1`,
+        [req.tenant.slug || req.tenant.id, slug]
+      );
+      if (!existingRows[0]) return res.status(404).json({ error: 'Character not found' });
+      const existing = existingRows[0];
       const metadata = {
         ...(existing.metadata || {}),
         voiceId: req.body.voiceId || '',
         voiceSampleAssetId: req.body.voiceSampleAssetId || ''
       };
+      // Update and return without file_data
       const { rows } = await query(
-        'update public.ugc_asset_files set metadata = $1::jsonb, updated_at = now() where tenant_slug = $2 and id::text = $3 and type = $4 returning *',
-        [JSON.stringify(metadata), req.tenant.slug || req.tenant.id, slug, 'subject']
+        `update public.ugc_asset_files
+         set metadata = $1::jsonb, updated_at = now()
+         where tenant_slug = $2 and id::text = $3 and type = 'subject'
+         returning id, tenant_slug, type, name, file_name, mime_type, size_bytes, metadata, created_at`,
+        [JSON.stringify(metadata), req.tenant.slug || req.tenant.id, slug]
       );
       return res.json({ success: true, asset: fileToAsset(rows[0]) });
     } catch (error) {

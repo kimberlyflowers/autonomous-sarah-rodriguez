@@ -3659,6 +3659,15 @@ function renderCharacterPickerModal() {
 // Slugs are alphanumeric+hyphen so safe in HTML attribute values.
 const __charMap = {};
 
+// Fallback when a character <img> fails to load (broken URL, video-as-image, etc.).
+// Replaces the broken icon with a neutral person silhouette SVG.
+function charImgError(img) {
+  img.onerror = null; // prevent infinite loop
+  img.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='8' r='4'/%3E%3Cpath d='M4 20c0-4 3.6-7 8-7s8 3 8 7'/%3E%3C/svg%3E";
+  img.style.padding = '20%';
+  img.style.background = 'var(--surface, #1e1e2e)';
+}
+
 function renderCharacterCard(character, isLibrary, pickerMode = false) {
   const slug = character.slug || '';
   __charMap[slug] = character; // register / update
@@ -3666,6 +3675,7 @@ function renderCharacterCard(character, isLibrary, pickerMode = false) {
   const file = character.files?.[0];
   const imageUrl = character.imageUrl || file?.path || '';
   const displayUrl = authenticatedMediaUrl(imageUrl);
+  const isVideoFile = (file?.mimeType || '').startsWith('video/');
   const voice = getCharacterVoiceId(character) || character.voiceSampleAssetId ? 'Voice saved' : isLibrary ? character.role : (character._isUgc ? character.role : 'No default voice');
   const ugcBadge = character._isUgc ? '<div class="character-ugc-badge">UGC</div>' : '';
   const tenantLooksCount = (assetsCache?.subjects || []).filter(s =>
@@ -3684,8 +3694,16 @@ function renderCharacterCard(character, isLibrary, pickerMode = false) {
   const cardClick  = openProfile ? `openCharProfileBySlug('${slug}')` : `selectCharacterBySlug('${slug}')`;
   const useClick   = openProfile ? `openCharProfileBySlug('${slug}')` : `selectCharacterBySlug('${slug}')`;
 
+  // Render video files as <video> (shows first frame as thumbnail).
+  // Images get an onerror fallback so a load failure shows a silhouette placeholder.
+  const mediaEl = isVideoFile
+    ? `<video src="${displayUrl}" muted preload="metadata" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.style.display='none'"></video>`
+    : displayUrl
+      ? `<img src="${displayUrl}" alt="${escapeHtml(character.name)}" loading="lazy" onerror="charImgError(this)">`
+      : `<img src="" alt="${escapeHtml(character.name)}" onerror="charImgError(this)">`;
+
   return `<div class="character-card" data-char-slug="${slug}" onclick="${cardClick}">
-    <img src="${displayUrl}" alt="${escapeHtml(character.name)}" loading="lazy">
+    ${mediaEl}
     ${ugcBadge}
     ${looksBadge}
     <div class="character-menu">&#8943;</div>
