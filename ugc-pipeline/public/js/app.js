@@ -5509,13 +5509,14 @@ function openCharProfile(character) {
   const overlay = document.getElementById('charProfileOverlay');
   if (!overlay) return openCharDrawer(character);
 
-  const imageUrl = character.imageUrl || character.image_url || '';
+  // imageUrl: UGC library chars have .imageUrl, personal Postgres subjects have .files[0].path
+  const imageUrl = character.imageUrl || character.image_url || character.files?.[0]?.path || '';
   const slug = character.slug || '';
 
   // Header
   const avatarEl = document.getElementById('charProfileAvatarSm');
   const titleEl = document.getElementById('charProfileTitle');
-  if (avatarEl) { avatarEl.src = authenticatedMediaUrl(imageUrl); avatarEl.alt = character.name || ''; }
+  if (avatarEl) { avatarEl.src = authenticatedMediaUrl(imageUrl); avatarEl.alt = character.name || ''; avatarEl.onerror = function(){ charImgError(this); }; }
   if (titleEl) titleEl.textContent = character.name || '';
 
   // Build full looks list: main + stored _looks + tenant-uploaded looks
@@ -5568,7 +5569,7 @@ function _renderCharProfileGrid() {
     const url = look.imageUrl || '';
     const label = look.label || `Look ${i + 1}`;
     return `<div class="char-profile-look-card" onclick="openLookPreview('${url.replace(/'/g, "\\'")}','${label.replace(/'/g, "\\'")}')">
-      <img src="${authenticatedMediaUrl(url)}" alt="${escapeHtml(label)}" loading="lazy">
+      <img src="${authenticatedMediaUrl(url)}" alt="${escapeHtml(label)}" loading="lazy" onerror="charImgError(this)">
       <div class="char-profile-look-label">${escapeHtml(label)}</div>
     </div>`;
   }).join('');
