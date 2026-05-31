@@ -829,6 +829,12 @@ async function playableMediaUrl(path) {
   if (authToken) headers.Authorization = `Bearer ${authToken}`;
   if (currentTenant?.slug || currentTenant?.id) headers['X-Tenant-Slug'] = currentTenant.slug || currentTenant.id;
   const res = await fetch(path, { headers });
+  // 202 = sample is being generated in the background — tell caller to retry
+  if (res.status === 202) {
+    let retryMs = 8000;
+    try { const j = await res.json(); retryMs = j.retryAfterMs || retryMs; } catch {}
+    throw Object.assign(new Error(`generating:${retryMs}`), { generating: true, retryAfterMs: retryMs });
+  }
   if (!res.ok) throw new Error(`Could not load media preview: ${res.status}`);
   return URL.createObjectURL(await res.blob());
 }

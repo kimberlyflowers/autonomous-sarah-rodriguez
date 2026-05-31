@@ -212,44 +212,35 @@ router.get('/kokoro/samples/status', async (req, res) => {
   }
 });
 
-const SAMPLE_TEXTS = {
-  'af_heart':    'Hi! I\'m Heart — warm, expressive, and ready to bring your video to life.',
-  'af_sarah':    'Hi! I\'m Sarah — clear, natural, and here to help you sound your best.',
-  'af_bella':    'Hi! I\'m Bella — bright, friendly, and built for engaging content.',
-  'af_nicole':   'Hi! I\'m Nicole — calm, professional, and perfect for clear narration.',
-  'af_sky':      'Hi! I\'m Sky — upbeat, young, and here to energize your content.',
-  'af_nova':     'Hi! I\'m Nova — smooth, confident, and great for polished voiceovers.',
-  'af_alloy':    'Hi! I\'m Alloy — versatile and clear, ready for any kind of content.',
-  'af_jessica':  'Hi! I\'m Jessica — warm, engaging, and here to connect with your audience.',
-  'af_river':    'Hi! I\'m River — soothing and natural, perfect for relaxed narration.',
-  'af_kore':     'Hi! I\'m Kore — crisp, modern, and ready to deliver.',
-  'af_aoede':    'Hi! I\'m Aoede — melodic and smooth, built for beautiful storytelling.',
-  'am_michael':  'Hi! I\'m Michael — deep, authoritative, and here to command attention.',
-  'am_adam':     'Hi! I\'m Adam — strong, clear, and built for confident delivery.',
-  'am_echo':     'Hi! I\'m Echo — smooth, confident, and ready to narrate your vision.',
-  'am_liam':     'Hi! I\'m Liam — friendly, natural, and here to sound just like you.',
-  'am_onyx':     'Hi! I\'m Onyx — deep, rich, and made for powerful narration.',
-  'am_orion':    'Hi! I\'m Orion — bold, expressive, and built to stand out.',
-  'am_eric':     'Hi! I\'m Eric — calm, professional, and great for instructional content.',
-  'am_fenrir':   'Hi! I\'m Fenrir — powerful and dynamic, built for high-energy scripts.',
-  'am_puck':     'Hi! I\'m Puck — playful, upbeat, and here to bring the fun.',
-  'am_santa':    'Hi! I\'m Santa — warm, jolly, and perfect for holiday cheer.',
-  'bf_emma':     'Hi! I\'m Emma — polished, elegant, and built for premium British narration.',
-  'bf_alice':    'Hi! I\'m Alice — clear, professional, and classically British.',
-  'bf_isabella': 'Hi! I\'m Isabella — warm, sophisticated, and here to elevate your content.',
-  'bf_lily':     'Hi! I\'m Lily — soft, natural, and perfectly balanced.',
-  'bm_george':   'Hi! I\'m George — authoritative, crisp, and classically British.',
-  'bm_daniel':   'Hi! I\'m Daniel — deep, smooth, and built for polished delivery.',
-  'bm_lewis':    'Hi! I\'m Lewis — confident, clear, and perfect for premium voiceovers.',
-  'bm_fable':    'Hi! I\'m Fable — rich and perfect for storytelling.',
-};
+// Single consistent sample text for every voice — identical script so users
+// hear a true apples-to-apples comparison of tone, not different words.
+const SAMPLE_TEXT = 'Welcome to Bloom Studio. This is my voice. Type your script to get started.';
 
-function getSampleText(voiceId) {
-  if (SAMPLE_TEXTS[voiceId]) return SAMPLE_TEXTS[voiceId];
-  const voice = KOKORO_VOICES.find(v => v.id === voiceId);
-  if (!voice) return 'Hi! This is a sample of the Kokoro voice — smooth, clear, and ready for your content.';
-  return `Hi! I\'m ${voice.name} — a ${voice.gender.toLowerCase()} voice with a ${voice.accent} accent.`;
+function getSampleText(_voiceId) {
+  return SAMPLE_TEXT;
 }
+
+// ── Wipe all cached samples (admin — call after changing SAMPLE_TEXT) ────────
+router.delete('/kokoro/samples/all', async (req, res) => {
+  try {
+    let dbDeleted = 0;
+    if (hasDatabase()) {
+      await ensureSamplesStore();
+      const { rowCount } = await query('delete from public.kokoro_voice_samples');
+      dbDeleted = rowCount || 0;
+    }
+    // Wipe disk cache too
+    if (fs.existsSync(KOKORO_SAMPLE_DIR)) {
+      const files = fs.readdirSync(KOKORO_SAMPLE_DIR).filter(f => f.endsWith('.wav'));
+      files.forEach(f => { try { fs.unlinkSync(path.join(KOKORO_SAMPLE_DIR, f)); } catch {} });
+    }
+    // Restart pre-generation with new text
+    preGenerateAllSamples().catch(err => logger.warn('Re-gen after wipe failed', { error: err.message }));
+    res.json({ deleted: dbDeleted, message: 'All samples wiped. Pre-generation restarted with new text.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ── Kokoro voice sample ───────────────────────────────────────────────────────
 // Lookup order:
@@ -294,50 +285,35 @@ router.get('/kokoro/sample/:voice', async (req, res) => {
     });
   }
 
-  // 5. Generate on demand (should rarely reach here after startup)
+  // 5. Kick off background generation and return 202 immediately — never block
+  //    the request on a cold RunPod start (was causing 25s wait + 503).
   _kokoroSampleGenerating.add(voiceId);
   const tmpDir = path.join(KOKORO_SAMPLE_DIR, '_tmp');
 
-  try {
-    const result = await Promise.race([
-      createKokoroAudio({
-        script:    getSampleText(voiceId),
-        voice:     voiceId,
-        speed:     1.0,
-        format:    'wav',
-        outputDir: tmpDir
-      }),
-      new Promise((_, reject) =>
-        setTimeout(
-          () => reject(new Error('Kokoro sample timeout — endpoint is cold-starting. Try again in 30s.')),
-          25000
-        )
-      )
-    ]);
+  // Respond immediately so the client can show a "generating…" state and retry
+  res.status(202).json({
+    generating:   true,
+    retryAfterMs: 8000,
+    message:      `Sample for "${voiceId}" is being generated — try again in ~8 seconds.`
+  });
 
-    fs.mkdirSync(KOKORO_SAMPLE_DIR, { recursive: true });
-    if (result.localPath !== samplePath) {
+  // Generate in the background — result lands in DB so the next poll is instant
+  createKokoroAudio({
+    script:    getSampleText(voiceId),
+    voice:     voiceId,
+    speed:     1.0,
+    format:    'wav',
+    outputDir: tmpDir
+  })
+    .then(result => {
+      fs.mkdirSync(KOKORO_SAMPLE_DIR, { recursive: true });
       try { fs.renameSync(result.localPath, samplePath); }
       catch { fs.copyFileSync(result.localPath, samplePath); }
-    }
-    await saveSampleToDb(voiceId, samplePath);
-
-    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-    res.type('audio/wav');
-    res.sendFile(samplePath);
-    logger.info('Kokoro sample generated on demand', { voiceId });
-
-  } catch (err) {
-    logger.error('Kokoro sample generation failed', { voiceId, error: err.message });
-    const isColdStart = err.message.includes('timeout') || err.message.includes('cold');
-    res.status(isColdStart ? 503 : 500).json({
-      error:        err.message,
-      coldStart:    isColdStart,
-      retryAfterMs: isColdStart ? 30000 : null
-    });
-  } finally {
-    _kokoroSampleGenerating.delete(voiceId);
-  }
+      return saveSampleToDb(voiceId, samplePath);
+    })
+    .then(() => logger.info('Kokoro sample ready (background)', { voiceId }))
+    .catch(err  => logger.error('Kokoro sample background generation failed', { voiceId, error: err.message }))
+    .finally(() => _kokoroSampleGenerating.delete(voiceId));
 });
 
 // ── Kokoro TTS (full generation, saved to asset library) ─────────────────────
