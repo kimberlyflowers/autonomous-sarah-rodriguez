@@ -135,14 +135,16 @@ router.get('/', async (req, res) => {
       for (const asset of data || []) {
         const typeKey = pluralType(asset.type);
         if (!result[typeKey]) continue;
-        const signedUrl = await getSignedUrl(req.supabase, asset.storage_path);
-      result[typeKey].push({
+        // Use the permanent proxy URL so cached URLs never go stale.
+        // The /api/assets/supabase/:id route generates a fresh signed URL on demand.
+        const proxyUrl = `/api/assets/supabase/${asset.id}`;
+        result[typeKey].push({
           slug: asset.id,
           name: asset.name,
           type: asset.type,
           files: [{
             name: path.basename(asset.storage_path),
-            path: signedUrl,
+            path: proxyUrl,
             size: asset.size_bytes || 0
           }],
           voiceId: asset.metadata?.voiceId || '',
@@ -205,6 +207,25 @@ router.get('/file/:id', async (req, res) => {
     res.send(asset.file_data);
   } catch (error) {
     res.status(500).send(error.message);
+  }
+});
+
+// Permanent proxy for Supabase Storage assets — generates a fresh signed URL on every
+// request and redirects, so cached URLs in the frontend never go stale.
+router.get('/supabase/:id', async (req, res) => {
+  if (!req.supabase) return res.status(404).send('Not found');
+  try {
+    const { data: asset, error } = await req.supabase
+      .from('ugc_assets')
+      .select('storage_path, mime_type')
+      .eq('tenant_id', req.tenant.id)
+      .eq('id', req.params.id)
+      .single();
+    if (error || !asset) return res.status(404).send('Asset not found');
+    const signedUrl = await getSignedUrl(req.supabase, asset.storage_path, 60 * 60);
+    res.redirect(302, signedUrl);
+  } catch (err) {
+    res.status(500).send(err.message);
   }
 });
 

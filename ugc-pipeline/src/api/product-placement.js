@@ -327,7 +327,7 @@ router.post('/generate', upload.fields([
       },
       body: JSON.stringify({
         input: {
-          ...(images.length ? { images } : {}),
+          images, // always include — API requires this field even when no reference images
           prompt,
           resolution: size,
           aspect_ratio: aspectRatio,

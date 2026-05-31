@@ -25,7 +25,7 @@ function createUserClient(accessToken) {
   });
 }
 
-async function getSignedUrl(supabase, path, expiresIn = 60 * 60) {
+async function getSignedUrl(supabase, path, expiresIn = 60 * 60 * 24 * 7) {
   const { data, error } = await supabase.storage
     .from('ugc-assets')
     .createSignedUrl(path, expiresIn);

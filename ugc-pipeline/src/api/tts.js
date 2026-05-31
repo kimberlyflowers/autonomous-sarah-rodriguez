@@ -101,6 +101,12 @@ router.get('/kokoro/sample/:voice', async (req, res) => {
   const voiceId = KOKORO_VOICE_IDS.has(req.params.voice) ? req.params.voice : '';
   if (!voiceId) return res.status(404).json({ error: 'Unknown Kokoro voice.' });
 
+  // Fast-fail if endpoint not configured — don't hang the browser
+  const kokoroCfg = getKokoroConfig();
+  if (!kokoroCfg.apiKey || (!kokoroCfg.endpointId && !kokoroCfg.endpointUrl)) {
+    return res.status(503).json({ error: 'Kokoro endpoint not configured. Set RUNPOD_KOKORO_ENDPOINT_ID and RUNPOD_API_KEY.' });
+  }
+
   fs.mkdirSync(KOKORO_SAMPLE_DIR, { recursive: true });
   const samplePath = path.join(KOKORO_SAMPLE_DIR, `${voiceId}.wav`);
 
@@ -123,14 +129,22 @@ router.get('/kokoro/sample/:voice', async (req, res) => {
   _kokoroSampleGenerating.add(voiceId);
   const tmpDir = path.join(KOKORO_SAMPLE_DIR, '_tmp');
 
+  // Use a 25s timeout for samples — never hang the voice picker
+  const sampleTimeout = 25000;
+
   try {
-    const result = await createKokoroAudio({
-      script:    getSampleText(voiceId),
-      voice:     voiceId,
-      speed:     1.0,
-      format:    'wav',
-      outputDir: tmpDir
-    });
+    const result = await Promise.race([
+      createKokoroAudio({
+        script:    getSampleText(voiceId),
+        voice:     voiceId,
+        speed:     1.0,
+        format:    'wav',
+        outputDir: tmpDir
+      }),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Kokoro sample timeout — endpoint may be cold-starting. Try again in 30s.')), sampleTimeout)
+      )
+    ]);
     fs.mkdirSync(KOKORO_SAMPLE_DIR, { recursive: true });
     if (result.localPath !== samplePath) fs.renameSync(result.localPath, samplePath);
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
@@ -139,7 +153,12 @@ router.get('/kokoro/sample/:voice', async (req, res) => {
     logger.info('Kokoro sample generated and cached', { voiceId });
   } catch (err) {
     logger.error('Kokoro sample generation failed', { voiceId, error: err.message });
-    res.status(500).json({ error: `Sample generation failed: ${err.message}` });
+    const isColdStart = err.message.includes('timeout') || err.message.includes('cold');
+    res.status(isColdStart ? 503 : 500).json({
+      error: err.message,
+      coldStart: isColdStart,
+      retryAfterMs: isColdStart ? 30000 : null
+    });
   } finally {
     _kokoroSampleGenerating.delete(voiceId);
   }
