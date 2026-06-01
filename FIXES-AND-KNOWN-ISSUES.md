@@ -163,6 +163,70 @@ const apiKey = tenantKey || process.env.ELEVENLABS_API_KEY;
 | InfiniteTalk HD | `u42wikzcqz3tkk` | `RUNPOD_INFINITETALK_ENDPOINT_ID` | Private endpoint. Uses `audio_url`, `image_url`, `quality` params |
 | Kokoro TTS | `r1wkulmg30wqon` | `RUNPOD_KOKORO_ENDPOINT_ID` | Separate key: `RUNPOD_KOKORO_API_KEY` |
 
+---
+
+## VideoCloneAI — App Blank (Grey Screen) Fix
+
+**Symptom:** App loads but shows a completely blank grey screen. No elements render.
+
+**Root Cause:** Commit `c1f90a1` added JSX that references `showElConnect`, `elConnected`, `elevenLabsVoices`, `elApiKeyInput`, `elConnecting` but never declared them with `useState`. Every render threw `ReferenceError: showElConnect is not defined`. React caught it silently and rendered nothing. No console errors visible.
+
+**Fix (`videoclone-ai` — commit `f57d0c7`):**
+Added the 5 missing state declarations to the App component:
+```js
+const [showElConnect, setShowElConnect] = useState(false);
+const [elConnected, setElConnected] = useState(null);
+const [elevenLabsVoices, setElevenLabsVoices] = useState(elevenLabsVoicesFallback);
+const [elApiKeyInput, setElApiKeyInput] = useState('');
+const [elConnecting, setElConnecting] = useState(false);
+```
+
+**How to diagnose if it comes back:**
+- Open browser DevTools → Application → Local Storage: check if `videoclone.ai.canvas-state.v1` is extremely large (>1MB could indicate a loop)
+- Add a temporary error boundary around `<App />` to surface silent render errors:
+```jsx
+class ErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(error) { return { error }; }
+  render() {
+    if (this.state.error) return <pre style={{color:'red',padding:20}}>{String(this.state.error)}</pre>;
+    return this.props.children;
+  }
+}
+// wrap: <ErrorBoundary><App /></ErrorBoundary>
+```
+- **NEVER clear localStorage without first reading/backing up `videoclone.ai.canvas-state.v1`** — that key holds all canvas workflows
+
+---
+
+## VideoCloneAI — Canvas State Persistence
+
+**Problem:** Canvas tabs and workflow templates were stored only in the Railway container's local filesystem and browser localStorage. Every Railway deploy wiped the server-side JSON files. Clearing localStorage wiped the browser side. Workflows were permanently lost.
+
+**Fix (`videoclone-ai` — commit `9aea43d`):**
+Canvas state now written to both:
+1. **Postgres** (`videoclone_state` table) — durable, survives all deploys
+2. **Local JSON files** — fast fallback
+
+Read order: Postgres first → local file (with automatic backfill to Postgres on read).
+
+Table schema:
+```sql
+CREATE TABLE IF NOT EXISTS videoclone_state (
+  key TEXT NOT NULL,
+  kind TEXT NOT NULL,   -- 'canvases' | 'workflow-templates' | 'library'
+  payload JSONB NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (key, kind)
+);
+```
+
+**Affects:** `GET/POST /api/canvases` and `POST /api/workflow-templates`
+
+**Important:** The Railway `DATABASE_URL` env var must be set (it is, pointing to the attached Postgres service). If it's ever removed, the server falls back to local files only.
+
+---
+
 ## Safety Rules (Never Break These)
 
 - **Never change `RUNPOD_API_KEY`** — it's used by multiple endpoints; changing it breaks everything else
