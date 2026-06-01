@@ -159,7 +159,12 @@ async function submitMeigenVideoJob({ imagePath, audioPath, imageUrl, audioUrl, 
   const config = getMeigenConfig();
   if (!config.apiKey) throw new Error('RUNPOD_MEIGEN_API_KEY is not configured.');
 
-  const resolvedImage = await resolvePublicUrl(imageUrl, imagePath);
+  // Prefer the local imagePath over imageUrl — the local file may have been
+  // framed/cropped to the correct aspect ratio (e.g. 9:16 portrait).
+  // Using the original imageUrl would send the unframed landscape image to Meigen.
+  const resolvedImage = imagePath
+    ? await uploadToTempHost(imagePath)
+    : await resolvePublicUrl(imageUrl, null);
   const resolvedAudio = await resolvePublicUrl(audioUrl, audioPath);
   if (!resolvedImage) throw new Error('Meigen needs a public image URL or uploaded image file.');
   if (!resolvedAudio) throw new Error('Meigen needs a public audio URL or uploaded audio file.');
