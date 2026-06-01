@@ -15,7 +15,7 @@ const {
   getStudioJobs
 } = require('../services/comfyui');
 const { ensureComfyReady, getAccountBalance, getPodStatus, getRunPodConfig, isComfyReady, normalizePodState, startPod, stopPod } = require('../services/runpod');
-const { getAssetFile, hasDatabase, initUgcStore, query } = require('../services/postgres');
+const { getAssetFile, hasDatabase, initUgcStore, query, getTenantSetting } = require('../services/postgres');
 const { KOKORO_VOICES, createKokoroAudio, getKokoroConfig } = require('../services/kokoro');
 const { checkMeigenVideoJob, createMeigenVideo, getMeigenConfig, submitMeigenVideoJob } = require('../services/meigen');
 const { checkInfiniteTalkHdJob, getInfiniteTalkHdConfig, submitInfiniteTalkHdJob } = require('../services/infinitetalkHd');
@@ -763,10 +763,14 @@ router.get('/status', async (req, res) => {
 });
 
 async function createElevenLabsAudio({ script, voiceId, tenantId }) {
-  const apiKey = process.env.ELEVENLABS_API_KEY;
+  // Prefer tenant-stored key (added via Settings > ElevenLabs), fall back to server env var
+  const tenantKey = (tenantId && hasDatabase())
+    ? await getTenantSetting(tenantId, 'elevenlabs_api_key').catch(() => null)
+    : null;
+  const apiKey = tenantKey || process.env.ELEVENLABS_API_KEY;
   const selectedVoice = voiceId || process.env.ELEVENLABS_SARAH_VOICE_ID || process.env.ELEVENLABS_DEFAULT_VOICE_ID;
 
-  if (!apiKey) throw new Error('ELEVENLABS_API_KEY is not configured.');
+  if (!apiKey) throw new Error('ElevenLabs API key is not configured. Add your API key in Settings.');
   if (!selectedVoice) throw new Error('Set a voice ID or ELEVENLABS_SARAH_VOICE_ID before using ElevenLabs audio.');
   if (!script || script.trim().length < 3) throw new Error('Paste a script before using ElevenLabs audio.');
 
