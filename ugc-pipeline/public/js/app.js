@@ -989,7 +989,7 @@ async function loadStudioStatus() {
     setChip('meigenStatus', serverlessReady ? `${serverlessReady} ready` : 'Needs keys', serverlessReady ? 'green' : 'warn');
     const qwenNote = document.getElementById('qwenNote');
     if (qwenNote) qwenNote.textContent = kokoro?.available
-      ? 'Kokoro is ready — 54 voices across 8 languages.'
+      ? 'Bloom Studio voices ready — 54 voices across 8 languages, always free.'
       : 'Deploy Kokoro on RunPod and set RUNPOD_KOKORO_ENDPOINT_ID to enable voice generation.';
     const currentCreateType = document.getElementById('studioCreateType')?.value;
     const studioActive = document.getElementById('tab-studio')?.classList.contains('active');
@@ -1273,11 +1273,11 @@ function setCreateTool(tool = 'video') {
   const note = document.querySelector('#tab-studio .panel-note');
   if (selected === 'audio') {
     if (title) title.textContent = 'Create voice-over';
-    if (note) note.textContent = 'Write or paste a script, choose Kokoro or ElevenLabs v3, preview it, then save the approved audio.';
+    if (note) note.textContent = 'Write or paste a script, choose Bloom Studio voices or ElevenLabs v3, preview it, then save the approved audio.';
     const scriptLabel = document.getElementById('studioScriptLabel');
     const script = document.getElementById('studioScript');
     if (scriptLabel) scriptLabel.textContent = 'Voiceover script';
-    if (script) script.placeholder = 'Paste the exact narration script for Kokoro or ElevenLabs v3.';
+    if (script) script.placeholder = 'Paste the exact narration script for Bloom Studio or ElevenLabs v3.';
     setAudioPreviewMode();
     setStudioMode('audio');
     setStudioAudio(document.getElementById('studioAudioProvider')?.value || 'upload', { preserveToast: true });
@@ -2411,7 +2411,7 @@ function setCreateType(type, options = {}) {
   if (scriptLabel) scriptLabel.textContent = selected === 'remix' ? 'Remix narration script' : 'Narration script';
   if (script) script.placeholder = selected === 'remix'
     ? 'Paste the adapted narration script for this remix.'
-    : 'Paste the spoken words Kokoro or ElevenLabs should turn into voiceover.';
+    : 'Paste the spoken words Bloom Studio or ElevenLabs should turn into voiceover.';
 
   if (selected === 'remix') {
     document.getElementById('studioRemixContext')?.classList.add('active');
@@ -2714,7 +2714,7 @@ function setStudioAudio(provider, options = {}) {
   const previewBtn = document.getElementById('studioPreviewVoiceButton');
   if (previewBtn) {
     previewBtn.style.display = ['kokoro', 'elevenlabs'].includes(provider) ? '' : 'none';
-    previewBtn.textContent = provider === 'elevenlabs' ? 'Preview with ElevenLabs' : 'Preview with Kokoro';
+    previewBtn.textContent = provider === 'elevenlabs' ? 'Preview with ElevenLabs' : 'Preview with Bloom Studio';
   }
   // Show "Choose voice" button only for AI providers; hide it for upload/asset
   const configureButton = document.getElementById('studioConfigureVoiceButton');
@@ -2739,7 +2739,7 @@ function setStudioAudio(provider, options = {}) {
   if (options.preserveToast) return;
   if (provider === 'qwen') toast('Qwen audio needs the third workflow API export before it can run.', 'info');
   if (provider === 'elevenlabs') toast('ElevenLabs will generate audio from your script before queuing the video.', 'info');
-  if (provider === 'kokoro') toast('Kokoro will generate narration from your script. Choose a voice first.', 'info');
+  if (provider === 'kokoro') toast('Bloom Studio will generate narration from your script. Choose a voice first.', 'info');
 }
 
 function applyStudioTonePreset() {
@@ -2849,7 +2849,7 @@ function setAudioPreviewMode() {
   frame.classList.add('audio-preview-mode');
   frame.onpointerdown = null;
   document.getElementById('cropHint').style.display = 'none';
-  frame.innerHTML = `<div><strong id="previewTitle">Audio preview appears here</strong><p id="previewHint" style="font-size:13px;margin-top:6px;color:rgba(255,255,255,.45)">Generate from script with Kokoro or ElevenLabs v3, then play it here.</p></div>`;
+  frame.innerHTML = `<div><strong id="previewTitle">Audio preview appears here</strong><p id="previewHint" style="font-size:13px;margin-top:6px;color:rgba(255,255,255,.45)">Generate from script with Bloom Studio or ElevenLabs v3, then play it here.</p></div>`;
 }
 
 function resetStudioCrop() {
@@ -3058,7 +3058,7 @@ function getStudioEngineName(engine) {
 
 async function submitAudioOnly(form) {
   const provider = document.getElementById('studioAudioProvider').value;
-  if (!['kokoro', 'elevenlabs'].includes(provider)) return toast('Choose Kokoro or ElevenLabs to generate audio from script.', 'error');
+  if (!['kokoro', 'elevenlabs'].includes(provider)) return toast('Choose Bloom Studio or ElevenLabs to generate audio from script.', 'error');
   if (!document.getElementById('studioScript').value.trim()) return toast('Paste a script first.', 'error');
   if (provider === 'kokoro') return previewKokoroVoice(true);
   return previewElevenLabsVoice(true);
@@ -3068,7 +3068,7 @@ function previewCurrentVoice() {
   const provider = document.getElementById('studioAudioProvider').value;
   if (provider === 'elevenlabs') return previewElevenLabsVoice(false);
   if (provider === 'kokoro') return previewKokoroVoice(false);
-  return toast('Choose Kokoro or ElevenLabs to preview a generated voice.', 'error');
+  return toast('Choose Bloom Studio or ElevenLabs to preview a generated voice.', 'error');
 }
 
 // ─── Voice picker: Kokoro 54 voices (grouped by accent) ──────
@@ -3363,7 +3363,7 @@ function onVoicePickerDone() {
   const cfgBtn  = document.getElementById('studioConfigureVoiceButton');
   if (card && nameEl) {
     nameEl.textContent  = _selectedVoiceData.name;
-    if (badgeEl) badgeEl.textContent = _selectedVoiceData.provider === 'elevenlabs' ? 'ElevenLabs' : 'Kokoro';
+    if (badgeEl) badgeEl.textContent = _selectedVoiceData.provider === 'elevenlabs' ? 'ElevenLabs' : 'Bloom Studio';
     card.style.display = '';
     if (cfgBtn) cfgBtn.style.display = 'none';
   }
@@ -3438,10 +3438,10 @@ async function _showInlineGenPreview(url, label) {
 
 async function previewKokoroVoice(saveOnly = false) {
   const writtenScript = document.getElementById('studioScript').value.trim();
-  const script = writtenScript || 'Hi, this is a preview of your Kokoro voice. Choose any of the 54 voices to find the perfect sound for your video.';
+  const script = writtenScript || 'Hi, this is a preview of your Bloom Studio voice. Choose any of the 54 voices to find the perfect sound for your video.';
   const button = document.getElementById('studioPreviewVoiceButton');
   if (button) { button.disabled = true; button.textContent = 'Creating preview...'; }
-  setVoicePreviewLoading(true, 'Kokoro');
+  setVoicePreviewLoading(true, 'Bloom Studio');
   try {
     const voiceId = selectedKokoroVoice();
     const response = await api('/api/tts/kokoro', {
@@ -3451,21 +3451,21 @@ async function previewKokoroVoice(saveOnly = false) {
         voice: voiceId,
         speed: 1.0,
         format: 'wav',
-        name: `${writtenScript ? 'Kokoro voiceover' : 'Kokoro sample'} ${new Date().toLocaleString()}`
+        name: `${writtenScript ? 'Bloom Studio voiceover' : 'Bloom Studio sample'} ${new Date().toLocaleString()}`
       })
     });
     previewAudioAsset = response.result?.asset || null;
     const url = response.result?.asset?.files?.[0]?.path || response.result?.audioUrl;
-    if (!url) throw new Error('Kokoro did not return audio.');
+    if (!url) throw new Error('Bloom Studio did not return audio.');
     setVoicePreviewLoading(false);
-    await _showInlineGenPreview(url, saveOnly ? 'Audio generated and saved' : writtenScript ? 'Kokoro preview saved' : 'Kokoro sample saved');
-    toast('Kokoro audio generated and saved to Library.', 'success');
+    await _showInlineGenPreview(url, saveOnly ? 'Audio generated and saved' : writtenScript ? 'Bloom Studio preview saved' : 'Bloom Studio sample saved');
+    toast('Bloom Studio audio generated and saved to Library.', 'success');
     await loadAssets();
   } catch (error) {
     setVoicePreviewLoading(false);
     toast(error.message, 'error');
   } finally {
-    if (button) { button.disabled = false; button.textContent = 'Preview script with Kokoro'; }
+    if (button) { button.disabled = false; button.textContent = 'Preview script with Bloom Studio'; }
   }
 }
 
@@ -3504,6 +3504,83 @@ async function previewElevenLabsVoice(saveOnly = false) {
       button.disabled = false;
       button.textContent = 'Preview script with ElevenLabs';
     }
+  }
+}
+
+// ─── ElevenLabs Connect modal ───────────────────────────────────────────
+function openElevenLabsConnect() {
+  const modal = document.getElementById('elevenLabsConnectModal');
+  if (!modal) return;
+  const input = document.getElementById('elApiKeyInput');
+  const status = document.getElementById('elConnectStatus');
+  const disconnectBtn = document.getElementById('elDisconnectBtn');
+  if (input) input.value = '';
+  if (status) { status.style.display = 'none'; status.textContent = ''; }
+  // Check if already connected
+  api('/api/settings').then(data => {
+    const el = data?.settings?.elevenlabs_api_key;
+    if (el?.set) {
+      if (disconnectBtn) disconnectBtn.style.display = '';
+      if (status) {
+        status.style.display = '';
+        status.style.background = '#0f2a1a';
+        status.style.color = '#4ade80';
+        status.textContent = `Connected — key ending ${el.masked?.slice(-4) || '****'}`;
+      }
+    } else {
+      if (disconnectBtn) disconnectBtn.style.display = 'none';
+    }
+  }).catch(() => {});
+  modal.style.display = 'flex';
+}
+
+function closeElevenLabsConnect() {
+  const modal = document.getElementById('elevenLabsConnectModal');
+  if (modal) modal.style.display = 'none';
+}
+
+async function saveElevenLabsKey() {
+  const input = document.getElementById('elApiKeyInput');
+  const status = document.getElementById('elConnectStatus');
+  const btn = document.getElementById('elConnectSaveBtn');
+  const key = input?.value?.trim();
+  if (!key) return toast('Paste your ElevenLabs API key first.', 'error');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
+  try {
+    await api('/api/settings', { method: 'PUT', body: JSON.stringify({ elevenlabs_api_key: key }) });
+    if (status) {
+      status.style.display = '';
+      status.style.background = '#0f2a1a';
+      status.style.color = '#4ade80';
+      status.textContent = 'Connected! Your ElevenLabs voices are now available.';
+    }
+    if (document.getElementById('elDisconnectBtn')) document.getElementById('elDisconnectBtn').style.display = '';
+    toast('ElevenLabs connected.', 'success');
+    // Reload the voice list in picker
+    buildElevenLabsVoiceList();
+    setTimeout(() => closeElevenLabsConnect(), 1200);
+  } catch (err) {
+    if (status) {
+      status.style.display = '';
+      status.style.background = '#2a0f0f';
+      status.style.color = '#f87171';
+      status.textContent = err.message || 'Could not save key.';
+    }
+    toast('Could not save ElevenLabs key.', 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Save & Connect'; }
+  }
+}
+
+async function disconnectElevenLabs() {
+  try {
+    await api('/api/settings', { method: 'PUT', body: JSON.stringify({ elevenlabs_api_key: '' }) });
+    toast('ElevenLabs disconnected.', 'success');
+    if (document.getElementById('elDisconnectBtn')) document.getElementById('elDisconnectBtn').style.display = 'none';
+    closeElevenLabsConnect();
+    buildElevenLabsVoiceList();
+  } catch (err) {
+    toast('Could not disconnect.', 'error');
   }
 }
 

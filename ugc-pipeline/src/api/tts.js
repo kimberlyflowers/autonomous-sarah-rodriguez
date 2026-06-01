@@ -4,7 +4,7 @@ const path    = require('path');
 const fs      = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const { KOKORO_VOICES, KOKORO_VOICE_IDS, createKokoroAudio, getKokoroConfig } = require('../services/kokoro');
-const { hasDatabase, initUgcStore, query } = require('../services/postgres');
+const { hasDatabase, initUgcStore, query, getTenantSetting } = require('../services/postgres');
 const fetch   = require('node-fetch');
 const { logger } = require('../services/logger');
 
@@ -361,10 +361,20 @@ router.post('/kokoro', upload.none(), async (req, res) => {
   }
 });
 
-// ── ElevenLabs voice list (proxied from EL API with the server's key) ─────────
+// Helper — resolve EL API key for the current tenant (tenant key > env var)
+async function resolveElevenLabsKey(req) {
+  const tenantSlug = req.tenant?.id || req.tenant?.slug;
+  if (tenantSlug && hasDatabase()) {
+    const stored = await getTenantSetting(tenantSlug, 'elevenlabs_api_key').catch(() => null);
+    if (stored) return stored;
+  }
+  return process.env.ELEVENLABS_API_KEY || null;
+}
+
+// ── ElevenLabs voice list (proxied from EL API — uses tenant key or server key) ─────────
 router.get('/elevenlabs/voices', async (req, res) => {
-  const apiKey = process.env.ELEVENLABS_API_KEY;
-  if (!apiKey) return res.status(503).json({ error: 'ELEVENLABS_API_KEY is not configured.' });
+  const apiKey = await resolveElevenLabsKey(req);
+  if (!apiKey) return res.status(503).json({ error: 'ElevenLabs is not connected. Go to Settings to add your API key.' });
 
   try {
     const r = await fetch('https://api.elevenlabs.io/v2/voices?page_size=100', {
@@ -391,10 +401,12 @@ router.post('/elevenlabs', async (req, res) => {
   const started = Date.now();
   try {
     const dir = path.join(UPLOAD_DIR, req.tenant?.slug || req.tenant?.id || 'default', 'generated');
+    const elKey = await resolveElevenLabsKey(req);
     const result = await createElevenLabsAudio({
       script:   req.body.script,
       voiceId:  req.body.voiceId,
-      outputDir: dir
+      outputDir: dir,
+      apiKey:   elKey
     });
     const asset = await saveGeneratedAudio(req, result.localPath, {
       name:     req.body.name || `ElevenLabs ${new Date().toLocaleString()}`,
@@ -418,12 +430,12 @@ router.post('/elevenlabs', async (req, res) => {
   }
 });
 
-async function createElevenLabsAudio({ script, voiceId, outputDir }) {
-  const apiKey       = process.env.ELEVENLABS_API_KEY;
+async function createElevenLabsAudio({ script, voiceId, outputDir, apiKey: callerKey }) {
+  const apiKey       = callerKey || process.env.ELEVENLABS_API_KEY;
   const selectedVoice = voiceId || process.env.ELEVENLABS_SARAH_VOICE_ID || process.env.ELEVENLABS_DEFAULT_VOICE_ID;
   const text         = String(script || '').trim();
-  if (!apiKey)          throw new Error('ELEVENLABS_API_KEY is not configured.');
-  if (!selectedVoice)   throw new Error('Set an ElevenLabs voice ID or ELEVENLABS_DEFAULT_VOICE_ID.');
+  if (!apiKey)          throw new Error('ElevenLabs is not connected. Go to Settings → Integrations to add your API key.');
+  if (!selectedVoice)   throw new Error('Choose an ElevenLabs voice before generating audio.');
   if (!text || text.length < 3) throw new Error('Paste a script before using ElevenLabs audio.');
 
   const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${selectedVoice}`, {

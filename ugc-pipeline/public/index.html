@@ -834,7 +834,7 @@ body[data-theme="light"] .campaign-workflow-json{background:#fff!important;borde
                 <div class="form-group">
                   <label class="form-label">Audio source</label>
                   <select class="form-select" id="studioAudioProvider" name="audioProvider" onchange="setStudioAudio(this.value)">
-                    <option value="kokoro" selected>Kokoro (54 voices · free)</option>
+                    <option value="kokoro" selected>Bloom Studio (54 voices · free)</option>
                     <option value="elevenlabs">ElevenLabs (your account)</option>
                     <option value="upload">Upload MP3/WAV</option>
                   </select>
@@ -846,7 +846,7 @@ body[data-theme="light"] .campaign-workflow-json{background:#fff!important;borde
                     </button>
                     <div class="voice-card-info">
                       <span class="voice-card-name" id="selectedVoiceCardName">Alice</span>
-                      <span class="voice-card-badge" id="selectedVoiceCardBadge">Kokoro</span>
+                      <span class="voice-card-badge" id="selectedVoiceCardBadge">Bloom Studio</span>
                     </div>
                     <button class="btn btn-secondary voice-card-switch" type="button" onclick="toggleVoiceDetails(true)">Switch</button>
                   </div>
@@ -1002,8 +1002,8 @@ body[data-theme="light"] .campaign-workflow-json{background:#fff!important;borde
                   <div class="voice-picker-tabs" id="voicePickerTabs">
                     <button class="voice-picker-tab active" id="vptab-kokoro" data-provider="kokoro" type="button" onclick="switchVoicePickerTab('kokoro')">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
-                      Kokoro
-                      <span class="voice-picker-tab-badge">54 voices</span>
+                      Bloom Studio
+                      <span class="voice-picker-tab-badge">54 voices · free</span>
                     </button>
                     <button class="voice-picker-tab" id="vptab-elevenlabs" data-provider="elevenlabs" type="button" onclick="switchVoicePickerTab('elevenlabs')">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
@@ -1033,9 +1033,10 @@ body[data-theme="light"] .campaign-workflow-json{background:#fff!important;borde
                   </div>
                   <!-- EL not configured notice -->
                   <div id="voiceELNoKey" class="voice-el-nokey" style="display:none">
-                    <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><circle cx="12" cy="16" r=".6" fill="currentColor"/></svg>
+                    <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
                     <strong>ElevenLabs not connected</strong>
-                    <p>Add <code>ELEVENLABS_API_KEY</code> to your environment to browse your ElevenLabs voice library here.</p>
+                    <p>Paste your ElevenLabs API key to unlock your full voice library.</p>
+                    <button class="btn btn-primary" type="button" onclick="openElevenLabsConnect()" style="margin-top:10px;width:100%">Connect ElevenLabs</button>
                   </div>
                   <!-- Voice rows — populated by JS -->
                   <div class="voice-list" id="voicePickerList"></div>
@@ -1394,6 +1395,27 @@ body[data-theme="light"] .campaign-workflow-json{background:#fff!important;borde
       <div class="card" id="variantPreviewCard" style="display:none"><div class="card-header"><div><div class="card-title">Variant Preview</div><div class="card-subtitle">Review before submitting to API</div></div><div id="costEstimate"></div></div><div id="variantList"></div><div class="actions"><button class="btn btn-primary" id="submitBtn" onclick="submitVariants()">Approve & Generate</button><span class="hint" id="submitStatus"></span></div></div>
     </section>
   </main>
+</div>
+
+<!-- ── ElevenLabs Connect Modal ──────────────────────────────────────── -->
+<div class="modal-overlay" id="elevenLabsConnectModal" onclick="if(event.target.id==='elevenLabsConnectModal')closeElevenLabsConnect()">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-title">Connect ElevenLabs</div>
+    <p style="margin:0 0 18px;color:rgba(255,255,255,.6);font-size:14px">Paste your ElevenLabs API key below. Once connected you can browse and use your full voice library inside Bloom Studio.</p>
+    <div class="form-group">
+      <label class="form-label">ElevenLabs API Key</label>
+      <input class="form-input" id="elApiKeyInput" type="password" placeholder="sk_••••••••••••••••••••••••" autocomplete="off" style="font-family:monospace">
+      <div class="hint" style="margin-top:6px">Find it at <strong>elevenlabs.io → Profile → API Key</strong>. We store it securely — it never leaves your account.</div>
+    </div>
+    <div id="elConnectStatus" style="display:none;margin-bottom:12px;padding:10px 12px;border-radius:8px;font-size:13px"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" type="button" onclick="closeElevenLabsConnect()">Cancel</button>
+      <button class="btn btn-primary" id="elConnectSaveBtn" type="button" onclick="saveElevenLabsKey()">Save &amp; Connect</button>
+    </div>
+    <div style="margin-top:16px;padding-top:14px;border-top:1px solid #222">
+      <button class="btn btn-ghost" id="elDisconnectBtn" type="button" onclick="disconnectElevenLabs()" style="display:none;color:#f87171;font-size:12px">Disconnect ElevenLabs</button>
+    </div>
+  </div>
 </div>
 
 <div class="modal-overlay" id="uploadModal">

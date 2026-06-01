@@ -22,6 +22,7 @@ const ttsRouter = require('./api/tts');
 const trendsRouter = require('./api/trends');
 const cloneRouter = require('./api/clone');
 const charactersRouter = require('./api/characters');
+const settingsRouter = require('./api/settings');
 const { requireTenant } = require('./services/auth');
 const { getSupabaseConfig } = require('./services/supabase');
 const { getRunPodConfig } = require('./services/runpod');
@@ -79,6 +80,8 @@ app.use('/api/public/trends', trendsRouter);
 app.use('/api/clone', apiKeyAuth, requireTenant, cloneRouter);
 // Global character roster — public read (no tenant required)
 app.use('/api/characters', charactersRouter);
+// Tenant settings (ElevenLabs key, etc.)
+app.use('/api/settings', apiKeyAuth, requireTenant, settingsRouter);
 
 // Health check
 app.get('/health', (req, res) => {
