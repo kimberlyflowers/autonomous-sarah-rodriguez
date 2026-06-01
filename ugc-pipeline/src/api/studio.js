@@ -1060,7 +1060,7 @@ async function runServerlessVideoJob(req, files, context, options = {}) {
         audioPath,
         imageUrl: req.body.imageUrl || '',
         audioUrl: req.body.audioUrl || '',
-        quality: req.body.meigenSize || '720p',
+        quality: req.body.meigenSize || req.body.resolution || '720p',
         steps: req.body.infinitetalkSteps || 40,
         seed: req.body.infinitetalkSeed || -1
       });
@@ -1071,7 +1071,7 @@ async function runServerlessVideoJob(req, files, context, options = {}) {
             providerJobId: custom.id,
             rawRequestId: custom.id,
             providerStatus: custom.status,
-            quality: req.body.meigenSize || '720p',
+            quality: req.body.meigenSize || req.body.resolution || '720p',
             steps: Number(req.body.infinitetalkSteps || 40),
             seed: Number(req.body.infinitetalkSeed || -1),
             imagePreviewUrl,
@@ -1093,7 +1093,7 @@ async function runServerlessVideoJob(req, files, context, options = {}) {
         prompt: req.body.prompt,
         fps: req.body.musetalkFps || 25,
         bboxShift: req.body.musetalkBboxShift || 0,
-        resolution: req.body.meigenSize || '480p'
+        resolution: req.body.meigenSize || req.body.resolution || '480p'
       });
       if (!req.supabase && hasDatabase()) {
         await updateLocalVideoJob(req, clientRequestId, {
@@ -1121,7 +1121,7 @@ async function runServerlessVideoJob(req, files, context, options = {}) {
         imageUrl: req.body.imageUrl || '',
         audioUrl: req.body.audioUrl || '',
         prompt: req.body.prompt,
-        size: getMeigenSize(req.body.meigenSize || '480p'),
+        size: getMeigenSize(req.body.meigenSize || req.body.resolution || '480p'),
       });
       if (!req.supabase && hasDatabase()) {
         await updateLocalVideoJob(req, clientRequestId, {
@@ -1130,7 +1130,7 @@ async function runServerlessVideoJob(req, files, context, options = {}) {
             providerJobId: meigen.id,
             rawRequestId: meigen.id,
             providerStatus: meigen.status,
-            meigenSize: getMeigenSize(req.body.meigenSize || '480p'),
+            meigenSize: getMeigenSize(req.body.meigenSize || req.body.resolution || '480p'),
             imagePreviewUrl,
             submittedAt: new Date().toISOString()
           }
@@ -1480,7 +1480,7 @@ router.post('/generate', upload.fields([
           imageUrl: req.body.imageUrl || '',
           audioUrl: req.body.audioUrl || '',
           prompt: req.body.prompt,
-          size: getMeigenSize(req.body.meigenSize || '480p'),
+          size: getMeigenSize(req.body.meigenSize || req.body.resolution || '480p'),
           outputDir: dir
         });
         const savedVideo = await saveGeneratedVideoAsset(req, meigen.localPath, {
@@ -1489,7 +1489,7 @@ router.post('/generate', upload.fields([
           source: 'infinitetalk',
           prompt: req.body.prompt || '',
           aspectRatio: req.body.aspectRatio || '9:16',
-          meigenSize: getMeigenSize(req.body.meigenSize || '480p'),
+          meigenSize: getMeigenSize(req.body.meigenSize || req.body.resolution || '480p'),
           cost: meigen.cost,
           rawRequestId: meigen.id
         });
@@ -1519,7 +1519,7 @@ router.post('/generate', upload.fields([
               assetId: savedVideo.id,
               cost: meigen.cost,
               rawRequestId: meigen.id,
-              meigenSize: getMeigenSize(req.body.meigenSize || '480p')
+              meigenSize: getMeigenSize(req.body.meigenSize || req.body.resolution || '480p')
             }
           });
         }
