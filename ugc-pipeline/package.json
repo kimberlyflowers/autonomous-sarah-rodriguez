@@ -21,9 +21,7 @@
     "stripe": "^18.0.0",
     "uuid": "^9.0.0",
     "winston": "^3.11.0",
-    "ws": "^8.18.0"
-  },
-  "devDependencies": {
+    "ws": "^8.18.0",
     "kokoro-js": "^1.2.1"
   }
 }
