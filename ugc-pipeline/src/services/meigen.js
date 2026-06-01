@@ -177,7 +177,7 @@ async function submitMeigenVideoJob({ imagePath, audioPath, imageUrl, audioUrl, 
       prompt: String(prompt || 'Professional talking head video, natural lip sync, steady camera.').trim(),
       image: resolvedImage,
       audio: resolvedAudio,
-      size: resolvedSize,
+      resolution: resolvedSize,
       enable_safety_checker: true
     }
   };
