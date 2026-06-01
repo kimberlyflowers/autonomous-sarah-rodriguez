@@ -160,39 +160,81 @@ function validateAudioOutput(filePath) {
   return { size: stats.size };
 }
 
+// ── Local kokoro-js engine ────────────────────────────────────────────────────
+// English voices (af_*, am_*, bf_*, bm_*) are generated directly on Railway
+// using the kokoro-js ONNX model — no RunPod, no queue, no cold starts.
+// Model loads once at first use and stays in memory (~300MB, ~30s first boot).
+// Multilingual voices fall back to RunPod.
+
+let _kokoroJsInstance = null;
+let _kokoroJsLoading  = null;
+
+// English voice prefixes supported by the local ONNX model
+const LOCAL_KOKORO_PREFIXES = new Set(['af_', 'am_', 'bf_', 'bm_']);
+
+function isLocalVoice(voiceId) {
+  return LOCAL_KOKORO_PREFIXES.has(String(voiceId).slice(0, 3));
+}
+
+async function getKokoroJs() {
+  if (_kokoroJsInstance) return _kokoroJsInstance;
+  if (_kokoroJsLoading)  return _kokoroJsLoading;
+  _kokoroJsLoading = (async () => {
+    const { KokoroTTS } = require('kokoro-js');
+    const tts = await KokoroTTS.from_pretrained('onnx-community/Kokoro-82M-v1.0-ONNX', { dtype: 'q8' });
+    _kokoroJsInstance = tts;
+    _kokoroJsLoading  = null;
+    return tts;
+  })();
+  return _kokoroJsLoading;
+}
+
+// Warm the model 15s after server boot so first real request is instant
+setTimeout(() => {
+  getKokoroJs().catch(err => {
+    const { logger } = require('./logger');
+    logger.warn('kokoro-js warm-up failed', { error: err.message });
+  });
+}, 15000);
+
+async function createKokoroAudioLocal({ text, voice, speed, format, outputDir }) {
+  const tts = await getKokoroJs();
+  fs.mkdirSync(outputDir, { recursive: true });
+  const outPath = path.join(outputDir, `kokoro-${Date.now()}.wav`);
+  const audio = await tts.generate(text, { voice, speed: speed || 1.0 });
+  await audio.save(outPath);
+  validateAudioOutput(outPath);
+  return { localPath: outPath, format: 'wav', voice, audioUrl: '', audioBase64: '' };
+}
+
 /**
- * Generate speech with Kokoro via RunPod serverless.
- *
- * Deploy once on RunPod:
- *   Docker image: lucataco/kokoro-82m:latest
- *   GPU: RTX 3090 or T4 (82M params — any modern GPU)
- *   Set env var: RUNPOD_KOKORO_ENDPOINT_ID=<your endpoint id>
- *
- * RunPod worker input format:
- *   { input: { text, voice, speed } }
- * Output:
- *   { status: "COMPLETED", output: { audio_base64 | audio_url } }
+ * Generate speech with Kokoro.
+ * English voices: generated locally via kokoro-js (no RunPod).
+ * Multilingual voices: RunPod serverless fallback.
  */
 async function createKokoroAudio({ script, voice, speed, format, outputDir }) {
-  const config = getKokoroConfig();
-  const text = sanitizeScript(script);
+  const text         = sanitizeScript(script);
+  const resolvedVoice = KOKORO_VOICE_IDS.has(voice) ? voice : 'af_heart';
+  const resolvedSpeed = Number(speed) > 0 ? Number(speed) : 1.0;
+  const audioFormat   = ['wav', 'mp3'].includes(format) ? format : 'wav';
 
-  if (!config.apiKey) {
-    throw new Error('RUNPOD_KOKORO_API_KEY or RUNPOD_API_KEY is not configured.');
-  }
-  if (!config.endpointId && !config.endpointUrl) {
-    throw new Error(
-      'RUNPOD_KOKORO_ENDPOINT_ID is not set. ' +
-      'Deploy Kokoro on RunPod (lucataco/kokoro-82m:latest) and set the env var in Railway.'
-    );
-  }
   if (!text || text.length < 3) {
     throw new Error('Paste a script before generating Kokoro audio.');
   }
 
-  const resolvedVoice  = KOKORO_VOICE_IDS.has(voice) ? voice : 'af_heart';
-  const resolvedSpeed  = Number(speed) > 0 ? Number(speed) : 1.0;
-  const audioFormat    = ['wav', 'mp3'].includes(format) ? format : 'wav';
+  // English voices → local kokoro-js (instant, no RunPod)
+  if (isLocalVoice(resolvedVoice)) {
+    return createKokoroAudioLocal({ text, voice: resolvedVoice, speed: resolvedSpeed, format: audioFormat, outputDir });
+  }
+
+  // Multilingual voices → RunPod fallback
+  const config = getKokoroConfig();
+  if (!config.apiKey) {
+    throw new Error('RUNPOD_KOKORO_API_KEY is not configured (needed for multilingual voices).');
+  }
+  if (!config.endpointId && !config.endpointUrl) {
+    throw new Error('RUNPOD_KOKORO_ENDPOINT_ID is not set (needed for multilingual voices).');
+  }
 
   const response = await fetch(buildRunSyncUrl(config), {
     method:  'POST',
@@ -201,11 +243,7 @@ async function createKokoroAudio({ script, voice, speed, format, outputDir }) {
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      input: {
-        text,
-        voice: resolvedVoice,
-        speed: resolvedSpeed
-      }
+      input: { text, voice: resolvedVoice, speed: resolvedSpeed }
     }),
     timeout: RUNPOD_MAX_WAIT_MS + 5000
   });
