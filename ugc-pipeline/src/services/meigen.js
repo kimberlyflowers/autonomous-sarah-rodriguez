@@ -169,12 +169,15 @@ async function submitMeigenVideoJob({ imagePath, audioPath, imageUrl, audioUrl, 
   if (!resolvedImage) throw new Error('Meigen needs a public image URL or uploaded image file.');
   if (!resolvedAudio) throw new Error('Meigen needs a public audio URL or uploaded audio file.');
 
+  const resolvedSize = normalizeSize(size);
+  console.log(`[meigen] submitMeigenVideoJob size param: received="${size}" resolved="${resolvedSize}"`);
+
   const body = {
     input: {
       prompt: String(prompt || 'Professional talking head video, natural lip sync, steady camera.').trim(),
       image: resolvedImage,
       audio: resolvedAudio,
-      size: normalizeSize(size),
+      size: resolvedSize,
       enable_safety_checker: true
     }
   };
