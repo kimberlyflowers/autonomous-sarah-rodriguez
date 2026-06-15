@@ -1,6 +1,6 @@
 [build]
 builder = "DOCKERFILE"
-dockerfilePath = "Dockerfile.ugc-pipeline"
+dockerfilePath = "Dockerfile.bloomie"
 
 [deploy]
 healthcheckPath = "/health"
