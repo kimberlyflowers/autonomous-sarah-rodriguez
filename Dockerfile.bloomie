@@ -29,27 +29,27 @@ ENV CHROMIUM_PATH=/usr/bin/chromium
 
 WORKDIR /app
 
-COPY heartbeat-engine/package*.json ./
+COPY package*.json ./
 RUN npm ci --only=production
 
-COPY heartbeat-engine/src/ ./src/
-COPY heartbeat-engine/database/ ./database/
-COPY heartbeat-engine/dashboard/ ./dashboard/
-COPY heartbeat-engine/landing-page/ ./landing-page/
+COPY src/ ./src/
+COPY database/ ./database/
+COPY dashboard/ ./dashboard/
+COPY landing-page/ ./landing-page/
 
-COPY heartbeat-engine/bloomie-scraper-mcp-server/ ./bloomie-scraper-mcp-server/
+COPY bloomie-scraper-mcp-server/ ./bloomie-scraper-mcp-server/
 WORKDIR /app/bloomie-scraper-mcp-server
 RUN npm install
 RUN npm run build
 WORKDIR /app
 
-COPY heartbeat-engine/bloomie-video-mcp-server/ ./bloomie-video-mcp-server/
+COPY bloomie-video-mcp-server/ ./bloomie-video-mcp-server/
 WORKDIR /app/bloomie-video-mcp-server
 RUN npm install
 RUN npm run build
 WORKDIR /app
 
-COPY heartbeat-engine/skills/ ./skills/
+COPY skills/ ./skills/
 
 WORKDIR /app/dashboard
 RUN npm install
