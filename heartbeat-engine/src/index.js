@@ -897,7 +897,7 @@ function site404Html() {
   return `<html><body style="font-family:system-ui;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#1a1a1a;color:#fff;margin:0"><div style="text-align:center"><h1 style="font-size:48px;margin:0">404</h1><p style="color:#888;margin-top:8px">This site or page doesn't exist.</p></div></body></html>`;
 }
 
-const BLOOMIE_GA_MEASUREMENT_ID = process.env.BLOOMIE_GA_MEASUREMENT_ID || 'G-FDZ0ZJ8B0W';
+const BLOOMIE_GA_MEASUREMENT_ID = process.env.BLOOMIE_GA_MEASUREMENT_ID || 'G-2M5C356N0N';
 
 function bloomieGoogleAnalyticsTag() {
   if (!BLOOMIE_GA_MEASUREMENT_ID) return '';
