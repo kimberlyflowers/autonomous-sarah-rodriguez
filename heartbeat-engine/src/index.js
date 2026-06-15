@@ -62,11 +62,11 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://fonts.googleapis.com", "https://cdnjs.cloudflare.com", "https://link.msgsndr.com", "https://widgets.leadconnectorhq.com"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://fonts.googleapis.com", "https://cdnjs.cloudflare.com", "https://link.msgsndr.com", "https://widgets.leadconnectorhq.com", "https://www.googletagmanager.com"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
       imgSrc: ["'self'", "data:", "blob:", "https:", "http:"],
-      connectSrc: ["'self'", "https:", "wss:"],
+      connectSrc: ["'self'", "https:", "wss:", "https://www.google-analytics.com", "https://region1.google-analytics.com"],
       frameSrc: ["'self'", "blob:", "data:", "https://api.leadconnectorhq.com", "*"],
       frameAncestors: ["*"],
     }
@@ -897,20 +897,43 @@ function site404Html() {
   return `<html><body style="font-family:system-ui;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#1a1a1a;color:#fff;margin:0"><div style="text-align:center"><h1 style="font-size:48px;margin:0">404</h1><p style="color:#888;margin-top:8px">This site or page doesn't exist.</p></div></body></html>`;
 }
 
+const BLOOMIE_GA_MEASUREMENT_ID = process.env.BLOOMIE_GA_MEASUREMENT_ID || 'G-FDZ0ZJ8B0W';
+
+function bloomieGoogleAnalyticsTag() {
+  if (!BLOOMIE_GA_MEASUREMENT_ID) return '';
+  return `
+    <!-- Google tag (gtag.js) - Bloomie Staffing -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=${BLOOMIE_GA_MEASUREMENT_ID}"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', '${BLOOMIE_GA_MEASUREMENT_ID}');
+    </script>`;
+}
+
+function injectBloomieGoogleAnalytics(html) {
+  if (!html || typeof html !== 'string' || !BLOOMIE_GA_MEASUREMENT_ID) return html;
+  if (html.includes(BLOOMIE_GA_MEASUREMENT_ID) || html.includes('googletagmanager.com/gtag/js')) return html;
+  if (!html.includes('</head>')) return html;
+  return html.replace('</head>', `${bloomieGoogleAnalyticsTag()}\n</head>`);
+}
+
 function normalizeBloomiePageHtml(html) {
   if (!html || typeof html !== 'string') return html;
   const playIcon = '<svg class="play-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" style="width:.95em;height:.95em;vertical-align:-.12em;margin-right:.42rem"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>';
-  const currentNav = `<nav>
-        <a href="/" class="logo">Bloomie <span>Staffing</span></a>
+  const currentNav = `<nav class="site-nav">
+        <a href="/" class="site-logo">Bloomie <span>Staffing</span></a>
         <ul>
             <li><a href="/#roles">Meet the Team</a></li>
+            <li><a href="/#live-demo">Testimonials</a></li>
             <li><a href="/ai-employee-vs-chatbot">AI vs Chatbots</a></li>
             <li><a href="/ai-employee-for-financial-advisors">Financial Advisors</a></li>
             <li><a href="/ai-employee-for-real-estate-agents">Real Estate</a></li>
             <li><a href="/p/blog">Blog</a></li>
             <li><a href="/p/faq">FAQ</a></li>
             <li><a href="/pricing">Pricing</a></li>
-            <li><a class="cta-button" href="/book-demo">${playIcon}<span>Book a Demo</span></a></li>
+            <li><a class="nav-cta" href="/book-demo">${playIcon}<span>Book a Demo</span></a></li>
         </ul>
     </nav>`;
   let normalized = html
@@ -933,7 +956,7 @@ function normalizeBloomiePageHtml(html) {
   if (shouldUseCurrentBloomieNav) {
     normalized = normalized.replace(/<nav[\s\S]*?<\/nav>/, currentNav);
   }
-  return normalized;
+  return injectBloomieGoogleAnalytics(normalized);
 }
 
 // Custom domain middleware — must be registered before /p/ routes
