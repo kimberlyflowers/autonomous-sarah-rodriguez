@@ -69,6 +69,25 @@
       function gtag(){dataLayer.push(arguments);}
       gtag('js', new Date());
       gtag('config', 'G-2M5C356N0N');
+      document.addEventListener('click', function(event) {
+        var target = event.target && event.target.closest ? event.target.closest('a, button') : null;
+        if (!target || typeof gtag !== 'function') return;
+        var label = (target.innerText || target.getAttribute('aria-label') || target.href || '').trim().replace(/\s+/g, ' ');
+        var href = target.href || '';
+        var action = '';
+        var text = label.toLowerCase();
+        if (href.indexOf('tel:') === 0 || text.indexOf('call') !== -1) action = 'call_click';
+        else if (text.indexOf('demo') !== -1 || href.indexOf('book-demo') !== -1) action = 'demo_click';
+        else if (text.indexOf('interview') !== -1 || text.indexOf('ai employee') !== -1) action = 'ai_employee_interview_click';
+        else if (text.indexOf('schedule') !== -1 || text.indexOf('meeting') !== -1) action = 'schedule_click';
+        if (!action) return;
+        gtag('event', action, {
+          event_category: 'lead_engagement',
+          event_label: label || href,
+          link_url: href || undefined,
+          page_location: window.location.href
+        });
+      });
     </script>
 </head>
 <body>
