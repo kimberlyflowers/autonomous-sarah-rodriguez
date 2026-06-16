@@ -62,9 +62,9 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://fonts.googleapis.com", "https://cdnjs.cloudflare.com", "https://link.msgsndr.com", "https://widgets.leadconnectorhq.com", "https://www.googletagmanager.com"],
-      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://fonts.googleapis.com", "https://cdnjs.cloudflare.com", "https://link.msgsndr.com", "https://widgets.leadconnectorhq.com", "https://www.googletagmanager.com", "https://stcdn.leadconnectorhq.com", "https://services.leadconnectorhq.com"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://fonts.bunny.net", "https://stcdn.leadconnectorhq.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com", "https://fonts.bunny.net", "https://stcdn.leadconnectorhq.com"],
       imgSrc: ["'self'", "data:", "blob:", "https:", "http:"],
       connectSrc: ["'self'", "https:", "wss:", "https://www.google-analytics.com", "https://region1.google-analytics.com"],
       frameSrc: ["'self'", "blob:", "data:", "https://api.leadconnectorhq.com", "*"],
