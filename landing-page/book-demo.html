@@ -43,15 +43,16 @@
         .face.three { background: linear-gradient(135deg, var(--dark), var(--accent)); }
         .trust strong { display: block; color: var(--dark); font-size: 0.84rem; margin-bottom: 0.45rem; }
         .trust p { color: var(--muted); font-size: 0.82rem; line-height: 1.5; font-style: italic; }
-        .calendar-wrap { padding: 1rem; background: #fff; }
-        .calendar-frame { width: 100%; min-height: 710px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+        .calendar-wrap { display: block; padding: 1rem; background: #fff; min-height: 760px; }
+        .calendar-label { display: none; margin: 0 0 0.8rem; font-size: 1rem; font-weight: 900; color: var(--dark); }
+        .calendar-frame { display: block; width: 100%; height: 740px !important; min-height: 740px !important; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
         .note { text-align: center; color: var(--muted); font-size: 0.86rem; line-height: 1.5; margin: 1.4rem auto 0; max-width: 560px; }
         .social-proof-toast { position: fixed; left: 22px; bottom: 22px; z-index: 20; width: min(360px, calc(100vw - 32px)); display: flex; align-items: center; gap: 0.9rem; padding: 0.95rem 1rem; background: rgba(255,255,255,0.96); border: 1px solid rgba(45,52,54,0.08); border-radius: 16px; box-shadow: 0 16px 42px rgba(45,52,54,0.18); }
         .social-proof-icon { width: 50px; height: 50px; border-radius: 14px; background: linear-gradient(135deg, rgba(244,162,97,0.18), rgba(231,111,139,0.18)); display: grid; place-items: center; color: var(--accent); font-weight: 900; flex: 0 0 auto; }
         .social-proof-text { color: var(--dark); font-size: 0.9rem; line-height: 1.35; font-weight: 700; }
         .social-proof-meta { color: #8a94a6; font-size: 0.72rem; font-weight: 700; margin-top: 0.3rem; }
-        @media (max-width: 920px) { .booking-card { grid-template-columns: 1fr; } .discovery { min-height: auto; border-right: 0; border-bottom: 1px solid var(--line); } .calendar-frame { min-height: 760px; } .social-proof-toast { display: none; } }
-        @media (max-width: 560px) { .nav { padding: 0.9rem 1rem; } .hero { padding: 3rem 1rem 2.5rem; } .booking-shell { padding: 0 0.75rem 2rem; } .discovery { padding: 1.35rem; } .calendar-wrap { padding: 0.65rem; } }
+        @media (max-width: 920px) { .booking-card { grid-template-columns: 1fr; } .discovery { min-height: auto; border-right: 0; border-bottom: 1px solid var(--line); } .calendar-wrap { min-height: 820px; } .calendar-label { display: block; } .calendar-frame { height: 790px !important; min-height: 790px !important; } .social-proof-toast { display: none; } }
+        @media (max-width: 560px) { .nav { padding: 0.9rem 1rem; } .hero { padding: 3rem 1rem 2.5rem; } .booking-shell { padding: 0 0.75rem 2rem; } .discovery { padding: 1.35rem; } .calendar-wrap { padding: 0.75rem; min-height: 850px; } .calendar-frame { height: 820px !important; min-height: 820px !important; } }
     </style>
 
     <!-- Google tag (gtag.js) - Bloomie Staffing -->
@@ -140,7 +141,8 @@
                     </div>
                 </aside>
                 <div class="calendar-wrap">
-                    <iframe src="https://api.leadconnectorhq.com/widget/booking/UXtwpEpVRVg8ZVnratzA?widget_type=neo" class="calendar-frame" scrolling="no" id="msgsndr-calendar" title="Bloomie Staffing demo calendar"></iframe>
+                    <h2 class="calendar-label">Choose a Demo Time</h2>
+                    <iframe src="https://api.leadconnectorhq.com/widget/booking/UXtwpEpVRVg8ZVnratzA?widget_type=neo" class="calendar-frame" scrolling="yes" id="msgsndr-calendar" title="Bloomie Staffing demo calendar"></iframe>
                 </div>
             </div>
             <p class="note">No commitment required. This is a free consultation to see whether Bloomie Staffing is the right fit for hiring a reliable AI employee.</p>
