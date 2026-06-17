@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bloomie Staffing Analytics</title>
+  <meta name="robots" content="noindex,nofollow">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    :root { --primary:#F4A261; --accent:#E76F8B; --dark:#2D3436; --muted:#667074; --line:#E8E5E2; --soft:#FFF4EF; --white:#FFFFFF; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Inter, sans-serif; color: var(--dark); background: #FAFAFA; }
+    nav { position: sticky; top: 0; z-index: 20; background: rgba(255,255,255,0.96); border-bottom: 1px solid var(--line); backdrop-filter: blur(14px); }
+    .nav-inner { max-width: 1240px; margin: 0 auto; padding: 1rem 1.25rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+    .logo { font-weight: 900; text-decoration: none; color: var(--dark); }
+    .logo span { color: var(--accent); }
+    .nav-actions { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+    select, button, .link-btn { border: 1px solid var(--line); background: var(--white); color: var(--dark); border-radius: 8px; padding: 0.62rem 0.8rem; font: inherit; font-weight: 800; text-decoration: none; }
+    button { cursor: pointer; background: linear-gradient(135deg, var(--primary), var(--accent)); color: #fff; border: 0; }
+    main { max-width: 1240px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+    .hero { display: flex; align-items: end; justify-content: space-between; gap: 1rem; margin-bottom: 1.25rem; }
+    h1 { margin: 0 0 0.45rem; font-size: clamp(2rem, 5vw, 3.5rem); line-height: 1; letter-spacing: 0; }
+    .hero p { margin: 0; color: var(--muted); max-width: 740px; line-height: 1.7; }
+    .status { font-size: 0.82rem; color: var(--muted); font-weight: 700; white-space: nowrap; }
+    .cards { display: grid; grid-template-columns: repeat(6, 1fr); gap: 0.8rem; margin: 1.25rem 0; }
+    .metric { background: var(--white); border: 1px solid var(--line); border-radius: 8px; padding: 1rem; min-height: 112px; }
+    .metric strong { display: block; color: var(--muted); font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.75rem; }
+    .metric span { display: block; font-size: 2rem; font-weight: 900; line-height: 1; }
+    .grid { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.75fr); gap: 1rem; align-items: start; }
+    section { background: var(--white); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+    section h2 { margin: 0; padding: 1rem; border-bottom: 1px solid var(--line); font-size: 1rem; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 0.8rem 1rem; border-bottom: 1px solid #F0EDEA; vertical-align: top; font-size: 0.9rem; }
+    th { color: var(--muted); font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.05em; background: #FCFCFC; }
+    tr:last-child td { border-bottom: 0; }
+    .path { font-weight: 800; word-break: break-word; }
+    .muted { color: var(--muted); }
+    .side-stack { display: grid; gap: 1rem; }
+    .event-list { list-style: none; padding: 0; margin: 0; max-height: 560px; overflow: auto; }
+    .event-list li { padding: 0.85rem 1rem; border-bottom: 1px solid #F0EDEA; }
+    .event-list li:last-child { border-bottom: 0; }
+    .pill { display: inline-flex; align-items: center; border-radius: 999px; padding: 0.24rem 0.55rem; background: var(--soft); color: var(--accent); font-size: 0.75rem; font-weight: 900; margin-bottom: 0.4rem; }
+    .empty { padding: 2rem; color: var(--muted); text-align: center; }
+    .note { margin-top: 1rem; padding: 1rem; border: 1px solid rgba(244,162,97,0.35); background: var(--soft); border-radius: 8px; color: #58443a; line-height: 1.65; }
+    @media (max-width: 980px) { .cards { grid-template-columns: repeat(2, 1fr); } .grid { grid-template-columns: 1fr; } .hero { display: block; } .status { margin-top: 0.7rem; } }
+    @media (max-width: 560px) { .cards { grid-template-columns: 1fr; } th:nth-child(3), td:nth-child(3) { display: none; } .nav-inner { align-items: flex-start; flex-direction: column; } }
+  </style>
+</head>
+<body>
+  <nav>
+    <div class="nav-inner">
+      <a class="logo" href="/">Bloomie <span>Staffing</span></a>
+      <div class="nav-actions">
+        <a class="link-btn" href="/p/blog">Blog</a>
+        <a class="link-btn" href="/sitemap.xml">Sitemap</a>
+        <select id="days">
+          <option value="1">Last 24 hours</option>
+          <option value="7">Last 7 days</option>
+          <option value="30" selected>Last 30 days</option>
+          <option value="90">Last 90 days</option>
+        </select>
+        <button id="refresh">Refresh</button>
+      </div>
+    </div>
+  </nav>
+
+  <main>
+    <div class="hero">
+      <div>
+        <h1>Website Analytics</h1>
+        <p>First-party Bloomie Staffing traffic view for page visits, blog traffic, CTA clicks, referrers, devices, and time on page.</p>
+      </div>
+      <div class="status" id="status">Loading...</div>
+    </div>
+
+    <div class="cards">
+      <div class="metric"><strong>Active Now</strong><span id="activeNow">0</span></div>
+      <div class="metric"><strong>Page Views</strong><span id="pageViews">0</span></div>
+      <div class="metric"><strong>Visitors</strong><span id="visitors">0</span></div>
+      <div class="metric"><strong>Sessions</strong><span id="sessions">0</span></div>
+      <div class="metric"><strong>CTA Clicks</strong><span id="ctaClicks">0</span></div>
+      <div class="metric"><strong>Avg Time</strong><span id="avgTime">0s</span></div>
+    </div>
+
+    <div class="grid">
+      <section>
+        <h2>Traffic By Page</h2>
+        <div id="pages"></div>
+      </section>
+      <div class="side-stack">
+        <section>
+          <h2>CTA Clicks</h2>
+          <div id="clicks"></div>
+        </section>
+        <section>
+          <h2>Referrers</h2>
+          <div id="referrers"></div>
+        </section>
+        <section>
+          <h2>Recent Activity</h2>
+          <ul class="event-list" id="recent"></ul>
+        </section>
+      </div>
+    </div>
+
+    <div class="note">
+      Google Analytics does not show a sitemap report here. Use GA4 Reports → Engagement → Pages and screens for traffic by page, and Google Search Console → Sitemaps for sitemap crawling/indexing. This Bloomie page starts collecting first-party traffic after the tracker is deployed.
+    </div>
+  </main>
+
+  <script>
+    const fmt = new Intl.NumberFormat();
+    const $ = (id) => document.getElementById(id);
+    const seconds = (value) => {
+      const n = Number(value || 0);
+      if (n < 60) return `${n}s`;
+      const m = Math.round(n / 60);
+      return `${m}m`;
+    };
+    const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+    function table(headers, rows, render) {
+      if (!rows || !rows.length) return '<div class="empty">No data yet. Open the site pages after this deploy and refresh.</div>';
+      return `<table><thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(render).join('')}</tbody></table>`;
+    }
+
+    async function load() {
+      const days = $('days').value;
+      $('status').textContent = 'Loading...';
+      const res = await fetch(`/api/analytics/summary?days=${encodeURIComponent(days)}`, { cache: 'no-store' });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'Could not load analytics');
+      const o = data.overview || {};
+      $('activeNow').textContent = fmt.format(o.active_now || 0);
+      $('pageViews').textContent = fmt.format(o.page_views || 0);
+      $('visitors').textContent = fmt.format(o.visitors || 0);
+      $('sessions').textContent = fmt.format(o.sessions || 0);
+      $('ctaClicks').textContent = fmt.format(o.cta_clicks || 0);
+      $('avgTime').textContent = seconds(o.avg_time_seconds || 0);
+      $('pages').innerHTML = table(['Page', 'Views', 'Visitors', 'Avg Time'], data.pages, (r) =>
+        `<tr><td><div class="path">${esc(r.page_path)}</div><div class="muted">${esc(r.page_title || '')}</div></td><td>${fmt.format(r.views || 0)}</td><td>${fmt.format(r.visitors || 0)}</td><td>${seconds(r.avg_time_seconds)}</td></tr>`);
+      $('clicks').innerHTML = table(['CTA', 'Clicks'], data.clicks, (r) =>
+        `<tr><td><div class="path">${esc(r.link_text)}</div><div class="muted">${esc(r.page_path)}</div></td><td>${fmt.format(r.clicks || 0)}</td></tr>`);
+      $('referrers').innerHTML = table(['Source', 'Visits'], data.referrers, (r) =>
+        `<tr><td class="path">${esc(r.referrer)}</td><td>${fmt.format(r.visits || 0)}</td></tr>`);
+      $('recent').innerHTML = (data.recent || []).length ? data.recent.map((r) =>
+        `<li><span class="pill">${esc(r.event_type)}</span><div class="path">${esc(r.page_path)}</div><div class="muted">${new Date(r.created_at).toLocaleString()} · ${esc(r.device_type || '')}${r.duration_seconds ? ` · ${seconds(r.duration_seconds)}` : ''}</div>${r.link_text ? `<div>${esc(r.link_text)}</div>` : ''}</li>`).join('') : '<li class="empty">No recent activity yet.</li>';
+      $('status').textContent = `Updated ${new Date(data.generatedAt).toLocaleString()}`;
+    }
+
+    $('refresh').addEventListener('click', load);
+    $('days').addEventListener('change', load);
+    load().catch((error) => { $('status').textContent = error.message; });
+  </script>
+</body>
+</html>

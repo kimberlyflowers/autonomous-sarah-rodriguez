@@ -148,7 +148,7 @@ The handler auto-assembles this design using the org's brand kit colors (primary
 - **Primary color H2 headings** with accent color top border
 - **Light-tinted highlight callout boxes** (tinted primary background, primary left border)
 - **Accent color triangle bullet markers** (▸)
-- **Dark slate CTA card** with 3 buttons: Call Us Now, Schedule a Demo, Text Your Questions
+- **Dark slate CTA card** with 3 buttons: Call Us Now, Schedule a Demo, Interview an AI Employee
 - **Tagline from brand kit** (or "Hire an AI Employee. Get Work Done." if none configured)
 - Full SEO meta tags, OG tags, Schema.org JSON-LD (auto-generated from your fields)
 
@@ -188,6 +188,15 @@ When writing for Bloomie Staffing, reinforce this narrative across title, intro,
 - Do not force "AI employee" into every sentence. Use market terminology to answer the question, then use the close, FAQ, and CTA to teach why Bloomie's AI employee model is the better business outcome.
 
 Do this naturally. Do not drop the narrative into a random paragraph that does not answer the reader's question.
+
+### Bloomie Staffing Publish Safety
+When the blog is for Bloomie Staffing and will be served at `bloomiestaffing.com/p/{slug}`:
+- Public copy must say `Bloomie Staffing`; never use `BLOOM Ecosystem`.
+- CTA labels must be exactly: `Call Us Now`, `Schedule a Demo`, `Interview an AI Employee`.
+- Avoid the words `closing` and `closes` in public blog copy.
+- Uploaded images must use one clean public Supabase Storage URL. Never publish `file://`, `./hero.png`, `./email-hero.png`, `./author-sarah.png`, `./author-marcus.png`, `/assets/...`, or a doubled URL where a Supabase URL is appended to another Supabase URL.
+- Add a `bloomie-nav-safety` CSS guard before publishing. Supabase may rewrite the visible nav to `nav.site-nav`, `a.site-logo`, and `a.nav-cta`, so the guard must style `.site-nav`, `.site-logo`, `.nav-cta`, plain `nav`, `a.logo`, and `a.cta-button`. This prevents blog pages from showing odd menu spacing, default blue links, broken CTA styling, or bullet navigation.
+- Include Google Analytics `G-2M5C356N0N` only; never include `G-FDZ0ZJ8B0W`.
 
 ### Financial Advisor Audience Voice
 When the blog is for financial advisors, RIAs, wealth managers, or advisors serving high-net-worth clients, use the Google Drive audience guide as mandatory voice direction:

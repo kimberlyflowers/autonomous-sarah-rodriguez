@@ -17,6 +17,7 @@ import { testLettaConnection } from './memory/letta-client.js';
 import { ensureDatabaseExists } from './database/auto-setup.js';
 import { ensureSupabaseSchema } from './database/supabase-setup.js';
 import dashboardRoutes from './api/dashboard.js';
+import analyticsRoutes from './api/analytics.js';
 import filesRoutes from './api/files.js';
 import agentRoutes from './api/agent.js';
 import chatRoutes from './api/chat.js';
@@ -75,6 +76,7 @@ app.use(helmet({
 app.use(cors());
 app.use(cookieParser());
 app.use(express.json({ limit: '50mb' }));
+app.use('/api/analytics', analyticsRoutes);
 
 // Increase max listeners — Winston registers listeners per logger instance,
 // and we have many route modules each calling createLogger() at load time.
@@ -938,6 +940,18 @@ function injectBloomieGoogleAnalytics(html) {
   return html.replace('</head>', `${bloomieGoogleAnalyticsTag()}\n</head>`);
 }
 
+function injectBloomieFirstPartyAnalytics(html) {
+  if (!html || typeof html !== 'string') return html;
+  if (html.includes('/assets/bloomie-analytics.js')) return html;
+  if (html.includes('</body>')) {
+    return html.replace('</body>', '<script src="/assets/bloomie-analytics.js" defer></script>\n</body>');
+  }
+  if (html.includes('</head>')) {
+    return html.replace('</head>', '<script src="/assets/bloomie-analytics.js" defer></script>\n</head>');
+  }
+  return html;
+}
+
 function normalizeBloomiePageHtml(html) {
   if (!html || typeof html !== 'string') return html;
   const playIcon = '<svg class="play-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" style="width:.95em;height:.95em;vertical-align:-.12em;margin-right:.42rem"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>';
@@ -975,7 +989,7 @@ function normalizeBloomiePageHtml(html) {
   if (shouldUseCurrentBloomieNav) {
     normalized = normalized.replace(/<nav[\s\S]*?<\/nav>/, currentNav);
   }
-  return injectBloomieGoogleAnalytics(normalized);
+  return injectBloomieFirstPartyAnalytics(injectBloomieGoogleAnalytics(normalized));
 }
 
 // Custom domain middleware — must be registered before /p/ routes
@@ -1287,6 +1301,10 @@ const landingPageDir = path.join(__dirname, '../landing-page');
 
 app.get(['/book-demo', '/booking'], (req, res) => {
   res.sendFile(path.join(landingPageDir, 'book-demo.html'));
+});
+
+app.get('/analytics', (req, res) => {
+  res.sendFile(path.join(landingPageDir, 'analytics.html'));
 });
 
 app.get(['/pricing', '/plans'], (req, res) => {
