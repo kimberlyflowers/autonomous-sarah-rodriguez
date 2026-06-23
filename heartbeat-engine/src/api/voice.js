@@ -7,8 +7,158 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import express from 'express';
+import { createClient } from '@supabase/supabase-js';
+import { createLogger } from '../logging/logger.js';
 
 const router = express.Router();
+const logger = createLogger('voice-api');
+
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
+const BLOOM_ORG_ID = process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001';
+const SARAH_AGENT_ID = process.env.SARAH_AGENT_ID || process.env.AGENT_UUID || 'c3000000-0000-0000-0000-000000000003';
+const ELEVENLABS_SARAH_AGENT_ID = process.env.ELEVENLABS_CONVAI_SARAH_AGENT_ID || 'agent_7401kcdd80w2fs5r0fdn6f8ktjy9';
+
+let anonClient = null;
+let serviceClient = null;
+
+function getAnonClient() {
+  if (!anonClient) anonClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  return anonClient;
+}
+
+function getServiceClient() {
+  if (!serviceClient) {
+    serviceClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+    });
+  }
+  return serviceClient;
+}
+
+function normalizeText(v) {
+  return String(v || '').trim().toLowerCase();
+}
+
+async function requireAuth(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !SUPABASE_SERVICE_KEY) {
+    return res.status(503).json({ error: 'Supabase auth is not configured' });
+  }
+
+  try {
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error } = await getAnonClient().auth.getUser(token);
+    if (error || !user) return res.status(401).json({ error: 'Invalid session' });
+    req.authUser = user;
+    next();
+  } catch (e) {
+    logger.warn('Voice auth failed', { error: e.message });
+    return res.status(401).json({ error: 'Auth failed' });
+  }
+}
+
+async function resolveSarahAccess(req, requestedAgentId) {
+  const user = req.authUser;
+  const sb = getServiceClient();
+
+  const { data: memberships, error: memberError } = await sb
+    .from('organization_members')
+    .select('organization_id, role, organizations(id, name, slug)')
+    .eq('user_id', user.id);
+
+  if (memberError) throw memberError;
+  const orgIds = (memberships || []).map(m => m.organization_id).filter(Boolean);
+  if (!orgIds.length) return { ok: false, status: 403, error: 'User is not associated with an organization' };
+
+  if (BLOOM_ORG_ID && !orgIds.includes(BLOOM_ORG_ID)) {
+    return { ok: false, status: 403, error: 'Voice is only enabled for the Bloom organization' };
+  }
+
+  const targetAgentId = requestedAgentId || SARAH_AGENT_ID;
+  const { data: agent, error: agentError } = await sb
+    .from('agents')
+    .select('id, name, role, job_title, organization_id')
+    .eq('id', targetAgentId)
+    .maybeSingle();
+
+  if (agentError) throw agentError;
+  if (!agent) return { ok: false, status: 404, error: 'Agent not found' };
+  if (!orgIds.includes(agent.organization_id)) return { ok: false, status: 403, error: 'Agent belongs to a different organization' };
+
+  const agentName = normalizeText(agent.name);
+  const isSarah = agent.id === SARAH_AGENT_ID || agentName === 'sarah' || agentName.startsWith('sarah ') || agentName.includes('sarah rodriguez');
+  if (!isSarah) return { ok: false, status: 403, error: 'ElevenLabs voice is only enabled for Sarah' };
+
+  return { ok: true, agent, orgId: agent.organization_id };
+}
+
+router.get('/elevenlabs/status', requireAuth, async (req, res) => {
+  try {
+    const access = await resolveSarahAccess(req, req.query.agentId);
+    if (!access.ok) return res.status(access.status).json({ enabled: false, error: access.error });
+
+    const configured = Boolean(process.env.ELEVENLABS_API_KEY && ELEVENLABS_SARAH_AGENT_ID);
+    return res.json({
+      enabled: configured,
+      provider: 'elevenlabs',
+      agentId: access.agent.id,
+      agentName: access.agent.name,
+      connectionType: 'webrtc',
+      reason: configured ? null : 'ElevenLabs is not configured'
+    });
+  } catch (e) {
+    logger.error('ElevenLabs status error', { error: e.message });
+    return res.status(500).json({ enabled: false, error: 'Failed to check ElevenLabs voice status' });
+  }
+});
+
+router.post('/elevenlabs/token', requireAuth, async (req, res) => {
+  try {
+    const access = await resolveSarahAccess(req, req.body?.agentId);
+    if (!access.ok) return res.status(access.status).json({ error: access.error });
+
+    if (!process.env.ELEVENLABS_API_KEY) {
+      return res.status(503).json({ error: 'ElevenLabs API key is not configured' });
+    }
+
+    const tokenUrl = `https://api.elevenlabs.io/v1/convai/conversation/token?agent_id=${encodeURIComponent(ELEVENLABS_SARAH_AGENT_ID)}`;
+    const tokenResp = await fetch(tokenUrl, {
+      headers: { 'xi-api-key': process.env.ELEVENLABS_API_KEY }
+    });
+
+    const raw = await tokenResp.text();
+    let data = {};
+    try { data = raw ? JSON.parse(raw) : {}; } catch { data = {}; }
+
+    if (!tokenResp.ok) {
+      const detail = data?.detail?.message || data?.detail || data?.message || raw || tokenResp.statusText;
+      logger.warn('ElevenLabs token request failed', { status: tokenResp.status, detail: String(detail).slice(0, 160) });
+      return res.status(502).json({ error: `ElevenLabs token request failed: ${String(detail).slice(0, 240)}` });
+    }
+
+    const token = data.token || data.conversation_token || data.conversationToken;
+    if (!token) {
+      logger.warn('ElevenLabs token response missing token');
+      return res.status(502).json({ error: 'ElevenLabs did not return a conversation token' });
+    }
+
+    return res.json({
+      token,
+      provider: 'elevenlabs',
+      agentId: access.agent.id,
+      connectionType: 'webrtc'
+    });
+  } catch (e) {
+    logger.error('ElevenLabs token error', { error: e.message });
+    return res.status(500).json({ error: 'Failed to start Sarah voice session' });
+  }
+});
 
 router.get('/prompt', async (req, res) => {
   // Pull agent config (could come from DB in multi-client future)

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, Component } from "react";
+import { ConversationProvider, useConversation } from "@elevenlabs/react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { supabase } from "./supabase.js";
@@ -61,6 +62,8 @@ function mk(d) {
         ln:"#E5E7EB",bl:"#3B6FD4",pu:"#7C3AED",inp:"#FFFFFF",hv:"#F5F5F5",
         gradient:"linear-gradient(135deg,#F4A261,#E76F8B)",err:"#ea4335",warn:"#FBBC04" };
 }
+
+const DEFAULT_SARAH_AGENT_ID = "c3000000-0000-0000-0000-000000000003";
 
 /* ═══════════════════════════════════════════════════════════════
    MODERN ICON LIBRARY
@@ -3457,7 +3460,7 @@ function QRCanvas({url, size=160}) {
 }
 
 export default function AppWithErrorBoundary({ user: authUser }) {
-  return <ErrorBoundary><App authUser={authUser} /></ErrorBoundary>;
+  return <ErrorBoundary><ConversationProvider><App authUser={authUser} /></ConversationProvider></ErrorBoundary>;
 }
 
 // ── Password Change Panel — used in Settings > General > Security ──────────
@@ -4307,6 +4310,19 @@ function App({ authUser }) {
   const [ghlPit,setGhlPit]=useState('');
   const [ghlLocId,setGhlLocId]=useState('');
   const [ghlSaving,setGhlSaving]=useState(false);
+  const [convaiStarting,setConvaiStarting]=useState(false);
+  const [convaiError,setConvaiError]=useState('');
+  const conversation=useConversation({
+    onConnect:()=>{setConvaiStarting(false);setConvaiError('');},
+    onDisconnect:()=>{setConvaiStarting(false);},
+    onError:(err)=>{
+      const msg=typeof err==="string"?err:(err?.message||err?.error||"Sarah voice could not connect");
+      setConvaiStarting(false);
+      setConvaiError(msg);
+      setOauthToast({type:'error',msg});
+      setTimeout(()=>setOauthToast(null),4500);
+    }
+  });
 
   // Extracted so it can be called both on mount and after OAuth success
   const loadActiveConnectors = () => {
@@ -4694,8 +4710,21 @@ function App({ authUser }) {
   const agent={nm:currentAgent?.name||"AI Agent",role:currentAgent?.role||"AI Employee",img:agentImgUrl||currentAgent?.avatar_url||null,grad:"linear-gradient(135deg,#F4A261,#E76F8B)"};
   const aFN=(currentAgent?.name||"Agent").split(" ")[0]; // agent first name for dynamic UI text
   const fmtFreq=(f)=>({every_10_min:"Every 10 min",every_30_min:"Every 30 min",hourly:"Hourly",daily:"Daily",weekdays:"Weekdays",weekly:"Weekly",monthly:"Monthly"}[f]||f);
+  const currentAgentName=(currentAgent?.name||"").toLowerCase();
+  const isSarahVoiceAgent=currentAgentId===DEFAULT_SARAH_AGENT_ID||currentAgentName==="sarah"||currentAgentName.startsWith("sarah ")||currentAgentName.includes("sarah rodriguez");
+  const convaiConnected=conversation.status==="connected";
+  const convaiConnecting=convaiStarting||conversation.status==="connecting";
+  const voiceActive=vcRec||convaiConnecting||convaiConnected;
+  const voiceStatusText=convaiConnecting?"Connecting":conversation.isSpeaking?"Speaking":conversation.isListening?"Listening":convaiConnected?"Voice live":"";
 
   useEffect(()=>{ if(btm.current) setTimeout(()=>btm.current?.scrollIntoView({behavior:"smooth"}),100); },[messages]);
+
+  useEffect(()=>{
+    if(!isSarahVoiceAgent && (convaiConnected||convaiConnecting)) {
+      conversation.endSession();
+      setConvaiStarting(false);
+    }
+  },[isSarahVoiceAgent,convaiConnected,convaiConnecting]);
 
   useEffect(()=>{
     if(!umO) return;
@@ -4785,7 +4814,56 @@ function App({ authUser }) {
     }
   };
 
+  const startSarahVoice=async()=>{
+    if(convaiConnected||convaiConnecting){
+      conversation.endSession();
+      setConvaiStarting(false);
+      return;
+    }
+
+    if(!isSarahVoiceAgent){
+      setOauthToast({type:'error',msg:'Voice is only configured for Sarah'});
+      setTimeout(()=>setOauthToast(null),3500);
+      return;
+    }
+
+    try {
+      setConvaiStarting(true);
+      setConvaiError('');
+      const micStream=await navigator.mediaDevices?.getUserMedia?.({audio:true});
+      micStream?.getTracks?.().forEach(track=>track.stop());
+
+      const h=await getAuthHeaders();
+      const r=await fetch('/api/voice/elevenlabs/token',{
+        method:'POST',
+        headers:h,
+        body:JSON.stringify({agentId:currentAgentId})
+      });
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok||!d.token) throw new Error(d.error||'Could not start Sarah voice');
+
+      conversation.startSession({
+        conversationToken:d.token,
+        connectionType:d.connectionType||'webrtc',
+        onError:(err)=>{
+          const msg=typeof err==="string"?err:(err?.message||err?.error||'Sarah voice disconnected');
+          setConvaiStarting(false);
+          setConvaiError(msg);
+          setOauthToast({type:'error',msg});
+          setTimeout(()=>setOauthToast(null),4500);
+        }
+      });
+    } catch(e) {
+      const msg=e?.name==="NotAllowedError"?"Microphone permission is required to speak with Sarah":(e?.message||'Could not start Sarah voice');
+      setConvaiStarting(false);
+      setConvaiError(msg);
+      setOauthToast({type:'error',msg});
+      setTimeout(()=>setOauthToast(null),4500);
+    }
+  };
+
   const toggleVoice=()=>{
+    if(isSarahVoiceAgent) { startSarahVoice(); return; }
     if(vcRec){setVcRec(false);return;}
     const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
     if(!SR) return;
@@ -5358,7 +5436,7 @@ function App({ authUser }) {
                     <h2 style={{fontSize:mob?22:28,fontWeight:700,color:c.tx,marginTop:18,marginBottom:6}}>{currentAgent ? `Chat with ${currentAgent.name.split(" ")[0]}` : "Loading..."}</h2>
                     <p style={{fontSize:mob?13:15,color:c.so,marginBottom:28}}>{currentAgent ? `Give ${aFN} tasks, check their work, or ask what's going on` : ""}</p>
                     <div style={{position:"relative",marginBottom:20}}>
-                      <div style={{display:"flex",alignItems:"flex-end",gap:8,padding:mob?"12px":"14px 16px",borderRadius:20,border:"1.5px solid "+(vcRec?c.ac:c.ln),background:c.inp,transition:"border-color .2s"}}>
+                      <div style={{display:"flex",alignItems:"flex-end",gap:8,padding:mob?"12px":"14px 16px",borderRadius:20,border:"1.5px solid "+(voiceActive?c.ac:c.ln),background:c.inp,transition:"border-color .2s"}}>
                         <div ref={plusMenuRef} style={{position:"relative",flexShrink:0,marginBottom:2}}>
                           <button onClick={()=>setShowPlusMenu(p=>!p)} title="Add" style={{width:36,height:36,borderRadius:10,border:"none",cursor:"pointer",background:showPlusMenu?c.sf:"transparent",display:"flex",alignItems:"center",justifyContent:"center",transition:"background .15s"}}>
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={showPlusMenu?c.ac:c.so} strokeWidth="2" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -5397,10 +5475,10 @@ function App({ authUser }) {
                             </>
                           )}
                         </div>
-                        <textarea value={tx} onChange={e=>setTx(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();doSend();}}} placeholder={vcRec?"Listening…":"Ask anything..."} rows={1} style={{flex:1,padding:"10px 0",border:"none",fontSize:15,fontFamily:"inherit",background:"transparent",color:c.tx,resize:"none",lineHeight:1.4,maxHeight:120,overflowY:"auto",outline:"none"}}/>
-                        <button onClick={toggleVoice} style={{width:36,height:36,borderRadius:10,border:"none",cursor:"pointer",background:vcRec?c.ac+"18":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,position:"relative",marginBottom:2}}>
-                          {vcRec&&<span style={{position:"absolute",inset:-4,borderRadius:14,border:"2px solid "+c.ac,animation:"pulse 1.2s ease infinite",opacity:0.4}}/>}
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={vcRec?c.ac:c.so} strokeWidth="2" strokeLinecap="round"><rect x="9" y="1" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0014 0"/><path d="M12 17v4M8 21h8"/></svg>
+                        <textarea value={tx} onChange={e=>setTx(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();doSend();}}} placeholder={voiceActive?(voiceStatusText||"Listening")+"…":"Ask anything..."} rows={1} style={{flex:1,padding:"10px 0",border:"none",fontSize:15,fontFamily:"inherit",background:"transparent",color:c.tx,resize:"none",lineHeight:1.4,maxHeight:120,overflowY:"auto",outline:"none"}}/>
+                        <button onClick={toggleVoice} title={isSarahVoiceAgent?(convaiConnected?"End Sarah voice":"Speak with Sarah"):"Dictate message"} style={{width:36,height:36,borderRadius:10,border:"none",cursor:"pointer",background:voiceActive?c.ac+"18":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,position:"relative",marginBottom:2}}>
+                          {voiceActive&&<span style={{position:"absolute",inset:-4,borderRadius:14,border:"2px solid "+c.ac,animation:"pulse 1.2s ease infinite",opacity:0.4}}/>}
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={voiceActive?c.ac:c.so} strokeWidth="2" strokeLinecap="round"><rect x="9" y="1" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0014 0"/><path d="M12 17v4M8 21h8"/></svg>
                         </button>
                         {loading?(
                           <button onClick={stopSarah} style={{width:36,height:36,borderRadius:10,border:"none",cursor:"pointer",background:"rgba(234,67,53,0.15)",color:"#ea4335",fontSize:14,fontWeight:700,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:2}} title={"Stop "+aFN}>■</button>
@@ -5603,6 +5681,12 @@ function App({ authUser }) {
                       <div style={{display:"flex",alignItems:"center",gap:6,paddingBottom:6}}>
                         <span style={{width:5,height:5,borderRadius:"50%",background:connected?c.gr:c.fa}}/>
                         <span style={{fontSize:11,color:c.fa}}>{connected?`Connected to ${aFN}'s API`:"Reconnecting…"}</span>
+                        {isSarahVoiceAgent&&(convaiConnected||convaiConnecting)&&(
+                          <>
+                            <span style={{width:4,height:4,borderRadius:"50%",background:c.fa,margin:"0 2px"}}/>
+                            <span style={{fontSize:11,color:c.ac,fontWeight:600}}>{voiceStatusText}</span>
+                          </>
+                        )}
                       </div>
                       {/* Pending files preview */}
                       {pendingFiles.length>0&&(
@@ -5618,7 +5702,7 @@ function App({ authUser }) {
                       )}
 
                       {/* ── Input pill — + and mic inside like Claude ── */}
-                      <div style={{display:"flex",alignItems:"flex-end",gap:6,padding:"10px 12px 10px 8px",borderRadius:20,border:"1.5px solid "+(vcRec?c.ac:c.ln),background:c.inp,transition:"border-color .2s",boxShadow:"0 1px 4px rgba(0,0,0,0.1)"}}>
+                      <div style={{display:"flex",alignItems:"flex-end",gap:6,padding:"10px 12px 10px 8px",borderRadius:20,border:"1.5px solid "+(voiceActive?c.ac:c.ln),background:c.inp,transition:"border-color .2s",boxShadow:"0 1px 4px rgba(0,0,0,0.1)"}}>
                         {/* ── Claude-style + menu ── */}
                         <div ref={plusMenuRef} style={{position:"relative",flexShrink:0,marginBottom:2}}>
                           <button onClick={()=>setShowPlusMenu(p=>!p)} title="Add" style={{width:36,height:36,borderRadius:10,border:"none",cursor:"pointer",background:showPlusMenu?c.sf:"transparent",display:"flex",alignItems:"center",justifyContent:"center",transition:"background .15s"}}>
@@ -5690,10 +5774,10 @@ function App({ authUser }) {
                             </>
                           )}
                         </div>
-                        <textarea value={tx} onChange={e=>{setTx(e.target.value);e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,200)+"px";}} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();doSend();}}} placeholder={vcRec?"Listening…":mob?"Message…":`Tell ${aFN} what you need…`} rows={2} style={{flex:1,padding:"6px 4px",border:"none",fontSize:14,fontFamily:"inherit",background:"transparent",color:c.tx,resize:"none",lineHeight:1.6,minHeight:48,maxHeight:200,overflowY:"auto",outline:"none"}}/>
-                        <button onClick={toggleVoice} style={{width:36,height:36,borderRadius:10,border:"none",cursor:"pointer",background:vcRec?c.ac+"22":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,position:"relative",marginBottom:2}}>
-                          {vcRec&&<span style={{position:"absolute",inset:-3,borderRadius:12,border:"2px solid "+c.ac,animation:"pulse 1.2s ease infinite",opacity:0.4}}/>}
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={vcRec?c.ac:c.so} strokeWidth="2" strokeLinecap="round"><rect x="9" y="1" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0014 0"/><path d="M12 17v4M8 21h8"/></svg>
+                        <textarea value={tx} onChange={e=>{setTx(e.target.value);e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,200)+"px";}} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();doSend();}}} placeholder={voiceActive?(voiceStatusText||"Listening")+"…":mob?"Message…":`Tell ${aFN} what you need…`} rows={2} style={{flex:1,padding:"6px 4px",border:"none",fontSize:14,fontFamily:"inherit",background:"transparent",color:c.tx,resize:"none",lineHeight:1.6,minHeight:48,maxHeight:200,overflowY:"auto",outline:"none"}}/>
+                        <button onClick={toggleVoice} title={isSarahVoiceAgent?(convaiConnected?"End Sarah voice":"Speak with Sarah"):"Dictate message"} style={{width:36,height:36,borderRadius:10,border:"none",cursor:"pointer",background:voiceActive?c.ac+"22":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,position:"relative",marginBottom:2}}>
+                          {voiceActive&&<span style={{position:"absolute",inset:-3,borderRadius:12,border:"2px solid "+c.ac,animation:"pulse 1.2s ease infinite",opacity:0.4}}/>}
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={voiceActive?c.ac:c.so} strokeWidth="2" strokeLinecap="round"><rect x="9" y="1" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0014 0"/><path d="M12 17v4M8 21h8"/></svg>
                         </button>
                         {loading?(
                           <button onClick={stopSarah} style={{width:36,height:36,borderRadius:10,border:"none",cursor:"pointer",background:"rgba(234,67,53,0.15)",color:"#ea4335",fontSize:13,fontWeight:700,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:2}} title="Stop">■</button>
