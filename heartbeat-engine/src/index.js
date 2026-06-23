@@ -26,6 +26,7 @@ import executeRoutes from './api/execute.js';
 import browserRoutes from './api/browser.js';
 import skillsRoutes from './api/skills.js';
 import voiceRoutes from './api/voice.js';
+import avatarRoutes from './api/avatar.js';
 import desktopRoutes from './api/desktop.js';
 import mobileRoutes from './api/mobile.js';
 import projectsRoutes from './api/projects-supabase.js'; // Supabase-based projects
@@ -680,6 +681,7 @@ app.use('/api/execute', executeRoutes);
 app.use('/api/browser', browserRoutes);
 app.use('/api/skills', skillsRoutes);
 app.use('/api/voice', voiceRoutes);
+app.use('/api/avatar', avatarRoutes);
 
 app.use('/api/desktop', desktopRoutes);
 app.use('/api/mobile', mobileRoutes);

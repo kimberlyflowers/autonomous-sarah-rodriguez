@@ -1209,6 +1209,95 @@ function Screen({c,mob,mode,setMode,aFN="Agent"}) {
   );
 }
 
+function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null}) {
+  const [cfg,setCfg]=useState(null);
+  const [loading,setLoading]=useState(false);
+  const [saving,setSaving]=useState(false);
+  const [embedUrl,setEmbedUrl]=useState("");
+  const [err,setErr]=useState("");
+
+  const load=()=>{
+    if(!agentId) return;
+    setLoading(true); setErr("");
+    fetch(`/api/avatar/live/config?agentId=${encodeURIComponent(agentId)}`)
+      .then(r=>r.json().then(d=>({ok:r.ok,d})))
+      .then(({ok,d})=>{
+        if(!ok) throw new Error(d.error||"Could not load live avatar");
+        setCfg(d);
+        if(d.embedUrl) setEmbedUrl(d.embedUrl);
+      })
+      .catch(e=>setErr(e.message||"Could not load live avatar"))
+      .finally(()=>setLoading(false));
+  };
+
+  useEffect(()=>{load();},[agentId]);
+
+  const save=async()=>{
+    const url=embedUrl.trim();
+    if(!url.startsWith("https://")) { setErr("Use a secure HeyGen embed URL"); return; }
+    setSaving(true); setErr("");
+    try{
+      const h=await getAuthHeaders();
+      const r=await fetch("/api/avatar/live/config",{method:"POST",headers:h,body:JSON.stringify({agentId,provider:"heygen",embedUrl:url})});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok) throw new Error(d.error||"Could not save live avatar");
+      load();
+    }catch(e){ setErr(e.message||"Could not save live avatar"); }
+    finally{ setSaving(false); }
+  };
+
+  const firstName=(agentName||"Agent").split(" ")[0];
+
+  if(loading && !cfg) {
+    return <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",background:"#0b0b0c",color:c.so,fontSize:13}}>Loading live avatar...</div>;
+  }
+
+  if(cfg?.enabled && cfg.embedUrl) {
+    return(
+      <div style={{flex:1,minHeight:0,display:"flex",flexDirection:"column",background:"#050505"}}>
+        <div style={{height:36,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 10px",background:c.cd,borderBottom:"1px solid "+c.ln,flexShrink:0}}>
+          <div style={{display:"flex",alignItems:"center",gap:7,minWidth:0}}>
+            <span style={{width:7,height:7,borderRadius:"50%",background:c.gr,animation:"pulse 1.4s ease infinite",flexShrink:0}}/>
+            <span style={{fontSize:11,fontWeight:700,color:c.gr}}>LIVE</span>
+            <span style={{fontSize:11,color:c.so,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{firstName}</span>
+          </div>
+          <button onClick={load} title="Refresh live avatar" style={{width:24,height:24,borderRadius:6,border:"1px solid "+c.ln,background:"transparent",cursor:"pointer",color:c.so,fontSize:12}}>↻</button>
+        </div>
+        <iframe
+          src={cfg.embedUrl}
+          title={`${firstName} live avatar`}
+          allow="microphone; camera; autoplay; encrypted-media; fullscreen; clipboard-read; clipboard-write"
+          style={{flex:1,width:"100%",height:"100%",border:"none",background:"#050505"}}
+        />
+      </div>
+    );
+  }
+
+  return(
+    <div style={{flex:1,minHeight:0,display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(180deg,#111,#070707)",padding:22}}>
+      <div style={{width:"100%",maxWidth:360}}>
+        <div style={{display:"flex",justifyContent:"center",marginBottom:14}}>
+          {agentImg
+            ? <img src={agentImg} alt="" style={{width:82,height:82,borderRadius:18,objectFit:"cover",border:"1px solid "+c.ln}}/>
+            : <div style={{width:82,height:82,borderRadius:18,background:c.gradient,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:28,fontWeight:800}}>{firstName[0]||"A"}</div>}
+        </div>
+        <div style={{textAlign:"center",fontSize:17,fontWeight:800,color:c.tx,marginBottom:6}}>{firstName} Live</div>
+        <div style={{textAlign:"center",fontSize:12,color:c.so,lineHeight:1.5,marginBottom:18}}>Add this employee's HeyGen LiveAvatar embed URL to show their talking face here.</div>
+        <input
+          value={embedUrl}
+          onChange={e=>setEmbedUrl(e.target.value)}
+          placeholder="https://embed.liveavatar.com/..."
+          style={{width:"100%",padding:"10px 12px",borderRadius:9,border:"1px solid "+c.ln,background:c.inp,color:c.tx,fontSize:12,fontFamily:"inherit",boxSizing:"border-box",marginBottom:10}}
+        />
+        {err&&<div style={{fontSize:11,color:c.err,marginBottom:10,lineHeight:1.4}}>{err}</div>}
+        <button onClick={save} disabled={saving||!embedUrl.trim()} style={{width:"100%",padding:"10px 12px",borderRadius:9,border:"none",background:embedUrl.trim()?c.gradient:c.ln,cursor:embedUrl.trim()&&!saving?"pointer":"not-allowed",color:"#fff",fontSize:12,fontWeight:800}}>
+          {saving?"Saving...":"Save Live Avatar"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /* ═══════════════════════════════════════════════════════════════
    MAIN APP — Jaden's layout, Sarah's data
    ═══════════════════════════════════════════════════════════════ */
@@ -4432,7 +4521,7 @@ function App({ authUser }) {
   },[pg]);
   
   const [scrM,setScrM]=useState("docked");
-  const [rightTab,setRightTab]=useState("browser"); // "browser" | "artifact"
+  const [rightTab,setRightTab]=useState("live"); // "live" | "browser" | "artifact"
   const [activeArtifact,setActiveArtifact]=useState(null); // {name, content, fileId}
   const [chatLightbox,setChatLightbox]=useState(null);
 
@@ -5630,6 +5719,7 @@ function App({ authUser }) {
                         <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
                           {/* ── Right panel tabs ── */}
                           <div style={{display:"flex",borderBottom:"1px solid "+c.ln,background:c.sf,flexShrink:0}}>
+                            <button onClick={()=>setRightTab("live")} style={{flex:1,padding:"8px 0",fontSize:11,fontWeight:700,border:"none",borderBottom:rightTab==="live"?"2px solid "+c.ac:"2px solid transparent",background:"transparent",color:rightTab==="live"?c.tx:c.so,cursor:"pointer",letterSpacing:"0.5px"}}>Live</button>
                             <button onClick={()=>setRightTab("browser")} style={{flex:1,padding:"8px 0",fontSize:11,fontWeight:700,border:"none",borderBottom:rightTab==="browser"?"2px solid "+c.ac:"2px solid transparent",background:"transparent",color:rightTab==="browser"?c.tx:c.so,cursor:"pointer",letterSpacing:"0.5px"}}>Browser</button>
                             <button onClick={()=>setRightTab("artifact")} style={{flex:1,padding:"8px 0",fontSize:11,fontWeight:700,border:"none",borderBottom:rightTab==="artifact"?"2px solid "+c.ac:"2px solid transparent",background:"transparent",color:rightTab==="artifact"?c.tx:c.so,cursor:"pointer",letterSpacing:"0.5px",position:"relative"}}>
                               Files
@@ -5639,6 +5729,11 @@ function App({ authUser }) {
                               <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke={c.so} strokeWidth="2"><path d="M6 3l5 5-5 5"/></svg>
                             </button>
                           </div>
+
+                          {/* ── Live avatar tab ── */}
+                          {rightTab==="live"&&(
+                            <LiveAvatarPanel c={c} agentId={currentAgentId} agentName={agent.nm} agentImg={agent.img}/>
+                          )}
 
                           {/* ── Browser tab ── */}
                           {rightTab==="browser"&&(
