@@ -4,6 +4,7 @@ import { createLogger } from '../logging/logger.js';
 
 const router = express.Router();
 const logger = createLogger('projects-api');
+const LEGACY_PROJECT_USER_ID = '00000000-0000-0000-0000-000000000001';
 
 // Initialize Supabase client
 const supabaseUrl = process.env.SUPABASE_URL;
@@ -15,14 +16,36 @@ if (!supabaseUrl || !supabaseKey) {
 
 const supabase = createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
 
+// Match chat session ownership: resolve from Supabase JWT, then owner env fallback.
+async function getUserId(req) {
+  try {
+    const authHeader = req.headers['authorization'];
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.slice(7);
+      const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
+      if (payload.sub) return payload.sub;
+    }
+  } catch {}
+  return process.env.BLOOM_OWNER_USER_ID || '823e2fb5-2f8f-4279-9c84-c8f4bf78bcce';
+}
+
+async function adoptLegacyProjects(userId) {
+  if (!userId || userId === LEGACY_PROJECT_USER_ID) return;
+  const { error } = await supabase
+    .from('projects')
+    .update({ user_id: userId })
+    .eq('user_id', LEGACY_PROJECT_USER_ID);
+  if (error) logger.warn('Failed to adopt legacy placeholder projects', { error: error.message });
+}
+
 /**
  * GET /api/projects
  * List all projects for the authenticated user
  */
 router.get('/', async (req, res) => {
   try {
-    // TODO: Get real user_id from auth session
-    const userId = '00000000-0000-0000-0000-000000000001'; // Placeholder UUID
+    const userId = await getUserId(req);
+    await adoptLegacyProjects(userId);
     
     const { data, error } = await supabase
       .from('projects')
@@ -50,7 +73,8 @@ router.get('/', async (req, res) => {
         const { count } = await supabase
           .from('sessions')
           .select('*', { count: 'exact', head: true })
-          .eq('project_id', project.id);
+          .eq('project_id', project.id)
+          .eq('user_id', userId);
         
         return {
           ...project,
@@ -78,7 +102,7 @@ router.get('/', async (req, res) => {
  */
 router.post('/', async (req, res) => {
   try {
-    const userId = '00000000-0000-0000-0000-000000000001'; // TODO: Get from auth
+    const userId = await getUserId(req);
     const { name, description } = req.body;
     
     if (!name || name.trim().length === 0) {
@@ -128,7 +152,7 @@ router.post('/', async (req, res) => {
  */
 router.patch('/:id', async (req, res) => {
   try {
-    const userId = '00000000-0000-0000-0000-000000000001'; // TODO: Get from auth
+    const userId = await getUserId(req);
     const { id } = req.params;
     const { name, description } = req.body;
     
@@ -192,7 +216,7 @@ router.patch('/:id', async (req, res) => {
  */
 router.delete('/:id', async (req, res) => {
   try {
-    const userId = '00000000-0000-0000-0000-000000000001'; // TODO: Get from auth
+    const userId = await getUserId(req);
     const { id } = req.params;
     
     const { error } = await supabase
@@ -236,7 +260,7 @@ router.delete('/:id', async (req, res) => {
  */
 router.patch('/:id/conversations', async (req, res) => {
   try {
-    const userId = '00000000-0000-0000-0000-000000000001'; // TODO: Get from auth
+    const userId = await getUserId(req);
     const { id } = req.params;
     const { sessionIds, action } = req.body; // action: 'add' or 'remove'
     

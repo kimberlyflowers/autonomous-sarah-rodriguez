@@ -5693,21 +5693,24 @@ NEVER skip steps 3 and 4 even if step 2 fails.
 // ROUTES — DB-backed persistent sessions
 
 let _tablesReady = false;
-async function ensureSession(_pool, sessionId, userId = null, agentId = null) {
+async function ensureSession(_pool, sessionId, userId = null, agentId = null, projectId = null) {
   // Supabase only — pool param kept for call-chain compatibility but not used
   try {
     const { createClient } = await import('@supabase/supabase-js');
     const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
     const resolvedUserId = userId || process.env.BLOOM_OWNER_USER_ID || '823e2fb5-2f8f-4279-9c84-c8f4bf78bcce';
     const resolvedAgentId = agentId || process.env.AGENT_UUID || 'c3000000-0000-0000-0000-000000000003';
-    await sb.from('sessions').upsert({
+    const sessionRow = {
       id: sessionId,
       user_id: resolvedUserId,
       organization_id: process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001',
       agent_id: resolvedAgentId,
       updated_at: new Date().toISOString()
-    }, { onConflict: 'id', ignoreDuplicates: false });
-    logger.info(`Session ${sessionId} ensured in Supabase`, { agentId: resolvedAgentId });
+    };
+    if (projectId) sessionRow.project_id = projectId;
+
+    await sb.from('sessions').upsert(sessionRow, { onConflict: 'id', ignoreDuplicates: false });
+    logger.info(`Session ${sessionId} ensured in Supabase`, { agentId: resolvedAgentId, projectId: projectId || null });
   } catch (err) {
     logger.warn(`ensureSession failed:`, err.message);
   }
@@ -6063,13 +6066,13 @@ router.post('/conference/user-message', async (req, res) => {
 router.post('/message', async (req, res) => {
   // Track which skills the agent loads during this turn — shown as badges in the dashboard
   let skillsUsedThisTurn = [];
-  const { message, sessionId = 'session-' + Date.now(), agentId, skipUserSave } = req.body || {};
+  const { message, sessionId = 'session-' + Date.now(), agentId, projectId, skipUserSave } = req.body || {};
   try {
     if (!message?.trim()) return res.status(400).json({ error: 'Message required' });
 
     const userId = await getUserId(req);
     const agentConfig = await loadAgentConfig(agentId || null);
-    await ensureSession(null, sessionId, userId, agentConfig.agentId);
+    await ensureSession(null, sessionId, userId, agentConfig.agentId, projectId || null);
     const history = await loadHistory(null, sessionId);
 
     const rawMessageText = getMessageText(message);
@@ -6305,14 +6308,14 @@ router.post('/message', async (req, res) => {
 // POST /api/chat/upload — accept files + optional message, send to Sarah as multipart content
 router.post('/upload', async (req, res) => {
   try {
-    const { message = '', sessionId = 'session-' + Date.now(), files = [], agentId } = req.body;
+    const { message = '', sessionId = 'session-' + Date.now(), files = [], agentId, projectId } = req.body;
     if (!files.length && !message.trim()) {
       return res.status(400).json({ error: 'Message or files required' });
     }
 
     const userId = await getUserId(req);
     const agentConfig = await loadAgentConfig(agentId || null);
-    await ensureSession(null, sessionId, userId, agentConfig.agentId);
+    await ensureSession(null, sessionId, userId, agentConfig.agentId, projectId || null);
     const history = await loadHistory(null, sessionId);
 
     // Build multipart content blocks for Anthropic

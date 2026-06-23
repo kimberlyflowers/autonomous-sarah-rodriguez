@@ -309,7 +309,7 @@ function useSarahChat() {
     setWorkingStatus("");
   };
 
-  const send = async (text) => {
+  const send = async (text, projectId = null) => {
     if(!text.trim()) return false;
     if(!sid.current) { const id="session-"+Date.now(); sid.current=id; setCurrentSessionId(id); }
     const ts = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
@@ -370,7 +370,7 @@ function useSarahChat() {
       const res = await fetch("/api/chat/message",{
         method:"POST",
         headers:authHeaders,
-        body:JSON.stringify({message:text,sessionId:sid.current,agentId:currentAgentId}),
+        body:JSON.stringify({message:text,sessionId:sid.current,agentId:currentAgentId,projectId}),
         signal: controller.signal
       });
       clearTimeout(timeoutId);
@@ -411,7 +411,7 @@ function useSarahChat() {
     } finally { setLoading(false); setWorkingStatus(""); }
   };
 
-  const sendFiles = async (files, text='') => {
+  const sendFiles = async (files, text='', projectId = null) => {
     const ts = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
     setLoading(true);
     try {
@@ -427,7 +427,7 @@ function useSarahChat() {
       setMessages(p=>[...p,{id:msgId,b:false,t:text||'',tm:ts,files:encoded}]);
       if(!sid.current){ const id="session-"+Date.now(); sid.current=id; setCurrentSessionId(id); }
       const uploadHeaders = await getAuthHeaders();
-      const resp = await fetch("/api/chat/upload",{method:"POST",headers:uploadHeaders,body:JSON.stringify({message:text,sessionId:sid.current,agentId:currentAgentId,files:encoded})});
+      const resp = await fetch("/api/chat/upload",{method:"POST",headers:uploadHeaders,body:JSON.stringify({message:text,sessionId:sid.current,agentId:currentAgentId,projectId,files:encoded})});
       const data = await resp.json();
       // Replace blob/dataUrl previews with stable server URLs so images work on any computer
       if(data.uploadedFiles?.length) {
@@ -452,7 +452,7 @@ function useSarahChat() {
   };
 
   // sendFilesEncoded — same as sendFiles but skips FileReader (base64 already encoded, e.g. screenshots)
-  const sendFilesEncoded = async (encoded, text='') => {
+  const sendFilesEncoded = async (encoded, text='', projectId = null) => {
     const ts = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
     setLoading(true);
     try {
@@ -460,7 +460,7 @@ function useSarahChat() {
       setMessages(p=>[...p,{id:msgId2,b:false,t:text||'',tm:ts,files:encoded}]);
       if(!sid.current){ const id="session-"+Date.now(); sid.current=id; setCurrentSessionId(id); }
       const uploadHeaders = await getAuthHeaders();
-      const resp = await fetch("/api/chat/upload",{method:"POST",headers:uploadHeaders,body:JSON.stringify({message:text,sessionId:sid.current,agentId:currentAgentId,files:encoded})});
+      const resp = await fetch("/api/chat/upload",{method:"POST",headers:uploadHeaders,body:JSON.stringify({message:text,sessionId:sid.current,agentId:currentAgentId,projectId,files:encoded})});
       const data = await resp.json();
       // Replace blob/dataUrl previews with stable server URLs
       if(data.uploadedFiles?.length) {
@@ -4387,6 +4387,17 @@ function App({ authUser }) {
   const [newProjectDesc,setNewProjectDesc]=useState('');
   const [selectedProject,setSelectedProject]=useState(null);
   const [projectConversations,setProjectConversations]=useState([]);
+  const loadProjectConversations=async(proj=selectedProject)=>{
+    if(!proj?.id) return;
+    try{
+      const res=await fetch(`/api/chat/sessions?projectId=${proj.id}`);
+      const data=await res.json();
+      setProjectConversations(data.sessions||[]);
+    }catch(err){
+      console.error('Failed to load project conversations:',err);
+      setProjectConversations([]);
+    }
+  };
   
   // Fetch projects when Projects page is opened
   useEffect(()=>{
@@ -4740,6 +4751,7 @@ function App({ authUser }) {
   const doSend=async()=>{
     if((!tx.trim()&&pendingFiles.length===0)||loading) return;
     const text=tx.trim(); setTx(""); setNew(false);
+    const activeProjectId = selectedProject?.id || null;
     if(pendingFiles.length > 0) {
       // Send files + message together
       // Some files (screenshots) already have base64 encoded — pass them directly
@@ -4760,13 +4772,16 @@ function App({ authUser }) {
           });
         }));
         // Call sendFiles with pre-encoded — pass encoded array directly via sendFilesEncoded
-        await sendFilesEncoded(encoded, text);
+        const ok = await sendFilesEncoded(encoded, text, activeProjectId);
+        if(ok && selectedProject?.id) await loadProjectConversations(selectedProject);
       } else {
         const files = pendingFiles.map(p => p.file);
-        await sendFiles(files, text);
+        const ok = await sendFiles(files, text, activeProjectId);
+        if(ok && selectedProject?.id) await loadProjectConversations(selectedProject);
       }
     } else {
-      await send(text);
+      const ok = await send(text, activeProjectId);
+      if(ok && selectedProject?.id) await loadProjectConversations(selectedProject);
     }
   };
 
@@ -6754,14 +6769,14 @@ function App({ authUser }) {
                         <div style={{flex:1,overflowY:"auto",padding:"20px",display:"flex",flexDirection:"column",gap:16}}>
                           {messages.map((msg,idx)=>(
                             <div key={idx} style={{display:"flex",gap:12,alignItems:"flex-start"}}>
-                              {msg.role==="user"?(
+                              {!msg.b?(
                                 <>
                                   <label style={{width:30,height:30,borderRadius:8,background:userImg?"transparent":"linear-gradient(135deg,#F4A261,#E76F8B)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"#fff",flexShrink:0,overflow:"hidden"}}>
                                     {userImg?<img src={userImg} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>:meInitial}
                                   </label>
                                   <div style={{flex:1}}>
                                     <div style={{fontSize:13,fontWeight:600,color:c.tx,marginBottom:4}}>You</div>
-                                    <div style={{fontSize:15,color:c.tx,lineHeight:1.5}}>{msg.text}</div>
+                                    <div style={{fontSize:15,color:c.tx,lineHeight:1.5}}>{msg.t}</div>
                                   </div>
                                 </>
                               ):(
@@ -6769,7 +6784,7 @@ function App({ authUser }) {
                                   <Face sz={30} agent={agent}/>
                                   <div style={{flex:1}}>
                                     <div style={{fontSize:13,fontWeight:600,color:c.tx,marginBottom:4}}>{agent.nm}</div>
-                                    <div style={{fontSize:15,color:c.tx,lineHeight:1.5}}><ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.text}</ReactMarkdown></div>
+                                    <div style={{fontSize:15,color:c.tx,lineHeight:1.5}}><ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.t}</ReactMarkdown></div>
                                   </div>
                                 </>
                               )}
@@ -6829,15 +6844,7 @@ function App({ authUser }) {
                   {projects.map((proj)=>(
                     <div key={proj.id} onClick={async()=>{
                       setSelectedProject(proj);
-                      // Fetch conversations for this project
-                      try{
-                        const res=await fetch(`/api/chat/sessions?projectId=${proj.id}`);
-                        const data=await res.json();
-                        setProjectConversations(data.sessions||[]);
-                      }catch(err){
-                        console.error('Failed to load project conversations:',err);
-                        setProjectConversations([]);
-                      }
+                      await loadProjectConversations(proj);
                     }} style={{padding:24,borderRadius:16,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",transition:"all .2s"}} onMouseEnter={e=>{e.currentTarget.style.borderColor=c.ac;e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 8px 24px rgba(0,0,0,0.08)";}} onMouseLeave={e=>{e.currentTarget.style.borderColor=c.ln;e.currentTarget.style.transform="translateY(0)";e.currentTarget.style.boxShadow="none";}}>
                       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={c.ac} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
