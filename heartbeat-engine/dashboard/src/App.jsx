@@ -3567,11 +3567,16 @@ function WorkTab({c,mob,aFN="Bloomie"}){
       if(!activeSid){
         const r=await fetch('/api/builds',{method:'POST',headers:{...h,'Content-Type':'application/json'},body:JSON.stringify({brief:msg,title:msg.slice(0,60),type:'work',images:imgs})});
         const d=await r.json();
+        if(!r.ok)throw new Error(d.error||'Work request failed');
         if(d.build?.id){await loadSessions();setActiveSid(d.build.id);}
       }else{
-        await fetch('/api/builds/'+activeSid+'/message',{method:'POST',headers:{...h,'Content-Type':'application/json'},body:JSON.stringify({message:msg,images:imgs})});
+        const r=await fetch('/api/builds/'+activeSid+'/message',{method:'POST',headers:{...h,'Content-Type':'application/json'},body:JSON.stringify({message:msg,images:imgs})});
+        const d=await r.json().catch(()=>({}));
+        if(!r.ok)throw new Error(d.error||'Message failed');
       }
-    }catch{}
+    }catch(e){
+      setMsgs(p=>[...p,{role:'assistant',content:`Could not send that yet: ${e.message}`,metadata:{source:'ui-error'},ts:Date.now()}]);
+    }
     setChatSending(false);
   };
 
@@ -3768,10 +3773,9 @@ function BuildTab({c,mob,aFN="Bloomie"}){
       const h=await getAuthHeaders();
       const r=await fetch('/api/builds/'+id,{headers:h});
       const d=await r.json();
-      setBuild(d.build||d);
+      setBuild(d.build||null);
       setMsgs(d.messages||[]);
-      if(d.clarification_needed)setClarify(d.clarification_prompt||'Please clarify:');
-      else setClarify(null);
+      setClarify(d.clarify||null);
     }catch(e){console.error(e);}
   };
 
@@ -3784,12 +3788,16 @@ function BuildTab({c,mob,aFN="Bloomie"}){
     try{
       const h=await getAuthHeaders();
       let url=activeId?'/api/builds/'+activeId+'/message':'/api/builds';
-      const body=activeId?{message:msg,images:imgs}:{description:msg,images:imgs};
+      const body=activeId?{message:msg,images:imgs}:{brief:msg,title:msg.slice(0,60),type:'build',images:imgs};
       const r=await fetch(url,{method:'POST',headers:{...h,'Content-Type':'application/json'},body:JSON.stringify(body)});
       const d=await r.json();
-      if(!activeId&&d.id){setActiveId(d.id);}
+      if(!r.ok)throw new Error(d.error||'Build request failed');
+      if(!activeId&&d.build?.id){await loadBuilds();setActiveId(d.build.id);}
       else if(activeId){loadDetail(activeId);}
-    }catch(e){console.error(e);}
+    }catch(e){
+      console.error(e);
+      setMsgs(p=>[...p,{role:'assistant',content:`Could not send that yet: ${e.message}`,metadata:{source:'ui-error'},ts:Date.now()}]);
+    }
     finally{setChatSending(false);}
   };
 
@@ -3799,7 +3807,7 @@ function BuildTab({c,mob,aFN="Bloomie"}){
     setMsgs(p=>[...p,{role:'user',content:ans,ts:Date.now()}]);
     try{
       const h=await getAuthHeaders();
-      await fetch('/api/builds/'+activeId+'/clarify',{method:'POST',headers:{...h,'Content-Type':'application/json'},body:JSON.stringify({answer:ans})});
+      await fetch('/api/builds/'+activeId+'/clarify',{method:'POST',headers:{...h,'Content-Type':'application/json'},body:JSON.stringify({answer:ans,clarify_id:clarify?.id})});
       setTimeout(()=>loadDetail(activeId),1000);
     }catch(e){console.error(e);}
     finally{setChatSending(false);}
@@ -3887,9 +3895,9 @@ function BuildTab({c,mob,aFN="Bloomie"}){
           {builds.length===0&&<div style={{padding:'20px 16px',fontSize:12,color:c.tx2,textAlign:'center'}}>No builds yet.<br/>Start a new build below.</div>}
           {builds.map(b=>(
             <div key={b.id} onClick={()=>setActiveId(b.id)} style={{padding:'10px 16px',cursor:'pointer',borderBottom:'1px solid '+c.ln,background:activeId===b.id?c.bg:'transparent',borderLeft:activeId===b.id?'3px solid #6C63FF':'3px solid transparent'}}>
-              <div style={{fontSize:13,fontWeight:500,color:c.tx,marginBottom:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{b.name||b.description||'Build #'+b.id?.slice(-6)}</div>
+              <div style={{fontSize:13,fontWeight:500,color:c.tx,marginBottom:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{b.title||b.brief||'Build #'+b.id?.slice(-6)}</div>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                <span style={{fontSize:11,color:{'pending':'#F59E0B','running':'#3B82F6','completed':'#10B981','failed':'#EF4444'}[b.status]||c.tx2}}>{b.status||'pending'}</span>
+                <span style={{fontSize:11,color:{'queued':'#F59E0B','building':'#3B82F6','complete':'#10B981','error':'#EF4444','pending':'#F59E0B','running':'#3B82F6','completed':'#10B981','failed':'#EF4444'}[b.status]||c.tx2}}>{b.status||'pending'}</span>
                 <span style={{fontSize:11,color:c.tx2}}>{b.created_at?new Date(b.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric'}):'–'}</span>
               </div>
             </div>
@@ -3913,7 +3921,7 @@ function BuildTab({c,mob,aFN="Bloomie"}){
             {/* Header */}
             <div style={{padding:'12px 16px',borderBottom:'1px solid '+c.ln,flexShrink:0}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-                <span style={{fontSize:14,fontWeight:600,color:c.tx,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:'60%'}}>{build.name||build.description||'Build in progress'}</span>
+                <span style={{fontSize:14,fontWeight:600,color:c.tx,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:'60%'}}>{build.title||build.brief||'Build in progress'}</span>
                 <span style={{fontSize:12,fontWeight:600,color:statusColor,textTransform:'capitalize'}}>{build.status||'pending'}</span>
               </div>
               <div style={{display:'flex',gap:4}}>
@@ -3935,9 +3943,9 @@ function BuildTab({c,mob,aFN="Bloomie"}){
               {clarify&&(
                 <div style={{margin:'8px 0',padding:'12px 16px',borderRadius:12,background:'linear-gradient(135deg,rgba(108,99,255,0.15),rgba(167,139,250,0.15))',border:'1px solid rgba(108,99,255,0.3)'}}>
                   <div style={{fontSize:13,fontWeight:500,color:'#A78BFA',marginBottom:8}}>&#x2753; {aFN} needs clarification</div>
-                  <div style={{fontSize:13,color:c.tx,marginBottom:10}}>{clarify}</div>
+                  <div style={{fontSize:13,color:c.tx,marginBottom:10}}>{clarify.question||clarify}</div>
                   <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-                    {['Yes, proceed','No, adjust','Give me options'].map(opt=>(
+                    {(clarify.options?.length?clarify.options:['Yes, proceed','No, adjust','Give me options']).map(opt=>(
                       <button key={opt} onClick={()=>answerClarify(opt)} style={{padding:'6px 12px',borderRadius:8,border:'1px solid rgba(108,99,255,0.4)',background:'rgba(108,99,255,0.1)',color:'#A78BFA',cursor:'pointer',fontSize:12}}>{opt}</button>
                     ))}
                   </div>

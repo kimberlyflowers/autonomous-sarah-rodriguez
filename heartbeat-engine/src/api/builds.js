@@ -119,10 +119,10 @@ router.post('/', withAuth, async (req, res) => {
         logger.info('Build complete', { buildId: build.id });
       } catch (err) {
         logger.error('Build failed', { buildId: build.id, error: err.message });
-        await supabase.from('website_builds')
+        const { error: updateError } = await supabase.from('website_builds')
           .update({ status: 'error', updated_at: new Date().toISOString() })
-          .eq('id', build.id)
-          .catch(() => {});
+          .eq('id', build.id);
+        if (updateError) logger.warn('Failed to mark build as error', { buildId: build.id, error: updateError.message });
       }
     })();
 
@@ -298,12 +298,13 @@ router.post('/:id/message', withAuth, async (req, res) => {
     if (!build) return res.status(404).json({ error: 'Build not found' });
 
     // Save user message to messages table so it shows in the live log
-    await supabase.from('messages').insert({
+    const { error: messageErr } = await supabase.from('messages').insert({
       session_id: id,
       role: 'user',
       content: message.trim(),
       metadata: { source: 'user-steer', user_id: userId },
-    }).catch(() => {});
+    });
+    if (messageErr) logger.warn('Failed to save build message', { buildId: id, error: messageErr.message });
 
     // If we have a live MA session, steer it
     if (build.managed_agent_session_id) {
@@ -332,4 +333,3 @@ router.post('/:id/message', withAuth, async (req, res) => {
 });
 
 export default router;
-

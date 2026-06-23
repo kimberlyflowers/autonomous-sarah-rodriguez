@@ -176,10 +176,10 @@ export async function runWebsiteBuild(brief, options = {}) {
   // Persist session ID immediately so the /message route can steer mid-build
   if (buildId) {
     const _sb = getSupabase();
-    await _sb.from('website_builds')
+    const { error: persistError } = await _sb.from('website_builds')
       .update({ managed_agent_session_id: session.id, updated_at: new Date().toISOString() })
-      .eq('id', buildId)
-      .catch(e => logger.warn('Could not persist session ID', { error: e.message }));
+      .eq('id', buildId);
+    if (persistError) logger.warn('Could not persist session ID', { error: persistError.message });
   }
 
   if (chatSessionId) {
