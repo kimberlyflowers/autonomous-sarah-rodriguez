@@ -7158,7 +7158,7 @@ function App({ authUser }) {
                       <div style={{marginBottom:28}}>
                         <div style={{padding:"14px 16px",borderRadius:12,background:c.cd,border:"1px solid "+c.ln}}>
                           <div style={{fontSize:14,fontWeight:700,color:c.tx,marginBottom:10}}>Image Generation Engines</div>
-                          <div style={{fontSize:11,color:c.so,marginBottom:12}}>Choose which AI engine generates images for each content type. GPT = best for flyers/graphics with text. Gemini = best for photorealistic people shots.</div>
+                          <div style={{fontSize:11,color:c.so,marginBottom:12}}>Choose which AI engine generates images for each content type. OpenRouter uses the primary provider account. GPT = best for flyers/graphics with text. Gemini = best for photorealistic people shots.</div>
                           {imgEngineConfig?(<>
                             {[
                               {key:'blog',label:'Blog Hero Images'},
@@ -7173,6 +7173,7 @@ function App({ authUser }) {
                                 {isOwner?(
                                   <select value={imgEngineConfig[k]||'auto'} onChange={e=>updateImgEngine(k,e.target.value)} disabled={imgEngineSaving} style={{padding:"4px 8px",borderRadius:6,border:"1px solid "+c.ln,background:c.cd,fontSize:11,color:c.tx,cursor:imgEngineSaving?"wait":"pointer",minWidth:100}}>
                                     <option value="auto">Auto</option>
+                                    <option value="openrouter">OpenRouter Image</option>
                                     <option value="gpt">GPT Image</option>
                                     <option value="gemini">Gemini / Nano Banana</option>
                                   </select>

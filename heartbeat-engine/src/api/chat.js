@@ -2156,7 +2156,7 @@ const _ALL_TOOLS = [
   // ── IMAGE GENERATION & EDITING ───────────────────────────────────────────
   {
     name: "image_generate",
-    description: "Generate an image from a text description. Perfect for creating flyers, social media posts, banners, book covers, logos, product mockups, brand assets, and any visual content. Be very specific and detailed in your prompt — include exact text you want displayed, colors, layout, and style. Uses GPT Image 1.5 by default (best for design assets). Set engine to 'gemini' for Nano Banana if text consistency needs fixing. IMPORTANT: When creating platform-specific images (Facebook covers, Instagram posts, Eventbrite headers, etc.), ALWAYS set target_width and target_height to the exact pixel dimensions required. Common sizes: Facebook cover 820x312, Instagram post 1080x1080, Instagram story 1080x1920, Eventbrite header 2160x1080, Twitter header 1500x500, LinkedIn banner 1128x191.",
+    description: "Generate an image from a text description. Perfect for creating flyers, social media posts, banners, book covers, logos, product mockups, brand assets, and any visual content. Be very specific and detailed in your prompt — include exact text you want displayed, colors, layout, and style. Uses the configured image engine by default; OpenRouter can be primary when enabled. Set engine to 'gemini' for Nano Banana if text consistency needs fixing. IMPORTANT: When creating platform-specific images (Facebook covers, Instagram posts, Eventbrite headers, etc.), ALWAYS set target_width and target_height to the exact pixel dimensions required. Common sizes: Facebook cover 820x312, Instagram post 1080x1080, Instagram story 1080x1920, Eventbrite header 2160x1080, Twitter header 1500x500, LinkedIn banner 1128x191.",
     input_schema: {
       type: "object",
       properties: {
@@ -2166,7 +2166,7 @@ const _ALL_TOOLS = [
         target_height: { type: "integer", description: "REQUIRED for platform-specific images. Exact output height in pixels (e.g. 312 for Facebook cover, 1080 for Instagram post)." },
         quality: { type: "string", enum: ["low", "medium", "high"], description: "Image quality level", default: "high" },
         background: { type: "string", enum: ["opaque", "transparent"], description: "Use 'transparent' for logos/overlays", default: "opaque" },
-        engine: { type: "string", enum: ["auto", "gpt", "gemini"], description: "'auto' picks best engine. 'gpt' = GPT Image 1.5. 'gemini' = Nano Banana / Imagen for text-heavy fixes.", default: "auto" },
+        engine: { type: "string", enum: ["auto", "openrouter", "gpt", "gemini"], description: "'auto' picks best configured engine. 'openrouter' = OpenRouter image model. 'gpt' = GPT Image 1.5. 'gemini' = Nano Banana / Imagen for text-heavy fixes.", default: "auto" },
         reference_image_url: { type: "string", description: "URL of a reference image for character consistency. CRITICAL for multi-character projects — pass the SPECIFIC character's image URL to keep them looking the same. Get URLs from get_session_files or from previous image_generate results. If omitted, the most recent image is auto-injected." },
         no_reference: { type: "boolean", description: "Set to true to generate a BRAND NEW character/person without any reference image. Use this when creating a NEW character that should NOT look like any previous character. Prevents auto-injection of the last image.", default: false }
       },
@@ -2808,8 +2808,8 @@ function getAvailableTools() {
 function checkToolReadiness(toolName) {
   // Image tools need an API key
   if (toolName === 'image_generate' || toolName === 'image_edit') {
-    if (!process.env.OPENAI_API_KEY && !process.env.GEMINI_API_KEY) {
-      return { ready: false, reason: 'No image API key (OPENAI_API_KEY or GEMINI_API_KEY)' };
+    if (!process.env.OPENAI_API_KEY && !process.env.GEMINI_API_KEY && !process.env.OPENROUTER_API_KEY) {
+      return { ready: false, reason: 'No image API key (OPENROUTER_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY)' };
     }
   }
   // image_resize doesn't need an API key — it's pure local processing
@@ -2850,7 +2850,7 @@ function getCapabilityNotes() {
   // Tell Sarah what she CAN do
   const capabilities = [];
   if (available.some(t => t.name === 'image_generate')) {
-    capabilities.push('Image generation is AVAILABLE — use image_generate to create visuals for websites, social posts, flyers, etc. Prompts are auto-enhanced for quality, but YOU should still write detailed prompts: describe subject, lighting, camera/lens, composition, colors, mood. Set engine=gpt for social/flyers/thumbnails, engine=gemini for website heroes/blog images. Default style is PHOTOREALISTIC — never produce cartoon or illustrated unless the user asks.');
+    capabilities.push('Image generation is AVAILABLE — use image_generate to create visuals for websites, social posts, flyers, etc. Prompts are auto-enhanced for quality, but YOU should still write detailed prompts: describe subject, lighting, camera/lens, composition, colors, mood. Set engine=openrouter when OpenRouter is the preferred provider, engine=gpt for social/flyers/thumbnails when OpenAI images are configured, engine=gemini for website heroes/blog images or reference-image consistency. Default style is PHOTOREALISTIC — never produce cartoon or illustrated unless the user asks.');
   }
   if (available.some(t => t.name === 'web_search')) {
     capabilities.push('Web search is AVAILABLE — use web_search for any research, finding information, or looking up current data.');
@@ -3447,17 +3447,20 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
     if (toolName === 'generate_images_parallel') {
       const { images = [], artifactName = '' } = toolInput;
       if (!images.length) return { success: false, error: 'No images specified' };
+      const { executeImageTool } = await import('../tools/image-tools.js');
 
       // FIXED: Actually await all images concurrently — fire-and-forget is broken on Railway
       // (ephemeral processes don't survive long enough for background promises to complete)
       const imagePromises = images.map(async (img) => {
         try {
-          const result = await executeImageTool({
-            toolName: 'image_generate',
-            toolInput: { prompt: img.prompt, style: img.style || 'photorealistic', aspectRatio: img.aspectRatio || '16:9' },
+          const result = await executeImageTool('image_generate', {
+            prompt: img.prompt,
+            style: img.style || 'photorealistic',
+            size: img.size || '1536x1024',
+            engine: img.engine || 'auto',
+            _contentType: 'website',
             sessionId,
-            organizationId,
-            supabase
+            agentId: agentConfig?.agentId || process.env.AGENT_UUID || null
           });
           return { id: img.id, url: result.image_url || result.url || null, success: !!(result.image_url || result.url) };
         } catch (e) {
@@ -4717,13 +4720,13 @@ NEVER skip steps 3 and 4 even if step 2 fails.
     // FLYER — event announcements, posters, promotional print materials
     if (/\b(flyer|flier|poster|event.*flyer|flyer.*event|promotional.*material|print.*material|event.*announcement|event.*poster|promo.*flyer)\b/i.test(_skillMsgText)) {
       await _injectSkillByName('flyer-generation',
-        'IMPORTANT: For flyers use portrait 1024x1536, high quality, engine=gpt. Write a rich narrative prompt: describe the visual scene, specify bold headline text with exact font/size/placement, include lighting + camera specs, specify color palette. Set _contentType="flyer". Default PHOTOREALISTIC — not cartoon.');
+        'IMPORTANT: For flyers use portrait 1024x1536, high quality, engine=openrouter when OpenRouter is primary (or engine=gpt only when OpenAI images are configured). Write a rich narrative prompt: describe the visual scene, specify bold headline text with exact font/size/placement, include lighting + camera specs, specify color palette. Set _contentType="flyer". Default PHOTOREALISTIC — not cartoon.');
     }
 
     // STANDALONE IMAGE — banners, hero images, graphics (not covered by flyer/social)
     if (/\b(generate.*image|create.*image|make.*image|banner|hero.*image|product.*photo|infographic|brand.*graphic|visual.*asset|thumbnail|logo.*design)\b/i.test(_skillMsgText)) {
       await _injectSkillByName('image-generation',
-        'IMPORTANT: Write prompts as rich narrative paragraphs, NOT keyword lists. Include: subject with specific details, lighting (direction + quality), camera + lens (e.g. "Canon R5, 85mm f/1.4"), composition, color palette, mood anchor. Default to PHOTOREALISTIC. Set engine=gpt for social/flyers/thumbnails, engine=gemini for website heroes/editorial. Prompts are auto-enhanced but start detailed for best results.');
+        'IMPORTANT: Write prompts as rich narrative paragraphs, NOT keyword lists. Include: subject with specific details, lighting (direction + quality), camera + lens (e.g. "Canon R5, 85mm f/1.4"), composition, color palette, mood anchor. Default to PHOTOREALISTIC. Set engine=openrouter when OpenRouter is primary, engine=gpt only when OpenAI images are configured, engine=gemini for reference-image consistency. Prompts are auto-enhanced but start detailed for best results.');
     }
 
     // WEBSITE / LANDING PAGE

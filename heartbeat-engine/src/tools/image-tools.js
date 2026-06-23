@@ -1,6 +1,6 @@
 // Image Generation Tools for BLOOM Bloomie Agents
-// Primary: GPT Image 1.5 (OpenAI) — best for flyers, book covers, social assets
-// Fallback: Nano Banana / Imagen 4 (Google Gemini) — great text consistency
+// Primary: OpenRouter image models when USE_OPENROUTER=true.
+// Fallbacks: RunPod FLUX, GPT Image, and Nano Banana / Imagen 4.
 // Model-agnostic tool interface — works with any LLM brain
 //
 // PROMPT UPSAMPLING: Every prompt is enriched by a fast LLM before hitting the
@@ -18,6 +18,45 @@ const logger = createLogger('image-tools');
 // Railway injects env vars before process starts, but dynamic reading is safer
 function getOpenAIKey() { return (process.env.OPENAI_API_KEY || "").trim(); }
 function getGeminiKey() { return (process.env.GEMINI_API_KEY || "").trim(); }
+function getOpenRouterKey() { return (process.env.OPENROUTER_API_KEY || "").trim(); }
+
+function getOpenRouterImageModel() {
+  return (
+    process.env.OPENROUTER_IMAGE_MODEL ||
+    process.env.OPENROUTER_IMAGE_GENERATION_MODEL ||
+    'openai/gpt-5-image-mini'
+  ).trim();
+}
+
+function sizeToAspectRatio(size) {
+  if (size === '1024x1536') return '2:3';
+  if (size === '1536x1024') return '3:2';
+  return '1:1';
+}
+
+function imageBase64ToDataUrl(base64, mimeType = 'image/png') {
+  if (!base64) return '';
+  if (base64.startsWith('data:image/')) return base64;
+  return `data:${mimeType};base64,${base64}`;
+}
+
+function normalizeOpenRouterImageResponse(data) {
+  const message = data?.choices?.[0]?.message || {};
+  const images = message.images || data?.images || [];
+  const image =
+    images?.[0]?.image_url?.url ||
+    images?.[0]?.url ||
+    images?.[0]?.image_url ||
+    message?.image_url?.url ||
+    message?.image_url ||
+    message?.image ||
+    '';
+  return {
+    image: typeof image === 'string' ? image : '',
+    text: typeof message.content === 'string' ? message.content : '',
+    raw: data,
+  };
+}
 
 // RunPod via Supabase edge function
 function getSupabaseServiceKey() { return (process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim(); }
@@ -193,8 +232,8 @@ export const imageToolDefinitions = {
         },
         engine: {
           type: "string",
-          enum: ["auto", "runpod", "gpt", "gemini"],
-          description: "Which image engine to use. 'auto' picks the best one — RunPod FLUX Dev is primary (default). 'runpod' forces RunPod FLUX Dev. 'gpt' forces GPT Image 1.5. 'gemini' forces Nano Banana / Imagen.",
+          enum: ["auto", "openrouter", "runpod", "gpt", "gemini"],
+          description: "Which image engine to use. 'auto' picks the best configured engine. 'openrouter' uses OpenRouter image models. 'runpod' forces RunPod FLUX Dev. 'gpt' forces GPT Image 1.5. 'gemini' forces Nano Banana / Imagen.",
           default: "auto"
         },
         reference_image_url: {
@@ -339,7 +378,12 @@ export const imageToolExecutors = {
 
       if (configuredEngine && configuredEngine !== 'auto') {
         // Admin has configured a specific engine for this content type
-        const keyAvailable = configuredEngine === 'gpt' ? getOpenAIKey() : getGeminiKey();
+        const keyAvailable =
+          configuredEngine === 'gpt' ? getOpenAIKey() :
+          configuredEngine === 'gemini' ? getGeminiKey() :
+          configuredEngine === 'openrouter' ? getOpenRouterKey() :
+          configuredEngine === 'runpod' ? getRunPodMediaUrl() :
+          null;
         if (keyAvailable) {
           useEngine = configuredEngine;
           logger.info(`Auto-routing to ${configuredEngine} per admin config`, { contentType, configuredEngine });
@@ -350,7 +394,10 @@ export const imageToolExecutors = {
 
       // If still auto, apply default logic
       if (useEngine === 'auto') {
-        if (hasReferenceImage && getGeminiKey()) {
+        if (process.env.USE_OPENROUTER === 'true' && getOpenRouterKey()) {
+          useEngine = 'openrouter';
+          logger.info('Auto-routing to OpenRouter image model because USE_OPENROUTER=true');
+        } else if (hasReferenceImage && getGeminiKey()) {
           useEngine = 'gemini';
           logger.info('Auto-routing to Gemini for character consistency (reference image provided)');
         } else if (getRunPodMediaUrl()) {
@@ -361,31 +408,61 @@ export const imageToolExecutors = {
         } else if (getGeminiKey()) {
           useEngine = 'gemini';
         } else {
-          return { success: false, error: 'No image generation API key configured. Set RUNPOD_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY.' };
+          return { success: false, error: 'No image generation API key configured. Set OPENROUTER_API_KEY, RUNPOD_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY.' };
         }
       }
     }
 
-    if (useEngine === 'runpod') {
+    if (useEngine === 'openrouter') {
+      try {
+        const result = await generateWithOpenRouter(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
+        if (result.success) return result;
+        logger.warn('OpenRouter image failed, trying fallback engines', { error: result.error });
+        if (hasReferenceImage && getGeminiKey()) return await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
+        if (getRunPodMediaUrl()) return await generateWithRunPod(prompt, size);
+        if (getOpenAIKey()) return await generateWithGPTImage(prompt, size, quality, background);
+        if (getGeminiKey()) return await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
+        return result;
+      } catch(e) {
+        logger.error('OpenRouter image threw error', { error: e.message });
+        if (hasReferenceImage && getGeminiKey()) return await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
+        if (getRunPodMediaUrl()) return await generateWithRunPod(prompt, size);
+        if (getOpenAIKey()) return await generateWithGPTImage(prompt, size, quality, background);
+        if (getGeminiKey()) return await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
+        return { success: false, error: e.message, engine: 'openrouter-image' };
+      }
+    } else if (useEngine === 'runpod') {
       try {
         const result = await generateWithRunPod(prompt, size);
         if (result.success) return result;
-        // RunPod failed — fall back to GPT then Gemini
-        logger.warn('RunPod image failed, trying GPT fallback', { error: result.error });
+        // RunPod failed — fall back to OpenRouter, GPT, then Gemini
+        logger.warn('RunPod image failed, trying fallback engines', { error: result.error });
+        if (getOpenRouterKey()) return await generateWithOpenRouter(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
         if (getOpenAIKey()) return await generateWithGPTImage(prompt, size, quality, background);
         if (getGeminiKey()) return await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
         return result;
       } catch(e) {
         logger.error('RunPod image threw error', { error: e.message });
+        if (getOpenRouterKey()) return await generateWithOpenRouter(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
         if (getOpenAIKey()) return await generateWithGPTImage(prompt, size, quality, background);
         if (getGeminiKey()) return await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
         throw e;
       }
     } else if (useEngine === 'gpt') {
-      // Circuit breaker: if OpenAI image is disabled, route directly to Gemini
-      if (isOpenAIImageDisabled() && getGeminiKey()) {
-        logger.info('OpenAI image disabled — auto-routing gpt request to Gemini');
-        return await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
+      if (!getOpenAIKey() && getOpenRouterKey()) {
+        logger.info('GPT image requested but OPENAI_API_KEY is missing — routing to OpenRouter image model');
+        return await generateWithOpenRouter(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
+      }
+      // Circuit breaker: if OpenAI image is disabled, route to the next configured image provider.
+      if (isOpenAIImageDisabled()) {
+        if (getOpenRouterKey()) {
+          logger.info('OpenAI image disabled — auto-routing gpt request to OpenRouter');
+          return await generateWithOpenRouter(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
+        }
+        if (getGeminiKey()) {
+          logger.info('OpenAI image disabled — auto-routing gpt request to Gemini');
+          return await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
+        }
       }
       try {
         // If reference image provided with GPT, use edit endpoint (generation doesn't support references)
@@ -403,12 +480,14 @@ export const imageToolExecutors = {
         }
         const result = await generateWithGPTImage(prompt, size, quality, background);
         if (result.success) return result;
-        // OpenAI failed — try Gemini if available
-        logger.warn('OpenAI image failed, trying Gemini fallback', { error: result.error });
+        // OpenAI failed — try OpenRouter/Gemini if available
+        logger.warn('OpenAI image failed, trying fallback engines', { error: result.error });
+        if (getOpenRouterKey()) return await generateWithOpenRouter(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
         if (getGeminiKey()) return await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
         return result;
       } catch(e) {
         logger.error('OpenAI image threw error', { error: e.message });
+        if (getOpenRouterKey()) return await generateWithOpenRouter(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
         if (getGeminiKey()) return await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
         throw e;
       }
@@ -428,6 +507,12 @@ export const imageToolExecutors = {
     if (isOpenAIImageDisabled() && getGeminiKey()) {
       logger.info('OpenAI image disabled — routing image_edit directly to Gemini');
       return await editWithGemini(prompt, params.image_url, params.image_base64);
+    }
+
+    if (process.env.USE_OPENROUTER === 'true' && getOpenRouterKey()) {
+      const result = await generateWithOpenRouter(prompt, size, params.image_url, params.image_base64, params.image_mime);
+      if (result.success) return result;
+      logger.warn('OpenRouter image edit failed, trying configured fallbacks', { error: result.error });
     }
 
     if (getOpenAIKey()) {
@@ -524,6 +609,110 @@ export const imageToolExecutors = {
     }
   }
 };
+
+// ── OPENROUTER IMAGE MODELS ──────────────────────────────────────────────
+
+async function generateWithOpenRouter(prompt, size, referenceImageUrl, referenceImageBase64, referenceImageMime) {
+  try {
+    const apiKey = getOpenRouterKey();
+    if (!apiKey) {
+      return { success: false, error: 'OPENROUTER_API_KEY is empty or not set', engine: 'openrouter-image' };
+    }
+
+    const model = getOpenRouterImageModel();
+    const content = [{ type: 'text', text: prompt }];
+    if (referenceImageBase64) {
+      content.push({ type: 'image_url', image_url: { url: imageBase64ToDataUrl(referenceImageBase64, referenceImageMime || 'image/png') } });
+    } else if (referenceImageUrl) {
+      content.push({ type: 'image_url', image_url: { url: referenceImageUrl } });
+    }
+
+    logger.info('Generating image with OpenRouter', { model, size, hasReference: content.length > 1 });
+
+    const headers = {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    };
+    const referer = process.env.OPENROUTER_HTTP_REFERER || process.env.PUBLIC_APP_URL || process.env.APP_PUBLIC_URL;
+    const title = process.env.OPENROUTER_APP_TITLE || 'Bloomie Staffing';
+    if (referer) headers['HTTP-Referer'] = referer;
+    if (title) headers['X-Title'] = title;
+
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model,
+        messages: [{ role: 'user', content }],
+        modalities: model.startsWith('openai/') || model.startsWith('google/') ? ['image', 'text'] : ['image'],
+        image_config: {
+          aspect_ratio: sizeToAspectRatio(size),
+          size: '1k',
+        },
+      }),
+      signal: AbortSignal.timeout(120000),
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.error?.message || data.error || data.detail || `OpenRouter image request failed: ${response.status}`);
+    }
+
+    const result = normalizeOpenRouterImageResponse(data);
+    if (!result.image) {
+      throw new Error('OpenRouter completed but did not return an image. Try a different OpenRouter image model.');
+    }
+
+    let imageBase64 = null;
+    let imageUrl = null;
+    let mimeType = 'image/png';
+
+    if (result.image.startsWith('data:image/')) {
+      const match = result.image.match(/^data:(image\/[^;]+);base64,(.+)$/);
+      if (match) {
+        mimeType = match[1];
+        imageBase64 = match[2];
+      }
+    } else if (/^[A-Za-z0-9+/=\s]+$/.test(result.image) && result.image.length > 1000) {
+      imageBase64 = result.image.replace(/\s/g, '');
+    } else {
+      imageUrl = result.image;
+      try {
+        const imgResponse = await fetch(imageUrl, { signal: AbortSignal.timeout(30000) });
+        if (imgResponse.ok) {
+          mimeType = imgResponse.headers.get('content-type') || 'image/png';
+          imageBase64 = Buffer.from(await imgResponse.arrayBuffer()).toString('base64');
+        }
+      } catch (fetchErr) {
+        logger.warn('OpenRouter returned image URL but fetch for local cache failed', { error: fetchErr.message });
+      }
+    }
+
+    const ext = mimeType.includes('jpeg') ? 'jpg' : mimeType.includes('webp') ? 'webp' : 'png';
+    const filename = `bloom-openrouter-${Date.now()}.${ext}`;
+    const filepath = `/tmp/${filename}`;
+    if (imageBase64) {
+      fs.writeFileSync(filepath, Buffer.from(imageBase64, 'base64'));
+    }
+
+    return {
+      success: true,
+      engine: 'openrouter-image',
+      model,
+      image_base64: imageBase64,
+      image_url: imageUrl,
+      filepath: imageBase64 ? filepath : null,
+      filename: imageBase64 ? filename : null,
+      size,
+      revised_prompt: result.text || null,
+      raw_provider: result.raw?.provider || null,
+      message: `Image generated with OpenRouter (${model}) — ${size}`,
+    };
+  } catch (error) {
+    logger.error('OpenRouter image generation failed:', { error: error.message });
+    return { success: false, error: error.message, engine: 'openrouter-image' };
+  }
+}
 
 // ── RUNPOD FLUX DEV (via Supabase edge function) ─────────────────────────
 

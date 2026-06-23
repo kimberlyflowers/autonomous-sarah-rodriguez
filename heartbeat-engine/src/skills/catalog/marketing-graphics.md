@@ -43,15 +43,15 @@ Ask: "What text should appear on the graphic? Give me the headline, any subtext,
 ### INTENT-AWARE SKIP LOGIC:
 
 **Platform shortcuts — when the platform is obvious from the request, skip Q1 AND auto-set dimensions:**
-- "YouTube thumbnail" → skip Q1, set 1280x720, engine=gpt, likely bold + face + emotion
-- "Instagram post" → skip Q1, set 1080x1080, engine=gpt
-- "Instagram story" → skip Q1, set 1080x1920, engine=gpt
+- "YouTube thumbnail" → skip Q1, set 1280x720, engine=openrouter, likely bold + face + emotion
+- "Instagram post" → skip Q1, set 1080x1080, engine=openrouter
+- "Instagram story" → skip Q1, set 1080x1920, engine=openrouter
 - "Instagram carousel" → skip Q1, set 1080x1080 per slide, ask how many slides
-- "LinkedIn banner" → skip Q1, set 1584x396, engine=gpt
-- "Facebook cover" → skip Q1, set 820x312, engine=gpt
-- "Pinterest pin" → skip Q1, set 1000x1500, engine=gpt
-- "Twitter/X header" → skip Q1, set 1500x500, engine=gpt
-- "Email header" → skip Q1, set 600x200, engine=gpt
+- "LinkedIn banner" → skip Q1, set 1584x396, engine=openrouter
+- "Facebook cover" → skip Q1, set 820x312, engine=openrouter
+- "Pinterest pin" → skip Q1, set 1000x1500, engine=openrouter
+- "Twitter/X header" → skip Q1, set 1500x500, engine=openrouter
+- "Email header" → skip Q1, set 600x200, engine=openrouter
 
 **Style shortcuts:**
 - Default is ALWAYS professional/photorealistic unless user says otherwise
@@ -76,7 +76,7 @@ Ask: "What text should appear on the graphic? Give me the headline, any subtext,
 
 ## ENGINE SELECTION FOR SOCIAL GRAPHICS
 
-**Social media graphics use GPT Image 1.5 as primary engine** (set `engine: "gpt"`).
+**Social media graphics use OpenRouter as the primary engine when configured** (set `engine: "openrouter"`). Use `engine: "gpt"` only when OpenAI image billing is configured.
 
 GPT excels at:
 - Composed designs with text + imagery

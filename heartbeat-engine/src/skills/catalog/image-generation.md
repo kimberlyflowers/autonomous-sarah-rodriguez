@@ -38,18 +38,18 @@ If the user says "create an image of a woman at a desk" — that means a real-lo
 
 | Use Case | Primary Engine | Why |
 |----------|---------------|-----|
-| Social media graphics | `gpt` | GPT Image 1.5 excels at composed designs with text, faces, and bold visuals |
-| YouTube thumbnails | `gpt` | Better at dramatic expressions, bold compositions, text areas |
-| Ad creatives | `gpt` | Better product + text compositions |
-| Instagram/Facebook posts | `gpt` | Better at designed graphics with overlays |
-| Website hero images | `gemini` | Gemini produces cleaner, wider cinematic scenes |
-| Blog featured images | `gemini` | Better at natural, editorial-style photography |
-| Product photography | `gpt` | Better studio lighting and product detail |
-| Headshots / portraits | `gpt` | More realistic faces and expressions |
-| Landscapes / environments | `gemini` | Better at wide, atmospheric scenes |
-| Flyers / posters | `gpt` | Better at composed layouts with text areas |
+| Social media graphics | `openrouter` | Use the primary OpenRouter image model when configured; it can route to image-capable providers |
+| YouTube thumbnails | `openrouter` | Primary provider for dramatic expressions, bold compositions, text areas |
+| Ad creatives | `openrouter` | Primary provider for product + text compositions |
+| Instagram/Facebook posts | `openrouter` | Primary provider for designed graphics with overlays |
+| Website hero images | `openrouter` | Primary provider; use `gemini` directly only for reference-image consistency or specific Nano Banana behavior |
+| Blog featured images | `openrouter` | Primary provider for editorial-style photography |
+| Product photography | `openrouter` | Primary provider for studio lighting and product detail |
+| Headshots / portraits | `openrouter` | Primary provider for realistic faces and expressions |
+| Landscapes / environments | `openrouter` | Primary provider for wide, atmospheric scenes |
+| Flyers / posters | `openrouter` | Primary provider for composed layouts with text areas |
 
-**Always set the engine explicitly. Never rely on "auto" for professional work.**
+**Always set the engine explicitly. Use `openrouter` when OpenRouter is configured as the primary provider. Use `gpt` only when OpenAI image billing is configured, and `gemini` when Nano Banana/reference-image behavior is specifically needed.**
 
 ---
 

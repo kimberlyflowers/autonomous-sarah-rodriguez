@@ -48,7 +48,7 @@ Options: "Register or sign up online", "Call or text a number", "Visit a locatio
 
 ## ENGINE SELECTION FOR FLYERS
 
-**Flyers use GPT Image 1.5 as primary engine** (set `engine: "gpt"`).
+**Flyers use OpenRouter as the primary engine when configured** (set `engine: "openrouter"`). Use `engine: "gpt"` only when OpenAI image billing is configured.
 
 GPT excels at:
 - Composed designs with text + imagery together

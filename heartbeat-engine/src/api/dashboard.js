@@ -1096,12 +1096,12 @@ router.put('/model-config', async (req, res) => {
 });
 
 // ── Image Engine Config ──
-// Controls which image generation engine (gpt, gemini, auto) is used per content type
+// Controls which image generation engine (openrouter, gpt, gemini, auto) is used per content type
 router.get('/image-engine-config', async (req, res) => {
   try {
     const sb = await getSupabase();
     const { data } = await sb.from('bloom_admin_settings').select('image_engine_config').not('id', 'is', null).single();
-    res.json(data?.image_engine_config || { blog: 'gemini', flyer: 'gpt', website: 'gemini', social: 'auto', email: 'auto', default: 'auto' });
+    res.json(data?.image_engine_config || { blog: 'gemini', flyer: 'gpt', website: 'gemini', social: 'auto', email: 'auto', default: process.env.USE_OPENROUTER === 'true' ? 'openrouter' : 'auto' });
   } catch (e) {
     logger.error('Image engine config fetch failed:', e.message);
     res.status(500).json({ error: e.message });
@@ -1111,7 +1111,7 @@ router.get('/image-engine-config', async (req, res) => {
 router.put('/image-engine-config', async (req, res) => {
   try {
     const config = req.body;
-    const validEngines = ['auto', 'gpt', 'gemini'];
+    const validEngines = ['auto', 'openrouter', 'gpt', 'gemini'];
     const validKeys = ['blog', 'flyer', 'website', 'social', 'email', 'default'];
 
     // Validate
