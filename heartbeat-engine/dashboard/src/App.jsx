@@ -3739,6 +3739,7 @@ function BuildTab({c,mob,aFN="Bloomie"}){
   const [activeId,setActiveId]=useState(null);
   const [build,setBuild]=useState(null);
   const [msgs,setMsgs]=useState([]);
+  const [checklist,setChecklist]=useState([]);
   const [clarify,setClarify]=useState(null);
   const [chatInput,setChatInput]=useState('');
   const [chatSending,setChatSending]=useState(false);
@@ -3775,6 +3776,7 @@ function BuildTab({c,mob,aFN="Bloomie"}){
       const d=await r.json();
       setBuild(d.build||null);
       setMsgs(d.messages||[]);
+      setChecklist(d.progress||[]);
       setClarify(d.clarify||null);
     }catch(e){console.error(e);}
   };
@@ -3792,7 +3794,7 @@ function BuildTab({c,mob,aFN="Bloomie"}){
       const r=await fetch(url,{method:'POST',headers:{...h,'Content-Type':'application/json'},body:JSON.stringify(body)});
       const d=await r.json();
       if(!r.ok)throw new Error(d.error||'Build request failed');
-      if(!activeId&&d.build?.id){await loadBuilds();setActiveId(d.build.id);}
+      if(!activeId&&d.build?.id){setChecklist([]);await loadBuilds();setActiveId(d.build.id);}
       else if(activeId){loadDetail(activeId);}
     }catch(e){
       console.error(e);
@@ -3857,17 +3859,17 @@ function BuildTab({c,mob,aFN="Bloomie"}){
     if(lastIdx<raw.length)parts.push({type:'text',content:raw.slice(lastIdx)});
     return(
       <div key={i} style={{display:'flex',gap:8,marginBottom:12,alignItems:'flex-start'}}>
-        <div style={{width:28,height:28,borderRadius:'50%',background:'linear-gradient(135deg,#6C63FF,#A78BFA)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,color:'#fff',flexShrink:0,marginTop:2}}>B</div>
+        <div style={{width:28,height:28,borderRadius:'50%',background:'linear-gradient(135deg,#F4A261,#E76F8B)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,color:'#fff',flexShrink:0,marginTop:2}}>B</div>
         <div style={{flex:1,minWidth:0}}>
           {parts.map((p,pi)=>p.type==='text'
             ?<p key={pi} style={{margin:'0 0 6px',fontSize:13,lineHeight:1.6,color:c.tx,whiteSpace:'pre-wrap',wordBreak:'break-word'}}>{p.content}</p>
             :(
               <div key={pi} style={{marginBottom:8,borderRadius:8,overflow:'hidden',border:'1px solid #30363d'}}>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'4px 12px',background:'#161b22',fontSize:11,color:'#8b949e'}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'4px 12px',background:'#161b22',fontSize:11,color:'#F4A261'}}>
                   <span>{p.lang||'code'}</span>
                   <div style={{display:'flex',gap:8}}>
-                    <button onClick={()=>navigator.clipboard?.writeText(p.content)} style={{background:'none',border:'none',color:'#8b949e',cursor:'pointer',fontSize:11,padding:0}}>Copy</button>
-                    {(p.lang==='html'||p.lang==='HTML')&&<button onClick={()=>{}} style={{background:'none',border:'none',color:'#58a6ff',cursor:'pointer',fontSize:11,padding:0}}>Preview</button>}
+                    <button onClick={()=>navigator.clipboard?.writeText(p.content)} style={{background:'none',border:'none',color:'#F4A261',cursor:'pointer',fontSize:11,padding:0}}>Copy</button>
+                    {(p.lang==='html'||p.lang==='HTML')&&<button onClick={()=>{}} style={{background:'none',border:'none',color:'#E76F8B',cursor:'pointer',fontSize:11,padding:0}}>Preview</button>}
                   </div>
                 </div>
                 <pre style={{margin:0,padding:'12px',background:'#0d1117',color:'#e6edf3',fontSize:12,lineHeight:1.5,overflowX:'auto',fontFamily:"'Fira Code','Cascadia Code','Courier New',monospace"}}><code>{p.content}</code></pre>
@@ -3879,8 +3881,27 @@ function BuildTab({c,mob,aFN="Bloomie"}){
     );
   };
 
-  const statusColor={'pending':'#F59E0B','running':'#3B82F6','completed':'#10B981','failed':'#EF4444','paused':'#6B7280'}[build?.status]||c.tx2;
+  const statusColor={'queued':'#F4A261','building':'#F4A261','pending':'#F4A261','running':'#F4A261','complete':'#10B981','completed':'#10B981','error':'#EF4444','failed':'#EF4444','paused':'#6B7280'}[build?.status]||c.tx2;
   const phases=['planning','coding','testing','deploying'];
+  const phaseLabels={planning:'Planning',coding:'Building',testing:'Testing',deploying:'Deploying'};
+  const rawPhaseIdx=phases.indexOf(build?.phase);
+  const phaseIdx=build?.status==='complete'||build?.status==='completed'
+    ? phases.length
+    : rawPhaseIdx>=0
+      ? rawPhaseIdx
+      : (build?.status==='building'||build?.status==='running'||build?.status==='pending'||build?.status==='queued') ? 0 : -1;
+  const currentChecklistItem=checklist.find(t=>t.status==='in_progress')||checklist.find(t=>t.status!=='complete');
+  const completedSteps=checklist.filter(t=>t.status==='complete').length;
+  const progressPct=checklist.length
+    ? Math.round((completedSteps/checklist.length)*100)
+    : phaseIdx>=0
+      ? Math.min(100,Math.round((phaseIdx/phases.length)*100))
+      : 0;
+  const currentStepText=currentChecklistItem?.step_name||phaseLabels[build?.phase]||(
+    build?.status==='complete'||build?.status==='completed'?'Complete':
+    build?.status==='error'||build?.status==='failed'?'Needs attention':
+    'Starting'
+  );
 
   return(
     <div style={{display:'flex',height:'100%',overflow:'hidden'}}>
@@ -3889,15 +3910,15 @@ function BuildTab({c,mob,aFN="Bloomie"}){
       <div style={{width:mob?200:260,borderRight:'1px solid '+c.ln,display:'flex',flexDirection:'column',background:c.cd,flexShrink:0}}>
         <div style={{padding:'14px 16px 10px',borderBottom:'1px solid '+c.ln,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
           <span style={{fontSize:13,fontWeight:600,color:c.tx}}>Builds</span>
-          <button onClick={()=>{setActiveId(null);setBuild(null);setMsgs([]);}} style={{fontSize:11,padding:'3px 10px',borderRadius:8,border:'1px solid '+c.ln,background:'linear-gradient(135deg,#6C63FF,#A78BFA)',color:'#fff',cursor:'pointer'}}>+ New</button>
+          <button onClick={()=>{setActiveId(null);setBuild(null);setMsgs([]);setChecklist([]);}} style={{fontSize:11,padding:'3px 10px',borderRadius:8,border:'1px solid '+c.ln,background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',cursor:'pointer'}}>+ New</button>
         </div>
         <div style={{flex:1,overflowY:'auto'}}>
           {builds.length===0&&<div style={{padding:'20px 16px',fontSize:12,color:c.tx2,textAlign:'center'}}>No builds yet.<br/>Start a new build below.</div>}
           {builds.map(b=>(
-            <div key={b.id} onClick={()=>setActiveId(b.id)} style={{padding:'10px 16px',cursor:'pointer',borderBottom:'1px solid '+c.ln,background:activeId===b.id?c.bg:'transparent',borderLeft:activeId===b.id?'3px solid #6C63FF':'3px solid transparent'}}>
+            <div key={b.id} onClick={()=>setActiveId(b.id)} style={{padding:'10px 16px',cursor:'pointer',borderBottom:'1px solid '+c.ln,background:activeId===b.id?c.bg:'transparent',borderLeft:activeId===b.id?'3px solid #F4A261':'3px solid transparent'}}>
               <div style={{fontSize:13,fontWeight:500,color:c.tx,marginBottom:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{b.title||b.brief||'Build #'+b.id?.slice(-6)}</div>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                <span style={{fontSize:11,color:{'queued':'#F59E0B','building':'#3B82F6','complete':'#10B981','error':'#EF4444','pending':'#F59E0B','running':'#3B82F6','completed':'#10B981','failed':'#EF4444'}[b.status]||c.tx2}}>{b.status||'pending'}</span>
+                <span style={{fontSize:11,color:{'queued':'#F4A261','building':'#F4A261','complete':'#10B981','error':'#EF4444','pending':'#F4A261','running':'#F4A261','completed':'#10B981','failed':'#EF4444'}[b.status]||c.tx2}}>{b.status||'pending'}</span>
                 <span style={{fontSize:11,color:c.tx2}}>{b.created_at?new Date(b.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric'}):'–'}</span>
               </div>
             </div>
@@ -3926,34 +3947,62 @@ function BuildTab({c,mob,aFN="Bloomie"}){
               </div>
               <div style={{display:'flex',gap:4}}>
                 {phases.map((ph,pi)=>{
-                  const phaseIdx=phases.indexOf(build.phase);
                   const done=phaseIdx>pi;
                   const active=phaseIdx===pi;
                   return(
-                    <div key={ph} style={{flex:1,height:4,borderRadius:2,background:done?'#10B981':active?'#3B82F6':c.ln,transition:'background 0.3s'}}/>
+                    <div key={ph} style={{flex:1,height:4,borderRadius:2,background:done?'#10B981':active?'#F4A261':c.ln,transition:'background 0.3s'}}/>
                   );
                 })}
               </div>
-              {build.output_url&&<div style={{marginTop:6}}><a href={build.output_url} target="_blank" rel="noopener noreferrer" style={{fontSize:11,color:'#3B82F6',textDecoration:'none'}}>&#x1F517; Open preview ↗</a></div>}
+              <div style={{display:'flex',alignItems:'center',gap:8,marginTop:8,minWidth:0}}>
+                <span style={{width:7,height:7,borderRadius:'50%',background:statusColor,flexShrink:0,animation:(build.status==='building'||build.status==='running')?'pulse 1.5s ease infinite':'none'}}/>
+                <span style={{fontSize:11,color:c.so,whiteSpace:'nowrap'}}>Current step</span>
+                <span style={{fontSize:12,color:c.tx,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',minWidth:0,flex:1}}>{currentStepText}</span>
+                <span style={{fontSize:11,color:c.so,flexShrink:0}}>{progressPct}%</span>
+              </div>
+              {build.output_url&&<div style={{marginTop:6}}><a href={build.output_url} target="_blank" rel="noopener noreferrer" style={{fontSize:11,color:'#F4A261',textDecoration:'none'}}>&#x1F517; Open preview ↗</a></div>}
             </div>
             {/* Conversation thread */}
             <div style={{flex:1,overflowY:'auto',padding:'16px',display:'flex',flexDirection:'column'}}>
+              {checklist.length>0&&(
+                <div style={{marginBottom:14,padding:'12px 14px',borderRadius:12,background:c.cd,border:'1px solid '+c.ln}}>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,marginBottom:10}}>
+                    <div style={{fontSize:11,fontWeight:700,color:c.so,textTransform:'uppercase',letterSpacing:'0.5px'}}>Progress</div>
+                    <div style={{fontSize:11,color:c.so}}>{completedSteps} of {checklist.length} steps done</div>
+                  </div>
+                  <div style={{height:6,borderRadius:999,background:c.ln,overflow:'hidden',marginBottom:10}}>
+                    <div style={{height:'100%',width:progressPct+'%',borderRadius:999,background:'linear-gradient(135deg,#F4A261,#E76F8B)',transition:'width .3s'}}/>
+                  </div>
+                  <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                    {checklist.slice(0,5).map((item,idx)=>{
+                      const done=item.status==='complete';
+                      const now=item.status==='in_progress';
+                      return(
+                        <div key={idx} style={{display:'flex',alignItems:'center',gap:8,fontSize:12,color:done?c.so:c.tx,lineHeight:1.4}}>
+                          <span style={{width:8,height:8,borderRadius:'50%',background:done?'#10B981':now?'#F4A261':c.ln,flexShrink:0,animation:now?'pulse 1.5s ease infinite':'none'}}/>
+                          <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',textDecoration:done?'line-through':'none'}}>{item.step_name}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               {msgs.length===0&&<div style={{textAlign:'center',color:c.tx2,fontSize:13,marginTop:40}}>Waiting for {aFN} to start...</div>}
               {msgs.map((m,i)=>renderMsg(m,i))}
               {clarify&&(
-                <div style={{margin:'8px 0',padding:'12px 16px',borderRadius:12,background:'linear-gradient(135deg,rgba(108,99,255,0.15),rgba(167,139,250,0.15))',border:'1px solid rgba(108,99,255,0.3)'}}>
-                  <div style={{fontSize:13,fontWeight:500,color:'#A78BFA',marginBottom:8}}>&#x2753; {aFN} needs clarification</div>
+                <div style={{margin:'8px 0',padding:'12px 16px',borderRadius:12,background:'linear-gradient(135deg,rgba(244,162,97,0.14),rgba(231,111,139,0.14))',border:'1px solid rgba(244,162,97,0.3)'}}>
+                  <div style={{fontSize:13,fontWeight:500,color:'#F4A261',marginBottom:8}}>&#x2753; {aFN} needs clarification</div>
                   <div style={{fontSize:13,color:c.tx,marginBottom:10}}>{clarify.question||clarify}</div>
                   <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
                     {(clarify.options?.length?clarify.options:['Yes, proceed','No, adjust','Give me options']).map(opt=>(
-                      <button key={opt} onClick={()=>answerClarify(opt)} style={{padding:'6px 12px',borderRadius:8,border:'1px solid rgba(108,99,255,0.4)',background:'rgba(108,99,255,0.1)',color:'#A78BFA',cursor:'pointer',fontSize:12}}>{opt}</button>
+                      <button key={opt} onClick={()=>answerClarify(opt)} style={{padding:'6px 12px',borderRadius:8,border:'1px solid rgba(244,162,97,0.4)',background:'rgba(244,162,97,0.1)',color:'#F4A261',cursor:'pointer',fontSize:12}}>{opt}</button>
                     ))}
                   </div>
                 </div>
               )}
               {chatSending&&(
                 <div style={{display:'flex',gap:8,alignItems:'flex-start',marginBottom:12}}>
-                  <div style={{width:28,height:28,borderRadius:'50%',background:'linear-gradient(135deg,#6C63FF,#A78BFA)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,color:'#fff',flexShrink:0}}>B</div>
+                  <div style={{width:28,height:28,borderRadius:'50%',background:'linear-gradient(135deg,#F4A261,#E76F8B)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,color:'#fff',flexShrink:0}}>B</div>
                   <div style={{display:'flex',gap:4,padding:'10px 14px',borderRadius:'18px 18px 18px 4px',background:c.cd,alignItems:'center'}}>
                     {[0,1,2].map(i=><span key={i} style={{width:6,height:6,borderRadius:'50%',background:c.tx2,display:'inline-block',animation:'bounce 1.2s ease-in-out '+[0,0.2,0.4][i]+'s infinite'}}/>)}
                   </div>
@@ -3995,7 +4044,7 @@ function BuildTab({c,mob,aFN="Bloomie"}){
           <div style={{display:'flex',gap:6,alignItems:'flex-end',padding:'8px 10px',borderRadius:16,border:'1.5px solid '+c.ln,background:c.bg}}>
             <button onClick={()=>imgRef.current?.click()} style={{width:30,height:30,borderRadius:8,border:'none',background:'none',color:c.tx2,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,flexShrink:0}} title="Attach file">&#x1F4CE;</button>
             <textarea value={chatInput} onChange={e=>setChatInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat();}}} placeholder={activeId?`Message ${aFN}\u2026`:`Describe what you want to build\u2026`} rows={1} style={{flex:1,padding:'4px 0',border:'none',background:'transparent',color:c.tx,fontSize:13,fontFamily:'inherit',resize:'none',outline:'none',lineHeight:1.4,maxHeight:120,overflowY:'auto'}}/>
-            <button onClick={sendChat} disabled={(!chatInput.trim()&&!pendingImgs.length)||chatSending} style={{width:32,height:32,borderRadius:10,border:'none',background:'linear-gradient(135deg,#6C63FF,#A78BFA)',color:'#fff',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',opacity:(chatInput.trim()||pendingImgs.length)&&!chatSending?1:0.5,flexShrink:0}}>
+            <button onClick={sendChat} disabled={(!chatInput.trim()&&!pendingImgs.length)||chatSending} style={{width:32,height:32,borderRadius:10,border:'none',background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',opacity:(chatInput.trim()||pendingImgs.length)&&!chatSending?1:0.5,flexShrink:0}}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg>
             </button>
           </div>
@@ -4008,7 +4057,7 @@ function BuildTab({c,mob,aFN="Bloomie"}){
           <div style={{padding:'10px 14px',borderBottom:'1px solid '+c.ln,display:'flex',justifyContent:'space-between',alignItems:'center',flexShrink:0}}>
             <span style={{fontSize:12,fontWeight:600,color:c.tx}}>Artifact Preview</span>
             {(build?.output_url||latestHtml)&&(
-              <a href={build?.output_url||'#'} target="_blank" rel="noopener noreferrer" style={{fontSize:11,color:'#3B82F6',textDecoration:'none'}}>Open &#x2197;</a>
+              <a href={build?.output_url||'#'} target="_blank" rel="noopener noreferrer" style={{fontSize:11,color:'#F4A261',textDecoration:'none'}}>Open &#x2197;</a>
             )}
           </div>
           {latestHtml

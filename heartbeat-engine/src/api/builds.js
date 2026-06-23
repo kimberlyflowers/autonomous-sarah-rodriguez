@@ -44,6 +44,20 @@ async function ensureBuildChatSession(supabase, build, orgId, userId) {
   return !error;
 }
 
+async function saveBuildUserMessage(supabase, buildId, message, userId, source = 'user') {
+  if (!message?.trim()) return true;
+
+  const { error } = await supabase.from('messages').insert({
+    session_id: buildId,
+    role: 'user',
+    content: message.trim(),
+    metadata: { source, user_id: userId || null },
+  });
+
+  if (error) logger.warn('Failed to save build user message', { buildId, source, error: error.message });
+  return !error;
+}
+
 // ── Auth middleware ───────────────────────────────────────────────────────────
 async function withAuth(req, res, next) {
   try {
@@ -105,6 +119,7 @@ router.post('/', withAuth, async (req, res) => {
     logger.info('Build created', { buildId: build.id, type, org: orgId.slice(0, 8) });
 
     await ensureBuildChatSession(supabase, build, orgId, userId);
+    await saveBuildUserMessage(supabase, build.id, brief, userId, 'initial-brief');
 
     // Fire-and-forget — respond immediately, run agent in background
     (async () => {
@@ -216,12 +231,11 @@ router.get('/:id', withAuth, async (req, res) => {
       status: t.status === 'completed' ? 'complete' : t.status || 'pending',
     }));
 
-    // Progress messages posted by the agent using build.id as session_id
+    // Conversation and progress messages posted against build.id as session_id
     const { data: messages } = await supabase
       .from('messages')
       .select('id, role, content, metadata, created_at')
       .eq('session_id', id)
-      .eq('role', 'assistant')
       .order('created_at', { ascending: true })
       .limit(100);
 
@@ -283,6 +297,7 @@ router.post('/:id/clarify', withAuth, async (req, res) => {
       .eq('session_id', id);
 
     if (error) throw error;
+    await saveBuildUserMessage(supabase, id, answer, req.userId, 'clarify-answer');
 
     logger.info('Clarify answered', { buildId: id, clarifyId: clarify_id });
     res.json({ success: true });
@@ -319,14 +334,8 @@ router.post('/:id/message', withAuth, async (req, res) => {
 
     await ensureBuildChatSession(supabase, build, orgId, userId);
 
-    // Save user message to messages table so it shows in the live log
-    const { error: messageErr } = await supabase.from('messages').insert({
-      session_id: id,
-      role: 'user',
-      content: message.trim(),
-      metadata: { source: 'user-steer', user_id: userId },
-    });
-    if (messageErr) logger.warn('Failed to save build message', { buildId: id, error: messageErr.message });
+    // Save user message to messages table so it stays visible in Work/Build logs.
+    await saveBuildUserMessage(supabase, id, message, userId, 'user-steer');
 
     // If we have a live MA session, steer it
     if (build.managed_agent_session_id) {
