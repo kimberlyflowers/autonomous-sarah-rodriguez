@@ -1,6 +1,5 @@
 import { createLogger } from '../logging/logger.js';
 import { loadAgentConfig } from '../config/agent-profile.js';
-import { getAnthropicClient } from '../api/chat.js';
 import { callModel } from '../llm/unified-client.js';
 import { getResolvedConfig } from '../config/admin-config.js';
 import { executeGHLTool, ghlToolDefinitions } from '../tools/ghl-tools.js';
@@ -362,8 +361,6 @@ Use the available tools to complete this task. Work step by step and explain you
    * Call LLM API with tools and optimized conversation context
    */
   async callClaudeWithTools(systemPrompt) {
-    const client = getAnthropicClient();
-
     // Get optimized conversation history from context manager
     const optimizedHistory = this.contextManager.getOptimizedHistory(
       this.modelFormatter.capabilities.contextWindow * 0.8 // Reserve 20% for response

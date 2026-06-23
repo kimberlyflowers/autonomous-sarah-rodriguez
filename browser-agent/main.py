@@ -32,6 +32,14 @@ from typing import Optional
 
 from browser_use import Agent, Browser, ChatAnthropic
 
+try:
+    from browser_use import ChatOpenAI
+except Exception:  # pragma: no cover - depends on browser-use version
+    try:
+        from langchain_openai import ChatOpenAI
+    except Exception:
+        ChatOpenAI = None
+
 # ── Logging
 logging.basicConfig(level=logging.INFO, format="%(levelname)-5s [%(name)s] %(message)s")
 log = logging.getLogger("browser-agent")
@@ -41,10 +49,80 @@ BROWSERLESS_WS_URL = os.getenv("BROWSERLESS_WS_URL", "")
 BROWSERLESS_TOKEN = os.getenv("BROWSERLESS_TOKEN", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5-20251001")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", os.getenv("LLM_MODEL", "google/gemini-2.5-flash"))
+OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+BROWSER_LLM_PROVIDER = os.getenv(
+    "BROWSER_LLM_PROVIDER",
+    "openrouter" if OPENROUTER_API_KEY else ("anthropic" if ANTHROPIC_API_KEY else "")
+).lower()
 SIDECAR_SECRET = os.getenv("SIDECAR_SECRET", "")
 SARAH_BASE_URL = os.getenv("SARAH_BASE_URL", "http://autonomous-sarah-rodriguez.railway.internal:3000")
 BROWSER_USE_API_KEY = os.getenv("BROWSER_USE_API_KEY", "")
 PORT = int(os.getenv("PORT", "8080"))
+
+
+def active_llm_label() -> tuple[str, str]:
+    """Return the provider/model browser-use should use."""
+    if BROWSER_LLM_PROVIDER == "openrouter" and OPENROUTER_API_KEY:
+        return "openrouter", OPENROUTER_MODEL
+    if BROWSER_LLM_PROVIDER == "anthropic" and ANTHROPIC_API_KEY:
+        return "anthropic", ANTHROPIC_MODEL
+    if OPENROUTER_API_KEY:
+        return "openrouter", OPENROUTER_MODEL
+    if ANTHROPIC_API_KEY:
+        return "anthropic", ANTHROPIC_MODEL
+    return "", ""
+
+
+def has_llm_config() -> bool:
+    provider, _ = active_llm_label()
+    return bool(provider)
+
+
+def make_llm():
+    """Create the browser-use LLM.
+
+    OpenRouter is OpenAI-compatible, so browser-use can use ChatOpenAI against
+    OpenRouter's /api/v1 base URL. Anthropic remains as an explicit fallback.
+    """
+    provider, model = active_llm_label()
+
+    if provider == "openrouter":
+        if ChatOpenAI is None:
+            raise RuntimeError("browser-use ChatOpenAI is unavailable; upgrade browser-use or install langchain-openai")
+
+        headers = {}
+        if os.getenv("OPENROUTER_HTTP_REFERER"):
+            headers["HTTP-Referer"] = os.getenv("OPENROUTER_HTTP_REFERER")
+        if os.getenv("OPENROUTER_APP_TITLE"):
+            headers["X-Title"] = os.getenv("OPENROUTER_APP_TITLE")
+
+        kwargs = {
+            "model": model,
+            "api_key": OPENROUTER_API_KEY,
+            "base_url": OPENROUTER_BASE_URL,
+            "temperature": 0,
+        }
+        if headers:
+            kwargs["default_headers"] = headers
+
+        try:
+            return ChatOpenAI(**kwargs)
+        except TypeError:
+            # Some LangChain/browser-use versions use openai_* argument names.
+            kwargs["openai_api_key"] = kwargs.pop("api_key")
+            kwargs["openai_api_base"] = kwargs.pop("base_url")
+            return ChatOpenAI(**kwargs)
+
+    if provider == "anthropic":
+        return ChatAnthropic(
+            model=model,
+            api_key=ANTHROPIC_API_KEY,
+            temperature=0,
+        )
+
+    raise RuntimeError("No browser LLM configured. Set OPENROUTER_API_KEY or ANTHROPIC_API_KEY.")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -193,11 +271,7 @@ async def run_agent(task: str, max_steps: int, use_cloud: bool = False) -> dict:
             log.info("🏠 Connected to self-hosted Browserless")
 
         # LLM
-        llm = ChatAnthropic(
-            model=ANTHROPIC_MODEL,
-            api_key=ANTHROPIC_API_KEY,
-            temperature=0,
-        )
+        llm = make_llm()
 
         # Agent
         agent = Agent(
@@ -350,9 +424,11 @@ async def run_via_desktop(task: str, url: str = None) -> dict:
 async def lifespan(app: FastAPI):
     log.info("🚀 BLOOM Browser Agent starting...")
     log.info(f"   Browserless: {'✅' if BROWSERLESS_WS_URL else '❌'}")
-    log.info(f"   Anthropic:   {'✅' if ANTHROPIC_API_KEY else '❌'}")
+    provider, model = active_llm_label()
+    log.info(f"   OpenRouter:  {'✅' if OPENROUTER_API_KEY else '❌'}")
+    log.info(f"   Anthropic:   {'✅ (fallback)' if ANTHROPIC_API_KEY else '❌'}")
     log.info(f"   Cloud Key:   {'✅ (fallback ready)' if BROWSER_USE_API_KEY else '❌ (no cloud fallback)'}")
-    log.info(f"   Model:       {ANTHROPIC_MODEL}")
+    log.info(f"   LLM:         {provider or 'none'} / {model or 'not configured'}")
     yield
     log.info("Browser Agent shutting down.")
 
@@ -399,8 +475,8 @@ class ScreenshotResponse(BaseModel):
 async def browse(req: BrowseRequest):
     check_auth(req.secret)
 
-    if not ANTHROPIC_API_KEY:
-        return BrowseResponse(success=False, error="ANTHROPIC_API_KEY not configured")
+    if not has_llm_config():
+        return BrowseResponse(success=False, error="No browser LLM configured. Set OPENROUTER_API_KEY or ANTHROPIC_API_KEY.")
 
     start = asyncio.get_event_loop().time()
 
@@ -541,6 +617,7 @@ async def screenshot(req: ScreenshotRequest):
 @app.get("/health")
 async def health():
     desktop_connected = await check_desktop_available()
+    provider, model = active_llm_label()
     return {
         "status": "healthy",
         "service": "bloom-browser-agent",
@@ -550,7 +627,8 @@ async def health():
             "tier2_cloud": bool(BROWSER_USE_API_KEY),
             "tier3_desktop": desktop_connected,
         },
-        "model": ANTHROPIC_MODEL,
+        "llm_provider": provider or None,
+        "model": model or None,
         "timestamp": datetime.utcnow().isoformat() + "Z",
     }
 

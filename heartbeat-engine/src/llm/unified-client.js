@@ -83,21 +83,20 @@ const PROVIDERS = {
 // User never sees "Claude is down" — Bloomie just keeps working.
 // Order defined in bloom_admin_settings.failover_chain — this is the code-level safety net only.
 // The chain skips whatever the current primary model is.
-// Failover order: Gemini first (always has credits), then OpenAI, then Anthropic, then Ollama LAST
+// Failover order: OpenRouter first, then native Gemini/OpenAI/DeepSeek,
+// then Anthropic only as a late optional fallback, then Ollama LAST.
 // Ollama is the FREE backstop — no billing, no rate limits, no API keys. Always available.
 const FAILOVER_CHAIN = [
   // ── OpenRouter — primary paid router when configured ──
   { provider: 'openrouter', model: process.env.OPENROUTER_FALLBACK_MODEL || 'openrouter/auto' },
-  // ── Claude FIRST — primary intelligent fallback ──
-  { provider: 'anthropic', model: 'claude-sonnet-4-6' },
-  { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
-  // ── Gemini second ──
+  // ── Native provider fallbacks before Anthropic billing-dependent paths ──
   { provider: 'gemini',    model: 'gemini-2.5-flash' },
-  // ── OpenAI third ──
   { provider: 'openai',    model: 'gpt-4o' },
   { provider: 'openai',    model: 'gpt-4o-mini' },
-  // ── DeepSeek — ultra-cheap reasoning fallback ──
   { provider: 'deepseek',  model: 'deepseek-chat' },
+  // ── Claude late — optional fallback only, not required for operation ──
+  { provider: 'anthropic', model: 'claude-sonnet-4-6' },
+  { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
   // ── FREE FALLBACK — Ollama (self-hosted on Railway) ──
   // No billing, no rate limits, no API keys. Bloomie NEVER goes dark.
   { provider: 'ollama',    model: 'llama3.2' },

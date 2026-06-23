@@ -145,11 +145,16 @@ function getModelForTask(taskType, tier = 'standard', defaultModel = null) {
   const model = tierMap[taskType] || tierMap.chat;
 
   // Check if the chosen model's API key exists — fall back to admin default, then Gemini
-  const provider = model.startsWith('gpt') || model.startsWith('o') ? 'openai' :
+  const provider = model.includes('/') ? 'openrouter' :
+                   model.startsWith('gpt') || model.startsWith('o') ? 'openai' :
                    model.startsWith('deepseek') ? 'deepseek' :
-                   model.startsWith('gemini') ? 'gemini' : 'anthropic';
+                   model.startsWith('gemini') ? 'gemini' :
+                   model.startsWith('claude') ? 'anthropic' :
+                   process.env.USE_OPENROUTER === 'true' && process.env.OPENROUTER_API_KEY ? 'openrouter' :
+                   'anthropic';
 
   const envKey = {
+    openrouter: 'OPENROUTER_API_KEY',
     anthropic: 'ANTHROPIC_API_KEY',
     openai: 'OPENAI_API_KEY',
     deepseek: 'DEEPSEEK_API_KEY',
@@ -305,6 +310,7 @@ export function getRoutingConfig() {
       Object.entries(tierMap).map(([task, model]) => [task, getModelForTask(task, settings.tier)])
     ),
     providers: {
+      openrouter: { available: !!process.env.OPENROUTER_API_KEY },
       anthropic: { available: !!process.env.ANTHROPIC_API_KEY },
       openai:    { available: !!process.env.OPENAI_API_KEY },
       deepseek:  { available: !!process.env.DEEPSEEK_API_KEY },
@@ -321,6 +327,7 @@ export function getModelMap() {
 
 export function getAvailableProviders() {
   return {
+    openrouter: { available: !!process.env.OPENROUTER_API_KEY, models: [process.env.OPENROUTER_MODEL || 'google/gemini-2.5-flash', process.env.OPENROUTER_FALLBACK_MODEL || 'openrouter/auto'] },
     anthropic: { available: !!process.env.ANTHROPIC_API_KEY, models: ['claude-haiku-4-5-20251001', 'claude-sonnet-4-5-20250929'] },
     openai:    { available: !!process.env.OPENAI_API_KEY,    models: ['gpt-4o', 'gpt-4o-mini'] },
     deepseek:  { available: !!process.env.DEEPSEEK_API_KEY,  models: ['deepseek-chat'] },
