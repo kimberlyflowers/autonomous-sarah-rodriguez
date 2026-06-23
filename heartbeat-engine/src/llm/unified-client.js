@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // BLOOM Unified LLM Client v2 — with Silent Failover Chain
 //
-// Supports: Anthropic (Claude), OpenAI (GPT), DeepSeek, Google (Gemini), Ollama (FREE local)
+// Supports: Anthropic (Claude), OpenAI (GPT), DeepSeek, Google (Gemini), OpenRouter, Ollama (FREE local)
 // Failover: Primary → next provider → next → Ollama (silent, user NEVER sees downtime)
 //
 // Architecture:
@@ -51,6 +51,22 @@ const PROVIDERS = {
     envKey: 'GEMINI_API_KEY',
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
   },
+  openrouter: {
+    name: 'OpenRouter',
+    models: [
+      process.env.OPENROUTER_MODEL,
+      process.env.OPENROUTER_FALLBACK_MODEL,
+      process.env.OPENROUTER_STRUCTURED_MODEL,
+      'openrouter/auto',
+      'google/gemini-2.5-flash',
+      'anthropic/claude-haiku-4-5',
+      'openai/gpt-4o-mini',
+      'meta-llama/llama-3.3-70b-instruct:free',
+      'deepseek/deepseek-chat',
+    ].filter(Boolean),
+    envKey: 'OPENROUTER_API_KEY',
+    baseUrl: 'https://openrouter.ai/api/v1',
+  },
   ollama: {
     name: 'Ollama (Local)',
     // Models available via Ollama — lightweight ones suitable for Railway deployment
@@ -70,6 +86,8 @@ const PROVIDERS = {
 // Failover order: Gemini first (always has credits), then OpenAI, then Anthropic, then Ollama LAST
 // Ollama is the FREE backstop — no billing, no rate limits, no API keys. Always available.
 const FAILOVER_CHAIN = [
+  // ── OpenRouter — primary paid router when configured ──
+  { provider: 'openrouter', model: process.env.OPENROUTER_FALLBACK_MODEL || 'openrouter/auto' },
   // ── Claude FIRST — primary intelligent fallback ──
   { provider: 'anthropic', model: 'claude-sonnet-4-6' },
   { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
@@ -153,9 +171,13 @@ export function calculateCost(model, usage) {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 export function detectProvider(model) {
+  if (!model) return 'anthropic';
   for (const [key, prov] of Object.entries(PROVIDERS)) {
     if (prov.models.includes(model)) return key;
   }
+  // OpenRouter model ids are provider-prefixed, e.g. google/gemini-2.5-flash.
+  // Keep direct provider ids like gemini-2.5-flash on their native provider.
+  if (model.includes('/')) return 'openrouter';
   if (model.startsWith('claude')) return 'anthropic';
   if (model.startsWith('gpt') || model.startsWith('o1') || model.startsWith('o3')) return 'openai';
   if (model.startsWith('deepseek')) return 'deepseek';
@@ -165,6 +187,7 @@ export function detectProvider(model) {
       model.startsWith('gemma') || model.startsWith('phi') ||
       model.startsWith('qwen') || model.startsWith('codellama') ||
       model.startsWith('vicuna') || model.startsWith('neural-chat')) return 'ollama';
+  if (process.env.USE_OPENROUTER === 'true' && process.env.OPENROUTER_API_KEY) return 'openrouter';
   return 'anthropic';
 }
 
@@ -758,6 +781,10 @@ export class UnifiedLLMClient {
     if (!isOllama) {
       headers['Authorization'] = `Bearer ${apiKey}`;
     }
+    if (this._currentProvider === 'openrouter') {
+      if (process.env.OPENROUTER_HTTP_REFERER) headers['HTTP-Referer'] = process.env.OPENROUTER_HTTP_REFERER;
+      if (process.env.OPENROUTER_APP_TITLE) headers['X-Title'] = process.env.OPENROUTER_APP_TITLE;
+    }
 
     const doFetch = async (reqBody) => {
       const resp = await fetch(url, {
@@ -1119,6 +1146,10 @@ async function _callModelDirect(model, provider, { system, messages, tools, maxT
     const headers = { 'Content-Type': 'application/json' };
     if (!isOllama) {
       headers['Authorization'] = `Bearer ${apiKey}`;
+    }
+    if (provider === 'openrouter') {
+      if (process.env.OPENROUTER_HTTP_REFERER) headers['HTTP-Referer'] = process.env.OPENROUTER_HTTP_REFERER;
+      if (process.env.OPENROUTER_APP_TITLE) headers['X-Title'] = process.env.OPENROUTER_APP_TITLE;
     }
 
     const response = await fetch(`${baseUrl}/chat/completions`, {
