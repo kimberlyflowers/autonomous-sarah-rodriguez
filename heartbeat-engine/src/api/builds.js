@@ -26,6 +26,24 @@ async function getSupabase() {
   return _supabase;
 }
 
+async function ensureBuildChatSession(supabase, build, orgId, userId) {
+  const { error } = await supabase
+    .from('sessions')
+    .upsert({
+      id: build.id,
+      organization_id: orgId,
+      org_id: orgId,
+      user_id: userId || build.created_by || null,
+      agent_id: process.env.AGENT_UUID || 'c3000000-0000-0000-0000-000000000003',
+      title: build.title || build.brief || 'Work session',
+      status: 'active',
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'id' });
+
+  if (error) logger.warn('Failed to ensure build chat session', { buildId: build.id, error: error.message });
+  return !error;
+}
+
 // ── Auth middleware ───────────────────────────────────────────────────────────
 async function withAuth(req, res, next) {
   try {
@@ -85,6 +103,8 @@ router.post('/', withAuth, async (req, res) => {
     }
 
     logger.info('Build created', { buildId: build.id, type, org: orgId.slice(0, 8) });
+
+    await ensureBuildChatSession(supabase, build, orgId, userId);
 
     // Fire-and-forget — respond immediately, run agent in background
     (async () => {
@@ -290,12 +310,14 @@ router.post('/:id/message', withAuth, async (req, res) => {
     // Verify build belongs to this org
     const { data: build } = await supabase
       .from('website_builds')
-      .select('id, managed_agent_session_id, status')
+      .select('id, managed_agent_session_id, status, title, brief, created_by, type')
       .eq('id', id)
       .eq('org_id', orgId)
       .single();
 
     if (!build) return res.status(404).json({ error: 'Build not found' });
+
+    await ensureBuildChatSession(supabase, build, orgId, userId);
 
     // Save user message to messages table so it shows in the live log
     const { error: messageErr } = await supabase.from('messages').insert({

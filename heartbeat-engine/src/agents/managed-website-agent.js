@@ -83,12 +83,13 @@ async function postToBuildSession(sessionId, message) {
   if (!sessionId) return;
   try {
     const supabase = getSupabase();
-    await supabase.from('messages').insert({
+    const { error } = await supabase.from('messages').insert({
       session_id: sessionId,
       role: 'assistant',
       content: message,
       metadata: { sender_label: 'BLOOM Website Builder', source: 'managed-website-agent', type: 'build_progress' }
     });
+    if (error) throw error;
   } catch (e) {
     logger.warn('Failed to post build progress to session', { sessionId, error: e.message });
   }
