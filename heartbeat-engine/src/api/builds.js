@@ -323,6 +323,16 @@ router.post('/:id/message', withAuth, async (req, res) => {
       } catch (e) {
         logger.warn('Failed to steer session', { error: e.message });
       }
+    } else {
+      try {
+        const mod = await import('../agents/managed-website-agent.js');
+        if (mod.continueWebsiteBuildSession) {
+          await mod.continueWebsiteBuildSession(message.trim(), { orgId, chatSessionId: id });
+        }
+      } catch (e) {
+        logger.warn('Failed to continue OpenRouter build session', { buildId: id, error: e.message });
+        return res.status(500).json({ error: 'Failed to continue session' });
+      }
     }
 
     res.json({ success: true, steered: !!build.managed_agent_session_id });

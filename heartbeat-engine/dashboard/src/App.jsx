@@ -3593,7 +3593,7 @@ function WorkTab({c,mob,aFN="Bloomie"}){
   const sl=(s)=>s==='complete'?'Complete':s==='building'?'Working…':s==='error'?'Error':s==='clarifying'?'Waiting for you':s==='queued'?'Queued':'Starting…';
 
   return(
-    <div style={{display:'flex',height:'calc(100vh - 104px)',overflow:'hidden'}}>
+    <div style={{display:'flex',height:'100%',overflow:'hidden'}}>
       {/* ── Session list sidebar ── */}
       {!mob&&(
         <div style={{width:260,borderRight:'1px solid '+c.ln,background:c.cd,display:'flex',flexDirection:'column',flexShrink:0}}>
@@ -3883,7 +3883,7 @@ function BuildTab({c,mob,aFN="Bloomie"}){
   const phases=['planning','coding','testing','deploying'];
 
   return(
-    <div style={{display:'flex',height:'calc(100vh - 104px)',overflow:'hidden'}}>
+    <div style={{display:'flex',height:'100%',overflow:'hidden'}}>
 
       {/* ── Sidebar: build list ── */}
       <div style={{width:mob?200:260,borderRight:'1px solid '+c.ln,display:'flex',flexDirection:'column',background:c.cd,flexShrink:0}}>
@@ -5189,11 +5189,11 @@ function App({ authUser }) {
         )}
 
         {/* ── MAIN CONTENT ── */}
-        <div style={{flex:1,minWidth:0,height:"calc(100vh - 104px)",overflow:pg==="chat"?"hidden":"auto"}}>
+        <div style={{flex:1,minWidth:0,height:"calc(100dvh - 104px)",overflow:(pg==="chat"||pg==="work"||pg==="build")?"hidden":"auto"}}>
 
           {/* ══ CHAT ══ */}
           {pg==="chat"&&conferenceMode&&(
-            <div style={{height:"calc(100vh - 52px)",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+            <div style={{height:"100%",display:"flex",flexDirection:"column",overflow:"hidden"}}>
               {/* Conference header — shows all agents */}
               <div style={{padding:mob?"8px 12px":"10px 16px",display:"flex",alignItems:"center",gap:10,borderBottom:"1px solid "+c.ln,background:c.cd,flexShrink:0}}>
                 <div style={{display:"flex",gap:-4}}>
@@ -5265,7 +5265,7 @@ function App({ authUser }) {
             </div>
           )}
           {pg==="chat"&&!conferenceMode&&(
-            <div style={{height:"calc(100vh - 52px)",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+            <div style={{height:"100%",display:"flex",flexDirection:"column",overflow:"hidden"}}>
               {!isNew&&(
                 <div style={{padding:mob?"8px 12px":"10px 16px",display:"flex",alignItems:"center",gap:mob?8:10,borderBottom:"1px solid "+c.ln,background:c.cd,flexShrink:0}}>
                   <Face sz={mob?28:32} agent={agent} onClick={()=>{loadProfile();setProfileOpen(true);}} style={{cursor:'pointer'}}/>

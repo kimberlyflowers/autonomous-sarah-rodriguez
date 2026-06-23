@@ -18,9 +18,30 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { createLogger } from '../logging/logger.js';
 import { createClient } from '@supabase/supabase-js';
+import { callModel } from '../llm/unified-client.js';
 
 const logger = createLogger('managed-website-agent');
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+function getBuildProviderMode() {
+  return (process.env.WEBSITE_BUILD_PROVIDER || 'openrouter').toLowerCase();
+}
+
+function getBuildModel() {
+  return process.env.WEBSITE_BUILD_MODEL ||
+    process.env.OPENROUTER_MODEL ||
+    process.env.LLM_MODEL ||
+    'google/gemini-2.5-flash';
+}
+
+function extractText(result) {
+  if (result?.text) return result.text;
+  return (result?.content || [])
+    .filter(block => block?.type === 'text')
+    .map(block => block.text)
+    .join('\n')
+    .trim();
+}
 
 function getClient() {
   const key = process.env.ANTHROPIC_API_KEY;
@@ -146,6 +167,10 @@ export async function runWebsiteBuild(brief, options = {}) {
     throw err;
   }
 
+  if (getBuildProviderMode() !== 'managed-agent') {
+    return runOpenRouterBuild(brief, { orgId, chatSessionId, buildId });
+  }
+
   const client = getClient();
 
   logger.info('Starting website build', { orgId, chatSessionId });
@@ -245,11 +270,70 @@ export async function runWebsiteBuild(brief, options = {}) {
   return { sessionId: session.id, output: finalOutput, toolCalls, status: 'complete' };
 }
 
+async function runOpenRouterBuild(brief, { orgId, chatSessionId, buildId } = {}) {
+  const model = getBuildModel();
+  const sessionId = `openrouter-${buildId || Date.now()}`;
+  logger.info('Starting OpenRouter build/work session', { orgId, chatSessionId, model });
+
+  if (chatSessionId) {
+    await postToBuildSession(chatSessionId, `I'm on it. I'll work through this here and report back.`);
+  }
+
+  const result = await callModel(model, {
+    system: `${getSystemPrompt()}\n\nYou are running inside Bloomie's Work/Build tab. Respond with clear progress and useful next steps. If the user is checking availability, answer briefly and confirm you are ready. If they ask for a website or build task, produce a practical first-pass plan or artifact content in the conversation. Do not claim browser or deployment actions unless a tool actually performed them.`,
+    messages: [{ role: 'user', content: brief }],
+    maxTokens: 1800,
+    temperature: 0.3,
+  });
+
+  const output = extractText(result) || 'I am here and ready. Tell me what you want me to work on next.';
+  if (chatSessionId) {
+    await postToBuildSession(chatSessionId, output);
+  }
+
+  return {
+    sessionId,
+    output,
+    toolCalls: [],
+    status: 'complete',
+    outputUrl: null,
+    provider: result?.provider || 'openrouter',
+    model: result?.model || model,
+  };
+}
+
+export async function continueWebsiteBuildSession(message, options = {}) {
+  const { orgId = null, chatSessionId = null } = options;
+  const model = getBuildModel();
+  logger.info('Continuing OpenRouter build/work session', { orgId, chatSessionId, model });
+
+  const result = await callModel(model, {
+    system: `${getSystemPrompt()}\n\nYou are continuing a Bloomie Work/Build tab conversation. Give a direct, useful answer and keep progress visible in the session log.`,
+    messages: [{ role: 'user', content: message }],
+    maxTokens: 1800,
+    temperature: 0.3,
+  });
+
+  const output = extractText(result) || 'Got it. I am ready for the next step.';
+  if (chatSessionId) {
+    await postToBuildSession(chatSessionId, output);
+  }
+
+  return {
+    output,
+    provider: result?.provider || 'openrouter',
+    model: result?.model || model,
+  };
+}
+
 // ── SESSION CONTROLS ──────────────────────────────────────────────────────────
 
 // Steer an active Managed Agent session with a new user message.
 // Used by POST /api/builds/:id/message to let users redirect a running build.
 export async function steerSession(sessionId, message) {
+  if (sessionId?.startsWith('openrouter-')) {
+    return continueWebsiteBuildSession(message, { chatSessionId: null });
+  }
   const client = getClient();
   await client.beta.sessions.events.send(sessionId, {
     events: [{ type: 'user.message', content: [{ type: 'text', text: message }] }]
