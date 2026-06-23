@@ -5487,7 +5487,7 @@ function App({ authUser }) {
                               )}
                               {/* Clarification card — renders bloom_clarify as interactive buttons */}
                               {m.b&&clarifyData&&(
-                                <ClarificationCardInline clarification={clarifyData} onSelect={(opt)=>send(`${opt.label}: ${opt.description||''}`)} c={c} disabled={loading||!!messages.find(mm=>mm.id>m.id&&!mm.b)}/>
+                                <ClarificationCardInline clarification={clarifyData} onSelect={(opt)=>send(`Answer to "${clarifyData.question}": ${opt.label}${opt.description?` — ${opt.description}`:''}`)} c={c} disabled={loading||!!messages.find(mm=>mm.id>m.id&&!mm.b)}/>
                               )}
                             </div>
                           </div>

@@ -179,6 +179,8 @@ COMMUNICATION
 - No filler openers ("Great question!", "Certainly!", "Of course!").
 - NEVER type clarifying questions as text. ALWAYS use bloom_clarify tool.
   The user sees bloom_clarify as interactive buttons — text questions are broken UX.
+- If the user asks whether you can see their screen, what is on their screen, or asks you to look at their screen, call bloom_take_screenshot immediately. Then answer directly from the screenshot. Do not say "I am an LLM" or give a generic capability disclaimer.
+- Do not claim you saved a user preference permanently unless you actually updated a persistent setting/tool.
 
 ════════════════════════════════════════
 EXECUTION — 4 NON-NEGOTIABLE RULES
@@ -5764,6 +5766,28 @@ async function loadHistory(_pool, sessionId) {
 }
 
 
+async function saveUserMessage(sessionId, userMsg, files = null, userId = null, agentId = null) {
+  const userText = typeof userMsg === 'string' ? userMsg : JSON.stringify(userMsg);
+  try {
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    await supabase
+      .from('messages')
+      .insert({
+        session_id: sessionId,
+        organization_id: process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001',
+        user_id: userId || process.env.BLOOM_OWNER_USER_ID || '823e2fb5-2f8f-4279-9c84-c8f4bf78bcce',
+        agent_id: agentId || process.env.AGENT_UUID || 'c3000000-0000-0000-0000-000000000003',
+        role: 'user',
+        content: userText,
+        files: files ? files : null
+      });
+  } catch (err) {
+    logger.error('Failed to save user message to Supabase:', err.message);
+  }
+}
+
+
 async function generateSessionTitle(sessionId, userMsg, assistantMsg) {
   const maxRetries = 3;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -6074,11 +6098,14 @@ router.post('/message', async (req, res) => {
     const agentConfig = await loadAgentConfig(agentId || null);
     await ensureSession(null, sessionId, userId, agentConfig.agentId, projectId || null);
     const history = await loadHistory(null, sessionId);
+    if (!skipUserSave) {
+      await saveUserMessage(sessionId, message, null, userId, agentConfig.agentId);
+    }
 
     const rawMessageText = getMessageText(message);
     if (isConversationalMessage(rawMessageText)) {
       const instantResponse = buildInstantConversationReply(rawMessageText);
-      await saveMessages(null, sessionId, message, instantResponse, null, userId, agentConfig.agentId, { skipUserSave: !!skipUserSave });
+      await saveMessages(null, sessionId, message, instantResponse, null, userId, agentConfig.agentId, { skipUserSave: true });
       return res.json({
         response: instantResponse,
         sessionId,
@@ -6158,7 +6185,7 @@ router.post('/message', async (req, res) => {
             onEvent: null
           });
           const buildResponse = buildResult.output || '✅ Website build complete! Check the conference channel for the live link and build summary.';
-          await saveMessages(null, sessionId, message, buildResponse, null, userId, agentConfig.agentId, { skipUserSave: !!skipUserSave });
+          await saveMessages(null, sessionId, message, buildResponse, null, userId, agentConfig.agentId, { skipUserSave: true });
           if (history.length === 0) generateSessionTitle(sessionId, message, buildResponse).catch(() => {});
           return res.json({ response: buildResponse, sessionId, agentId: agentConfig.agentId, skillsUsed: ['website-creation'], websiteBuild: true, buildSessionId: buildResult.sessionId });
         } catch (err) {
@@ -6213,7 +6240,7 @@ router.post('/message', async (req, res) => {
           const _sarahReply = _isBuild
             ? `Got it! I've queued your website build — head to the **Build** tab to follow along. I'll work through it phase by phase. 🔨`
             : `On it! I've queued a new work session — check the **Work** tab to see progress in real time. 🤖`;
-          await saveMessages(null, sessionId, message, _sarahReply, null, userId, agentConfig.agentId, { skipUserSave: !!skipUserSave });
+          await saveMessages(null, sessionId, message, _sarahReply, null, userId, agentConfig.agentId, { skipUserSave: true });
           if (history.length === 0) generateSessionTitle(sessionId, message, _sarahReply).catch(() => {});
           return res.json({ response: _sarahReply, sessionId, agentId: agentConfig.agentId, skillsUsed: [], routedToTab: _tab.toLowerCase(), buildId: _nb.id });
         }
@@ -6250,7 +6277,7 @@ router.post('/message', async (req, res) => {
       logger.info(`💬 Chat [${sessionId}] ${agentConfig.name || 'Agent'}: [CLARIFICATION] ${response.clarification?.question || ''}`);
       // Save the clarification as a message so conversation history is preserved
       const clarifyText = response.text || `I need to clarify something before I proceed.`;
-      await saveMessages(null, sessionId, message, clarifyText, null, userId, agentConfig.agentId, { skipUserSave: !!skipUserSave });
+      await saveMessages(null, sessionId, message, clarifyText, null, userId, agentConfig.agentId, { skipUserSave: true });
 
       if (history.length === 0) {
         generateSessionTitle(sessionId, message, clarifyText).catch(() => {});
@@ -6270,7 +6297,7 @@ router.post('/message', async (req, res) => {
       : (response?.text || JSON.stringify(response) || '');
     logger.info(`💬 Chat [${sessionId}] User: ${message.slice(0, 100)}${message.length > 100 ? '...' : ''}`);
     logger.info(`💬 Chat [${sessionId}] ${agentConfig.name || 'Agent'}: ${responseText.replace(/\[Session context[\s\S]*$/, '').slice(0, 100)}${responseText.length > 100 ? '...' : ''}`);
-    await saveMessages(null, sessionId, message, responseText, null, userId, agentConfig.agentId, { skipUserSave: !!skipUserSave });
+    await saveMessages(null, sessionId, message, responseText, null, userId, agentConfig.agentId, { skipUserSave: true });
 
     // Strip internal session context before sending to client
     const cleanResponse = responseText.replace(/\s*\[Session context[\s\S]*$/g, '').trim();
@@ -6317,6 +6344,12 @@ router.post('/upload', async (req, res) => {
     const agentConfig = await loadAgentConfig(agentId || null);
     await ensureSession(null, sessionId, userId, agentConfig.agentId, projectId || null);
     const history = await loadHistory(null, sessionId);
+    const initialTextMsg = message.trim() || (files.length ? `I've shared ${files.length} file(s) with you.` : '');
+    const initialHistoryLabel = files.length
+      ? `[Files: ${files.map(f => f.name).join(', ')}]${initialTextMsg ? ' ' + initialTextMsg : ''}`
+      : initialTextMsg;
+    const initialFilesMeta = files.map(f => ({ name: f.name, type: f.type }));
+    await saveUserMessage(sessionId, initialHistoryLabel, initialFilesMeta, userId, agentConfig.agentId);
 
     // Build multipart content blocks for Anthropic
     const userContent = [];
@@ -6410,7 +6443,7 @@ router.post('/upload', async (req, res) => {
       const historyLabel = files.length
         ? `[Files: ${files.map(f => f.name).join(', ')}]${message ? ' ' + message : ''}`
         : message || '';
-      await saveMessages(null, sessionId, historyLabel, clarifyText, files.map(f => ({ name: f.name, type: f.type })), userId, agentConfig.agentId);
+      await saveMessages(null, sessionId, historyLabel, clarifyText, files.map(f => ({ name: f.name, type: f.type })), userId, agentConfig.agentId, { skipUserSave: true });
 
       if (history.length === 0) {
         const titleMsg = message || (files.length ? `Uploaded ${files.map(f=>f.name).join(', ')}` : 'Shared files');
@@ -6495,7 +6528,7 @@ router.post('/upload', async (req, res) => {
     // Safety: ensure response is a string for storage and client
     const responseText = typeof response === 'string' ? response
       : (response?.text || JSON.stringify(response) || '');
-    await saveMessages(null, sessionId, historyLabel, responseText, filesMeta, userId, agentConfig.agentId);
+    await saveMessages(null, sessionId, historyLabel, responseText, filesMeta, userId, agentConfig.agentId, { skipUserSave: true });
 
     // Generate smart title on first message (same as text endpoint)
     if (history.length === 0) {
