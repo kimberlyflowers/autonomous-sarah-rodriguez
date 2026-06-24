@@ -5143,6 +5143,13 @@ function App({ authUser }) {
       conversation.startSession({
         conversationToken:d.token,
         connectionType:d.connectionType||'webrtc',
+        overrides:{
+          ...(d.voicePrompt||d.firstMessage ? { agent: {
+            ...(d.voicePrompt ? { prompt: { prompt: d.voicePrompt } } : {}),
+            ...(d.firstMessage ? { firstMessage: d.firstMessage } : {})
+          } } : {}),
+          ...(d.voiceId ? { tts: { voiceId: d.voiceId, stability: 0.45, similarityBoost: 0.85, speed: 0.95 } } : {})
+        },
         onError:(err)=>{
           const msg=typeof err==="string"?err:(err?.message||err?.error||'Sarah voice disconnected');
           setConvaiStarting(false);
@@ -5339,7 +5346,7 @@ function App({ authUser }) {
               {/* MINI sidebar */}
               {sbO==="mini"&&(
                 <div style={{display:"flex",flexDirection:"column",alignItems:"center",padding:"12px 0",gap:4,flex:1}}>
-                  <button onClick={()=>{newSession();setNew(true);}} title="New chat" style={{width:40,height:40,borderRadius:10,border:"1.5px dashed "+c.ln,background:"transparent",cursor:"pointer",fontSize:18,color:c.so,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
+                  <button onClick={()=>{setPg("chat");newSession();setNew(true);}} title="New chat" style={{width:40,height:40,borderRadius:10,border:"1.5px dashed "+c.ln,background:"transparent",cursor:"pointer",fontSize:18,color:c.so,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
                   <div style={{width:32,height:1,background:c.ln,margin:"4px 0"}}/>
                   {sessions.slice(0,6).map(s=>(
                     <button key={s.id} onClick={()=>{loadSession(s.id);setNew(false);}} title={s.title||"Chat"} style={{width:40,height:40,borderRadius:10,border:currentSessionId===s.id?"2px solid "+c.ac:"1px solid "+c.ln,background:currentSessionId===s.id?c.ac+"12":"transparent",cursor:"pointer",fontSize:11,fontWeight:700,color:currentSessionId===s.id?c.ac:c.so,display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -5402,7 +5409,7 @@ function App({ authUser }) {
                       </div>
                     </div>
                     <button
-                      onClick={()=>{newSession();setNew(true);}}
+                      onClick={()=>{setPg("chat");newSession();setNew(true);}}
                       style={{width:"100%",padding:"9px 0",borderRadius:10,border:"1.5px dashed "+c.ln,background:"transparent",cursor:"pointer",fontSize:13,fontWeight:600,color:c.so,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}
                     >
                       <span style={{fontSize:16}}>+</span> New chat
@@ -7194,7 +7201,7 @@ function App({ authUser }) {
                         <div style={{textAlign:"center",maxWidth:400}}>
                           <div style={{fontSize:16,fontWeight:600,color:c.tx,marginBottom:8}}>Start a chat to keep conversations organized</div>
                           <div style={{fontSize:13,color:c.so,marginBottom:20}}>Chats in this project will be saved here</div>
-                          <button onClick={()=>newSession()} style={{padding:"10px 20px",borderRadius:10,border:"none",background:c.gradient,color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer"}}>Start new chat</button>
+                          <button onClick={()=>{setPg("chat");newSession();setNew(true);}} style={{padding:"10px 20px",borderRadius:10,border:"none",background:c.gradient,color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer"}}>Start new chat</button>
                         </div>
                       </div>
                     )}

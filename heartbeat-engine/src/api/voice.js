@@ -19,6 +19,13 @@ const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
 const BLOOM_ORG_ID = process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001';
 const SARAH_AGENT_ID = process.env.SARAH_AGENT_ID || process.env.AGENT_UUID || 'c3000000-0000-0000-0000-000000000003';
 const ELEVENLABS_SARAH_AGENT_ID = process.env.ELEVENLABS_CONVAI_SARAH_AGENT_ID || 'agent_7401kcdd80w2fs5r0fdn6f8ktjy9';
+const ELEVENLABS_SARAH_VOICE_ID = process.env.ELEVENLABS_SARAH_VOICE_ID || 'TOhxx937tpk5BU3jtXir';
+const SARAH_FIRST_MESSAGE = "Hi, I'm Sarah. I can hear you and I'm ready to help. What would you like me to work on?";
+const SARAH_VOICE_PROMPT = `You are Sarah Rodriguez, Kimberly's Bloomie AI employee inside the Bloomie Staffing app. You are warm, direct, capable, and calm.
+
+When the user asks whether you can hear them, answer directly: "Yes, I can hear you." Do not repeat your opening greeting.
+When the user asks whether you can see their screen, use the available screenshot or screen capture tool if available, then answer what you can see.
+Keep voice replies concise unless the user asks for detail. Do not use a creator brainstorming persona.`;
 
 let anonClient = null;
 let serviceClient = null;
@@ -108,6 +115,8 @@ router.get('/elevenlabs/status', requireAuth, async (req, res) => {
       enabled: configured,
       provider: 'elevenlabs',
       agentId: access.agent.id,
+      convaiAgentId: ELEVENLABS_SARAH_AGENT_ID,
+      voiceId: ELEVENLABS_SARAH_VOICE_ID,
       agentName: access.agent.name,
       connectionType: 'webrtc',
       reason: configured ? null : 'ElevenLabs is not configured'
@@ -152,6 +161,10 @@ router.post('/elevenlabs/token', requireAuth, async (req, res) => {
       token,
       provider: 'elevenlabs',
       agentId: access.agent.id,
+      convaiAgentId: ELEVENLABS_SARAH_AGENT_ID,
+      voiceId: ELEVENLABS_SARAH_VOICE_ID,
+      firstMessage: SARAH_FIRST_MESSAGE,
+      voicePrompt: SARAH_VOICE_PROMPT,
       connectionType: 'webrtc'
     });
   } catch (e) {
