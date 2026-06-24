@@ -1413,6 +1413,15 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null, lastSara
     setSpeechStatus("");
   };
 
+  const ensureSdkLive=()=>{
+    if(cfg?.enabled && cfg.mode==="liveavatar_sdk" && cfg.avatarId && cfg.contextId && !starting && sdkStatus!=="starting" && sdkStatus!==SessionState.CONNECTED) {
+      autoStartedRef.current=true;
+      startSdkLive();
+      return true;
+    }
+    return sdkStatus===SessionState.CONNECTED;
+  };
+
   const speakSdkText=()=>{
     const text=speechText();
     if(!text) return;
@@ -1491,6 +1500,7 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null, lastSara
       connected,
       videoReady: streamReady,
       status: sdkStatus,
+      ensureStarted: ensureSdkLive,
       startListening: startAvatarListening,
       stopListening: stopAvatarListening,
       speakLatest: speakSdkText
@@ -5252,6 +5262,7 @@ function App({ authUser }) {
 
   const doSend=async()=>{
     if((!tx.trim()&&pendingFiles.length===0)||loading) return;
+    if(isSarahVoiceAgent) window.__bloomieLiveAvatar?.ensureStarted?.();
     const text=tx.trim(); setTx(""); setNew(false);
     const activeProjectId = selectedProject?.id || null;
     if(pendingFiles.length > 0) {
@@ -5395,6 +5406,7 @@ function App({ authUser }) {
       if(vcRec) {
         stopBrowserDictation();
       } else {
+        liveAvatar.ensureStarted?.();
         startBrowserDictation();
       }
       return;
