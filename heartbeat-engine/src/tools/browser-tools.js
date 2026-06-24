@@ -181,15 +181,25 @@ export const browserToolExecutors = {
     }
   },
 
-  browser_login: async (params) => {
+  browser_login: async (params, context = {}) => {
     try {
-      const siteName = params.site.toLowerCase();
-      const creds = await getCredentials(siteName);
+      const rawSiteName = params.site || params.siteName || params.site_key || params.siteKey;
+      const orgId = params._orgId || params.orgId || context.orgId || context.organizationId || process.env.BLOOM_ORG_ID;
+
+      if (!rawSiteName || typeof rawSiteName !== 'string') {
+        return {
+          success: false,
+          error: 'browser_login requires a site name, such as "reddit", "quora", or "linkedin".'
+        };
+      }
+
+      const siteName = rawSiteName.toLowerCase();
+      const creds = await getCredentials(siteName, orgId);
 
       if (!creds) {
-        const sites = await listSites();
+        const sites = await listSites(orgId);
         const available = sites.map(s => s.site_key).join(', ') || 'none configured';
-        return { success: false, error: `No credentials found for "${params.site}". Configured sites: ${available}. Ask Kimberly to add credentials in Dashboard → Settings → Site Logins.` };
+        return { success: false, error: `No credentials found for "${rawSiteName}". Configured sites: ${available}. Ask Kimberly to add credentials in Dashboard → Settings → Site Logins.` };
       }
 
       const taskDescription = `Log into ${creds.name} at ${creds.loginUrl}. Enter email "${creds.email}" and password "${creds.password}". Click the login/submit button. Wait for the page to fully load after login. If there's a cookie consent popup, dismiss it. If there's a 2FA prompt, report it.`;
@@ -249,10 +259,11 @@ export const browserToolExecutors = {
     }
   },
 
-  browser_list_sites: async () => {
+  browser_list_sites: async (params = {}, context = {}) => {
     try {
       const { getRegistrySummary } = await import('../config/credential-registry.js');
-      const summary = await getRegistrySummary();
+      const orgId = params._orgId || params.orgId || context.orgId || context.organizationId || process.env.BLOOM_ORG_ID;
+      const summary = await getRegistrySummary(orgId);
       return {
         success: true,
         configured: summary.configured.map(s => ({ key: s.site_key, name: s.site_name, domain: s.domain, lastUsed: s.last_used_at })),
@@ -326,16 +337,19 @@ export const browserToolExecutors = {
 /**
  * Execute browser tool by name
  */
-export async function executeBrowserTool(toolName, parameters) {
+export async function executeBrowserTool(toolName, parameters = {}, context = {}) {
   const startTime = Date.now();
-  logger.info(`Executing browser tool: ${toolName}`, parameters);
+  const safeParameters = { ...parameters };
+  if (safeParameters.password) safeParameters.password = '[redacted]';
+  if (safeParameters._orgId) safeParameters._orgId = '[scoped]';
+  logger.info(`Executing browser tool: ${toolName}`, safeParameters);
 
   if (!browserToolExecutors[toolName]) {
     throw new Error(`Unknown browser tool: ${toolName}`);
   }
 
   try {
-    const result = await browserToolExecutors[toolName](parameters);
+    const result = await browserToolExecutors[toolName](parameters, context);
     const duration = Date.now() - startTime;
 
     logger.info(`Browser tool completed: ${toolName} (${duration}ms)`);

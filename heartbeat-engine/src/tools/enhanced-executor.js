@@ -273,7 +273,10 @@ export class EnhancedToolExecutor {
     } else if (execution.toolName.startsWith('bloom_')) {
       result = await executeInternalTool(execution.toolName, execution.parameters);
     } else if (execution.toolName.startsWith('browser_')) {
-      result = await executeBrowserTool(execution.toolName, execution.parameters);
+      result = await executeBrowserTool(execution.toolName, execution.parameters, {
+        orgId: execution.options?.orgId || execution.options?.organizationId || null,
+        agentId: execution.options?.agentId || this.agentId
+      });
     } else if (execution.toolName.startsWith('web_')) {
       result = await executeWebSearchTool(execution.toolName, execution.parameters);
     } else if (execution.toolName.startsWith('image_')) {

@@ -137,6 +137,7 @@ export class AgentExecutor {
     // 10-20 relevant tools makes it actually call them.
     this._currentTaskType = this._classifyTaskType(task, context);
     this._isScheduledTask = context.trigger === 'scheduled';
+    this._currentOrgId = context.orgId || context.organizationId || null;
     logger.info('Task classified for tool filtering', {
       taskType: this._currentTaskType,
       isScheduled: this._isScheduledTask,
@@ -668,6 +669,8 @@ Use the available tools to complete this task. Work step by step and explain you
       const result = await enhancedExecutor.executeTool(toolName, parameters, {
         timeout: options.timeout || 30000,
         retryOnFailure: options.retryOnFailure !== false,
+        orgId: options.orgId || this._currentOrgId || null,
+        agentId: this.agentId,
         ...options
       });
 

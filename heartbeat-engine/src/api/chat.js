@@ -4233,20 +4233,21 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
     // Browser tools — Sarah's own computer
     if (toolName.startsWith('browser_')) {
       const { executeBrowserTool } = await import('../tools/browser-tools.js');
+      const browserOrgId = orgId || agentConfig?.organizationId || agentConfig?.organization_id || process.env.BLOOM_ORG_ID;
       // AI-driven browser automation via sidecar
       if (toolName === 'browser_task') {
-        return await executeBrowserTool('browser_task', toolInput);
+        return await executeBrowserTool('browser_task', toolInput, { orgId: browserOrgId });
       }
       if (toolName === 'browser_list_sites') {
-        return await executeBrowserTool('browser_list_sites', toolInput);
+        return await executeBrowserTool('browser_list_sites', toolInput, { orgId: browserOrgId });
       }
       if (toolName === 'browser_login') {
-        return await executeBrowserTool('browser_login', toolInput);
+        return await executeBrowserTool('browser_login', toolInput, { orgId: browserOrgId });
       }
       if (toolName === 'browser_screenshot') {
         const browserAgentUrl = process.env.BROWSER_AGENT_URL;
         if (browserAgentUrl) {
-          return await executeBrowserTool('browser_screenshot', toolInput);
+          return await executeBrowserTool('browser_screenshot', toolInput, { orgId: browserOrgId });
         }
         const localPort = process.env.PORT || 3000;
         const localBase = `http://localhost:${localPort}/api/browser`;
