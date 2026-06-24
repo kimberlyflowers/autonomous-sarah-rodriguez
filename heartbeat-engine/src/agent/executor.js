@@ -683,6 +683,18 @@ Use the available tools to complete this task. Work step by step and explain you
           textResponse: reason
         };
       }
+
+      if (this.isScheduledEmailCheckInComplete()) {
+        const result = 'Scheduled email check-in complete: Gmail inbox checked and owner notification sent.';
+        logger.info('Scheduled email check-in completed after required tools succeeded');
+        return {
+          completed: true,
+          blocked: false,
+          result,
+          hasToolUse: false,
+          textResponse: result
+        };
+      }
     } else if (textBlocks.length > 0) {
       // No tool_use — just text response. Add as assistant turn.
       await this.contextManager.addConversationTurn('assistant', textResponse || '', {
@@ -1296,6 +1308,20 @@ Remember: Plan first. Execute one step. Verify it worked. Then move on.`;
       const name = entry?.tool || entry?.name || entry?.toolName;
       return name === toolName;
     });
+  }
+
+  hasSuccessfulToolAttempt(toolName) {
+    return this.toolExecutionHistory.some(entry => {
+      const name = entry?.tool || entry?.name || entry?.toolName;
+      return name === toolName && entry?.result?.success === true;
+    });
+  }
+
+  isScheduledEmailCheckInComplete() {
+    return this._isScheduledTask &&
+      this._currentTaskType === 'email' &&
+      this.hasSuccessfulToolAttempt('gmail_check_inbox') &&
+      this.hasSuccessfulToolAttempt('notify_owner');
   }
 
   needsScheduledOwnerNotification() {
