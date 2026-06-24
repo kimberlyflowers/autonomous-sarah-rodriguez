@@ -392,6 +392,12 @@ function useSarahChat() {
       } else {
         setMessages(p=>[...p,msgObj]);
       }
+      if(data.audio) {
+        try {
+          const audio = new Audio(data.audio);
+          audio.play().catch(()=>{});
+        } catch {}
+      }
       fetchSessions();
       setTimeout(fetchSessions, 3000);
       return true;
@@ -1228,6 +1234,7 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null, lastSara
   const sdkSessionRef=useRef(null);
   const videoRef=useRef(null);
   const [err,setErr]=useState("");
+  const lastAvatarSpeechRef=useRef("");
   const firstName=(agentName||"Agent").split(" ")[0];
   const latestSpeechText=(lastSarahText||"").trim();
   const speechText=()=>latestSpeechText || `Hi, I'm ${firstName}. I'm ready to help.`;
@@ -1308,11 +1315,11 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null, lastSara
     finally{ setSaving(false); }
   };
 
-  const startLive=async()=>{
+  const startLive=async(textOverride=null)=>{
     setStarting(true); setErr(""); setSession(null);
     try{
       const h=await getAuthHeaders();
-      const text=speechText();
+      const text=String(textOverride||speechText()).trim();
       const r=await fetch("/api/avatar/live/session",{method:"POST",headers:h,body:JSON.stringify({agentId,text})});
       const d=await r.json().catch(()=>({}));
       if(!r.ok) throw new Error(d.error||"Could not start live avatar");
@@ -1360,6 +1367,24 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null, lastSara
     catch(e){ setErr(e.message||"Could not send text to LiveAvatar"); }
   };
 
+  useEffect(()=>{
+    if(!latestSpeechText || !cfg?.enabled) return;
+    if(lastAvatarSpeechRef.current===latestSpeechText) return;
+    const sdkConnected=sdkStatus===SessionState.CONNECTED || sdkStatus==="stream_ready";
+
+    if(cfg.mode==="liveavatar_sdk" && sdkConnected) {
+      lastAvatarSpeechRef.current=latestSpeechText;
+      try { sdkSessionRef.current?.repeat(latestSpeechText); }
+      catch(e){ setErr(e.message||"Could not send text to LiveAvatar"); }
+      return;
+    }
+
+    if(cfg.mode==="heygen_realtime" && cfg.avatarId && cfg.voiceId && !starting) {
+      lastAvatarSpeechRef.current=latestSpeechText;
+      startLive(latestSpeechText);
+    }
+  },[latestSpeechText,cfg?.enabled,cfg?.mode,cfg?.avatarId,cfg?.voiceId,sdkStatus,starting]);
+
   useEffect(()=>()=>{ try { sdkSessionRef.current?.stop(); } catch {} },[]);
 
   const selectStyle={width:"100%",padding:"10px 12px",borderRadius:9,border:"1px solid "+c.ln,background:c.inp,color:c.tx,fontSize:12,fontFamily:"inherit",boxSizing:"border-box",marginBottom:10};
@@ -1401,8 +1426,8 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null, lastSara
           </div>
           <button onClick={load} title="Refresh live avatar" style={{width:24,height:24,borderRadius:6,border:"1px solid "+c.ln,background:"transparent",cursor:"pointer",color:c.so,fontSize:12}}>↻</button>
         </div>
-        <div style={{flex:1,minHeight:0,position:"relative",background:"#050505",display:"flex",alignItems:"center",justifyContent:"center"}}>
-          <video ref={videoRef} autoPlay playsInline style={{width:"100%",height:"100%",objectFit:"contain",background:"#050505"}}/>
+        <div style={{flex:1,minHeight:0,position:"relative",background:"#050505",display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
+          <video ref={videoRef} autoPlay playsInline style={{width:"100%",height:"100%",minHeight:480,objectFit:"cover",background:"#050505"}}/>
           {!connected&&<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",color:c.so,fontSize:12,pointerEvents:"none"}}>{starting?"Starting live avatar...":"LiveAvatar ready"}</div>}
         </div>
         <div style={{padding:10,borderTop:"1px solid "+c.ln,background:c.cd,display:"flex",gap:8,flexDirection:"column"}}>
@@ -1429,19 +1454,21 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null, lastSara
           </div>
           <button onClick={load} title="Refresh live avatar" style={{width:24,height:24,borderRadius:6,border:"1px solid "+c.ln,background:"transparent",cursor:"pointer",color:c.so,fontSize:12}}>↻</button>
         </div>
-        <div style={{flex:1,minHeight:0,display:"flex",alignItems:"center",justifyContent:"center",background:"#050505"}}>
+        <div style={{flex:1,minHeight:0,display:"flex",alignItems:"center",justifyContent:"center",background:"#050505",padding:0,overflow:"hidden"}}>
           {session?.hlsUrl
-            ? <video src={session.hlsUrl} autoPlay playsInline controls style={{width:"100%",height:"100%",objectFit:"contain",background:"#050505"}}/>
-            : <div style={{textAlign:"center",padding:22,width:"100%",maxWidth:360}}>
+            ? <video src={session.hlsUrl} autoPlay playsInline controls style={{width:"100%",height:"100%",minHeight:480,objectFit:"cover",background:"#050505"}}/>
+            : <div style={{position:"relative",width:"100%",height:"100%",minHeight:480,display:"flex",alignItems:"center",justifyContent:"center",background:"#050505"}}>
                 {agentImg
-                  ? <img src={agentImg} alt="" style={{width:160,height:160,borderRadius:22,objectFit:"cover",border:"1px solid "+c.ln,marginBottom:16}}/>
-                  : <div style={{width:160,height:160,borderRadius:22,background:c.gradient,display:"inline-flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:44,fontWeight:800,marginBottom:16}}>{firstName[0]||"A"}</div>}
-                <div style={{fontSize:17,fontWeight:800,color:c.tx,marginBottom:8}}>{firstName} Live</div>
-                <div style={{fontSize:12,color:c.so,lineHeight:1.45,marginBottom:14}}>LiveAvatar SDK is not configured yet. This saved HeyGen mode can only create text-to-video previews, so it is paused here instead of duplicating the chat.</div>
-                {err&&<div style={{fontSize:11,color:c.err,marginBottom:10,lineHeight:1.4}}>{err}</div>}
-                <button onClick={()=>setMode("liveavatar_sdk")} style={{width:"100%",padding:"10px 12px",borderRadius:9,border:"none",background:c.gradient,cursor:"pointer",color:"#fff",fontSize:12,fontWeight:800}}>
-                  Configure LiveAvatar
-                </button>
+                  ? <img src={agentImg} alt="" style={{width:"100%",height:"100%",minHeight:480,objectFit:"cover",objectPosition:"center",filter:starting?"brightness(0.75)":"none"}}/>
+                  : <div style={{width:"100%",height:"100%",minHeight:480,background:c.gradient,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:96,fontWeight:800}}>{firstName[0]||"A"}</div>}
+                <div style={{position:"absolute",left:0,right:0,bottom:0,padding:"18px 20px",background:"linear-gradient(180deg,rgba(0,0,0,0),rgba(0,0,0,.74))",color:"#fff"}}>
+                  <div style={{fontSize:18,fontWeight:800,marginBottom:4}}>{firstName} Live</div>
+                  <div style={{fontSize:12,opacity:.82,lineHeight:1.4}}>
+                    {starting ? "Preparing Sarah's speaking video..." : latestSpeechText ? "Sarah is ready to speak her latest reply." : "Send Sarah a message and she will talk here."}
+                  </div>
+                  {err&&<div style={{fontSize:11,color:"#ff9b9b",marginTop:8,lineHeight:1.4}}>{err}</div>}
+                  {latestSpeechText&&!starting&&<button onClick={()=>startLive(latestSpeechText)} style={{marginTop:10,padding:"8px 12px",borderRadius:8,border:"1px solid rgba(255,255,255,.24)",background:"rgba(255,255,255,.14)",cursor:"pointer",color:"#fff",fontSize:12,fontWeight:800}}>Replay Sarah</button>}
+                </div>
               </div>}
         </div>
       </div>
