@@ -1242,12 +1242,16 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null, lastSara
   const firstName=(agentName||"Agent").split(" ")[0];
   const latestSpeechText=(lastSarahText||"").trim();
   const speechText=()=>latestSpeechText || `Hi, I'm ${firstName}. I'm ready to help.`;
+  const agentNameLower=String(agentName||"").toLowerCase();
+  const liveAvatarAgentId=(!agentId || agentId==="bloomie-sarah-rodriguez" || agentNameLower==="sarah" || agentNameLower.startsWith("sarah ") || agentNameLower.includes("sarah rodriguez"))
+    ? DEFAULT_SARAH_AGENT_ID
+    : agentId;
   const isLiveAvatarCommandReady=()=>sdkSessionRef.current?.state===SessionState.CONNECTED;
 
   const load=()=>{
-    if(!agentId) return;
+    if(!liveAvatarAgentId) return;
     setLoading(true); setErr("");
-    fetch(`/api/avatar/live/config?agentId=${encodeURIComponent(agentId)}`)
+    fetch(`/api/avatar/live/config?agentId=${encodeURIComponent(liveAvatarAgentId)}`)
       .then(r=>r.json().then(d=>({ok:r.ok,d})))
       .then(({ok,d})=>{
         if(!ok) throw new Error(d.error||"Could not load live avatar");
@@ -1263,7 +1267,7 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null, lastSara
       .finally(()=>setLoading(false));
   };
 
-  useEffect(()=>{load();},[agentId]);
+  useEffect(()=>{load();},[liveAvatarAgentId]);
 
   const loadHeyGenAssets=async()=>{
     try{
@@ -1287,10 +1291,10 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null, lastSara
 
   useEffect(()=>{
     if(cfg?.heygenApiConfigured) loadHeyGenAssets();
-  },[cfg?.heygenApiConfigured,agentId]);
+  },[cfg?.heygenApiConfigured,liveAvatarAgentId]);
 
   const save=async()=>{
-    const body={agentId,provider:mode==="liveavatar_sdk"?"liveavatar":"heygen",mode};
+    const body={agentId:liveAvatarAgentId,provider:mode==="liveavatar_sdk"?"liveavatar":"heygen",mode};
     if(mode==="embed") {
       const url=embedUrl.trim();
       if(!url.startsWith("https://")) { setErr("Use a secure HeyGen embed URL"); return; }
@@ -1325,7 +1329,7 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null, lastSara
     try{
       const h=await getAuthHeaders();
       const text=String(textOverride||speechText()).trim();
-      const r=await fetch("/api/avatar/live/session",{method:"POST",headers:h,body:JSON.stringify({agentId,text})});
+      const r=await fetch("/api/avatar/live/session",{method:"POST",headers:h,body:JSON.stringify({agentId:liveAvatarAgentId,text})});
       const d=await r.json().catch(()=>({}));
       if(!r.ok) throw new Error(d.error||"Could not start live avatar");
       if(d.errorMessage) throw new Error(d.errorMessage);
@@ -1371,7 +1375,7 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null, lastSara
         sdkSessionRef.current=null;
       }
       const h=await getAuthHeaders();
-      const r=await fetch("/api/avatar/live/session-token",{method:"POST",headers:h,body:JSON.stringify({agentId})});
+      const r=await fetch("/api/avatar/live/session-token",{method:"POST",headers:h,body:JSON.stringify({agentId:liveAvatarAgentId})});
       const d=await r.json().catch(()=>({}));
       if(!r.ok) throw new Error(d.error||"Could not start LiveAvatar");
       if(!d.sessionToken) throw new Error("LiveAvatar did not return a session token");
