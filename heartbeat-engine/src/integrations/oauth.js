@@ -763,9 +763,18 @@ function getConnectorList() {
 // HIGH-LEVEL WRAPPERS (used by index.js routes)
 // ══════════════════════════════════════════════════════════════
 
-const BASE_URL = process.env.RAILWAY_PUBLIC_DOMAIN
-  ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
-  : 'https://autonomous-sarah-rodriguez-production.up.railway.app';
+function normalizeBaseUrl(url) {
+  if (!url) return null;
+  const normalized = url.startsWith('http') ? url : `https://${url}`;
+  return normalized.replace(/\/+$/, '');
+}
+
+const BASE_URL = normalizeBaseUrl(
+  process.env.GOOGLE_OAUTH_REDIRECT_BASE_URL ||
+  process.env.OAUTH_BASE_URL ||
+  process.env.BLOOM_API_URL ||
+  process.env.RAILWAY_PUBLIC_DOMAIN
+) || 'https://autonomous-sarah-rodriguez-production.up.railway.app';
 
 /**
  * buildAuthUrl — encodes orgId into state, builds redirect URI, returns full auth URL
@@ -824,6 +833,17 @@ async function handleCallback(slug, code, state) {
     ? new Date(Date.now() + tokenData.expires_in * 1000).toISOString()
     : null;
 
+  let refreshToken = tokenData.refresh_token || null;
+  if (!refreshToken) {
+    const { data: existingRow } = await supabase
+      .from('user_connectors')
+      .select('refresh_token')
+      .eq('connector_id', connectorRow.id)
+      .eq('organization_id', orgId)
+      .maybeSingle();
+    refreshToken = existingRow?.refresh_token || null;
+  }
+
   // Upsert into user_connectors (one row per org+connector)
   const { error: upsertErr } = await supabase
     .from('user_connectors')
@@ -832,10 +852,11 @@ async function handleCallback(slug, code, state) {
       organization_id: orgId,
       connected_by: userId,
       access_token: tokenData.access_token,
-      refresh_token: tokenData.refresh_token || null,
+      refresh_token: refreshToken,
       token_expires_at: expiresAt,
       granted_scopes: connector.scopes || [],
       status: 'active',
+      last_error: null,
       connected_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }, {

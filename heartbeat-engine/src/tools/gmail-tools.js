@@ -6,6 +6,53 @@ import { createLogger } from '../logging/logger.js';
 
 const logger = createLogger('gmail-tools');
 const GMAIL_BASE = 'https://gmail.googleapis.com/gmail/v1/users/me';
+const DEFAULT_ORG_ID = 'a1000000-0000-0000-0000-000000000001';
+
+function normalizeBaseUrl(url) {
+  if (!url) return null;
+  const normalized = url.startsWith('http') ? url : `https://${url}`;
+  return normalized.replace(/\/+$/, '');
+}
+
+function gmailReconnectUrl(orgId) {
+  const baseUrl = normalizeBaseUrl(
+    process.env.GOOGLE_OAUTH_REDIRECT_BASE_URL ||
+    process.env.OAUTH_BASE_URL ||
+    process.env.BLOOM_API_URL ||
+    process.env.RAILWAY_PUBLIC_DOMAIN
+  ) || 'https://autonomous-sarah-rodriguez-production.up.railway.app';
+  const params = new URLSearchParams({ orgId: orgId || DEFAULT_ORG_ID });
+  return `${baseUrl}/oauth/connect/gmail?${params.toString()}`;
+}
+
+async function markGoogleReconnectRequired(sb, orgId, message) {
+  const org = orgId || DEFAULT_ORG_ID;
+  const reconnectUrl = gmailReconnectUrl(org);
+  const lastError = `${message} Reconnect Gmail here: ${reconnectUrl}`;
+
+  try {
+    const { data: connectors } = await sb
+      .from('connectors')
+      .select('id, slug')
+      .in('slug', ['gmail', 'google-calendar', 'google-drive']);
+    const connectorIds = (connectors || []).map(c => c.id).filter(Boolean);
+
+    if (connectorIds.length > 0) {
+      await sb
+        .from('user_connectors')
+        .update({
+          last_error: lastError,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('organization_id', org)
+        .in('connector_id', connectorIds);
+    }
+  } catch (updateError) {
+    logger.warn('Could not mark Google connectors for reconnect', { error: updateError.message });
+  }
+
+  return lastError;
+}
 
 // ── Token Management ────────────────────────────────────────────────────────
 
@@ -14,7 +61,7 @@ async function getGmailToken(orgId) {
     auth: { persistSession: false }
   });
 
-  const org = orgId || 'a1000000-0000-0000-0000-000000000001';
+  const org = orgId || DEFAULT_ORG_ID;
 
   // Step 1: Find the gmail connector ID
   const { data: connector } = await sb
@@ -27,7 +74,7 @@ async function getGmailToken(orgId) {
   if (connector?.id) {
     const { data, error } = await sb
       .from('user_connectors')
-      .select('access_token, refresh_token, token_expires_at, connector_id')
+      .select('access_token, refresh_token, token_expires_at, connector_id, last_error')
       .eq('organization_id', org)
       .eq('status', 'active')
       .eq('connector_id', connector.id)
@@ -44,7 +91,7 @@ async function getGmailToken(orgId) {
   // Fallback: query with join
   const { data: joined, error: joinErr } = await sb
     .from('user_connectors')
-    .select('access_token, refresh_token, token_expires_at, connector_id, connectors(slug)')
+    .select('access_token, refresh_token, token_expires_at, connector_id, last_error, connectors(slug)')
     .eq('organization_id', org)
     .eq('status', 'active');
 
@@ -59,7 +106,15 @@ async function getGmailToken(orgId) {
 }
 
 async function refreshGmailToken(sb, row, orgId) {
-  if (!row.refresh_token) throw new Error('Gmail token expired and no refresh token available. Please reconnect Gmail.');
+  const org = orgId || DEFAULT_ORG_ID;
+  if (!row.refresh_token) {
+    const message = await markGoogleReconnectRequired(
+      sb,
+      org,
+      'Gmail token expired and no refresh token is available.'
+    );
+    throw new Error(message);
+  }
 
   const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
@@ -76,7 +131,29 @@ async function refreshGmailToken(sb, row, orgId) {
     }),
   });
 
-  if (!resp.ok) throw new Error(`Failed to refresh Gmail token: ${resp.status}`);
+  if (!resp.ok) {
+    const errText = await resp.text();
+    const message = `Failed to refresh Gmail token: ${resp.status}: ${errText.slice(0, 1000)}`;
+    const actionableMessage = errText.includes('invalid_grant')
+      ? await markGoogleReconnectRequired(
+          sb,
+          org,
+          'Google rejected the stored Gmail refresh token with invalid_grant. This means the Google authorization was revoked, expired, or replaced.'
+        )
+      : message;
+    try {
+      await sb.from('user_connectors')
+        .update({
+          last_error: actionableMessage,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('organization_id', org)
+        .eq('connector_id', row.connector_id);
+    } catch (updateError) {
+      logger.warn('Could not record Gmail refresh failure', { error: updateError.message });
+    }
+    throw new Error(actionableMessage);
+  }
   const tokenData = await resp.json();
 
   // Update stored token
@@ -90,7 +167,7 @@ async function refreshGmailToken(sb, row, orgId) {
       token_expires_at: expiresAt,
       updated_at: new Date().toISOString(),
     })
-    .eq('organization_id', orgId || 'a1000000-0000-0000-0000-000000000001')
+    .eq('organization_id', org)
     .eq('connector_id', row.connector_id);
 
   logger.info('Gmail token refreshed successfully');

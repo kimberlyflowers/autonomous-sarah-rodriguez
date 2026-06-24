@@ -11,7 +11,18 @@ const logger = createLogger('integrations-api');
 
 // App URL for redirects — use BLOOM_APP_URL env var, fall back to Railway domain
 const APP_URL = process.env.BLOOM_APP_URL || 'https://app.bloomiestaffing.com';
-const API_BASE = `${APP_URL}/api/integrations`;
+function normalizeBaseUrl(url) {
+  if (!url) return null;
+  const normalized = url.startsWith('http') ? url : `https://${url}`;
+  return normalized.replace(/\/+$/, '');
+}
+
+const OAUTH_BASE_URL = normalizeBaseUrl(
+  process.env.GOOGLE_OAUTH_REDIRECT_BASE_URL ||
+  process.env.OAUTH_BASE_URL ||
+  process.env.BLOOM_API_URL
+) || APP_URL;
+const API_BASE = `${OAUTH_BASE_URL}/api/integrations`;
 
 // ── Supabase client (lazy singleton) ──
 let _supabase = null;
@@ -181,6 +192,17 @@ async function storeTokens(platform, tokenData, orgId, userId) {
       continue;
     }
 
+    let refreshToken = tokenData.refresh_token || null;
+    if (!refreshToken) {
+      const { data: existingRow } = await supabase
+        .from('user_connectors')
+        .select('refresh_token')
+        .eq('connector_id', connectorRow.id)
+        .eq('organization_id', orgId)
+        .maybeSingle();
+      refreshToken = existingRow?.refresh_token || null;
+    }
+
     const { error } = await supabase
       .from('user_connectors')
       .upsert({
@@ -188,10 +210,11 @@ async function storeTokens(platform, tokenData, orgId, userId) {
         organization_id: orgId,
         connected_by: userId,
         access_token: tokenData.access_token,
-        refresh_token: tokenData.refresh_token || null,
+        refresh_token: refreshToken,
         token_expires_at: expiresAt,
         granted_scopes: cfg.scopes,
         status: 'active',
+        last_error: null,
         connected_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }, { onConflict: 'connector_id,organization_id' });
@@ -549,4 +572,3 @@ router.post('/:platform/disconnect', withAuth, async (req, res) => {
 
 export { refreshIfExpired };
 export default router;
-
