@@ -631,7 +631,20 @@ export const imageToolExecutors = {
 
 // ── OPENROUTER IMAGE MODELS ──────────────────────────────────────────────
 
-async function generateWithOpenRouter(prompt, size, referenceImageUrl, referenceImageBase64, referenceImageMime) {
+function isSafetyFilteredImageError(message = '') {
+  return /filtered|safety system|safety policy|safety/i.test(String(message));
+}
+
+function sanitizeImagePromptForSafety(prompt = '') {
+  return [
+    'Create a polished, brand-safe commercial marketing image.',
+    'Use a clean modern business setting, warm lighting, professional composition, and no visible text.',
+    'Avoid depicting real public figures, sensitive situations, injuries, violence, weapons, medical content, political content, or anything sexual.',
+    `Brand/context summary: ${String(prompt).replace(/[^\w\s.,:;!?'"()#&/-]/g, ' ').slice(0, 700)}`
+  ].join(' ');
+}
+
+async function generateWithOpenRouter(prompt, size, referenceImageUrl, referenceImageBase64, referenceImageMime, allowSafetyRetry = true) {
   try {
     const apiKey = getOpenRouterKey();
     if (!apiKey) {
@@ -729,6 +742,14 @@ async function generateWithOpenRouter(prompt, size, referenceImageUrl, reference
     };
   } catch (error) {
     logger.error('OpenRouter image generation failed:', { error: error.message });
+    if (allowSafetyRetry && isSafetyFilteredImageError(error.message)) {
+      const safePrompt = sanitizeImagePromptForSafety(prompt);
+      logger.warn('OpenRouter safety filter triggered — retrying once with sanitized prompt', {
+        originalLength: prompt.length,
+        sanitizedLength: safePrompt.length
+      });
+      return await generateWithOpenRouter(safePrompt, size, referenceImageUrl, referenceImageBase64, referenceImageMime, false);
+    }
     return { success: false, error: error.message, engine: 'openrouter-image' };
   }
 }
