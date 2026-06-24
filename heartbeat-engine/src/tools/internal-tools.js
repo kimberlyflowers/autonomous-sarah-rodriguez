@@ -123,15 +123,42 @@ async function supabaseQueryShim(supabase, sql, params) {
 
   // INSERT INTO task_plans (upsert)
   if (/INSERT INTO task_plans/i.test(s)) {
-    const { data, error } = await supabase.from('task_plans').upsert({
-      session_id: params[0], title: params[1], steps: typeof params[2] === 'string' ? JSON.parse(params[2]) : params[2],
+    const planRow = {
+      session_id: params[0],
+      title: params[1],
+      steps: typeof params[2] === 'string' ? JSON.parse(params[2]) : params[2],
+      verification_status: params[3] || 'unverified',
+      all_steps_passing: params[4] === true,
+      last_verified_at: params[5] || null,
       agent_id: 'c3000000-0000-0000-0000-000000000003',
       organization_id: process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001',
       updated_at: new Date().toISOString()
-    }, { onConflict: 'session_id' }).select('session_id, title, steps, updated_at').single();
-    if (error) throw new Error(error.message);
-    // Normalize: return task_id field name the caller expects
-    return { rows: [{ ...data, task_id: data.session_id }] };
+    };
+
+    const { data: existing, error: lookupError } = await supabase
+      .from('task_plans')
+      .select('id')
+      .eq('session_id', planRow.session_id)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (lookupError) throw new Error(lookupError.message);
+
+    const write = existing?.id
+      ? await supabase
+          .from('task_plans')
+          .update(planRow)
+          .eq('id', existing.id)
+          .select('session_id, title, steps, updated_at, verification_status, all_steps_passing')
+          .single()
+      : await supabase
+          .from('task_plans')
+          .insert(planRow)
+          .select('session_id, title, steps, updated_at, verification_status, all_steps_passing')
+          .single();
+
+    if (write.error) throw new Error(write.error.message);
+    return { rows: [{ ...write.data, task_id: write.data.session_id }] };
   }
 
   // CREATE TABLE IF NOT EXISTS — no-op for Supabase (tables exist)
@@ -1396,6 +1423,42 @@ export const internalToolExecutors = {
 
     } catch (error) {
       logger.error('Failed to create/update task plan:', error);
+      const steps = Array.isArray(params.steps) ? params.steps : [];
+      const completed = steps.filter(s => s.status === 'completed').length;
+      const verified = steps.filter(s => s.verified === true).length;
+      const failed = steps.filter(s => s.status === 'failed').length;
+      const pending = steps.filter(s => s.status === 'pending').length;
+      const allStepsPassing = steps.length > 0 &&
+        steps.every(s => s.status === 'completed' && s.verified === true);
+      const verificationStatus = allStepsPassing ? 'all_passing' :
+        steps.some(s => s.verified === true) ? 'partial' : 'unverified';
+
+      if (/task_plans|foreign key constraint|schema cache|ON CONFLICT/i.test(error.message || '')) {
+        const fallbackTaskId = params.task_id || `memory-plan-${Date.now()}`;
+        logger.warn('Using in-memory task plan because task_plans persistence is unavailable', {
+          taskId: fallbackTaskId,
+          reason: error.message
+        });
+        return {
+          success: true,
+          persisted: false,
+          persistence_warning: error.message,
+          task_id: fallbackTaskId,
+          title: params.title || 'Task Plan',
+          steps,
+          verification_status: verificationStatus,
+          all_steps_passing: allStepsPassing,
+          progress: { total: steps.length, completed, verified, failed, pending },
+          message: `Plan "${params.title || 'Task Plan'}" kept in memory: ${verified}/${steps.length} verified passing${allStepsPassing ? ' — ALL PASSING ✅' : ''}`,
+          currentState: {
+            title: params.title || 'Task Plan',
+            steps,
+            verification_status: verificationStatus,
+            all_steps_passing: allStepsPassing
+          }
+        };
+      }
+
       return {
         success: false,
         error: error.message,

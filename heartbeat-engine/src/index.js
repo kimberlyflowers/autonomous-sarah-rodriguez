@@ -1636,6 +1636,44 @@ function isScheduledTaskSubstantiveResult(result) {
   return hasVerifiedPlan || substantiveTools.length > 0;
 }
 
+function getScheduledTaskFailureReason(result) {
+  if (typeof result !== 'object' || !result) return null;
+
+  const verification = result.verification || {};
+  const hasVerifiedPlan = verification.allStepsPassing === true
+    || (verification.totalSteps > 0 && verification.verifiedSteps >= verification.totalSteps);
+  if (hasVerifiedPlan) return null;
+
+  const toolHistory = Array.isArray(result.toolHistory) ? result.toolHistory : [];
+  const nonPlanningTools = toolHistory.filter((entry) => {
+    const name = entry?.tool || entry?.name || entry?.toolName;
+    return name && !['bloom_todo_write', 'todo_write', 'bloom_clarify', 'bloom_log_decision', 'bloom_log_observation'].includes(name);
+  });
+
+  const failedAction = nonPlanningTools.find((entry) => {
+    const toolResult = entry?.result || {};
+    return toolResult.success === false || toolResult.error;
+  });
+  if (failedAction) {
+    const name = failedAction.tool || failedAction.name || failedAction.toolName;
+    const toolResult = failedAction.result || {};
+    return `Task used ${name}, but it failed: ${toolResult.error || toolResult.message || 'unknown error'}`;
+  }
+
+  const escalation = nonPlanningTools.find((entry) => {
+    const name = entry?.tool || entry?.name || entry?.toolName;
+    return name === 'bloom_escalate_issue';
+  });
+  if (escalation) {
+    const input = escalation.input || {};
+    const issue = input.issue || escalation.result?.issue || escalation.result?.message || 'task escalated';
+    const relatedError = input.relatedData?.error || input.relatedData?.error_message;
+    return relatedError ? `${issue}: ${relatedError}` : issue;
+  }
+
+  return null;
+}
+
 // ── Scheduled Task Runner ──────────────────────────────────────────────────
 async function runScheduledTasks(agentConfig) {
   const { createClient } = await import('@supabase/supabase-js');
@@ -1707,6 +1745,10 @@ async function runScheduledTasks(agentConfig) {
         success = false;
         output = `Task finished without verified output. The executor returned ${innerStatus || 'no status'}, but it did not verify a plan or use any substantive non-planning tools.`;
         logger.warn(`⚠️ Task unverified: ${task.name}`, { innerStatus, toolsUsed: result?.toolsUsed, verification: result?.verification });
+      } else if (getScheduledTaskFailureReason(result)) {
+        success = false;
+        output = getScheduledTaskFailureReason(result);
+        logger.warn(`⚠️ Task action failed: ${task.name}`, { innerStatus, output });
       } else {
         success = true;
         logger.info(`✅ Task complete: ${task.name}`);

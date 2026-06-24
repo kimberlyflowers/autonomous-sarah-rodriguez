@@ -55,6 +55,20 @@ const EXECUTION_STATUS = {
   BLOCKED: 'blocked'
 };
 
+const NON_SUBSTANTIVE_TOOLS = new Set([
+  'bloom_todo_write',
+  'todo_write',
+  'bloom_clarify',
+  'bloom_log_decision',
+  'bloom_log_observation'
+]);
+
+const PRE_ACTION_SUPPRESSED_TOOLS = new Set([
+  ...NON_SUBSTANTIVE_TOOLS,
+  'bloom_create_document',
+  'bloom_escalate_issue'
+]);
+
 /**
  * Main agentic execution engine
  * Takes a task and executes it autonomously using tool chaining
@@ -119,6 +133,9 @@ export class AgentExecutor {
     this.recentToolCalls = [];
     this.currentPlan = null;
     this.currentStep = 0;
+    this.allStepsPassing = false;
+    this.lastVerificationResult = null;
+    this.scheduledTerminalFailure = null;
     logger.info('Context manager reset for fresh task execution');
 
     // Load AGENTS.md / steering context after reset so every task starts with
@@ -247,6 +264,15 @@ Use the available tools to complete this task. Work step by step and explain you
             // Continue the loop - Claude wants to use more tools
             continue;
           } else {
+            if (this.shouldContinueScheduledTaskAfterPlanningOnly(currentTurn)) {
+              await this.injectScheduledSubstantiveToolReminder();
+              logger.warn('Scheduled task attempted to stop before using a substantive tool; continuing', {
+                taskType: this._currentTaskType,
+                turn: currentTurn,
+                toolsUsed: this.toolExecutionHistory.length
+              });
+              continue;
+            }
             // Claude responded with text only (no tool_use) - natural completion
             status = EXECUTION_STATUS.COMPLETED;
             finalResult = turnResult.result || turnResult.textResponse || 'Task completed successfully';
@@ -423,11 +449,11 @@ Use the available tools to complete this task. Work step by step and explain you
       input_schema: t.input_schema || t.parameters || {}
     }));
 
-    // ═══ FORCE TOOL USE for scheduled tasks on first turn ═══
+    // ═══ FORCE TOOL USE for scheduled tasks until real work starts ═══
     // Gemini 2.5 Flash with mode:'AUTO' responds text-only instead of calling tools.
-    // Setting mode:'ANY' on the first turn forces it to call at least one tool.
-    // After the first tool call, switch back to AUTO so it can finish naturally.
-    const forceToolUse = this._isScheduledTask && this.currentTurn <= 1 && toolDefs.length > 0;
+    // Setting mode:'ANY' forces it to call at least one tool. Keep forcing after
+    // the plan is written until a non-planning tool has actually been attempted.
+    const forceToolUse = this._isScheduledTask && !this.hasSubstantiveToolUse() && toolDefs.length > 0;
 
     // Use unified callModel — handles all providers + automatic failover
     const result = await callModel(model, {
@@ -558,6 +584,13 @@ Use the available tools to complete this task. Work step by step and explain you
 
         logger.info('Tool executed', { tool: block.name, success: toolResult.success });
 
+        if (this._isScheduledTask && !NON_SUBSTANTIVE_TOOLS.has(block.name) && toolResult.success === false) {
+          this.scheduledTerminalFailure = {
+            tool: block.name,
+            error: toolResult.error || toolResult.message || 'Tool failed'
+          };
+        }
+
         // Queue verification (don't add to conversation yet)
         if (block.name !== 'bloom_todo_write' && block.name !== 'bloom_clarify' &&
             block.name !== 'bloom_log_decision' && block.name !== 'bloom_log_observation') {
@@ -635,6 +668,18 @@ Use the available tools to complete this task. Work step by step and explain you
         } catch (verifyError) {
           logger.warn('Verification hook error (non-fatal):', verifyError.message);
         }
+      }
+
+      if (this.scheduledTerminalFailure) {
+        const reason = `${this.scheduledTerminalFailure.tool} failed: ${this.scheduledTerminalFailure.error}`;
+        logger.warn('Scheduled task stopped after required tool failure', this.scheduledTerminalFailure);
+        return {
+          completed: false,
+          blocked: true,
+          reason,
+          hasToolUse: false,
+          textResponse: reason
+        };
       }
     } else if (textBlocks.length > 0) {
       // No tool_use — just text response. Add as assistant turn.
@@ -856,6 +901,10 @@ Use the available tools to complete this task. Work step by step and explain you
 
     for (const toolSource of allToolSources) {
       for (const [toolName, toolDef] of Object.entries(toolSource)) {
+        // After a scheduled task has attempted its plan, hide internal paperwork
+        // tools until at least one real external/action tool is attempted.
+        if (this.shouldSuppressPlanningToolsForScheduledTask(toolName)) continue;
+
         // If filtering is active, only include allowed tools
         if (allowedTools && !allowedTools.has(toolName)) continue;
         claudeTools.push({
@@ -869,7 +918,10 @@ Use the available tools to complete this task. Work step by step and explain you
     logger.info('Formatted tools for LLM', {
       taskType: effectiveTaskType || 'all',
       toolCount: claudeTools.length,
-      filtered: !!allowedTools
+      filtered: !!allowedTools,
+      suppressedPlanningTools: this._isScheduledTask &&
+        (!!this.currentPlan || this.hasPlanningToolAttempt()) &&
+        !this.hasSubstantiveToolUse()
     });
 
     return claudeTools;
@@ -1066,6 +1118,11 @@ When executing a scheduled task (not interactive chat):
 3. Your text response alone does NOT create blog posts, does NOT schedule social media, does NOT save artifacts. You MUST call the actual tools.
 4. If a tool call fails, report the failure — do NOT pretend the task succeeded.
 5. A blog post is NOT created until ghl_create_blog_post returns success. Writing blog content as text is NOT the same as publishing it.
+6. After creating the plan, the next tool call MUST be a substantive action tool, not another planning/logging tool.
+   - Email inbox tasks: call gmail_check_inbox first.
+   - Research/forum tasks: call web_search or browser_task.
+   - CRM/follow-up tasks: call the matching ghl_* read/search tool.
+   - If a required tool is unavailable or fails, escalate with the exact error.
 
 Remember: Plan first. Execute one step. Verify it worked. Then move on.`;
   }
@@ -1210,6 +1267,62 @@ Remember: Plan first. Execute one step. Verify it worked. Then move on.`;
 
     // Check if last 3 signatures are identical
     return signatures[0] === signatures[1] && signatures[1] === signatures[2];
+  }
+
+  hasSubstantiveToolUse() {
+    return this.toolExecutionHistory.some(entry => {
+      const name = entry?.tool || entry?.name || entry?.toolName;
+      return name && !NON_SUBSTANTIVE_TOOLS.has(name);
+    });
+  }
+
+  hasPlanningToolAttempt() {
+    return this.toolExecutionHistory.some(entry => {
+      const name = entry?.tool || entry?.name || entry?.toolName;
+      return name === 'bloom_todo_write' || name === 'todo_write';
+    });
+  }
+
+  shouldSuppressPlanningToolsForScheduledTask(toolName) {
+    if (!this._isScheduledTask || (!this.currentPlan && !this.hasPlanningToolAttempt()) || this.hasSubstantiveToolUse()) return false;
+    return PRE_ACTION_SUPPRESSED_TOOLS.has(toolName);
+  }
+
+  shouldContinueScheduledTaskAfterPlanningOnly(currentTurn) {
+    if (!this._isScheduledTask || this.hasSubstantiveToolUse()) return false;
+    return currentTurn < 5;
+  }
+
+  getScheduledNextToolHint() {
+    switch (this._currentTaskType) {
+      case 'email':
+        return 'Call gmail_check_inbox now. Use query "is:unread newer_than:1d" unless the task gives a more specific inbox query.';
+      case 'research':
+        return 'Call web_search or browser_task now, depending on whether the task needs public search or a logged-in site.';
+      case 'followup':
+        return 'Call a GHL read/search tool now, such as ghl_search_contacts, ghl_get_conversations, or ghl_list_tasks.';
+      case 'blog':
+        return 'Call web_search, web_fetch, image_generate, or ghl_create_blog_post now, depending on the current plan step.';
+      case 'social':
+        return 'Call web_search, image_generate, or ghl_create_social_post now, depending on the current plan step.';
+      default:
+        return 'Call the first real action tool required by the task now. Do not call bloom_todo_write, bloom_clarify, or logging tools again until after that action tool returns.';
+    }
+  }
+
+  async injectScheduledSubstantiveToolReminder() {
+    const reminder = `## Scheduled Task Guardrail
+You have planned, but no substantive action tool has run yet. A scheduled task is not verified by planning alone.
+
+NEXT ACTION: ${this.getScheduledNextToolHint()}
+
+If the action tool fails, report or escalate the exact error. Do not respond with TASK COMPLETED until a real tool has run and the plan step is verified.`;
+
+    await this.contextManager.addConversationTurn('system', reminder, {
+      type: 'system_critical',
+      source: 'scheduled_substantive_tool_guardrail',
+      priority: 10
+    });
   }
 
   /**
