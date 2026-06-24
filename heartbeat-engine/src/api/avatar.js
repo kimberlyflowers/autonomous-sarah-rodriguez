@@ -8,6 +8,7 @@ const logger = createLogger('avatar-api');
 
 const SARAH_AGENT_ID = process.env.SARAH_AGENT_ID || process.env.AGENT_UUID || 'c3000000-0000-0000-0000-000000000003';
 const HEYGEN_API_BASE = (process.env.HEYGEN_API_BASE_URL || 'https://api.heygen.com').replace(/\/+$/, '');
+const LIVEAVATAR_API_BASE = (process.env.LIVEAVATAR_API_BASE_URL || 'https://api.liveavatar.com').replace(/\/+$/, '');
 
 let serviceClient = null;
 
@@ -53,6 +54,10 @@ function getHeyGenApiKey() {
   return process.env.HEYGEN_API_KEY || process.env.HEYGEN_API_TOKEN || '';
 }
 
+function getLiveAvatarApiKey() {
+  return process.env.LIVEAVATAR_API_KEY || process.env.HEYGEN_LIVEAVATAR_API_KEY || '';
+}
+
 async function heygenFetch(path, options = {}) {
   const apiKey = getHeyGenApiKey();
   if (!apiKey) {
@@ -73,6 +78,34 @@ async function heygenFetch(path, options = {}) {
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const err = new Error(data?.message || data?.error || `HeyGen API error ${response.status}`);
+    err.status = response.status;
+    err.data = data;
+    throw err;
+  }
+  return data;
+}
+
+async function liveAvatarFetch(path, options = {}) {
+  const apiKey = getLiveAvatarApiKey();
+  if (!apiKey) {
+    const err = new Error('LiveAvatar API key is not configured');
+    err.status = 503;
+    throw err;
+  }
+
+  const response = await fetch(`${LIVEAVATAR_API_BASE}${path}`, {
+    ...options,
+    headers: {
+      'X-API-KEY': apiKey,
+      'Content-Type': 'application/json',
+      ...(options.headers || {})
+    }
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = data?.data?.[0]?.message || data?.message || data?.error || `LiveAvatar API error ${response.status}`;
+    const err = new Error(message);
     err.status = response.status;
     err.data = data;
     throw err;
@@ -129,6 +162,7 @@ router.get('/live/config', requireAuth, async (req, res) => {
         provider: 'heygen',
         agentId,
         heygenApiConfigured: !!getHeyGenApiKey(),
+        liveAvatarApiConfigured: !!getLiveAvatarApiKey(),
         message: 'Live avatar is not configured for this employee yet'
       });
     }
@@ -142,8 +176,12 @@ router.get('/live/config', requireAuth, async (req, res) => {
       embedUrl: config.embedUrl || null,
       avatarId: config.avatarId || null,
       voiceId: config.voiceId || null,
+      contextId: config.contextId || null,
+      language: config.language || 'en',
+      sandbox: config.sandbox !== false,
       avatarName: config.avatarName || null,
       heygenApiConfigured: !!getHeyGenApiKey(),
+      liveAvatarApiConfigured: !!getLiveAvatarApiKey(),
       source: config.source || 'tenant'
     });
   } catch (e) {
@@ -163,6 +201,7 @@ router.post('/live/config', requireAuth, async (req, res) => {
     const embedUrl = String(req.body?.embedUrl || '').trim();
     const avatarId = String(req.body?.avatarId || '').trim();
     const voiceId = String(req.body?.voiceId || '').trim();
+    const contextId = String(req.body?.contextId || '').trim();
 
     if (mode === 'embed' && !/^https:\/\/.+/i.test(embedUrl)) {
       return res.status(400).json({ error: 'A secure HeyGen LiveAvatar embed URL is required' });
@@ -170,6 +209,10 @@ router.post('/live/config', requireAuth, async (req, res) => {
 
     if (mode === 'heygen_realtime' && (!avatarId || !voiceId)) {
       return res.status(400).json({ error: 'HeyGen avatar and voice are required' });
+    }
+
+    if (mode === 'liveavatar_sdk' && (!avatarId || !contextId)) {
+      return res.status(400).json({ error: 'LiveAvatar avatar ID and context ID are required' });
     }
 
     const sb = getSupabase();
@@ -185,6 +228,9 @@ router.post('/live/config', requireAuth, async (req, res) => {
           embedUrl: mode === 'embed' ? embedUrl : null,
           avatarId: avatarId || null,
           voiceId: voiceId || null,
+          contextId: contextId || null,
+          language: req.body?.language || 'en',
+          sandbox: req.body?.sandbox !== false,
           avatarName: req.body?.avatarName || null,
           updatedAt: new Date().toISOString()
         }
@@ -206,12 +252,61 @@ router.post('/live/config', requireAuth, async (req, res) => {
   }
 });
 
+router.post('/live/session-token', requireAuth, async (req, res) => {
+  const agentId = req.body?.agentId || SARAH_AGENT_ID;
+
+  try {
+    const access = await validateAgentAccess(req, agentId);
+    if (!access.authorized) return res.status(access.status).json({ error: access.error });
+
+    const { agentConfig } = await getStoredAgentConfig(access.orgId, agentId);
+    const config = agentConfig || {};
+    const avatarId = String(req.body?.avatarId || config.avatarId || '').trim();
+    const contextId = String(req.body?.contextId || config.contextId || '').trim();
+    const voiceId = String(req.body?.voiceId || config.voiceId || '').trim();
+    const language = String(req.body?.language || config.language || 'en').trim();
+    const pushToTalk = req.body?.pushToTalk === true;
+    const sandbox = req.body?.sandbox ?? config.sandbox ?? true;
+
+    if (!avatarId || !contextId) {
+      return res.status(400).json({ error: 'Configure a LiveAvatar avatar ID and context ID before starting Live' });
+    }
+
+    const tokenResponse = await liveAvatarFetch('/v1/sessions/token', {
+      method: 'POST',
+      body: JSON.stringify({
+        mode: 'FULL',
+        avatar_id: avatarId,
+        avatar_persona: {
+          context_id: contextId,
+          ...(voiceId ? { voice_id: voiceId } : {}),
+          language
+        },
+        ...(pushToTalk ? { interactivity_type: 'PUSH_TO_TALK' } : {}),
+        is_sandbox: sandbox !== false
+      })
+    });
+
+    return res.json({
+      sessionToken: tokenResponse?.data?.session_token || null,
+      sessionId: tokenResponse?.data?.session_id || null
+    });
+  } catch (e) {
+    logger.warn('LiveAvatar session token failed', { status: e.status, error: e.message });
+    return res.status(e.status || 500).json({ error: e.message || 'Failed to start LiveAvatar session' });
+  }
+});
+
 router.get('/heygen/status', requireAuth, async (req, res) => {
   try {
     if (!getHeyGenApiKey()) {
       return res.json({ configured: false, ok: false, message: 'HeyGen API key is not configured' });
     }
-    return res.json({ configured: true, ok: true });
+    return res.json({
+      configured: true,
+      ok: true,
+      liveAvatarConfigured: !!getLiveAvatarApiKey()
+    });
   } catch (e) {
     logger.warn('HeyGen status error', { error: e.message });
     return res.status(500).json({ error: 'Failed to check HeyGen status' });

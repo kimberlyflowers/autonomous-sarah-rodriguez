@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, Component } from "react";
 import { ConversationProvider, useConversation } from "@elevenlabs/react";
+import { LiveAvatarSession as LiveAvatarWebSession, SessionEvent, SessionState } from "@heygen/liveavatar-web-sdk";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { supabase } from "./supabase.js";
@@ -1218,10 +1219,15 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null}) {
   const [voices,setVoices]=useState([]);
   const [avatarId,setAvatarId]=useState("");
   const [voiceId,setVoiceId]=useState("");
-  const [mode,setMode]=useState("heygen_realtime");
+  const [contextId,setContextId]=useState("");
+  const [language,setLanguage]=useState("en");
+  const [mode,setMode]=useState("liveavatar_sdk");
   const [liveText,setLiveText]=useState("");
   const [session,setSession]=useState(null);
   const [starting,setStarting]=useState(false);
+  const [sdkStatus,setSdkStatus]=useState("idle");
+  const sdkSessionRef=useRef(null);
+  const videoRef=useRef(null);
   const [err,setErr]=useState("");
 
   const load=()=>{
@@ -1235,6 +1241,8 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null}) {
         if(d.embedUrl) setEmbedUrl(d.embedUrl);
         if(d.avatarId) setAvatarId(d.avatarId);
         if(d.voiceId) setVoiceId(d.voiceId);
+        if(d.contextId) setContextId(d.contextId);
+        if(d.language) setLanguage(d.language);
         if(d.mode) setMode(d.mode);
       })
       .catch(e=>setErr(e.message||"Could not load live avatar"))
@@ -1268,11 +1276,18 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null}) {
   },[cfg?.heygenApiConfigured,agentId]);
 
   const save=async()=>{
-    const body={agentId,provider:"heygen",mode};
+    const body={agentId,provider:mode==="liveavatar_sdk"?"liveavatar":"heygen",mode};
     if(mode==="embed") {
       const url=embedUrl.trim();
       if(!url.startsWith("https://")) { setErr("Use a secure HeyGen embed URL"); return; }
       body.embedUrl=url;
+    } else if(mode==="liveavatar_sdk") {
+      if(!avatarId || !contextId) { setErr("Enter the LiveAvatar avatar ID and context ID"); return; }
+      body.avatarId=avatarId;
+      body.contextId=contextId;
+      body.voiceId=voiceId || null;
+      body.language=language||"en";
+      body.avatarName=agentName;
     } else {
       if(!avatarId || !voiceId) { setErr("Choose a HeyGen avatar and voice"); return; }
       const chosen=avatars.find(a=>a.id===avatarId);
@@ -1305,6 +1320,46 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null}) {
     finally{ setStarting(false); }
   };
 
+  const startSdkLive=async()=>{
+    setStarting(true); setErr(""); setSdkStatus("starting");
+    try{
+      if(sdkSessionRef.current) {
+        try { await sdkSessionRef.current.stop(); } catch {}
+        sdkSessionRef.current=null;
+      }
+      const h=await getAuthHeaders();
+      const r=await fetch("/api/avatar/live/session-token",{method:"POST",headers:h,body:JSON.stringify({agentId})});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok) throw new Error(d.error||"Could not start LiveAvatar");
+      if(!d.sessionToken) throw new Error("LiveAvatar did not return a session token");
+      const liveSession=new LiveAvatarWebSession(d.sessionToken,{voiceChat:true});
+      sdkSessionRef.current=liveSession;
+      liveSession.on(SessionEvent.SESSION_STATE_CHANGED,state=>setSdkStatus(state));
+      liveSession.on(SessionEvent.SESSION_STREAM_READY,()=>{
+        setSdkStatus("stream_ready");
+        if(videoRef.current) liveSession.attach(videoRef.current);
+      });
+      await liveSession.start();
+      setSdkStatus(liveSession.state||SessionState.CONNECTED);
+    }catch(e){ setErr(e.message||"Could not start LiveAvatar"); setSdkStatus("error"); }
+    finally{ setStarting(false); }
+  };
+
+  const stopSdkLive=async()=>{
+    try { await sdkSessionRef.current?.stop(); } catch {}
+    sdkSessionRef.current=null;
+    setSdkStatus("idle");
+  };
+
+  const speakSdkText=()=>{
+    const text=liveText.trim();
+    if(!text) return;
+    try { sdkSessionRef.current?.repeat(text); setLiveText(""); }
+    catch(e){ setErr(e.message||"Could not send text to LiveAvatar"); }
+  };
+
+  useEffect(()=>()=>{ try { sdkSessionRef.current?.stop(); } catch {} },[]);
+
   const firstName=(agentName||"Agent").split(" ")[0];
   const selectStyle={width:"100%",padding:"10px 12px",borderRadius:9,border:"1px solid "+c.ln,background:c.inp,color:c.tx,fontSize:12,fontFamily:"inherit",boxSizing:"border-box",marginBottom:10};
 
@@ -1329,6 +1384,34 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null}) {
           allow="microphone; camera; autoplay; encrypted-media; fullscreen; clipboard-read; clipboard-write"
           style={{flex:1,width:"100%",height:"100%",border:"none",background:"#050505"}}
         />
+      </div>
+    );
+  }
+
+  if(cfg?.enabled && cfg.mode==="liveavatar_sdk" && cfg.avatarId && cfg.contextId) {
+    const connected=sdkStatus===SessionState.CONNECTED || sdkStatus==="stream_ready";
+    return(
+      <div style={{flex:1,minHeight:0,display:"flex",flexDirection:"column",background:"#050505"}}>
+        <div style={{height:36,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 10px",background:c.cd,borderBottom:"1px solid "+c.ln,flexShrink:0}}>
+          <div style={{display:"flex",alignItems:"center",gap:7,minWidth:0}}>
+            <span style={{width:7,height:7,borderRadius:"50%",background:connected?c.gr:c.ac,animation:"pulse 1.4s ease infinite",flexShrink:0}}/>
+            <span style={{fontSize:11,fontWeight:700,color:connected?c.gr:c.ac}}>LIVEAVATAR</span>
+            <span style={{fontSize:11,color:c.so,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{cfg.avatarName||firstName}</span>
+          </div>
+          <button onClick={load} title="Refresh live avatar" style={{width:24,height:24,borderRadius:6,border:"1px solid "+c.ln,background:"transparent",cursor:"pointer",color:c.so,fontSize:12}}>↻</button>
+        </div>
+        <div style={{flex:1,minHeight:0,position:"relative",background:"#050505",display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <video ref={videoRef} autoPlay playsInline style={{width:"100%",height:"100%",objectFit:"contain",background:"#050505"}}/>
+          {!connected&&<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",color:c.so,fontSize:12,pointerEvents:"none"}}>{starting?"Starting live avatar...":"LiveAvatar ready"}</div>}
+        </div>
+        <div style={{padding:10,borderTop:"1px solid "+c.ln,background:c.cd,display:"flex",gap:8,flexDirection:"column"}}>
+          {err&&<div style={{fontSize:11,color:c.err,lineHeight:1.4}}>{err}</div>}
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={connected?stopSdkLive:startSdkLive} disabled={starting} style={{padding:"9px 12px",borderRadius:8,border:"none",background:connected?"#EF4444":c.gradient,color:"#fff",fontSize:12,fontWeight:800,cursor:starting?"wait":"pointer",flexShrink:0}}>{connected?"End":"Start"}</button>
+            <input value={liveText} onChange={e=>setLiveText(e.target.value)} placeholder={`Make ${firstName} say...`} style={{flex:1,minWidth:0,padding:"9px 10px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,color:c.tx,fontSize:12}}/>
+            <button onClick={speakSdkText} disabled={!connected||!liveText.trim()} style={{padding:"9px 12px",borderRadius:8,border:"1px solid "+c.ln,background:connected&&liveText.trim()?c.ac:"transparent",color:connected&&liveText.trim()?"#fff":c.so,fontSize:12,fontWeight:800,cursor:connected&&liveText.trim()?"pointer":"not-allowed",flexShrink:0}}>Say</button>
+          </div>
+        </div>
       </div>
     );
   }
@@ -1375,6 +1458,7 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null}) {
         <div style={{textAlign:"center",fontSize:12,color:c.so,lineHeight:1.5,marginBottom:18}}>Choose how this employee should appear live.</div>
         <div style={{display:"flex",gap:6,marginBottom:10}}>
           {[
+            ["liveavatar_sdk","LiveAvatar"],
             ["heygen_realtime","HeyGen API"],
             ["embed","Embed URL"]
           ].map(([k,l])=><button key={k} onClick={()=>setMode(k)} style={{flex:1,padding:"8px 10px",borderRadius:8,border:"1px solid "+(mode===k?c.ac:c.ln),background:mode===k?c.ac+"20":"transparent",color:mode===k?c.ac:c.so,fontSize:11,fontWeight:800,cursor:"pointer"}}>{l}</button>)}
@@ -1386,6 +1470,14 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null}) {
             placeholder="https://embed.liveavatar.com/..."
             style={selectStyle}
           />
+        ) : mode==="liveavatar_sdk" ? (
+          <>
+            <input value={avatarId} onChange={e=>setAvatarId(e.target.value)} placeholder="LiveAvatar avatar_id" style={selectStyle}/>
+            <input value={contextId} onChange={e=>setContextId(e.target.value)} placeholder="LiveAvatar context_id" style={selectStyle}/>
+            <input value={voiceId} onChange={e=>setVoiceId(e.target.value)} placeholder="Voice ID (optional)" style={selectStyle}/>
+            <input value={language} onChange={e=>setLanguage(e.target.value)} placeholder="Language, e.g. en" style={selectStyle}/>
+            {!cfg?.liveAvatarApiConfigured&&<div style={{fontSize:12,color:c.so,lineHeight:1.45,background:c.cd,border:"1px solid "+c.ln,borderRadius:9,padding:12,marginBottom:10}}>LiveAvatar API key is not configured on the server yet.</div>}
+          </>
         ) : cfg?.heygenApiConfigured ? (
           <>
             <select value={avatarId} onChange={e=>{setAvatarId(e.target.value); const a=avatars.find(x=>x.id===e.target.value); if(a?.defaultVoiceId) setVoiceId(a.defaultVoiceId);}} style={selectStyle}>
@@ -1401,7 +1493,7 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null}) {
           <div style={{fontSize:12,color:c.so,lineHeight:1.45,background:c.cd,border:"1px solid "+c.ln,borderRadius:9,padding:12,marginBottom:10}}>HeyGen API key is not configured on the server yet.</div>
         )}
         {err&&<div style={{fontSize:11,color:c.err,marginBottom:10,lineHeight:1.4}}>{err}</div>}
-        <button onClick={save} disabled={saving||(mode==="embed"?!embedUrl.trim():!avatarId||!voiceId)} style={{width:"100%",padding:"10px 12px",borderRadius:9,border:"none",background:(mode==="embed"?embedUrl.trim():avatarId&&voiceId)?c.gradient:c.ln,cursor:!saving&&(mode==="embed"?embedUrl.trim():avatarId&&voiceId)?"pointer":"not-allowed",color:"#fff",fontSize:12,fontWeight:800}}>
+        <button onClick={save} disabled={saving||(mode==="embed"?!embedUrl.trim():mode==="liveavatar_sdk"?(!avatarId||!contextId):(!avatarId||!voiceId))} style={{width:"100%",padding:"10px 12px",borderRadius:9,border:"none",background:(mode==="embed"?embedUrl.trim():mode==="liveavatar_sdk"?(avatarId&&contextId):(avatarId&&voiceId))?c.gradient:c.ln,cursor:!saving&&(mode==="embed"?embedUrl.trim():mode==="liveavatar_sdk"?(avatarId&&contextId):(avatarId&&voiceId))?"pointer":"not-allowed",color:"#fff",fontSize:12,fontWeight:800}}>
           {saving?"Saving...":"Save Live Avatar"}
         </button>
       </div>
