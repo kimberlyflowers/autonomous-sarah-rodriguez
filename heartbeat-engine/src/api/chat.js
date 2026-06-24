@@ -5593,6 +5593,13 @@ NEVER skip steps 3 and 4 even if step 2 fails.
             if (block.input._contentType) logger.info('Auto-tagged image content type', { contentType: block.input._contentType });
           }
 
+          if (block.name === 'image_generate' && block.input.reference_image_url && !isUsablePublicImageUrl(block.input.reference_image_url)) {
+            logger.warn('Discarding unusable reference_image_url before auto-injection', {
+              url: String(block.input.reference_image_url).slice(0, 120)
+            });
+            delete block.input.reference_image_url;
+          }
+
           if (block.name === 'image_generate' && !block.input.reference_image_url && !block.input.reference_image_base64 && !block.input.no_reference) {
             let foundRefUrl = null;
             let foundRefBase64 = null;
@@ -5650,6 +5657,18 @@ NEVER skip steps 3 and 4 even if step 2 fails.
                     break;
                   }
                 }
+              }
+            }
+
+            // 4) If this is an image of the employee/Sarah, use the employee avatar
+            // stored in Supabase as the canonical reference image.
+            if (!foundRefUrl && !foundRefBase64 && looksLikeSelfImageRequest(block.input, agentConfig)) {
+              foundRefUrl = await getAgentReferenceImageUrl(agentConfig.agentId);
+              if (foundRefUrl) {
+                logger.info('Using agent avatar_url as image generation reference', {
+                  agentId: agentConfig.agentId,
+                  url: foundRefUrl.slice(0, 100)
+                });
               }
             }
 
@@ -5868,6 +5887,94 @@ async function loadHistory(_pool, sessionId) {
     logger.error('loadHistory failed:', err.message);
     return [];
   }
+}
+
+async function getAgentReferenceImageUrl(agentId) {
+  if (!agentId) return null;
+  try {
+    const { createClient } = await import('@supabase/supabase-js');
+    const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const { data, error } = await sb
+      .from('agents')
+      .select('avatar_url')
+      .eq('id', agentId)
+      .maybeSingle();
+    if (error) throw error;
+    const url = data?.avatar_url || null;
+    if (!url || url.startsWith('data:image')) return null;
+    return /^https?:\/\//i.test(url) ? url : null;
+  } catch (err) {
+    logger.warn('Could not load agent reference image URL', { agentId, error: err.message });
+    return null;
+  }
+}
+
+function looksLikeSelfImageRequest(input = {}, agentConfig = {}) {
+  const text = `${input.prompt || ''} ${input.description || ''}`.toLowerCase();
+  const agentName = String(agentConfig.name || '').toLowerCase();
+  const firstName = agentName.split(/\s+/)[0];
+  return /\b(herself|yourself|your face|same person|sarah|employee avatar|profile image|headshot)\b/i.test(text) ||
+    (!!firstName && text.includes(firstName));
+}
+
+function isUsablePublicImageUrl(url) {
+  return typeof url === 'string' && /^https?:\/\//i.test(url) && !url.startsWith('data:');
+}
+
+async function saveChatImageUploads(files, sessionId, userId) {
+  const uploadedFiles = [];
+  const UPLOAD_STORAGE = process.env.FILE_STORAGE_PATH
+    ? path.join(process.env.FILE_STORAGE_PATH, 'chat-uploads')
+    : path.join(process.cwd(), 'bloom-files', 'chat-uploads');
+  fs.mkdirSync(UPLOAD_STORAGE, { recursive: true });
+
+  for (const f of files) {
+    if (!f.type?.startsWith('image/') || !f.data) continue;
+    try {
+      const uploadId = `upl_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+      const ext = f.type.includes('png') ? '.png' : f.type.includes('webp') ? '.webp' : '.jpg';
+      const filePath = path.join(UPLOAD_STORAGE, `${uploadId}${ext}`);
+      const buf = Buffer.from(f.data, 'base64');
+      fs.writeFileSync(filePath, buf);
+
+      let supabaseUrl = null;
+      try {
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+        const storagePath = `chat-uploads/${sessionId}/${uploadId}${ext}`;
+        const { error: upErr } = await supabase.storage
+          .from('bloom-images')
+          .upload(storagePath, buf, { contentType: f.type || 'image/jpeg', upsert: true });
+        if (!upErr) {
+          const { data: urlData } = supabase.storage.from('bloom-images').getPublicUrl(storagePath);
+          supabaseUrl = urlData?.publicUrl || null;
+        } else {
+          logger.warn('Supabase storage upload failed', { error: upErr.message });
+        }
+      } catch (storErr) {
+        logger.warn('Supabase storage error (non-fatal)', { error: storErr.message });
+      }
+
+      const { createClient: _sc2 } = await import('@supabase/supabase-js');
+      const _sb2 = _sc2(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+      await _sb2.from('chat_uploads').upsert({
+        upload_id: uploadId,
+        session_id: sessionId,
+        user_id: userId || null,
+        name: f.name || 'upload.jpg',
+        mime_type: f.type || 'image/jpeg',
+        file_size: buf.length,
+        file_path: filePath,
+        supabase_url: supabaseUrl
+      }, { onConflict: 'upload_id' });
+
+      uploadedFiles.push({ name: f.name, uploadId, previewUrl: `/api/chat/uploads/preview/${uploadId}`, supabaseUrl });
+    } catch (saveErr) {
+      logger.warn('Failed to save chat upload', { name: f.name, error: saveErr.message });
+    }
+  }
+
+  return uploadedFiles;
 }
 
 
@@ -6503,11 +6610,17 @@ router.post('/upload', async (req, res) => {
     const agentConfig = await loadAgentConfig(agentId || null);
     await ensureSession(null, sessionId, userId, agentConfig.agentId, projectId || null);
     const history = await loadHistory(null, sessionId);
+    const uploadedFiles = await saveChatImageUploads(files, sessionId, userId);
+    const uploadedByName = new Map(uploadedFiles.map(f => [f.name, f]));
     const initialTextMsg = message.trim() || (files.length ? `I've shared ${files.length} file(s) with you.` : '');
     const initialHistoryLabel = files.length
       ? `[Files: ${files.map(f => f.name).join(', ')}]${initialTextMsg ? ' ' + initialTextMsg : ''}`
       : initialTextMsg;
     const initialFilesMeta = files.map(f => ({ name: f.name, type: f.type }));
+    const initialImageUrls = uploadedFiles.filter(u => u.supabaseUrl).map(u => u.supabaseUrl);
+    if (initialImageUrls.length > 0) {
+      initialFilesMeta.push({ _imageUrls: initialImageUrls });
+    }
     await saveUserMessage(sessionId, initialHistoryLabel, initialFilesMeta, userId, agentConfig.agentId);
 
     // Build multipart content blocks for Anthropic
@@ -6515,6 +6628,16 @@ router.post('/upload', async (req, res) => {
     for (const f of files) {
       const mediaType = f.type || 'application/octet-stream';
       if (mediaType.startsWith('image/')) {
+        const uploaded = uploadedByName.get(f.name);
+        if (uploaded?.supabaseUrl) {
+          userContent.push({ type: 'image', source: { type: 'url', url: uploaded.supabaseUrl } });
+          logger.info('Using Supabase URL for uploaded image content', {
+            name: f.name,
+            url: uploaded.supabaseUrl.slice(0, 100)
+          });
+          continue;
+        }
+
         // Anthropic limits: 5MB max, 8000px max dimension (2000px if many images in conversation).
         // We MUST use Jimp to resize AND convert to JPEG — then declare media_type as image/jpeg.
         // The previous bug: Jimp was converting to JPEG bytes but media_type stayed 'image/png',
@@ -6615,62 +6738,6 @@ router.post('/upload', async (req, res) => {
         sessionId,
         agentId: agentConfig.agentId
       });
-    }
-
-    // Save uploaded images to chat_uploads (separate from artifacts/Files tab)
-    // These are user-provided context images, NOT Bloomie-created deliverables
-    const uploadedFiles = [];
-    const UPLOAD_STORAGE = process.env.FILE_STORAGE_PATH
-      ? path.join(process.env.FILE_STORAGE_PATH, 'chat-uploads')
-      : path.join(process.cwd(), 'bloom-files', 'chat-uploads');
-    fs.mkdirSync(UPLOAD_STORAGE, { recursive: true });
-
-    for (const f of files) {
-      if (f.type?.startsWith('image/') && f.data) {
-        try {
-          const uploadId = `upl_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
-          const ext = f.type.includes('png') ? '.png' : '.jpg';
-          const filePath = path.join(UPLOAD_STORAGE, `${uploadId}${ext}`);
-          const buf = Buffer.from(f.data, 'base64');
-          fs.writeFileSync(filePath, buf);
-
-          // Also push to Supabase Storage so Sarah can use as reference_image_url
-          let supabaseUrl = null;
-          try {
-            const { createClient } = await import('@supabase/supabase-js');
-            const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-            const storagePath = `chat-uploads/${sessionId}/${uploadId}${ext}`;
-            const { error: upErr } = await supabase.storage
-              .from('bloom-images')
-              .upload(storagePath, buf, { contentType: f.type || 'image/jpeg', upsert: true });
-            if (!upErr) {
-              const { data: urlData } = supabase.storage.from('bloom-images').getPublicUrl(storagePath);
-              supabaseUrl = urlData?.publicUrl || null;
-            } else {
-              logger.warn('Supabase storage upload failed', { error: upErr.message });
-            }
-          } catch (storErr) {
-            logger.warn('Supabase storage error (non-fatal)', { error: storErr.message });
-          }
-
-          // Save to Supabase (not Railway Postgres)
-          const { createClient: _sc2 } = await import('@supabase/supabase-js');
-          const _sb2 = _sc2(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-          await _sb2.from('chat_uploads').upsert({
-            upload_id: uploadId,
-            session_id: sessionId,
-            user_id: userId || null,
-            name: f.name || 'upload.jpg',
-            mime_type: f.type || 'image/jpeg',
-            file_size: buf.length,
-            file_path: filePath,
-            supabase_url: supabaseUrl
-          }, { onConflict: 'upload_id' });
-          uploadedFiles.push({ name: f.name, uploadId, previewUrl: `/api/chat/uploads/preview/${uploadId}`, supabaseUrl });
-        } catch (saveErr) {
-          logger.warn('Failed to save chat upload', { name: f.name, error: saveErr.message });
-        }
-      }
     }
 
     // Build a history-safe user message that preserves image context for future turns.

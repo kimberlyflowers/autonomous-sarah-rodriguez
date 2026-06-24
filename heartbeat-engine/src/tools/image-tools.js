@@ -394,12 +394,12 @@ export const imageToolExecutors = {
 
       // If still auto, apply default logic
       if (useEngine === 'auto') {
-        if (process.env.USE_OPENROUTER === 'true' && getOpenRouterKey()) {
-          useEngine = 'openrouter';
-          logger.info('Auto-routing to OpenRouter image model because USE_OPENROUTER=true');
-        } else if (hasReferenceImage && getGeminiKey()) {
+        if (hasReferenceImage && getGeminiKey()) {
           useEngine = 'gemini';
           logger.info('Auto-routing to Gemini for character consistency (reference image provided)');
+        } else if (process.env.USE_OPENROUTER === 'true' && getOpenRouterKey()) {
+          useEngine = 'openrouter';
+          logger.info('Auto-routing to OpenRouter image model because USE_OPENROUTER=true');
         } else if (getRunPodMediaUrl()) {
           useEngine = 'runpod';
           logger.info('Auto-routing to RunPod FLUX Dev (primary image engine)');
@@ -413,7 +413,7 @@ export const imageToolExecutors = {
       }
     }
 
-    if (process.env.USE_OPENROUTER === 'true' && getOpenRouterKey() && ['gemini', 'gpt'].includes(useEngine)) {
+    if (!hasReferenceImage && process.env.USE_OPENROUTER === 'true' && getOpenRouterKey() && ['gemini', 'gpt'].includes(useEngine)) {
       logger.info(`OpenRouter image primary enabled — overriding requested ${useEngine} image engine`);
       useEngine = 'openrouter';
     }
