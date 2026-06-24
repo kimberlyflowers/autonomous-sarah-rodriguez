@@ -55,7 +55,11 @@ function getHeyGenApiKey() {
 }
 
 function getLiveAvatarApiKey() {
-  return process.env.LIVEAVATAR_API_KEY || process.env.HEYGEN_LIVEAVATAR_API_KEY || '';
+  return process.env.LIVEAVATAR_API_KEY
+    || process.env.LIVE_AVATAR_API_KEY
+    || process.env.HEYGEN_LIVEAVATAR_API_KEY
+    || process.env.HEYGEN_LIVE_AVATAR_API_KEY
+    || '';
 }
 
 async function heygenFetch(path, options = {}) {
@@ -281,6 +285,10 @@ router.post('/live/session-token', requireAuth, async (req, res) => {
           context_id: contextId,
           ...(voiceId ? { voice_id: voiceId } : {}),
           language
+        },
+        video_settings: {
+          quality: req.body?.quality || config.quality || 'medium',
+          encoding: req.body?.encoding || config.encoding || 'H264'
         },
         ...(pushToTalk ? { interactivity_type: 'PUSH_TO_TALK' } : {}),
         is_sandbox: sandbox !== false

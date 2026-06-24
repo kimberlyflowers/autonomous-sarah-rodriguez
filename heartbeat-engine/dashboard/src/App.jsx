@@ -1379,6 +1379,15 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null, lastSara
       return;
     }
 
+    if(cfg.mode==="liveavatar_sdk" && cfg.avatarId && cfg.contextId && !starting && sdkStatus!=="starting") {
+      lastAvatarSpeechRef.current=latestSpeechText;
+      startSdkLive();
+      setTimeout(()=>{
+        try { sdkSessionRef.current?.repeat(latestSpeechText); } catch {}
+      },2200);
+      return;
+    }
+
     if(cfg.mode==="heygen_realtime" && cfg.avatarId && cfg.voiceId && !starting) {
       lastAvatarSpeechRef.current=latestSpeechText;
       startLive(latestSpeechText);
