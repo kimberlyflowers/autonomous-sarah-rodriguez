@@ -5462,6 +5462,10 @@ function App({ authUser }) {
     {k:"activity",l:"Activity",icon:ActivityIcon},
     {k:"mobile",l:"Mobile",icon:CallsIcon},
   ];
+  const composerPages = new Set(["chat", "work", "build"]);
+  const supportLauncherBottom = composerPages.has(pg)
+    ? (mob ? 176 : 140)
+    : (mob ? 96 : 80);
 
   return(
     <div style={{minHeight:"100vh",background:c.bg,fontFamily:"'Inter',system-ui,-apple-system,sans-serif",color:c.tx}}>
@@ -8464,7 +8468,7 @@ function App({ authUser }) {
       )}
 
       {!hlpO&&(
-        <button onClick={()=>setHlpO(true)} style={{position:"fixed",bottom:mob?130:80,right:mob?8:20,width:mob?44:52,height:mob?44:52,borderRadius:"50%",border:"none",background:"linear-gradient(135deg,#F4A261,#E76F8B)",cursor:"pointer",boxShadow:"0 4px 20px rgba(231,111,139,.35)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:90,transition:"transform .2s",opacity:0.85}} onMouseEnter={e=>e.currentTarget.style.transform="scale(1.1)"} onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>
+        <button onClick={()=>setHlpO(true)} style={{position:"fixed",bottom:`calc(${supportLauncherBottom}px + env(safe-area-inset-bottom))`,right:mob?8:20,width:mob?44:52,height:mob?44:52,borderRadius:"50%",border:"none",background:"linear-gradient(135deg,#F4A261,#E76F8B)",cursor:"pointer",boxShadow:"0 4px 20px rgba(231,111,139,.35)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:90,transition:"transform .2s, bottom .2s ease",opacity:0.85}} onMouseEnter={e=>e.currentTarget.style.transform="scale(1.1)"} onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>
           <Bloom sz={36} glow/>
         </button>
       )}
