@@ -1210,7 +1210,7 @@ function Screen({c,mob,mode,setMode,aFN="Agent"}) {
   );
 }
 
-function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null}) {
+function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null, lastSarahText=""}) {
   const [cfg,setCfg]=useState(null);
   const [loading,setLoading]=useState(false);
   const [saving,setSaving]=useState(false);
@@ -1222,13 +1222,15 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null}) {
   const [contextId,setContextId]=useState("");
   const [language,setLanguage]=useState("en");
   const [mode,setMode]=useState("liveavatar_sdk");
-  const [liveText,setLiveText]=useState("");
   const [session,setSession]=useState(null);
   const [starting,setStarting]=useState(false);
   const [sdkStatus,setSdkStatus]=useState("idle");
   const sdkSessionRef=useRef(null);
   const videoRef=useRef(null);
   const [err,setErr]=useState("");
+  const firstName=(agentName||"Agent").split(" ")[0];
+  const latestSpeechText=(lastSarahText||"").trim();
+  const speechText=()=>latestSpeechText || `Hi, I'm ${firstName}. I'm ready to help.`;
 
   const load=()=>{
     if(!agentId) return;
@@ -1310,7 +1312,7 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null}) {
     setStarting(true); setErr(""); setSession(null);
     try{
       const h=await getAuthHeaders();
-      const text=liveText.trim() || `Hi, I'm ${firstName}. I'm ready to help.`;
+      const text=speechText();
       const r=await fetch("/api/avatar/live/session",{method:"POST",headers:h,body:JSON.stringify({agentId,text})});
       const d=await r.json().catch(()=>({}));
       if(!r.ok) throw new Error(d.error||"Could not start live avatar");
@@ -1352,15 +1354,14 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null}) {
   };
 
   const speakSdkText=()=>{
-    const text=liveText.trim();
+    const text=speechText();
     if(!text) return;
-    try { sdkSessionRef.current?.repeat(text); setLiveText(""); }
+    try { sdkSessionRef.current?.repeat(text); }
     catch(e){ setErr(e.message||"Could not send text to LiveAvatar"); }
   };
 
   useEffect(()=>()=>{ try { sdkSessionRef.current?.stop(); } catch {} },[]);
 
-  const firstName=(agentName||"Agent").split(" ")[0];
   const selectStyle={width:"100%",padding:"10px 12px",borderRadius:9,border:"1px solid "+c.ln,background:c.inp,color:c.tx,fontSize:12,fontFamily:"inherit",boxSizing:"border-box",marginBottom:10};
 
   if(loading && !cfg) {
@@ -1406,10 +1407,12 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null}) {
         </div>
         <div style={{padding:10,borderTop:"1px solid "+c.ln,background:c.cd,display:"flex",gap:8,flexDirection:"column"}}>
           {err&&<div style={{fontSize:11,color:c.err,lineHeight:1.4}}>{err}</div>}
-          <div style={{display:"flex",gap:8}}>
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
             <button onClick={connected?stopSdkLive:startSdkLive} disabled={starting} style={{padding:"9px 12px",borderRadius:8,border:"none",background:connected?"#EF4444":c.gradient,color:"#fff",fontSize:12,fontWeight:800,cursor:starting?"wait":"pointer",flexShrink:0}}>{connected?"End":"Start"}</button>
-            <input value={liveText} onChange={e=>setLiveText(e.target.value)} placeholder={`Make ${firstName} say...`} style={{flex:1,minWidth:0,padding:"9px 10px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,color:c.tx,fontSize:12}}/>
-            <button onClick={speakSdkText} disabled={!connected||!liveText.trim()} style={{padding:"9px 12px",borderRadius:8,border:"1px solid "+c.ln,background:connected&&liveText.trim()?c.ac:"transparent",color:connected&&liveText.trim()?"#fff":c.so,fontSize:12,fontWeight:800,cursor:connected&&liveText.trim()?"pointer":"not-allowed",flexShrink:0}}>Say</button>
+            <div style={{flex:1,minWidth:0,padding:"8px 10px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,color:c.so,fontSize:11,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+              {latestSpeechText||`${firstName} is ready.`}
+            </div>
+            <button onClick={speakSdkText} disabled={!connected} style={{padding:"9px 12px",borderRadius:8,border:"1px solid "+c.ln,background:connected?c.ac:"transparent",color:connected?"#fff":c.so,fontSize:12,fontWeight:800,cursor:connected?"pointer":"not-allowed",flexShrink:0}}>Speak</button>
           </div>
         </div>
       </div>
@@ -1435,10 +1438,13 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null}) {
                   ? <img src={agentImg} alt="" style={{width:92,height:92,borderRadius:20,objectFit:"cover",border:"1px solid "+c.ln,marginBottom:14}}/>
                   : <div style={{width:92,height:92,borderRadius:20,background:c.gradient,display:"inline-flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:30,fontWeight:800,marginBottom:14}}>{firstName[0]||"A"}</div>}
                 <div style={{fontSize:17,fontWeight:800,color:c.tx,marginBottom:8}}>{firstName} Live</div>
-                <textarea value={liveText} onChange={e=>setLiveText(e.target.value)} placeholder={`What should ${firstName} say?`} rows={4} style={{...selectStyle,resize:"vertical",lineHeight:1.45}}/>
+                <div style={{...selectStyle,minHeight:86,lineHeight:1.45,textAlign:"left",color:latestSpeechText?c.tx:c.so,overflow:"hidden"}}>
+                  <div style={{fontSize:10,fontWeight:800,color:c.so,textTransform:"uppercase",letterSpacing:0,marginBottom:6}}>Latest Sarah reply</div>
+                  <div style={{display:"-webkit-box",WebkitLineClamp:3,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{latestSpeechText||`${firstName} is ready.`}</div>
+                </div>
                 {err&&<div style={{fontSize:11,color:c.err,marginBottom:10,lineHeight:1.4}}>{err}</div>}
                 <button onClick={startLive} disabled={starting} style={{width:"100%",padding:"10px 12px",borderRadius:9,border:"none",background:c.gradient,cursor:starting?"wait":"pointer",color:"#fff",fontSize:12,fontWeight:800}}>
-                  {starting?"Starting...":"Start Talking"}
+                  {starting?"Starting...":"Play Latest Reply"}
                 </button>
               </div>}
         </div>
@@ -5936,7 +5942,7 @@ function App({ authUser }) {
 
                           {/* ── Live avatar tab ── */}
                           {rightTab==="live"&&(
-                            <LiveAvatarPanel c={c} agentId={currentAgentId} agentName={agent.nm} agentImg={agent.img}/>
+                            <LiveAvatarPanel c={c} agentId={currentAgentId} agentName={agent.nm} agentImg={agent.img} lastSarahText={messages.filter(m=>m.b).slice(-1)[0]?.t||""}/>
                           )}
 
                           {/* ── Browser tab ── */}
