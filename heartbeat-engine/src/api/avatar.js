@@ -271,6 +271,7 @@ router.post('/live/session-token', requireAuth, async (req, res) => {
     const language = String(req.body?.language || config.language || 'en').trim();
     const pushToTalk = req.body?.pushToTalk === true;
     const sandbox = req.body?.sandbox ?? config.sandbox ?? true;
+    const maxSessionDuration = Number(req.body?.maxSessionDuration || config.maxSessionDuration || 0);
 
     if (!avatarId || !contextId) {
       return res.status(400).json({ error: 'Configure a LiveAvatar avatar ID and context ID before starting Live' });
@@ -290,6 +291,7 @@ router.post('/live/session-token', requireAuth, async (req, res) => {
           quality: req.body?.quality || config.quality || 'medium',
           encoding: req.body?.encoding || config.encoding || 'H264'
         },
+        ...(maxSessionDuration > 0 ? { max_session_duration: maxSessionDuration } : {}),
         ...(pushToTalk ? { interactivity_type: 'PUSH_TO_TALK' } : {}),
         is_sandbox: sandbox !== false
       })
