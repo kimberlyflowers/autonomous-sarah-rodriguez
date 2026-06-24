@@ -1236,6 +1236,7 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null, lastSara
   const [speechStatus,setSpeechStatus]=useState("");
   const sdkSessionRef=useRef(null);
   const videoRef=useRef(null);
+  const autoStartedRef=useRef(false);
   const [err,setErr]=useState("");
   const lastAvatarSpeechRef=useRef("");
   const pendingAvatarSpeechRef=useRef("");
@@ -1474,6 +1475,13 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null, lastSara
       startLive(latestSpeechText);
     }
   },[latestSpeechText,cfg?.enabled,cfg?.mode,cfg?.avatarId,cfg?.voiceId,sdkStatus,starting]);
+
+  useEffect(()=>{
+    if(!cfg?.enabled || cfg.mode!=="liveavatar_sdk" || !cfg.avatarId || !cfg.contextId) return;
+    if(autoStartedRef.current || starting || sdkStatus==="starting" || sdkStatus===SessionState.CONNECTED) return;
+    autoStartedRef.current=true;
+    startSdkLive();
+  },[cfg?.enabled,cfg?.mode,cfg?.avatarId,cfg?.contextId,sdkStatus,starting]);
 
   useEffect(()=>()=>{ try { sdkSessionRef.current?.stop(); } catch {} },[]);
 
@@ -5385,17 +5393,9 @@ function App({ authUser }) {
     const liveAvatar=window.__bloomieLiveAvatar;
     if(isSarahVoiceAgent && (liveAvatar?.videoReady || liveAvatar?.connected)) {
       if(vcRec) {
-        liveAvatar.stopListening?.();
         stopBrowserDictation();
       } else {
-        const started=liveAvatar.startListening?.();
-        if(started!==false) {
-          const dictating=startBrowserDictation({onEnd:()=>liveAvatar.stopListening?.()});
-          if(!dictating) liveAvatar.stopListening?.();
-        } else {
-          setOauthToast({type:'error',msg:'Sarah Live is still connecting. Try again in a moment.'});
-          setTimeout(()=>setOauthToast(null),3500);
-        }
+        startBrowserDictation();
       }
       return;
     }
