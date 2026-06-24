@@ -148,14 +148,16 @@ function normalizeSocialMedia(media, imageUrl, summary = '') {
   const normalized = items
     .map((item) => {
       if (typeof item === 'string') {
-        return { url: item, type: 'image', caption: summary };
+        return { url: item, type: 'image/png', caption: summary };
       }
       if (!item || typeof item !== 'object') return null;
       const url = item.url || item.src || item.imageUrl;
       if (!url) return null;
+      const rawType = String(item.type || '').toLowerCase();
+      const mediaType = rawType && !['image', 'photo'].includes(rawType) ? item.type : 'image/png';
       return {
         url,
-        type: item.type || 'image',
+        type: mediaType,
         ...(item.caption ? { caption: item.caption } : summary ? { caption: summary } : {}),
         ...(item.thumbnail ? { thumbnail: item.thumbnail } : {}),
         ...(item.defaultThumb ? { defaultThumb: item.defaultThumb } : {}),
@@ -165,10 +167,24 @@ function normalizeSocialMedia(media, imageUrl, summary = '') {
     .filter(Boolean);
 
   if (!normalized.length && imageUrl) {
-    normalized.push({ url: imageUrl, type: 'image', caption: summary });
+    normalized.push({ url: imageUrl, type: 'image/png', caption: summary });
   }
 
   return normalized;
+}
+
+function normalizeSocialScheduleDate(value) {
+  if (!value) return null;
+
+  const parsed = new Date(value);
+  const now = new Date();
+  if (Number.isNaN(parsed.getTime())) return value;
+  if (parsed > now) return parsed.toISOString();
+
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  tomorrow.setHours(9, 0, 0, 0);
+  return tomorrow.toISOString();
 }
 
 function getSocialAccountsArray(response) {
@@ -2239,7 +2255,7 @@ export const ghlExecutors = {
   ghl_create_social_post: async (params) => {
     const locationId = await resolveLocationId(params._orgId);
     const summary = String(params.summary || params.content || '').trim();
-    const scheduleDate = params.scheduleDate || params.scheduledDate;
+    const scheduleDate = normalizeSocialScheduleDate(params.scheduleDate || params.scheduledDate);
     const type = params.type || 'post';
     const status = params.status || (scheduleDate ? 'scheduled' : 'draft');
     const userId = await getGhlUserId(params);

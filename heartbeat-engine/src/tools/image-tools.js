@@ -413,6 +413,11 @@ export const imageToolExecutors = {
       }
     }
 
+    if (process.env.USE_OPENROUTER === 'true' && getOpenRouterKey() && ['gemini', 'gpt'].includes(useEngine)) {
+      logger.info(`OpenRouter image primary enabled — overriding requested ${useEngine} image engine`);
+      useEngine = 'openrouter';
+    }
+
     if (useEngine === 'openrouter') {
       try {
         const result = await generateWithOpenRouter(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);

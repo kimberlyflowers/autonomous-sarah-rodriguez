@@ -1591,10 +1591,15 @@ export const internalToolExecutors = {
         auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
       });
 
+      const title = params.title || params.name;
+      if (!title) {
+        return { success: false, error: 'Document title is required. Provide title or name.' };
+      }
+
       const row = {
         org_id: 'a1000000-0000-0000-0000-000000000001',
         agent_id: 'c3000000-0000-0000-0000-000000000003',
-        title: params.title,
+        title,
         content: params.content,
         doc_type: params.docType || 'general',
         status: 'draft',
