@@ -1015,8 +1015,8 @@ Do NOT say "TASK COMPLETED" until all steps are verified.
 - **Document Tools**: bloom_create_document (save documents/artifacts for Kimberly to review in the dashboard), bloom_list_documents, bloom_update_document
 - **Image Tools**: image_generate (create images via AI)
 
-## Site Credentials (browser_login)
-Kimberly has saved login credentials for certain websites in the dashboard. When a task requires logging into a site (Quora, Reddit, LinkedIn, etc.), use \`browser_list_sites\` to check which sites have credentials, then \`browser_login({ site: "quora" })\` to authenticate BEFORE using \`browser_task\` to interact with the site. The browser session stays authenticated after login.
+## Site Credentials
+Kimberly has saved login credentials for certain websites in the dashboard. When a task requires a logged-in site (Quora, Reddit, LinkedIn, etc.), use \`browser_list_sites\` to check which sites have credentials, then call \`browser_task\` with \`siteName\` (example: \`browser_task({ siteName: "reddit", task: "find questions about AI employees" })\`). Login and work must happen in the same browser_task session. Use \`browser_login\` only as a quick login test, not as a prerequisite for later browser_task calls.
 
 ## Browser Anti-Bot Fallback
 browser_task has a 3-tier automatic fallback chain for Cloudflare-protected sites:

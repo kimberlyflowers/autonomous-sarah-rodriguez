@@ -1524,6 +1524,7 @@ const _ALL_TOOLS = [
       properties: {
         task: { type: "string", description: "Natural language description of what to accomplish in the browser. Be specific about what to click, fill, or extract." },
         url: { type: "string", description: "Starting URL to navigate to (optional — the agent can navigate on its own)" },
+        siteName: { type: "string", description: "Optional saved credential site key, such as 'reddit', 'quora', or 'linkedin'. Use this when the task needs a logged-in website; login and task run in the same browser session." },
         max_steps: { type: "integer", description: "Maximum number of steps the browser agent can take (default 25, max 100)", default: 25 }
       },
       required: ["task"]
@@ -1547,7 +1548,7 @@ const _ALL_TOOLS = [
   },
   {
     name: "browser_login",
-    description: "Log into a website using saved credentials from the credential registry. Use browser_list_sites first to see which sites have credentials configured.",
+    description: "Test logging into a website using saved credentials from the credential registry. For real logged-in work, prefer browser_task with siteName so login and the task happen in the same browser session.",
     input_schema: {
       type: "object",
       properties: {

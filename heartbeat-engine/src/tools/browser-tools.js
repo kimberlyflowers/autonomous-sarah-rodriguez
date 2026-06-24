@@ -27,6 +27,10 @@ export const browserToolDefinitions = {
           type: "string",
           description: "Starting URL to navigate to (optional — the agent can navigate on its own)"
         },
+        siteName: {
+          type: "string",
+          description: "Optional saved credential site key (e.g. 'reddit', 'quora', 'linkedin'). When provided, the browser agent logs into that site and completes the task in the same browser session."
+        },
         max_steps: {
           type: "integer",
           description: "Maximum number of steps the browser agent can take (default 25, max 100)",
@@ -41,7 +45,7 @@ export const browserToolDefinitions = {
 
   browser_login: {
     name: "browser_login",
-    description: "Log into a website using stored credentials from the credential registry. Sarah has saved login credentials for sites like Quora, Reddit, Facebook, LinkedIn, Twitter, Instagram, Canva, WordPress, and Gmail. Use this before performing actions on a site that requires authentication. Returns login status and the authenticated browser session continues for subsequent browser_task calls.",
+    description: "Test logging into a website using stored credentials from the credential registry. For real work on a logged-in site, prefer browser_task with siteName so login and work happen in the same browser session.",
     parameters: {
       type: "object",
       properties: {
@@ -94,11 +98,33 @@ export const browserToolDefinitions = {
  * Browser tool executors
  */
 export const browserToolExecutors = {
-  browser_task: async (params) => {
+  browser_task: async (params, context = {}) => {
     try {
+      const orgId = params._orgId || params.orgId || context.orgId || context.organizationId || process.env.BLOOM_ORG_ID;
+      const rawSiteName = params.siteName || params.site || params.site_key || params.siteKey;
+      let task = params.task;
+      let url = params.url || undefined;
+
+      if (rawSiteName) {
+        const siteName = String(rawSiteName).toLowerCase();
+        const creds = await getCredentials(siteName, orgId);
+        if (!creds) {
+          const sites = await listSites(orgId);
+          const available = sites.map(s => s.site_key).join(', ') || 'none configured';
+          return {
+            success: false,
+            error: `No credentials found for "${rawSiteName}". Configured sites: ${available}. Ask Kimberly to add credentials in Dashboard → Settings → Site Logins.`
+          };
+        }
+
+        url = url || creds.loginUrl;
+        task = `Log into ${creds.name} at ${creds.loginUrl} using email/username "${creds.email}" and password "${creds.password}". If there is a cookie consent popup, dismiss it. If there is a 2FA or CAPTCHA prompt, stop and report it. After login, complete this task: ${params.task}`;
+      }
+
       logger.info('Executing browser task', {
-        task: params.task.substring(0, 100),
-        url: params.url || 'none',
+        task: String(params.task || '').substring(0, 100),
+        url: url || 'none',
+        credentialSite: rawSiteName || 'none',
         maxSteps: params.max_steps || 25
       });
 
@@ -106,8 +132,8 @@ export const browserToolExecutors = {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          task: params.task,
-          url: params.url || undefined,
+          task,
+          url,
           max_steps: params.max_steps || 25,
           secret: BROWSER_AGENT_SECRET,
         }),
@@ -160,7 +186,7 @@ export const browserToolExecutors = {
           used_cloud: data.used_cloud || false,
           used_desktop: data.used_desktop || false,
           tier_used: data.tier_used || 'self-hosted',
-          message: `Browser navigated to ${params.url || 'requested page'}. Final URL: ${data.url_final}. ${tierLabel} Result: ${data.result}`
+          message: `Browser navigated to ${url || 'requested page'}. Final URL: ${data.url_final}. ${tierLabel} Result: ${data.result}`
         };
       } else {
         return {
