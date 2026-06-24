@@ -5167,6 +5167,28 @@ NEVER skip steps 3 and 4 even if step 2 fails.
     };
   }
 
+  function buildPersistentToolEvidence() {
+    const evidence = toolResults
+      .map((result, index) => {
+        const tool = toolsUsed[index];
+        if (!tool || !result || tool.name !== 'browser_task') return null;
+
+        const pieces = [];
+        if (result.block_evidence) pieces.push(result.block_evidence);
+        else if (result.blocked) pieces.push('Browser task reported a block.');
+        if (result.url_final) pieces.push(`Final URL: ${result.url_final}`);
+        if (result.tier_used) pieces.push(`Browser tier: ${result.tier_used}`);
+        if (result.result) pieces.push(`Result: ${String(result.result).slice(0, 600)}`);
+        if (!pieces.length) return null;
+
+        return `browser_task ${index + 1}: ${pieces.join(' | ')}`;
+      })
+      .filter(Boolean);
+
+    if (!evidence.length) return '';
+    return `\n\n<!-- tool-evidence\n${evidence.join('\n')}\n-->`;
+  }
+
   // ── HELPER: log cost and write usage metrics ───────────────────────────
   async function logCostAndUsage(round) {
     // Use unified client's pricing table for accurate cost across all models
@@ -5487,7 +5509,7 @@ NEVER skip steps 3 and 4 even if step 2 fails.
         continue;
       }
 
-      return text;
+      return text + buildPersistentToolEvidence();
     }
 
     // ── TOOL EXECUTION with auto-retry ───────────────────────────────────

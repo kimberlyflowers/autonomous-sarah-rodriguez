@@ -9,6 +9,21 @@ const logger = createLogger('browser-tools');
 const BROWSER_AGENT_URL = process.env.BROWSER_AGENT_URL || 'http://sweet-nature.railway.internal:8080';
 const BROWSER_AGENT_SECRET = process.env.BROWSER_AGENT_SECRET || '';
 
+function getBrowserBlockEvidence(data = {}) {
+  const finalUrl = data.url_final || '';
+  const resultText = String(data.result || '');
+  const evidence = [];
+
+  if (/js_challenge=1|solution=|jsc_orig_r=|captcha|challenge/i.test(finalUrl)) {
+    evidence.push(`Final URL shows an anti-bot challenge: ${finalUrl}`);
+  }
+  if (/blocked|network security|captcha|2fa|verify|challenge|unable to access/i.test(resultText)) {
+    evidence.push(`Browser agent reported: ${resultText}`);
+  }
+
+  return evidence.length ? evidence.join(' | ') : null;
+}
+
 /**
  * Browser tool definitions — exposed to Claude as available tools
  */
@@ -153,6 +168,7 @@ export const browserToolExecutors = {
       });
 
       if (data.success) {
+        const blockEvidence = getBrowserBlockEvidence(data);
         // Push screenshot to dashboard Screen Viewer (now included in browse response)
         try {
           if (data.screenshot_base64) {
@@ -183,10 +199,12 @@ export const browserToolExecutors = {
           steps_taken: data.steps_taken,
           duration_ms: data.duration_ms,
           url_final: data.url_final,
+          blocked: Boolean(blockEvidence),
+          block_evidence: blockEvidence,
           used_cloud: data.used_cloud || false,
           used_desktop: data.used_desktop || false,
           tier_used: data.tier_used || 'self-hosted',
-          message: `Browser navigated to ${url || 'requested page'}. Final URL: ${data.url_final}. ${tierLabel} Result: ${data.result}`
+          message: `Browser navigated to ${url || 'requested page'}. Final URL: ${data.url_final}. ${tierLabel}${blockEvidence ? ` Block evidence: ${blockEvidence}.` : ''} Result: ${data.result}`
         };
       } else {
         return {
