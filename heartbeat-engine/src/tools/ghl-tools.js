@@ -64,6 +64,12 @@ async function callGHL(endpoint, method = 'GET', data = null, params = {}, orgId
     logger.info(`Using org-specific GHL credentials (org: ${orgId}, location: ${locationId})`);
   }
 
+  const queryParams = {
+    ...(params?.__omitLocationId ? {} : { locationId }),
+    ...params
+  };
+  delete queryParams.__omitLocationId;
+
   const config = {
     method,
     url: `${GHL_BASE_URL}${endpoint}`,
@@ -73,10 +79,7 @@ async function callGHL(endpoint, method = 'GET', data = null, params = {}, orgId
       'Content-Type': 'application/json',
       'Accept': 'application/json'
     },
-    params: {
-      locationId,
-      ...params
-    }
+    params: queryParams
   };
 
   if (data && ['POST', 'PUT', 'PATCH'].includes(method.toUpperCase())) {
@@ -138,6 +141,78 @@ async function resolveLocationId(orgId) {
     if (creds?.locationId) return creds.locationId;
   }
   return process.env.GHL_LOCATION_ID;
+}
+
+function normalizeSocialMedia(media, imageUrl, summary = '') {
+  const items = Array.isArray(media) ? media : [];
+  const normalized = items
+    .map((item) => {
+      if (typeof item === 'string') {
+        return { url: item, type: 'image', caption: summary };
+      }
+      if (!item || typeof item !== 'object') return null;
+      const url = item.url || item.src || item.imageUrl;
+      if (!url) return null;
+      return {
+        url,
+        type: item.type || 'image',
+        ...(item.caption ? { caption: item.caption } : summary ? { caption: summary } : {}),
+        ...(item.thumbnail ? { thumbnail: item.thumbnail } : {}),
+        ...(item.defaultThumb ? { defaultThumb: item.defaultThumb } : {}),
+        ...(item.id ? { id: item.id } : {})
+      };
+    })
+    .filter(Boolean);
+
+  if (!normalized.length && imageUrl) {
+    normalized.push({ url: imageUrl, type: 'image', caption: summary });
+  }
+
+  return normalized;
+}
+
+function getSocialAccountsArray(response) {
+  if (Array.isArray(response)) return response;
+  if (Array.isArray(response?.accounts)) return response.accounts;
+  if (Array.isArray(response?.results?.accounts)) return response.results.accounts;
+  if (Array.isArray(response?.data)) return response.data;
+  if (Array.isArray(response?.data?.accounts)) return response.data.accounts;
+  if (Array.isArray(response?.socialAccounts)) return response.socialAccounts;
+  return [];
+}
+
+function socialAccountMatchesPlatform(account, platform) {
+  if (!platform) return true;
+  const needle = String(platform).toLowerCase();
+  return [
+    account?.platform,
+    account?.type,
+    account?.provider,
+    account?.channel,
+    account?.name,
+    account?.displayName
+  ].some((value) => String(value || '').toLowerCase().includes(needle));
+}
+
+async function resolveSocialAccountIds(params, locationId) {
+  if (Array.isArray(params.accountIds) && params.accountIds.filter(Boolean).length) {
+    return params.accountIds.filter(Boolean);
+  }
+
+  const platformFilters = Array.isArray(params.platforms) ? params.platforms.filter(Boolean) : [];
+  if (!platformFilters.length) return [];
+
+  const response = await callGHL(`/social-media-posting/${locationId}/accounts`, 'GET', null, { __omitLocationId: true }, params._orgId);
+  const accounts = getSocialAccountsArray(response);
+  return accounts
+    .filter((account) => !account.deleted && !account.isExpired)
+    .filter((account) => platformFilters.some((platform) => socialAccountMatchesPlatform(account, platform)))
+    .map((account) => account.id || account.accountId || account._id)
+    .filter(Boolean);
+}
+
+function getGhlUserId(params) {
+  return params.userId || process.env.GHL_USER_ID || process.env.HUMAN_GHL_USER_ID || null;
 }
 
 // ── VALIDATE BLOG ID ──────────────────────────────────────────────────
@@ -1271,17 +1346,46 @@ export const ghlToolDefinitions = {
     operation: "read"
   },
 
+  ghl_list_social_accounts: {
+    name: "ghl_list_social_accounts",
+    description: "List connected GHL Social Planner accounts. Use this before creating Instagram, Facebook, LinkedIn, or other social posts so accountIds can be selected.",
+    parameters: { type: "object", properties: {}, required: [] },
+    category: "social_planner",
+    operation: "read"
+  },
+
   ghl_create_social_post: {
     name: "ghl_create_social_post",
-    description: "Create a new social media post",
+    description: "Create or schedule a GHL Social Planner post. Use accountIds from ghl_list_social_accounts. Do not send content/platforms/scheduledDate directly to GHL; this tool maps legacy fields safely.",
     parameters: {
       type: "object",
       properties: {
-        content: { type: "string", description: "Post content" },
-        platforms: { type: "array", items: { type: "string" }, description: "Target platforms" },
-        scheduledDate: { type: "string", description: "Scheduled date/time (ISO format)" }
+        summary: { type: "string", description: "Post text/caption. Preferred field." },
+        content: { type: "string", description: "Legacy alias for summary." },
+        accountIds: { type: "array", items: { type: "string" }, description: "Connected Social Planner account IDs from ghl_list_social_accounts." },
+        platforms: { type: "array", items: { type: "string" }, description: "Legacy convenience filter such as instagram or facebook. The tool will look up matching accountIds." },
+        media: {
+          type: "array",
+          description: "Media objects for the post.",
+          items: {
+            type: "object",
+            properties: {
+              url: { type: "string", description: "Public media URL." },
+              type: { type: "string", description: "Media type, usually image or video." },
+              caption: { type: "string", description: "Optional media caption." },
+              thumbnail: { type: "string", description: "Optional thumbnail URL." }
+            },
+            required: ["url"]
+          }
+        },
+        imageUrl: { type: "string", description: "Public image URL to attach as image media." },
+        type: { type: "string", enum: ["post", "story", "reel"], description: "GHL post type. Defaults to post." },
+        status: { type: "string", enum: ["draft", "scheduled", "published"], description: "GHL post status. Defaults to scheduled when scheduleDate is provided, otherwise draft." },
+        scheduleDate: { type: "string", description: "Scheduled date/time (ISO format)." },
+        scheduledDate: { type: "string", description: "Legacy alias for scheduleDate." },
+        userId: { type: "string", description: "GHL user ID creating the post. Defaults to GHL_USER_ID/HUMAN_GHL_USER_ID env if configured." }
       },
-      required: ["content", "platforms"]
+      required: []
     },
     category: "social_planner",
     operation: "write"
@@ -2098,13 +2202,52 @@ export const ghlExecutors = {
   // GET /social-media-posting/{locationId}/posts
   ghl_list_social_posts: async (params) => {
     const locationId = await resolveLocationId(params._orgId);
-    return await callGHL(`/social-media-posting/${locationId}/posts`);
+    return await callGHL(`/social-media-posting/${locationId}/posts`, 'GET', null, { __omitLocationId: true }, params._orgId);
+  },
+
+  // GET /social-media-posting/{locationId}/accounts
+  ghl_list_social_accounts: async (params) => {
+    const locationId = await resolveLocationId(params._orgId);
+    return await callGHL(`/social-media-posting/${locationId}/accounts`, 'GET', null, { __omitLocationId: true }, params._orgId);
   },
 
   // POST /social-media-posting/{locationId}/posts
   ghl_create_social_post: async (params) => {
     const locationId = await resolveLocationId(params._orgId);
-    return await callGHL(`/social-media-posting/${locationId}/posts`, 'POST', params);
+    const summary = String(params.summary || params.content || '').trim();
+    const scheduleDate = params.scheduleDate || params.scheduledDate;
+    const type = params.type || 'post';
+    const status = params.status || (scheduleDate ? 'scheduled' : 'draft');
+    const userId = getGhlUserId(params);
+    const accountIds = await resolveSocialAccountIds(params, locationId);
+    const media = normalizeSocialMedia(params.media, params.imageUrl, summary);
+
+    const missing = [];
+    if (!summary) missing.push('summary');
+    if (!userId) missing.push('userId (configure GHL_USER_ID/HUMAN_GHL_USER_ID or pass userId)');
+    if (!accountIds.length) missing.push('accountIds (call ghl_list_social_accounts and select a connected account)');
+
+    if (missing.length) {
+      return {
+        _status: 'FAILED',
+        _message: `GHL SOCIAL POST NOT CREATED. Missing required setup: ${missing.join(', ')}.`,
+        _error: 'missing_required_social_post_fields',
+        requiredFields: missing,
+        hint: 'Use ghl_list_social_accounts to get connected Instagram/Facebook/etc. account IDs, and configure GHL_USER_ID for the posting user.'
+      };
+    }
+
+    const payload = {
+      accountIds,
+      summary,
+      media,
+      type,
+      status,
+      userId,
+      ...(scheduleDate ? { scheduleDate, scheduleTimeUpdated: true } : {})
+    };
+
+    return await callGHL(`/social-media-posting/${locationId}/posts`, 'POST', payload, { __omitLocationId: true }, params._orgId);
   },
 
   // BLOG POSTS
@@ -2407,6 +2550,11 @@ export async function executeGHLTool(toolName, parameters, orgId = null) {
     const paramsWithOrg = { ...parameters, _orgId: orgId };
     const result = await ghlExecutors[toolName](paramsWithOrg);
     const duration = Date.now() - startTime;
+    if (result?._status === 'FAILED') {
+      const message = result._message || result._error || `${toolName} failed`;
+      logger.warn(`GHL tool returned failed status: ${toolName} (${duration}ms)`, { message });
+      return { success: false, error: message, data: result, executionTime: duration };
+    }
     logger.info(`GHL tool completed: ${toolName} (${duration}ms)`);
     return { success: true, data: result, executionTime: duration };
   } catch (error) {

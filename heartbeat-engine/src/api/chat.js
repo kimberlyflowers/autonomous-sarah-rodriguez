@@ -1250,16 +1250,42 @@ const _ALL_TOOLS = [
     input_schema: { type: "object", properties: {}, required: [] }
   },
   {
+    name: "ghl_list_social_accounts",
+    description: "List connected GHL Social Planner accounts. Use this before creating Instagram, Facebook, LinkedIn, or other social posts so accountIds can be selected.",
+    input_schema: { type: "object", properties: {}, required: [] }
+  },
+  {
     name: "ghl_create_social_post",
-    description: "Create a new social media post.",
+    description: "Create or schedule a GHL Social Planner post. Use accountIds from ghl_list_social_accounts. The tool accepts legacy content/platforms/scheduledDate aliases but sends GHL's current payload shape.",
     input_schema: {
       type: "object",
       properties: {
-        content: { type: "string" },
-        platforms: { type: "array", items: { type: "string" } },
-        scheduledDate: { type: "string" }
+        summary: { type: "string", description: "Post text/caption. Preferred field." },
+        content: { type: "string", description: "Legacy alias for summary." },
+        accountIds: { type: "array", items: { type: "string" }, description: "Connected Social Planner account IDs from ghl_list_social_accounts." },
+        platforms: { type: "array", items: { type: "string" }, description: "Legacy convenience filter such as instagram or facebook." },
+        media: {
+          type: "array",
+          description: "Media objects for the post.",
+          items: {
+            type: "object",
+            properties: {
+              url: { type: "string", description: "Public media URL." },
+              type: { type: "string", description: "Media type, usually image or video." },
+              caption: { type: "string", description: "Optional media caption." },
+              thumbnail: { type: "string", description: "Optional thumbnail URL." }
+            },
+            required: ["url"]
+          }
+        },
+        imageUrl: { type: "string", description: "Public image URL to attach as image media." },
+        type: { type: "string", enum: ["post", "story", "reel"], description: "GHL post type. Defaults to post." },
+        status: { type: "string", enum: ["draft", "scheduled", "published"], description: "Defaults to scheduled when scheduleDate is provided, otherwise draft." },
+        scheduleDate: { type: "string", description: "Scheduled date/time (ISO format)." },
+        scheduledDate: { type: "string", description: "Legacy alias for scheduleDate." },
+        userId: { type: "string", description: "GHL user ID creating the post. Defaults to GHL_USER_ID/HUMAN_GHL_USER_ID env if configured." }
       },
-      required: ["content", "platforms"]
+      required: []
     }
   },
   {
