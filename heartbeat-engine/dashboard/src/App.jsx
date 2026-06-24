@@ -5298,8 +5298,9 @@ function App({ authUser }) {
         </div>
 
         <div style={{display:"flex",alignItems:"center",gap:8,position:"relative"}}>
-          {scrM==="hidden"&&<button onClick={()=>setScrM("docked")} style={{width:32,height:32,borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:14,color:c.so,display:"flex",alignItems:"center",justifyContent:"center"}} title="Show side panel">
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke={c.so} strokeWidth="2"><path d="M10 3l-5 5 5 5"/></svg>
+          {scrM==="hidden"&&<button onClick={()=>{setRightTab("live");setScrM("docked");}} style={{height:32,padding:"0 10px",borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:12,fontWeight:700,color:c.so,display:"flex",alignItems:"center",gap:6}} title="Show Sarah Live">
+            <span style={{width:7,height:7,borderRadius:"50%",background:c.ac,animation:"pulse 1.5s ease infinite"}}/>
+            Live
           </button>}
           <div style={{width:36,height:36,borderRadius:"50%",background:userImg?"transparent":"linear-gradient(135deg,#F4A261,#E76F8B)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,color:"#fff",overflow:"hidden"}}>{userImg?<img src={userImg} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>:meInitial}</div>
         </div>
@@ -5711,9 +5712,9 @@ function App({ authUser }) {
                     </div>
                   </div>
                   {!mob&&scrM==="hidden"&&(
-                    <button onClick={()=>setScrM("docked")} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:12,fontWeight:600,color:c.so,flexShrink:0,transition:"background .15s,color .15s"}} onMouseEnter={e=>{e.currentTarget.style.background=c.sf;e.currentTarget.style.color=c.tx;}} onMouseLeave={e=>{e.currentTarget.style.background=c.cd;e.currentTarget.style.color=c.so;}}>
-                      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 3l-5 5 5 5"/></svg>
-                      Show Browser
+                    <button onClick={()=>{setRightTab("live");setScrM("docked");}} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:12,fontWeight:700,color:c.so,flexShrink:0,transition:"background .15s,color .15s"}} onMouseEnter={e=>{e.currentTarget.style.background=c.sf;e.currentTarget.style.color=c.tx;}} onMouseLeave={e=>{e.currentTarget.style.background=c.cd;e.currentTarget.style.color=c.so;}}>
+                      <span style={{width:7,height:7,borderRadius:"50%",background:c.ac,animation:"pulse 1.5s ease infinite"}}/>
+                      Sarah Live
                     </button>
                   )}
                 </div>
