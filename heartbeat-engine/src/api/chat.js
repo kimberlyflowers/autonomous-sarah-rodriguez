@@ -228,6 +228,13 @@ Loading a skill improves quality. Skill failure NEVER blocks task completion.
 ${getSkillCatalogSummary()}`;
 }
 
+function stripInternalEvidence(text = '') {
+  return String(text)
+    .replace(/\n\n<!-- tool-evidence[\s\S]*?-->/g, '')
+    .replace(/\s*\[Session context[\s\S]*$/g, '')
+    .trim();
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // TASK INJECTIONS — Loaded per task type into messages array (not system prompt)
 // Modeled after Anthropic's <system-reminder> architecture in Claude Code.
@@ -6420,12 +6427,13 @@ router.post('/message', async (req, res) => {
     // Safety: ensure response is a string before string operations
     const responseText = typeof response === 'string' ? response
       : (response?.text || JSON.stringify(response) || '');
+    const cleanResponse = stripInternalEvidence(responseText);
     logger.info(`💬 Chat [${sessionId}] User: ${message.slice(0, 100)}${message.length > 100 ? '...' : ''}`);
-    logger.info(`💬 Chat [${sessionId}] ${agentConfig.name || 'Agent'}: ${responseText.replace(/\[Session context[\s\S]*$/, '').slice(0, 100)}${responseText.length > 100 ? '...' : ''}`);
+    logger.info(`💬 Chat [${sessionId}] ${agentConfig.name || 'Agent'}: ${cleanResponse.slice(0, 100)}${cleanResponse.length > 100 ? '...' : ''}`);
     await saveMessages(null, sessionId, message, responseText, null, userId, agentConfig.agentId, { skipUserSave: true });
 
-    // Strip internal session context before sending to client
-    const cleanResponse = responseText.replace(/\s*\[Session context[\s\S]*$/g, '').trim();
+    // Strip internal session context/evidence before sending to client.
+    // The full responseText is still saved so follow-up turns can inspect tool evidence.
 
     // Generate a smart title after the first message (history was empty = first exchange)
     if (history.length === 0) {
@@ -6658,10 +6666,10 @@ router.post('/upload', async (req, res) => {
     // Generate smart title on first message (same as text endpoint)
     if (history.length === 0) {
       const titleMsg = textMsg || (files.length ? `Uploaded ${files.map(f=>f.name).join(', ')}` : 'Shared files');
-      generateSessionTitle(sessionId, titleMsg, responseText).catch(() => {});
+      generateSessionTitle(sessionId, titleMsg, stripInternalEvidence(responseText)).catch(() => {});
     }
 
-    return res.json({ response: responseText, sessionId, uploadedFiles });
+    return res.json({ response: stripInternalEvidence(responseText), sessionId, uploadedFiles });
   } catch (error) {
     logger.error('Upload chat error', { 
       error: error.message, 
