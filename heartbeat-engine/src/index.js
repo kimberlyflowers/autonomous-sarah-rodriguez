@@ -1674,6 +1674,21 @@ function getScheduledTaskFailureReason(result) {
   return null;
 }
 
+function summarizeScheduledTaskOutput(output, maxLength = 4000) {
+  if (!output) return '';
+
+  try {
+    const parsed = typeof output === 'string' ? JSON.parse(output) : output;
+    const summary = parsed?.result || parsed?.response || parsed?.error || parsed?.status;
+    if (typeof summary === 'string') {
+      return summary.length > maxLength ? `${summary.slice(0, maxLength)}…` : summary;
+    }
+  } catch {}
+
+  const text = typeof output === 'string' ? output : JSON.stringify(output);
+  return text.length > maxLength ? `${text.slice(0, maxLength)}…` : text;
+}
+
 // ── Scheduled Task Runner ──────────────────────────────────────────────────
 async function runScheduledTasks(agentConfig) {
   const { createClient } = await import('@supabase/supabase-js');
@@ -1759,6 +1774,7 @@ async function runScheduledTasks(agentConfig) {
     }
 
     // Write initial task_run record
+    const completedAt = new Date().toISOString();
     try {
       const { data: runRow, error: runErr } = await supabase.from('task_runs').insert({
         scheduled_task_id: task.id,
@@ -1772,12 +1788,36 @@ async function runScheduledTasks(agentConfig) {
         result: success ? output : null,
         error: success ? null : output,
         started_at: startedAt,
-        completed_at: new Date().toISOString()
+        completed_at: completedAt
       }).select('id').single();
 
       if (!runErr && runRow) taskRunId = runRow.id;
     } catch (e) {
       logger.warn('Could not write task_run record:', e.message);
+    }
+
+    try {
+      await supabase.from('scheduled_tasks').update({
+        last_result: JSON.stringify({
+          scheduled_task_id: task.id,
+          task_run_id: taskRunId,
+          agent_id: task.agent_id,
+          organization_id: task.organization_id,
+          task_id: task.task_id,
+          task_name: task.name,
+          task_type: task.task_type,
+          status: success ? 'completed' : 'failed',
+          result: success ? summarizeScheduledTaskOutput(output) : null,
+          error: success ? null : summarizeScheduledTaskOutput(output),
+          evidence: {
+            summary: summarizeScheduledTaskOutput(output, 1000)
+          },
+          started_at: startedAt,
+          completed_at: completedAt
+        })
+      }).eq('id', task.id);
+    } catch (e) {
+      logger.warn('Could not update scheduled task last_result:', e.message);
     }
 
     // Trust gates disabled — task result logged, no review pipeline
