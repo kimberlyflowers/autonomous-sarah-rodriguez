@@ -8,6 +8,18 @@ const logger = createLogger('task-executor');
 // MULTI-TENANT: No hardcoded agent/org IDs.
 // Tasks carry their own agent_id and organization_id — we query ALL enabled agents.
 
+function isSubstantiveEvidence(evidence, result) {
+  const successfulActions = (evidence.actions || []).filter(action => action.type && action.type !== 'error');
+  if ((evidence.files || []).length > 0 || successfulActions.length > 0) return true;
+  if (result?.verification?.allStepsPassing === true) return true;
+
+  const toolHistory = Array.isArray(result?.toolHistory) ? result.toolHistory : [];
+  return toolHistory.some((entry) => {
+    const name = entry?.tool || entry?.name || entry?.toolName;
+    return name && !['bloom_todo_write', 'todo_write', 'bloom_clarify'].includes(name);
+  });
+}
+
 async function getSupabase() {
   const { createClient } = await import('@supabase/supabase-js');
   return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
@@ -117,6 +129,10 @@ async function executeScheduledTask(supabase, task) {
 
     // 5. Post-process — save files, log CRM actions
     const evidence = await postProcess(supabase, routing, result, task);
+
+    if (!isSubstantiveEvidence(evidence, result)) {
+      throw new Error('Task finished without verified output or substantive tool evidence.');
+    }
 
     // 6. Calculate total cost
     const totalCost  = (routing.routingCostCents || 0) + (result.costCents || 0);

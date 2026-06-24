@@ -10,7 +10,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { createLogger } from './logging/logger.js';
 import { runHeartbeat } from './heartbeat.js';
-import { loadAgentConfig } from './config/agent-profile.js';
+import { loadAgentConfig, normalizeAgentId } from './config/agent-profile.js';
 import { cronSchedules } from './config/cron-schedules.js';
 import { testDatabaseConnection } from './database/auto-setup.js';
 import { testLettaConnection } from './memory/letta-client.js';
@@ -51,6 +51,7 @@ const __dirname = path.dirname(__filename);
 const logger = createLogger('heartbeat-engine');
 const app = express();
 const PORT = process.env.PORT || 3000;
+const DEFAULT_AGENT_ID = normalizeAgentId(process.env.AGENT_UUID || process.env.AGENT_ID);
 
 // Top-level Supabase client for API routes
 const supabase = createClient(
@@ -126,7 +127,7 @@ app.get('/health', (req, res) => {
     version: process.env.RAILWAY_GIT_COMMIT_SHA || process.env.RAILWAY_GIT_COMMIT || 'local',
     chatFastPath: 'greeting-v1',
     agent: {
-      id: process.env.AGENT_ID || 'bloomie-sarah-rodriguez',
+      id: DEFAULT_AGENT_ID,
       name: process.env.AGENT_NAME || 'Sarah Rodriguez'
     }
   });
@@ -172,7 +173,7 @@ app.get('/status', async (req, res) => {
         heartbeat: 'running'
       },
       agent: {
-        id: process.env.AGENT_ID || 'bloomie-sarah-rodriguez',
+        id: DEFAULT_AGENT_ID,
         name: process.env.AGENT_NAME || 'Sarah Rodriguez'
       }
     };
@@ -1413,7 +1414,7 @@ async function startHeartbeatEngine() {
       logger.warn('⚠️  Failed to load agent config from database, using defaults:', error.message);
       // Continue with default config if database is unavailable
       agentConfig = {
-        agentId: process.env.AGENT_ID || 'bloomie-sarah-rodriguez',
+        agentId: DEFAULT_AGENT_ID,
         name: process.env.AGENT_NAME || 'Sarah Rodriguez',
         currentAutonomyLevel: parseInt(process.env.AUTONOMY_LEVEL || '1'),
         client: 'BLOOM Ecosystem'
@@ -1618,6 +1619,23 @@ async function escalateToBloomieTicket(supabase, taskRunId, taskName, agentId, o
   }
 }
 
+function isScheduledTaskSubstantiveResult(result) {
+  if (typeof result !== 'object' || !result) return Boolean(String(result || '').trim());
+
+  const verification = result.verification || {};
+  const hasVerifiedPlan = verification.allStepsPassing === true
+    || (verification.totalSteps > 0 && verification.verifiedSteps >= verification.totalSteps);
+
+  const toolHistory = Array.isArray(result.toolHistory) ? result.toolHistory : [];
+  const substantiveTools = toolHistory.filter((entry) => {
+    const name = entry?.tool || entry?.name || entry?.toolName;
+    if (!name) return false;
+    return !['bloom_todo_write', 'todo_write', 'bloom_clarify'].includes(name);
+  });
+
+  return hasVerifiedPlan || substantiveTools.length > 0;
+}
+
 // ── Scheduled Task Runner ──────────────────────────────────────────────────
 async function runScheduledTasks(agentConfig) {
   const { createClient } = await import('@supabase/supabase-js');
@@ -1676,7 +1694,7 @@ async function runScheduledTasks(agentConfig) {
       logger.info(`▶ Running task: ${task.name} — "${task.instruction.slice(0, 80)}"`);
       const { AgentExecutor } = await import('./agent/executor.js');
       // MULTI-TENANT: Use the task's own agent_id, not the hardcoded agentConfig
-      const executor = new AgentExecutor(task.agent_id || agentConfig?.agentId || 'bloomie-sarah-rodriguez', agentConfig);
+      const executor = new AgentExecutor(normalizeAgentId(task.agent_id || agentConfig?.agentId), agentConfig);
       const result = await executor.executeTask(task.instruction, { trigger: 'scheduled', taskId: task.id, taskName: task.name, taskType: task.task_type, orgId: task.organization_id });
       output = typeof result === 'string' ? result : result?.response || JSON.stringify(result);
 
@@ -1685,6 +1703,10 @@ async function runScheduledTasks(agentConfig) {
       if (innerStatus === 'failed' || (result?.error && !result?.response)) {
         success = false;
         logger.error(`❌ Task inner failure: ${task.name}`, { innerStatus, error: result?.error });
+      } else if (!isScheduledTaskSubstantiveResult(result)) {
+        success = false;
+        output = `Task finished without verified output. The executor returned ${innerStatus || 'no status'}, but it did not verify a plan or use any substantive non-planning tools.`;
+        logger.warn(`⚠️ Task unverified: ${task.name}`, { innerStatus, toolsUsed: result?.toolsUsed, verification: result?.verification });
       } else {
         success = true;
         logger.info(`✅ Task complete: ${task.name}`);

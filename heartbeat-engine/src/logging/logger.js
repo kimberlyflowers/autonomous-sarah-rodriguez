@@ -37,7 +37,7 @@ export function createLogger(service) {
     format: agentFormat,
     defaultMeta: {
       service,
-      agent: process.env.AGENT_ID || 'bloomie-sarah-rodriguez',
+      agent: process.env.AGENT_UUID || process.env.SARAH_AGENT_ID || 'c3000000-0000-0000-0000-000000000003',
       version: '1.0.0'
     },
     transports: [

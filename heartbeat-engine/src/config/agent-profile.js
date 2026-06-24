@@ -6,7 +6,13 @@ import { createLogger } from '../logging/logger.js';
 const logger = createLogger('agent-profile');
 
 const SARAH_AGENT_ID = process.env.SARAH_AGENT_ID || 'c3000000-0000-0000-0000-000000000003';
+const LEGACY_SARAH_AGENT_ID = 'bloomie-sarah-rodriguez';
 const ORG_ID = process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001';
+
+export function normalizeAgentId(agentId = null) {
+  if (!agentId || agentId === LEGACY_SARAH_AGENT_ID) return SARAH_AGENT_ID;
+  return agentId;
+}
 
 async function getSupabase() {
   const { createClient } = await import('@supabase/supabase-js');
@@ -17,7 +23,7 @@ async function getSupabase() {
 
 // Load agent configuration from Supabase
 export async function loadAgentConfig(agentId = null) {
-  const id = agentId || process.env.AGENT_ID || SARAH_AGENT_ID;
+  const id = normalizeAgentId(agentId || process.env.AGENT_UUID || process.env.AGENT_ID || SARAH_AGENT_ID);
   logger.info('Loading agent configuration from Supabase...', { agentId: id });
 
   try {

@@ -45,6 +45,7 @@ function loadAgentsContext() {
 }
 
 const logger = createLogger('agent-executor');
+const DEFAULT_AGENT_ID = process.env.AGENT_UUID || process.env.SARAH_AGENT_ID || 'c3000000-0000-0000-0000-000000000003';
 
 // Agent execution status
 const EXECUTION_STATUS = {
@@ -59,7 +60,7 @@ const EXECUTION_STATUS = {
  * Takes a task and executes it autonomously using tool chaining
  */
 export class AgentExecutor {
-  constructor(agentId = 'bloomie-sarah-rodriguez', options = {}) {
+  constructor(agentId = DEFAULT_AGENT_ID, options = {}) {
     this.agentId = agentId;
     this.toolExecutionHistory = [];
     this.conversationHistory = [];
