@@ -44,6 +44,11 @@ except Exception:  # pragma: no cover - depends on browser-use version
 logging.basicConfig(level=logging.INFO, format="%(levelname)-5s [%(name)s] %(message)s")
 log = logging.getLogger("browser-agent")
 
+# browser-use can log the full natural-language task. Credentialed tasks may
+# include passwords, so keep third-party browser automation logs above INFO.
+for noisy_logger in ("Agent", "tools", "BrowserSession", "browser_use"):
+    logging.getLogger(noisy_logger).setLevel(logging.WARNING)
+
 # ── Config
 BROWSERLESS_WS_URL = os.getenv("BROWSERLESS_WS_URL", "")
 BROWSERLESS_TOKEN = os.getenv("BROWSERLESS_TOKEN", "")
