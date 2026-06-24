@@ -211,8 +211,32 @@ async function resolveSocialAccountIds(params, locationId) {
     .filter(Boolean);
 }
 
-function getGhlUserId(params) {
-  return params.userId || process.env.GHL_USER_ID || process.env.HUMAN_GHL_USER_ID || null;
+async function getOrgOwnerUserId(orgId) {
+  if (!orgId) return process.env.BLOOM_OWNER_USER_ID || null;
+
+  try {
+    const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const { data, error } = await sb
+      .from('organization_members')
+      .select('user_id')
+      .eq('organization_id', orgId)
+      .eq('role', 'owner')
+      .limit(1)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data?.user_id || process.env.BLOOM_OWNER_USER_ID || null;
+  } catch (err) {
+    logger.warn(`Could not resolve org owner user id from Supabase: ${err.message}`);
+    return process.env.BLOOM_OWNER_USER_ID || null;
+  }
+}
+
+async function getGhlUserId(params) {
+  return params.userId
+    || process.env.GHL_USER_ID
+    || process.env.HUMAN_GHL_USER_ID
+    || await getOrgOwnerUserId(params._orgId);
 }
 
 // ── VALIDATE BLOG ID ──────────────────────────────────────────────────
@@ -2218,7 +2242,7 @@ export const ghlExecutors = {
     const scheduleDate = params.scheduleDate || params.scheduledDate;
     const type = params.type || 'post';
     const status = params.status || (scheduleDate ? 'scheduled' : 'draft');
-    const userId = getGhlUserId(params);
+    const userId = await getGhlUserId(params);
     const accountIds = await resolveSocialAccountIds(params, locationId);
     const media = normalizeSocialMedia(params.media, params.imageUrl, summary);
 
