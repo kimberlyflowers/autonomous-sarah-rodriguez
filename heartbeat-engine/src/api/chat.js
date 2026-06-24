@@ -1257,11 +1257,13 @@ const _ALL_TOOLS = [
   },
   {
     name: "ghl_list_blog_posts",
-    description: "List blog posts from the BLOOM blog site.",
+    description: "List blog posts from the configured GHL/HighLevel blog site using the official GET /blogs/posts/all endpoint.",
     input_schema: {
       type: "object",
       properties: {
-        blogId: { type: "string", description: "Blog site ID. Defaults to BLOOM blog (DHQrtpkQ3Cp7c96FCyDu)." }
+        blogId: { type: "string", description: "Blog site ID. Defaults to BLOOM blog (DHQrtpkQ3Cp7c96FCyDu)." },
+        limit: { type: "number", description: "Number of posts to return. Defaults to 20." },
+        offset: { type: "number", description: "Pagination offset. Defaults to 0." }
       },
       required: []
     }
@@ -2790,12 +2792,51 @@ After getting the page list, you can:
   }
 ];
 
+const DESKTOP_ONLY_BLOOM_TOOLS = new Set([
+  'bloom_take_screenshot',
+  'bloom_click',
+  'bloom_double_click',
+  'bloom_type_text',
+  'bloom_key_press',
+  'bloom_scroll',
+  'bloom_move_mouse',
+  'bloom_drag',
+  'bloom_get_screen_info',
+  'bloom_list_directory',
+  'bloom_read_file',
+  'bloom_write_file',
+  'bloom_move_file',
+  'bloom_create_folder',
+  'bloom_delete_file',
+  'bloom_execute_shell',
+  'bloom_get_system_info',
+  'bloom_clipboard_read',
+  'bloom_clipboard_write',
+  'bloom_app_list',
+  'bloom_app_switch',
+  'bloom_open_url',
+  'bloom_open_file',
+  'bloom_notification',
+  'bloom_audit_log',
+  'bloom_audit_search',
+  'bloom_audit_stats'
+]);
+
+function isDesktopOnlyTool(toolName) {
+  return DESKTOP_ONLY_BLOOM_TOOLS.has(toolName) || toolName.startsWith('bloom_browser_');
+}
+
 // Dynamic tool availability — checked per request, not at boot
-function getAvailableTools() {
+function getAvailableTools(options = {}) {
+  const desktopConnected = options.desktopConnected !== false;
   const available = [];
   const unavailable = [];
   
   for (const tool of _ALL_TOOLS) {
+    if (!desktopConnected && isDesktopOnlyTool(tool.name)) {
+      unavailable.push({ name: tool.name, reason: 'BLOOM Desktop is not connected; use browser_task, browser_screenshot, web_search, or web_fetch instead' });
+      continue;
+    }
     const readiness = checkToolReadiness(tool.name);
     if (readiness.ready) {
       available.push(tool);
@@ -2845,8 +2886,8 @@ function checkToolReadiness(toolName) {
 }
 
 // Build capability notes for system prompt — tell Sarah what's available and what's not
-function getCapabilityNotes() {
-  const { tools: available, unavailable } = getAvailableTools();
+function getCapabilityNotes(options = {}) {
+  const { tools: available, unavailable } = getAvailableTools(options);
   const notes = [];
   
   // Tell Sarah what she CAN do
@@ -2856,6 +2897,9 @@ function getCapabilityNotes() {
   }
   if (available.some(t => t.name === 'web_search')) {
     capabilities.push('Web search is AVAILABLE — use web_search for any research, finding information, or looking up current data.');
+  }
+  if (available.some(t => t.name === 'browser_task')) {
+    capabilities.push('Server-side browser automation is AVAILABLE — use browser_task or browser_screenshot to navigate/read websites. Do NOT use bloom_browser_* unless BLOOM Desktop is connected.');
   }
   if (available.some(t => t.name === 'create_artifact')) {
     capabilities.push('File creation is AVAILABLE — use create_artifact for NEW files, use edit_artifact for modifying existing files (server-side find-and-replace). NEVER use create_artifact to update an existing file.');
@@ -4469,6 +4513,7 @@ async function chatWithAgent(userMessage, history, agentConfig, sessionId = null
   }
 
   let systemPrompt = buildSystemPrompt(agentConfig);
+  let desktopConnected = false;
 
   // LIVE DESKTOP DETECTION — auto-detect if BLOOM Desktop app is running
   // Pings /api/desktop/status to check for active desktop sessions.
@@ -4480,11 +4525,11 @@ async function chatWithAgent(userMessage, history, agentConfig, sessionId = null
       fetch(`${_desktopCheckUrl}/api/desktop/status`).then(r => r.json()),
       new Promise((_, rej) => setTimeout(() => rej(new Error('desktop check timeout')), 3000))
     ]);
-    const _hasDesktop = _desktopStatus?.sessions?.length > 0;
-    if (!_hasDesktop) {
+    desktopConnected = _desktopStatus?.sessions?.length > 0;
+    if (!desktopConnected) {
       // No desktop app connected — strip desktop tool instructions
       systemPrompt = systemPrompt.replace(/MODE 2 — USER'S COMPUTER[\s\S]*?BLOOM DESKTOP PERMISSION RULES:[\s\S]*?ask each time\.\n.*?BLOOM Desktop app instead\?"/g, '');
-      logger.info('No desktop app connected — desktop tools stripped from prompt');
+      logger.info('No desktop app connected — desktop tools stripped from prompt and tool list');
     } else {
       logger.info('Desktop app detected — all desktop tools enabled', {
         sessions: _desktopStatus.sessions.length,
@@ -4492,10 +4537,10 @@ async function chatWithAgent(userMessage, history, agentConfig, sessionId = null
       });
     }
   } catch(e) {
-    // Fail OPEN — if detection fails, keep desktop tools in the prompt.
-    // Better to have tools that return "no desktop connected" errors
-    // than silently strip capabilities the user expects.
-    logger.warn('Desktop auto-detection failed (keeping tools enabled):', e.message);
+    // Fail closed for desktop-control tools. Server-side browser/search remains available.
+    desktopConnected = false;
+    systemPrompt = systemPrompt.replace(/MODE 2 — USER'S COMPUTER[\s\S]*?BLOOM DESKTOP PERMISSION RULES:[\s\S]*?ask each time\.\n.*?BLOOM Desktop app instead\?"/g, '');
+    logger.warn('Desktop auto-detection failed (desktop tools disabled; server browser/search still available):', e.message);
   }
 
   // Inject brand kit if available — multi-tenant: always scoped to the org of the current chat session
@@ -4796,8 +4841,8 @@ NEVER skip steps 3 and 4 even if step 2 fails.
   let currentMessages = [...messages];
 
   // Dynamic tool availability + capability notes (ONCE, before the loop)
-  const { tools: availableTools } = getAvailableTools();
-  const capabilityNotes = getCapabilityNotes();
+  const { tools: availableTools } = getAvailableTools({ desktopConnected });
+  const capabilityNotes = getCapabilityNotes({ desktopConnected });
   if (capabilityNotes) systemPrompt += capabilityNotes;
 
   // ── CONTEXT WINDOW MANAGEMENT — prevent "prompt is too long" errors ────

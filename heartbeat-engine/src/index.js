@@ -338,8 +338,8 @@ app.get('/ghl-diagnostics', async (req, res) => {
 
   // Test 2: List blog posts (GET — tests if blog endpoint exists)
   try {
-    const r = await axios.get(`https://services.leadconnectorhq.com/blogs/${blogId}/posts`, {
-      headers, params: { locationId, limit: 1 }, timeout: 10000
+    const r = await axios.get('https://services.leadconnectorhq.com/blogs/posts/all', {
+      headers, params: { locationId, blogId, limit: 1, offset: 0 }, timeout: 10000
     });
     results.tests.blogList = { status: 'OK', httpStatus: r.status, responseKeys: Object.keys(r.data || {}) };
   } catch (e) {
@@ -358,9 +358,9 @@ app.get('/ghl-diagnostics', async (req, res) => {
 
   // Test 4: Try blog post with newer API version header
   try {
-    const r = await axios.get(`https://services.leadconnectorhq.com/blogs/${blogId}/posts`, {
+    const r = await axios.get('https://services.leadconnectorhq.com/blogs/posts/all', {
       headers: { ...headers, 'Version': '2021-10-28' },
-      params: { locationId, limit: 1 }, timeout: 10000
+      params: { locationId, blogId, limit: 1, offset: 0 }, timeout: 10000
     });
     results.tests.blogListNewVersion = { status: 'OK', httpStatus: r.status, note: 'Works with Version 2021-10-28' };
   } catch (e) {

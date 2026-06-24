@@ -1290,11 +1290,13 @@ export const ghlToolDefinitions = {
   // BLOG POSTS
   ghl_list_blog_posts: {
     name: "ghl_list_blog_posts",
-    description: "List blog posts from the BLOOM blog site.",
+    description: "List blog posts from the configured GHL/HighLevel blog site using the official GET /blogs/posts/all endpoint.",
     parameters: {
       type: "object",
       properties: {
-        blogId: { type: "string", description: "Blog site ID. Defaults to BLOOM blog (DHQrtpkQ3Cp7c96FCyDu)." }
+        blogId: { type: "string", description: "Blog site ID. Defaults to BLOOM blog (DHQrtpkQ3Cp7c96FCyDu)." },
+        limit: { type: "number", description: "Number of posts to return. Defaults to 20." },
+        offset: { type: "number", description: "Pagination offset. Defaults to 0." }
       },
       required: []
     },
@@ -2106,11 +2108,14 @@ export const ghlExecutors = {
   },
 
   // BLOG POSTS
-  // GET /blogs/posts — list posts (GHL API v2: blogId is a query param, not a path segment)
+  // GET /blogs/posts/all — list posts (GHL API v2: blogId is a query param, not a path segment)
+  // Docs: https://marketplace.gohighlevel.com/docs/ghl/blogs/get-blog-post/
   ghl_list_blog_posts: async (params) => {
     const blogId = params.blogId || process.env.GHL_BLOG_ID || 'DHQrtpkQ3Cp7c96FCyDu';
     const locationId = await resolveLocationId(params._orgId);
-    return await callGHL('/blogs/posts', 'GET', null, { locationId, blogId });
+    const limit = Number.isFinite(Number(params.limit)) ? Number(params.limit) : 20;
+    const offset = Number.isFinite(Number(params.offset)) ? Number(params.offset) : 0;
+    return await callGHL('/blogs/posts/all', 'GET', null, { locationId, blogId, limit, offset }, params._orgId);
   },
 
   // POST /blogs/posts — create a blog post (GHL API v2: blogId goes in the body, not URL path)
