@@ -5359,7 +5359,7 @@ function App({ authUser }) {
     setVcRec(false);
   };
 
-  const startBrowserDictation=({onEnd=null}={})=>{
+  const startBrowserDictation=({onEnd=null,autoSend=false}={})=>{
     const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
     if(!SR) {
       setOauthToast({type:'error',msg:'Speech-to-text is not available in this browser'});
@@ -5371,14 +5371,24 @@ function App({ authUser }) {
     r.continuous=false;
     r.interimResults=true;
     r.lang="en-US";
+    let finalTranscript="";
     r.onresult=(ev)=>{
       let t="";
       for(let i=0;i<ev.results.length;i++) t+=ev.results[i][0].transcript;
+      finalTranscript=t.trim();
       setTx(t);
     };
-    r.onend=()=>{
+    r.onend=async()=>{
       voiceRecognitionRef.current=null;
       setVcRec(false);
+      if(autoSend && finalTranscript && !loading) {
+        const activeProjectId = selectedProject?.id || null;
+        setTx("");
+        setNew(false);
+        if(isSarahVoiceAgent) window.__bloomieLiveAvatar?.ensureStarted?.();
+        const ok = await send(finalTranscript, activeProjectId);
+        if(ok && selectedProject?.id) await loadProjectConversations(selectedProject);
+      }
       onEnd?.();
     };
     r.onerror=()=>{
@@ -5407,7 +5417,7 @@ function App({ authUser }) {
         stopBrowserDictation();
       } else {
         liveAvatar?.ensureStarted?.();
-        startBrowserDictation();
+        startBrowserDictation({autoSend:true});
       }
       return;
     }
