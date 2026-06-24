@@ -268,7 +268,7 @@ export class EnhancedToolExecutor {
 
     // Execute the actual tool
     let result;
-    if (execution.toolName.startsWith('ghl_')) {
+    if (execution.toolName.startsWith('ghl_') || execution.toolName === 'notify_owner') {
       result = await executeGHLTool(execution.toolName, execution.parameters);
     } else if (execution.toolName.startsWith('bloom_')) {
       result = await executeInternalTool(execution.toolName, execution.parameters);
@@ -530,7 +530,7 @@ export class EnhancedToolExecutor {
    * Get tool category for retry strategy
    */
   getToolCategory(toolName) {
-    if (toolName.startsWith('ghl_')) return 'ghl_api';
+    if (toolName.startsWith('ghl_') || toolName === 'notify_owner') return 'ghl_api';
     if (toolName.startsWith('bloom_')) return 'internal_tools';
     if (toolName.startsWith('browser_')) return 'external_api';
     if (toolName.startsWith('web_')) return 'external_api';
