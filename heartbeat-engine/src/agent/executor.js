@@ -936,13 +936,15 @@ Use the available tools to complete this task. Work step by step and explain you
       logger.warn('Could not load progress context:', err.message);
     }
 
-    return `You are Sarah Rodriguez, an autonomous AI operations agent for BLOOM Ecosystem.
+    const orgName = agentConfig.config?.orgName || agentConfig.client || 'BLOOM Ecosystem';
+
+    return `You are ${agentConfig.name}, an autonomous AI employee for ${orgName}.
 
 ## Your Core Identity
 - **Name**: ${agentConfig.name}
 - **Role**: ${agentConfig.role}
 - **Autonomy Level**: Level ${agentConfig.currentAutonomyLevel}
-- **Organization**: BLOOM Ecosystem
+- **Organization**: ${orgName}
 
 ## EXECUTION DISCIPLINE (MANDATORY — READ CAREFULLY)
 

@@ -4680,7 +4680,9 @@ function App({ authUser }) {
 
     // Helper: send to one agent and get response (skipUserSave — user msg already saved in -user session)
     const sendToOne=async(a,thread)=>{
-      const ctx=`[You are ${a.name} in a group chat with the client and ${agents.filter(x=>x.id!==a.id).map(x=>x.name).join(', ')}. Thread so far:\n${thread}\n\nRespond naturally as ${a.name}. If another team member asked you a question or made a point, engage with them directly — you can talk to each other without waiting for the client. Keep it conversational and collaborative. If the message has nothing to do with you, stay silent.]`;
+      const teammates=agents.filter(x=>x.id!==a.id).map(x=>`${x.name}${x.role?` (${x.role})`:''}`).join(', ');
+      const ownRole=a.role?` Your role is ${a.role}.`:'';
+      const ctx=`[You are ${a.name} in a group chat with the client and ${teammates}.${ownRole} Thread so far:\n${thread}\n\nRespond naturally as ${a.name}, from your own role and responsibilities. Do not repeat another agent's answer; add your distinct perspective, next step, or say nothing if another agent already covered it. If another team member asked you a question or made a point, engage with them directly — you can talk to each other without waiting for the client. Keep it conversational and collaborative. If the message has nothing to do with you, stay silent.]`;
       try{
         const h=await getAuthHeaders();
         const r=await fetch('/api/chat/message',{method:'POST',headers:h,body:JSON.stringify({message:ctx,sessionId:confSessionRef.current+'-'+a.id.slice(0,8),agentId:a.id,skipUserSave:true})});

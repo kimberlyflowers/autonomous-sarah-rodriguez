@@ -4436,9 +4436,12 @@ function isConversationalMessage(text) {
   return false;
 }
 
-function buildInstantConversationReply(text) {
+function buildInstantConversationReply(text, agentConfig = null) {
   const normalized = (text || '').trim().toLowerCase();
-  if (!normalized) return 'Hi, I am here with you.';
+  const firstName = (agentConfig?.name || 'I').split(' ')[0] || 'I';
+  const agentHere = firstName === 'I' ? "I'm here" : `${firstName} here`;
+
+  if (!normalized) return `${agentHere} with you.`;
   if (/^(thanks|thank you|ty|thx)[!.?\s]*$/i.test(normalized)) {
     return "You're welcome. I'm here when you're ready.";
   }
@@ -4446,9 +4449,9 @@ function buildInstantConversationReply(text) {
     return 'Got it.';
   }
   if (/^(how are you|how's it going|what's up|you there|are you there)[!.?\s]*$/i.test(normalized)) {
-    return "I'm here and ready to help. What are we working on?";
+    return `${firstName} here and ready to help. What are we working on?`;
   }
-  return 'Hi, I am here. What can I help you with?';
+  return `Hi, ${firstName} here. What can I help you with?`;
 }
 
 async function chatWithAgent(userMessage, history, agentConfig, sessionId = null, orgId = null) {
@@ -4462,7 +4465,7 @@ async function chatWithAgent(userMessage, history, agentConfig, sessionId = null
     taskProgress.delete(trackingKey);
     thinkingLog.delete(trackingKey);
 
-    return buildInstantConversationReply(messageText);
+    return buildInstantConversationReply(messageText, agentConfig);
   }
 
   let systemPrompt = buildSystemPrompt(agentConfig);
@@ -6157,7 +6160,7 @@ router.post('/message', async (req, res) => {
 
     const rawMessageText = getMessageText(message);
     if (isConversationalMessage(rawMessageText)) {
-      const instantResponse = buildInstantConversationReply(rawMessageText);
+      const instantResponse = buildInstantConversationReply(rawMessageText, agentConfig);
       await saveMessages(null, sessionId, message, instantResponse, null, userId, agentConfig.agentId, { skipUserSave: true });
       return res.json({
         response: instantResponse,
