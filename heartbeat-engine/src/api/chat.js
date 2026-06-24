@@ -5787,6 +5787,35 @@ async function saveUserMessage(sessionId, userMsg, files = null, userId = null, 
   }
 }
 
+async function saveChatMessage(sessionId, role, content, userId = null, agentId = null) {
+  const text = typeof content === 'string' ? content : JSON.stringify(content);
+  const normalizedRole = role === 'agent' ? 'assistant' : role;
+  try {
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const resolvedUserId = userId || process.env.BLOOM_OWNER_USER_ID || '823e2fb5-2f8f-4279-9c84-c8f4bf78bcce';
+    const resolvedAgentId = agentId || process.env.AGENT_UUID || 'c3000000-0000-0000-0000-000000000003';
+
+    await supabase
+      .from('messages')
+      .insert({
+        session_id: sessionId,
+        organization_id: process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001',
+        user_id: resolvedUserId,
+        agent_id: resolvedAgentId,
+        role: normalizedRole,
+        content: text
+      });
+
+    await supabase
+      .from('sessions')
+      .update({ updated_at: new Date().toISOString() })
+      .eq('id', sessionId);
+  } catch (err) {
+    logger.error('Failed to save chat message to Supabase:', err.message);
+  }
+}
+
 
 async function generateSessionTitle(sessionId, userMsg, assistantMsg) {
   const maxRetries = 3;
@@ -6084,6 +6113,30 @@ router.post('/conference/user-message', async (req, res) => {
   } catch (e) {
     logger.error('Conference user-message save failed:', e.message);
     res.status(500).json({ error: e.message });
+  }
+});
+
+router.post('/voice-transcript', async (req, res) => {
+  try {
+    const { sessionId, agentId, role, message, projectId } = req.body || {};
+    const text = String(message || '').trim();
+    const normalizedRole = role === 'agent' ? 'assistant' : role;
+
+    if (!sessionId) return res.status(400).json({ error: 'sessionId is required' });
+    if (!text) return res.status(400).json({ error: 'message is required' });
+    if (!['user', 'assistant'].includes(normalizedRole)) {
+      return res.status(400).json({ error: 'role must be user, agent, or assistant' });
+    }
+
+    const userId = await getUserId(req);
+    const agentConfig = await loadAgentConfig(agentId || null);
+    await ensureSession(null, sessionId, userId, agentConfig.agentId, projectId || null);
+    await saveChatMessage(sessionId, normalizedRole, text, userId, agentConfig.agentId);
+
+    return res.json({ success: true, sessionId, agentId: agentConfig.agentId });
+  } catch (err) {
+    logger.error('voice transcript save failed:', err.message);
+    return res.status(500).json({ error: 'Failed to save voice transcript' });
   }
 });
 

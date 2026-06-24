@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, Component } from "react";
+import { useState, useEffect, useRef, useCallback, Component } from "react";
 import { ConversationProvider, useConversation } from "@elevenlabs/react";
 import { LiveAvatarSession as LiveAvatarWebSession, SessionEvent, SessionState } from "@heygen/liveavatar-web-sdk";
 import ReactMarkdown from "react-markdown";
@@ -1410,9 +1410,8 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null, lastSara
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
             <button onClick={connected?stopSdkLive:startSdkLive} disabled={starting} style={{padding:"9px 12px",borderRadius:8,border:"none",background:connected?"#EF4444":c.gradient,color:"#fff",fontSize:12,fontWeight:800,cursor:starting?"wait":"pointer",flexShrink:0}}>{connected?"End":"Start"}</button>
             <div style={{flex:1,minWidth:0,padding:"8px 10px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,color:c.so,fontSize:11,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
-              {latestSpeechText||`${firstName} is ready.`}
+              {connected ? `${firstName} is live` : "Start the live avatar, then use the mic below"}
             </div>
-            <button onClick={speakSdkText} disabled={!connected} style={{padding:"9px 12px",borderRadius:8,border:"1px solid "+c.ln,background:connected?c.ac:"transparent",color:connected?"#fff":c.so,fontSize:12,fontWeight:800,cursor:connected?"pointer":"not-allowed",flexShrink:0}}>Speak</button>
           </div>
         </div>
       </div>
@@ -1435,16 +1434,13 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null, lastSara
             ? <video src={session.hlsUrl} autoPlay playsInline controls style={{width:"100%",height:"100%",objectFit:"contain",background:"#050505"}}/>
             : <div style={{textAlign:"center",padding:22,width:"100%",maxWidth:360}}>
                 {agentImg
-                  ? <img src={agentImg} alt="" style={{width:92,height:92,borderRadius:20,objectFit:"cover",border:"1px solid "+c.ln,marginBottom:14}}/>
-                  : <div style={{width:92,height:92,borderRadius:20,background:c.gradient,display:"inline-flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:30,fontWeight:800,marginBottom:14}}>{firstName[0]||"A"}</div>}
+                  ? <img src={agentImg} alt="" style={{width:160,height:160,borderRadius:22,objectFit:"cover",border:"1px solid "+c.ln,marginBottom:16}}/>
+                  : <div style={{width:160,height:160,borderRadius:22,background:c.gradient,display:"inline-flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:44,fontWeight:800,marginBottom:16}}>{firstName[0]||"A"}</div>}
                 <div style={{fontSize:17,fontWeight:800,color:c.tx,marginBottom:8}}>{firstName} Live</div>
-                <div style={{...selectStyle,minHeight:86,lineHeight:1.45,textAlign:"left",color:latestSpeechText?c.tx:c.so,overflow:"hidden"}}>
-                  <div style={{fontSize:10,fontWeight:800,color:c.so,textTransform:"uppercase",letterSpacing:0,marginBottom:6}}>Latest Sarah reply</div>
-                  <div style={{display:"-webkit-box",WebkitLineClamp:3,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{latestSpeechText||`${firstName} is ready.`}</div>
-                </div>
+                <div style={{fontSize:12,color:c.so,lineHeight:1.45,marginBottom:14}}>LiveAvatar SDK is not configured yet. This saved HeyGen mode can only create text-to-video previews, so it is paused here instead of duplicating the chat.</div>
                 {err&&<div style={{fontSize:11,color:c.err,marginBottom:10,lineHeight:1.4}}>{err}</div>}
-                <button onClick={startLive} disabled={starting} style={{width:"100%",padding:"10px 12px",borderRadius:9,border:"none",background:c.gradient,cursor:starting?"wait":"pointer",color:"#fff",fontSize:12,fontWeight:800}}>
-                  {starting?"Starting...":"Play Latest Reply"}
+                <button onClick={()=>setMode("liveavatar_sdk")} style={{width:"100%",padding:"10px 12px",borderRadius:9,border:"none",background:c.gradient,cursor:"pointer",color:"#fff",fontSize:12,fontWeight:800}}>
+                  Configure LiveAvatar
                 </button>
               </div>}
         </div>
@@ -4382,6 +4378,9 @@ function App({ authUser }) {
   const agentOnline=useAgentOnline();
   const {crmUrl,contactsUrl}=useCRMLink();
   const {messages,setMessages,send,sendFiles,sendFilesEncoded,loading,workingStatus,sessions,currentSessionId,newSession,loadSession,deleteSession,fetchSessions,stopSarah,sid,agents,currentAgentId,currentAgent,switchAgent}=useSarahChat();
+  const currentAgentIdRef=useRef(currentAgentId);
+  const voiceTranscriptSeenRef=useRef(new Set());
+  useEffect(()=>{ currentAgentIdRef.current=currentAgentId; },[currentAgentId]);
   // Periodically refresh session titles (AI title generates async after first message)
   useEffect(()=>{ const t=setInterval(fetchSessions,8000); return()=>clearInterval(t); },[]);
   const connected=agentOnline; // true online/offline from health poll
@@ -4610,9 +4609,46 @@ function App({ authUser }) {
   const [ghlSaving,setGhlSaving]=useState(false);
   const [convaiStarting,setConvaiStarting]=useState(false);
   const [convaiError,setConvaiError]=useState('');
+  const appendVoiceTranscript=useCallback((payload)=>{
+    const text=String(payload?.message||'').trim();
+    const role=payload?.role==="agent"||payload?.role==="assistant"||payload?.source==="ai"?"agent":"user";
+    if(!text) return;
+
+    const eventKey=`${payload?.event_id||payload?.eventId||''}:${role}:${text}`;
+    if(voiceTranscriptSeenRef.current.has(eventKey)) return;
+    voiceTranscriptSeenRef.current.add(eventKey);
+    if(voiceTranscriptSeenRef.current.size>100) {
+      voiceTranscriptSeenRef.current=new Set(Array.from(voiceTranscriptSeenRef.current).slice(-60));
+    }
+
+    let sessionId=sid.current;
+    if(!sessionId) {
+      newSession();
+      sessionId=sid.current;
+    }
+    setNew(false);
+
+    const tm=new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
+    const id=`voice-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    setMessages(prev=>[...prev,{id,b:role==="agent",t:text,tm,voice:true}]);
+
+    getAuthHeaders()
+      .then(h=>fetch('/api/chat/voice-transcript',{
+        method:'POST',
+        headers:h,
+        body:JSON.stringify({
+          sessionId,
+          agentId:currentAgentIdRef.current,
+          role,
+          message:text
+        })
+      }))
+      .catch(e=>console.warn('Voice transcript save failed',e));
+  },[newSession,setMessages,setNew,sid]);
   const conversation=useConversation({
     onConnect:()=>{setConvaiStarting(false);setConvaiError('');},
     onDisconnect:()=>{setConvaiStarting(false);},
+    onMessage:appendVoiceTranscript,
     onError:(err)=>{
       const msg=typeof err==="string"?err:(err?.message||err?.error||"Sarah voice could not connect");
       setConvaiStarting(false);
