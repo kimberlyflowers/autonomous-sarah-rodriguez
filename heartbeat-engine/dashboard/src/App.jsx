@@ -1214,6 +1214,14 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null}) {
   const [loading,setLoading]=useState(false);
   const [saving,setSaving]=useState(false);
   const [embedUrl,setEmbedUrl]=useState("");
+  const [avatars,setAvatars]=useState([]);
+  const [voices,setVoices]=useState([]);
+  const [avatarId,setAvatarId]=useState("");
+  const [voiceId,setVoiceId]=useState("");
+  const [mode,setMode]=useState("heygen_realtime");
+  const [liveText,setLiveText]=useState("");
+  const [session,setSession]=useState(null);
+  const [starting,setStarting]=useState(false);
   const [err,setErr]=useState("");
 
   const load=()=>{
@@ -1225,6 +1233,9 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null}) {
         if(!ok) throw new Error(d.error||"Could not load live avatar");
         setCfg(d);
         if(d.embedUrl) setEmbedUrl(d.embedUrl);
+        if(d.avatarId) setAvatarId(d.avatarId);
+        if(d.voiceId) setVoiceId(d.voiceId);
+        if(d.mode) setMode(d.mode);
       })
       .catch(e=>setErr(e.message||"Could not load live avatar"))
       .finally(()=>setLoading(false));
@@ -1232,13 +1243,47 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null}) {
 
   useEffect(()=>{load();},[agentId]);
 
+  const loadHeyGenAssets=async()=>{
+    try{
+      setErr("");
+      const [ar,vr]=await Promise.all([
+        fetch("/api/avatar/heygen/avatars"),
+        fetch("/api/avatar/heygen/voices")
+      ]);
+      const [ad,vd]=await Promise.all([ar.json().catch(()=>({})),vr.json().catch(()=>({}))]);
+      if(!ar.ok) throw new Error(ad.error||"Could not load HeyGen avatars");
+      if(!vr.ok) throw new Error(vd.error||"Could not load HeyGen voices");
+      setAvatars(ad.avatars||[]);
+      setVoices(vd.voices||[]);
+      if(!avatarId && ad.avatars?.[0]) {
+        setAvatarId(ad.avatars[0].id);
+        if(ad.avatars[0].defaultVoiceId) setVoiceId(ad.avatars[0].defaultVoiceId);
+      }
+      if(!voiceId && vd.voices?.[0]) setVoiceId(vd.voices[0].id);
+    }catch(e){ setErr(e.message||"Could not load HeyGen assets"); }
+  };
+
+  useEffect(()=>{
+    if(cfg?.heygenApiConfigured) loadHeyGenAssets();
+  },[cfg?.heygenApiConfigured,agentId]);
+
   const save=async()=>{
-    const url=embedUrl.trim();
-    if(!url.startsWith("https://")) { setErr("Use a secure HeyGen embed URL"); return; }
+    const body={agentId,provider:"heygen",mode};
+    if(mode==="embed") {
+      const url=embedUrl.trim();
+      if(!url.startsWith("https://")) { setErr("Use a secure HeyGen embed URL"); return; }
+      body.embedUrl=url;
+    } else {
+      if(!avatarId || !voiceId) { setErr("Choose a HeyGen avatar and voice"); return; }
+      const chosen=avatars.find(a=>a.id===avatarId);
+      body.avatarId=avatarId;
+      body.voiceId=voiceId;
+      body.avatarName=chosen?.name || agentName;
+    }
     setSaving(true); setErr("");
     try{
       const h=await getAuthHeaders();
-      const r=await fetch("/api/avatar/live/config",{method:"POST",headers:h,body:JSON.stringify({agentId,provider:"heygen",embedUrl:url})});
+      const r=await fetch("/api/avatar/live/config",{method:"POST",headers:h,body:JSON.stringify(body)});
       const d=await r.json().catch(()=>({}));
       if(!r.ok) throw new Error(d.error||"Could not save live avatar");
       load();
@@ -1246,13 +1291,28 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null}) {
     finally{ setSaving(false); }
   };
 
+  const startLive=async()=>{
+    setStarting(true); setErr(""); setSession(null);
+    try{
+      const h=await getAuthHeaders();
+      const text=liveText.trim() || `Hi, I'm ${firstName}. I'm ready to help.`;
+      const r=await fetch("/api/avatar/live/session",{method:"POST",headers:h,body:JSON.stringify({agentId,text})});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok) throw new Error(d.error||"Could not start live avatar");
+      if(d.errorMessage) throw new Error(d.errorMessage);
+      setSession(d);
+    }catch(e){ setErr(e.message||"Could not start live avatar"); }
+    finally{ setStarting(false); }
+  };
+
   const firstName=(agentName||"Agent").split(" ")[0];
+  const selectStyle={width:"100%",padding:"10px 12px",borderRadius:9,border:"1px solid "+c.ln,background:c.inp,color:c.tx,fontSize:12,fontFamily:"inherit",boxSizing:"border-box",marginBottom:10};
 
   if(loading && !cfg) {
     return <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",background:"#0b0b0c",color:c.so,fontSize:13}}>Loading live avatar...</div>;
   }
 
-  if(cfg?.enabled && cfg.embedUrl) {
+  if(cfg?.enabled && cfg.mode==="embed" && cfg.embedUrl) {
     return(
       <div style={{flex:1,minHeight:0,display:"flex",flexDirection:"column",background:"#050505"}}>
         <div style={{height:36,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 10px",background:c.cd,borderBottom:"1px solid "+c.ln,flexShrink:0}}>
@@ -1273,6 +1333,36 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null}) {
     );
   }
 
+  if(cfg?.enabled && cfg.mode==="heygen_realtime" && cfg.avatarId) {
+    return(
+      <div style={{flex:1,minHeight:0,display:"flex",flexDirection:"column",background:"#050505"}}>
+        <div style={{height:36,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 10px",background:c.cd,borderBottom:"1px solid "+c.ln,flexShrink:0}}>
+          <div style={{display:"flex",alignItems:"center",gap:7,minWidth:0}}>
+            <span style={{width:7,height:7,borderRadius:"50%",background:session?.hlsUrl?c.gr:c.ac,animation:"pulse 1.4s ease infinite",flexShrink:0}}/>
+            <span style={{fontSize:11,fontWeight:700,color:session?.hlsUrl?c.gr:c.ac}}>HEYGEN</span>
+            <span style={{fontSize:11,color:c.so,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{cfg.avatarName||firstName}</span>
+          </div>
+          <button onClick={load} title="Refresh live avatar" style={{width:24,height:24,borderRadius:6,border:"1px solid "+c.ln,background:"transparent",cursor:"pointer",color:c.so,fontSize:12}}>↻</button>
+        </div>
+        <div style={{flex:1,minHeight:0,display:"flex",alignItems:"center",justifyContent:"center",background:"#050505"}}>
+          {session?.hlsUrl
+            ? <video src={session.hlsUrl} autoPlay playsInline controls style={{width:"100%",height:"100%",objectFit:"contain",background:"#050505"}}/>
+            : <div style={{textAlign:"center",padding:22,width:"100%",maxWidth:360}}>
+                {agentImg
+                  ? <img src={agentImg} alt="" style={{width:92,height:92,borderRadius:20,objectFit:"cover",border:"1px solid "+c.ln,marginBottom:14}}/>
+                  : <div style={{width:92,height:92,borderRadius:20,background:c.gradient,display:"inline-flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:30,fontWeight:800,marginBottom:14}}>{firstName[0]||"A"}</div>}
+                <div style={{fontSize:17,fontWeight:800,color:c.tx,marginBottom:8}}>{firstName} Live</div>
+                <textarea value={liveText} onChange={e=>setLiveText(e.target.value)} placeholder={`What should ${firstName} say?`} rows={4} style={{...selectStyle,resize:"vertical",lineHeight:1.45}}/>
+                {err&&<div style={{fontSize:11,color:c.err,marginBottom:10,lineHeight:1.4}}>{err}</div>}
+                <button onClick={startLive} disabled={starting} style={{width:"100%",padding:"10px 12px",borderRadius:9,border:"none",background:c.gradient,cursor:starting?"wait":"pointer",color:"#fff",fontSize:12,fontWeight:800}}>
+                  {starting?"Starting...":"Start Talking"}
+                </button>
+              </div>}
+        </div>
+      </div>
+    );
+  }
+
   return(
     <div style={{flex:1,minHeight:0,display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(180deg,#111,#070707)",padding:22}}>
       <div style={{width:"100%",maxWidth:360}}>
@@ -1282,15 +1372,36 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null}) {
             : <div style={{width:82,height:82,borderRadius:18,background:c.gradient,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:28,fontWeight:800}}>{firstName[0]||"A"}</div>}
         </div>
         <div style={{textAlign:"center",fontSize:17,fontWeight:800,color:c.tx,marginBottom:6}}>{firstName} Live</div>
-        <div style={{textAlign:"center",fontSize:12,color:c.so,lineHeight:1.5,marginBottom:18}}>Add this employee's HeyGen LiveAvatar embed URL to show their talking face here.</div>
-        <input
-          value={embedUrl}
-          onChange={e=>setEmbedUrl(e.target.value)}
-          placeholder="https://embed.liveavatar.com/..."
-          style={{width:"100%",padding:"10px 12px",borderRadius:9,border:"1px solid "+c.ln,background:c.inp,color:c.tx,fontSize:12,fontFamily:"inherit",boxSizing:"border-box",marginBottom:10}}
-        />
+        <div style={{textAlign:"center",fontSize:12,color:c.so,lineHeight:1.5,marginBottom:18}}>Choose how this employee should appear live.</div>
+        <div style={{display:"flex",gap:6,marginBottom:10}}>
+          {[
+            ["heygen_realtime","HeyGen API"],
+            ["embed","Embed URL"]
+          ].map(([k,l])=><button key={k} onClick={()=>setMode(k)} style={{flex:1,padding:"8px 10px",borderRadius:8,border:"1px solid "+(mode===k?c.ac:c.ln),background:mode===k?c.ac+"20":"transparent",color:mode===k?c.ac:c.so,fontSize:11,fontWeight:800,cursor:"pointer"}}>{l}</button>)}
+        </div>
+        {mode==="embed" ? (
+          <input
+            value={embedUrl}
+            onChange={e=>setEmbedUrl(e.target.value)}
+            placeholder="https://embed.liveavatar.com/..."
+            style={selectStyle}
+          />
+        ) : cfg?.heygenApiConfigured ? (
+          <>
+            <select value={avatarId} onChange={e=>{setAvatarId(e.target.value); const a=avatars.find(x=>x.id===e.target.value); if(a?.defaultVoiceId) setVoiceId(a.defaultVoiceId);}} style={selectStyle}>
+              <option value="">Choose avatar...</option>
+              {avatars.map(a=><option key={a.id} value={a.id}>{a.name||a.id}</option>)}
+            </select>
+            <select value={voiceId} onChange={e=>setVoiceId(e.target.value)} style={selectStyle}>
+              <option value="">Choose voice...</option>
+              {voices.map(v=><option key={v.id} value={v.id}>{v.name||v.id}{v.language?` · ${v.language}`:""}</option>)}
+            </select>
+          </>
+        ) : (
+          <div style={{fontSize:12,color:c.so,lineHeight:1.45,background:c.cd,border:"1px solid "+c.ln,borderRadius:9,padding:12,marginBottom:10}}>HeyGen API key is not configured on the server yet.</div>
+        )}
         {err&&<div style={{fontSize:11,color:c.err,marginBottom:10,lineHeight:1.4}}>{err}</div>}
-        <button onClick={save} disabled={saving||!embedUrl.trim()} style={{width:"100%",padding:"10px 12px",borderRadius:9,border:"none",background:embedUrl.trim()?c.gradient:c.ln,cursor:embedUrl.trim()&&!saving?"pointer":"not-allowed",color:"#fff",fontSize:12,fontWeight:800}}>
+        <button onClick={save} disabled={saving||(mode==="embed"?!embedUrl.trim():!avatarId||!voiceId)} style={{width:"100%",padding:"10px 12px",borderRadius:9,border:"none",background:(mode==="embed"?embedUrl.trim():avatarId&&voiceId)?c.gradient:c.ln,cursor:!saving&&(mode==="embed"?embedUrl.trim():avatarId&&voiceId)?"pointer":"not-allowed",color:"#fff",fontSize:12,fontWeight:800}}>
           {saving?"Saving...":"Save Live Avatar"}
         </button>
       </div>
