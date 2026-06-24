@@ -453,7 +453,9 @@ Use the available tools to complete this task. Work step by step and explain you
     // Gemini 2.5 Flash with mode:'AUTO' responds text-only instead of calling tools.
     // Setting mode:'ANY' forces it to call at least one tool. Keep forcing after
     // the plan is written until a non-planning tool has actually been attempted.
-    const forceToolUse = this._isScheduledTask && !this.hasSubstantiveToolUse() && toolDefs.length > 0;
+    const forceToolUse = this._isScheduledTask &&
+      (!this.hasSubstantiveToolUse() || this.needsScheduledOwnerNotification()) &&
+      toolDefs.length > 0;
 
     // Use unified callModel — handles all providers + automatic failover
     const result = await callModel(model, {
@@ -903,6 +905,10 @@ Use the available tools to complete this task. Work step by step and explain you
 
     for (const toolSource of allToolSources) {
       for (const [toolName, toolDef] of Object.entries(toolSource)) {
+        // For scheduled email check-ins, after the inbox check succeeds the only
+        // valid next action is notifying the owner.
+        if (this.needsScheduledOwnerNotification() && toolName !== 'notify_owner') continue;
+
         // After a scheduled task has attempted its plan, hide internal paperwork
         // tools until at least one real external/action tool is attempted.
         if (this.shouldSuppressPlanningToolsForScheduledTask(toolName)) continue;
@@ -1285,7 +1291,24 @@ Remember: Plan first. Execute one step. Verify it worked. Then move on.`;
     });
   }
 
+  hasToolAttempt(toolName) {
+    return this.toolExecutionHistory.some(entry => {
+      const name = entry?.tool || entry?.name || entry?.toolName;
+      return name === toolName;
+    });
+  }
+
+  needsScheduledOwnerNotification() {
+    return this._isScheduledTask &&
+      this._currentTaskType === 'email' &&
+      this.hasToolAttempt('gmail_check_inbox') &&
+      !this.hasToolAttempt('notify_owner');
+  }
+
   shouldSuppressPlanningToolsForScheduledTask(toolName) {
+    if (this.needsScheduledOwnerNotification()) {
+      return PRE_ACTION_SUPPRESSED_TOOLS.has(toolName);
+    }
     if (!this._isScheduledTask || (!this.currentPlan && !this.hasPlanningToolAttempt()) || this.hasSubstantiveToolUse()) return false;
     return PRE_ACTION_SUPPRESSED_TOOLS.has(toolName);
   }
@@ -1341,10 +1364,11 @@ If the action tool fails, report or escalate the exact error. Do not respond wit
 **Verification: ${verifiedCount}/${totalCount} steps verified${allPassing ? ' — ALL PASSING ✅' : ''}**
 
 ${this.currentPlan.steps.map(step => {
-  const statusIcon = step.verified ? '✅' : step.status === 'failed' ? '❌' : step.status === 'in_progress' ? '🔄' : '⬜';
+  const status = step.status || (step.verified ? 'completed' : 'pending');
+  const statusIcon = step.verified ? '✅' : status === 'failed' ? '❌' : status === 'in_progress' ? '🔄' : '⬜';
   const verifyTag = step.verified ? ` [VERIFIED: ${step.verification_evidence || 'confirmed'}]` :
-    step.status === 'failed' ? ` [FAILED: ${step.failure_reason || 'unknown'}]` : '';
-  return `${statusIcon} ${step.id}. [${step.status.toUpperCase()}] ${step.content}${verifyTag}`;
+    status === 'failed' ? ` [FAILED: ${step.failure_reason || 'unknown'}]` : '';
+  return `${statusIcon} ${step.id}. [${status.toUpperCase()}] ${step.content}${verifyTag}`;
 }).join('\n')}
 
 NEXT ACTION: Find the highest-priority pending step, mark it in_progress, execute it, then VERIFY before marking complete.
