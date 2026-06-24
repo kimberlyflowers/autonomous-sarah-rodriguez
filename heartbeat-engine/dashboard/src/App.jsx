@@ -374,7 +374,7 @@ function useSarahChat() {
       const res = await fetch("/api/chat/message",{
         method:"POST",
         headers:authHeaders,
-        body:JSON.stringify({message:text,sessionId:sid.current,agentId:currentAgentId,projectId}),
+        body:JSON.stringify({message:text,sessionId:sid.current,agentId:currentAgentId,projectId,audio:false}),
         signal: controller.signal
       });
       clearTimeout(timeoutId);
@@ -1361,9 +1361,9 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null, lastSara
   };
 
   const flushPendingAvatarSpeech=(delay=0)=>{
-    const text=pendingAvatarSpeechRef.current;
-    if(!text) return;
     setTimeout(()=>{
+      const text=pendingAvatarSpeechRef.current;
+      if(!text) return;
       if(sendTextToAvatar(text)) pendingAvatarSpeechRef.current="";
     },delay);
   };
@@ -5203,7 +5203,7 @@ function App({ authUser }) {
   useEffect(()=>{ if(btm.current) setTimeout(()=>btm.current?.scrollIntoView({behavior:"smooth"}),100); },[messages]);
 
   useEffect(()=>{
-    if(!isSarahVoiceAgent && (convaiConnected||convaiConnecting)) {
+    if(convaiConnected||convaiConnecting) {
       conversation.endSession();
       setConvaiStarting(false);
     }
@@ -5402,16 +5402,15 @@ function App({ authUser }) {
 
   const toggleVoice=()=>{
     const liveAvatar=window.__bloomieLiveAvatar;
-    if(isSarahVoiceAgent && (liveAvatar?.videoReady || liveAvatar?.connected)) {
+    if(isSarahVoiceAgent) {
       if(vcRec) {
         stopBrowserDictation();
       } else {
-        liveAvatar.ensureStarted?.();
+        liveAvatar?.ensureStarted?.();
         startBrowserDictation();
       }
       return;
     }
-    if(isSarahVoiceAgent) { startSarahVoice(); return; }
     if(vcRec){stopBrowserDictation();return;}
     startBrowserDictation();
   };
