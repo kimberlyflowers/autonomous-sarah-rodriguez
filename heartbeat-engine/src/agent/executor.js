@@ -848,6 +848,8 @@ Use the available tools to complete this task. Work step by step and explain you
         'ghl_list_campaigns',
         // Gmail
         'gmail_check_inbox', 'gmail_read_message', 'gmail_send_email',
+        // Owner check-ins and alerts
+        'notify_owner',
         // Contact lookup
         'ghl_search_contacts', 'ghl_get_contact',
         // Planning & logging
