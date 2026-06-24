@@ -1380,7 +1380,7 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null, lastSara
       const d=await r.json().catch(()=>({}));
       if(!r.ok) throw new Error(d.error||"Could not start LiveAvatar");
       if(!d.sessionToken) throw new Error("LiveAvatar did not return a session token");
-      const liveSession=new LiveAvatarWebSession(d.sessionToken,{voiceChat:true});
+      const liveSession=new LiveAvatarWebSession(d.sessionToken,{voiceChat:false});
       sdkSessionRef.current=liveSession;
       liveSession.on(SessionEvent.SESSION_STATE_CHANGED,state=>{
         setSdkStatus(state);
@@ -1484,13 +1484,6 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null, lastSara
       startLive(latestSpeechText);
     }
   },[latestSpeechText,cfg?.enabled,cfg?.mode,cfg?.avatarId,cfg?.voiceId,sdkStatus,starting]);
-
-  useEffect(()=>{
-    if(!cfg?.enabled || cfg.mode!=="liveavatar_sdk" || !cfg.avatarId || !cfg.contextId) return;
-    if(autoStartedRef.current || starting || sdkStatus==="starting" || sdkStatus===SessionState.CONNECTED) return;
-    autoStartedRef.current=true;
-    startSdkLive();
-  },[cfg?.enabled,cfg?.mode,cfg?.avatarId,cfg?.contextId,sdkStatus,starting]);
 
   useEffect(()=>()=>{ try { sdkSessionRef.current?.stop(); } catch {} },[]);
 
@@ -5262,7 +5255,6 @@ function App({ authUser }) {
 
   const doSend=async()=>{
     if((!tx.trim()&&pendingFiles.length===0)||loading) return;
-    if(isSarahVoiceAgent) window.__bloomieLiveAvatar?.ensureStarted?.();
     const text=tx.trim(); setTx(""); setNew(false);
     const activeProjectId = selectedProject?.id || null;
     if(pendingFiles.length > 0) {
@@ -5385,7 +5377,6 @@ function App({ authUser }) {
         const activeProjectId = selectedProject?.id || null;
         setTx("");
         setNew(false);
-        if(isSarahVoiceAgent) window.__bloomieLiveAvatar?.ensureStarted?.();
         const ok = await send(finalTranscript, activeProjectId);
         if(ok && selectedProject?.id) await loadProjectConversations(selectedProject);
       }
@@ -5416,7 +5407,6 @@ function App({ authUser }) {
       if(vcRec) {
         stopBrowserDictation();
       } else {
-        liveAvatar?.ensureStarted?.();
         startBrowserDictation({autoSend:true});
       }
       return;
