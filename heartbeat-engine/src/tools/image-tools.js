@@ -24,7 +24,7 @@ function getOpenRouterImageModel() {
   return (
     process.env.OPENROUTER_IMAGE_MODEL ||
     process.env.OPENROUTER_IMAGE_GENERATION_MODEL ||
-    'openai/gpt-5-image-mini'
+    'google/gemini-2.5-flash-image'
   ).trim();
 }
 
@@ -492,7 +492,21 @@ export const imageToolExecutors = {
         throw e;
       }
     } else if (useEngine === 'gemini') {
-      return await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
+      try {
+        const result = await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
+        if (result.success) return result;
+        logger.warn('Gemini image failed, trying fallback engines', { error: result.error });
+        if (getOpenRouterKey()) return await generateWithOpenRouter(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
+        if (getRunPodMediaUrl()) return await generateWithRunPod(prompt, size);
+        if (getOpenAIKey()) return await generateWithGPTImage(prompt, size, quality, background);
+        return result;
+      } catch(e) {
+        logger.error('Gemini image threw error', { error: e.message });
+        if (getOpenRouterKey()) return await generateWithOpenRouter(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
+        if (getRunPodMediaUrl()) return await generateWithRunPod(prompt, size);
+        if (getOpenAIKey()) return await generateWithGPTImage(prompt, size, quality, background);
+        return { success: false, error: e.message, engine: 'gemini' };
+      }
     }
 
     return { success: false, error: `Unknown engine: ${useEngine}` };
