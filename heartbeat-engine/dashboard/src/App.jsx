@@ -1231,6 +1231,7 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null, lastSara
   const [session,setSession]=useState(null);
   const [starting,setStarting]=useState(false);
   const [sdkStatus,setSdkStatus]=useState("idle");
+  const [streamReady,setStreamReady]=useState(false);
   const [avatarMicStatus,setAvatarMicStatus]=useState("idle");
   const [speechStatus,setSpeechStatus]=useState("");
   const sdkSessionRef=useRef(null);
@@ -1241,6 +1242,7 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null, lastSara
   const firstName=(agentName||"Agent").split(" ")[0];
   const latestSpeechText=(lastSarahText||"").trim();
   const speechText=()=>latestSpeechText || `Hi, I'm ${firstName}. I'm ready to help.`;
+  const isLiveAvatarCommandReady=()=>sdkSessionRef.current?.state===SessionState.CONNECTED;
 
   const load=()=>{
     if(!agentId) return;
@@ -1336,8 +1338,9 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null, lastSara
     const clean=String(text||"").trim();
     if(!clean) return false;
     const live=sdkSessionRef.current;
-    if(!live) {
+    if(!live || live.state!==SessionState.CONNECTED) {
       pendingAvatarSpeechRef.current=clean;
+      setSpeechStatus("Sarah Live is connecting...");
       return false;
     }
     try {
@@ -1361,7 +1364,7 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null, lastSara
   };
 
   const startSdkLive=async()=>{
-    setStarting(true); setErr(""); setSdkStatus("starting");
+    setStarting(true); setErr(""); setSdkStatus("starting"); setStreamReady(false);
     try{
       if(sdkSessionRef.current) {
         try { await sdkSessionRef.current.stop(); } catch {}
@@ -1374,9 +1377,16 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null, lastSara
       if(!d.sessionToken) throw new Error("LiveAvatar did not return a session token");
       const liveSession=new LiveAvatarWebSession(d.sessionToken,{voiceChat:true});
       sdkSessionRef.current=liveSession;
-      liveSession.on(SessionEvent.SESSION_STATE_CHANGED,state=>setSdkStatus(state));
+      liveSession.on(SessionEvent.SESSION_STATE_CHANGED,state=>{
+        setSdkStatus(state);
+        if(state===SessionState.CONNECTED) {
+          setSpeechStatus("Use the main mic below to talk through Sarah Live");
+          flushPendingAvatarSpeech(250);
+          flushPendingAvatarSpeech(1000);
+        }
+      });
       liveSession.on(SessionEvent.SESSION_STREAM_READY,()=>{
-        setSdkStatus("stream_ready");
+        setStreamReady(true);
         if(videoRef.current) liveSession.attach(videoRef.current);
         flushPendingAvatarSpeech(250);
         flushPendingAvatarSpeech(1200);
@@ -1393,7 +1403,9 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null, lastSara
     try { await sdkSessionRef.current?.stop(); } catch {}
     sdkSessionRef.current=null;
     setSdkStatus("idle");
+    setStreamReady(false);
     setAvatarMicStatus("idle");
+    setSpeechStatus("");
   };
 
   const speakSdkText=()=>{
@@ -1403,29 +1415,42 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null, lastSara
   };
 
   const startAvatarListening=()=>{
+    if(!isLiveAvatarCommandReady()) {
+      setSpeechStatus("Sarah Live is still connecting. Try again in a moment.");
+      return false;
+    }
     try {
       sdkSessionRef.current?.startListening();
       setAvatarMicStatus("listening");
       setSpeechStatus("Sarah is listening through LiveAvatar");
+      return true;
     } catch(e) {
       setErr(e.message||"Could not start LiveAvatar listening");
+      return false;
     }
   };
 
   const stopAvatarListening=()=>{
+    if(!isLiveAvatarCommandReady()) {
+      setAvatarMicStatus("idle");
+      setSpeechStatus("");
+      return false;
+    }
     try {
       sdkSessionRef.current?.stopListening();
       setAvatarMicStatus("idle");
       setSpeechStatus("");
+      return true;
     } catch(e) {
       setErr(e.message||"Could not stop LiveAvatar listening");
+      return false;
     }
   };
 
   useEffect(()=>{
     if(!latestSpeechText || !cfg?.enabled) return;
     if(lastAvatarSpeechRef.current===latestSpeechText) return;
-    const sdkConnected=sdkStatus===SessionState.CONNECTED || sdkStatus==="stream_ready";
+    const sdkConnected=isLiveAvatarCommandReady();
 
     if(cfg.mode==="liveavatar_sdk" && sdkConnected) {
       lastAvatarSpeechRef.current=latestSpeechText;
@@ -1449,15 +1474,17 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null, lastSara
   useEffect(()=>()=>{ try { sdkSessionRef.current?.stop(); } catch {} },[]);
 
   useEffect(()=>{
-    const connected=sdkStatus===SessionState.CONNECTED || sdkStatus==="stream_ready";
+    const connected=isLiveAvatarCommandReady();
     window.__bloomieLiveAvatar = {
       connected,
+      videoReady: streamReady,
+      status: sdkStatus,
       startListening: startAvatarListening,
       stopListening: stopAvatarListening,
       speakLatest: speakSdkText
     };
     return()=>{ if(window.__bloomieLiveAvatar?.startListening===startAvatarListening) delete window.__bloomieLiveAvatar; };
-  },[sdkStatus,latestSpeechText]);
+  },[sdkStatus,streamReady,latestSpeechText]);
 
   const selectStyle={width:"100%",padding:"10px 12px",borderRadius:9,border:"1px solid "+c.ln,background:c.inp,color:c.tx,fontSize:12,fontFamily:"inherit",boxSizing:"border-box",marginBottom:10};
 
@@ -1487,7 +1514,7 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null, lastSara
   }
 
   if(cfg?.enabled && cfg.mode==="liveavatar_sdk" && cfg.avatarId && cfg.contextId) {
-    const connected=sdkStatus===SessionState.CONNECTED || sdkStatus==="stream_ready";
+    const connected=sdkStatus===SessionState.CONNECTED;
     return(
       <div style={{flex:1,minHeight:0,display:"flex",flexDirection:"column",background:"#050505"}}>
         <div style={{height:36,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 10px",background:c.cd,borderBottom:"1px solid "+c.ln,flexShrink:0}}>
@@ -1500,15 +1527,14 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null, lastSara
         </div>
         <div style={{flex:1,minHeight:0,position:"relative",background:"#050505",display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
           <video ref={videoRef} autoPlay playsInline style={{width:"100%",height:"100%",minHeight:480,objectFit:"cover",background:"#050505"}}/>
-          {!connected&&<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",color:c.so,fontSize:12,pointerEvents:"none"}}>{starting?"Starting live avatar...":"LiveAvatar ready"}</div>}
+          {!streamReady&&<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",color:c.so,fontSize:12,pointerEvents:"none"}}>{starting?"Starting live avatar...":"LiveAvatar ready"}</div>}
         </div>
         <div style={{padding:10,borderTop:"1px solid "+c.ln,background:c.cd,display:"flex",gap:8,flexDirection:"column"}}>
           {err&&<div style={{fontSize:11,color:c.err,lineHeight:1.4}}>{err}</div>}
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
             <button onClick={connected?stopSdkLive:startSdkLive} disabled={starting} style={{padding:"9px 12px",borderRadius:8,border:"none",background:connected?"#EF4444":c.gradient,color:"#fff",fontSize:12,fontWeight:800,cursor:starting?"wait":"pointer",flexShrink:0}}>{connected?"End":"Start"}</button>
-            {connected&&<button onClick={avatarMicStatus==="listening"?stopAvatarListening:startAvatarListening} style={{padding:"9px 12px",borderRadius:8,border:"1px solid "+c.ln,background:avatarMicStatus==="listening"?c.ac+"22":c.inp,color:avatarMicStatus==="listening"?c.ac:c.tx,fontSize:12,fontWeight:800,cursor:"pointer",flexShrink:0}}>{avatarMicStatus==="listening"?"Stop mic":"Listen"}</button>}
             <div style={{flex:1,minWidth:0,padding:"8px 10px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,color:c.so,fontSize:11,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
-              {speechStatus || (connected ? `${firstName} is live` : "Start the live avatar, then Sarah can speak here")}
+              {speechStatus || (connected ? "Use the main mic below to talk through Sarah Live" : "Start the live avatar, then Sarah can speak here")}
             </div>
           </div>
         </div>
@@ -4480,6 +4506,7 @@ function App({ authUser }) {
   const {messages,setMessages,send,sendFiles,sendFilesEncoded,loading,workingStatus,sessions,currentSessionId,newSession,loadSession,deleteSession,fetchSessions,stopSarah,sid,agents,currentAgentId,currentAgent,switchAgent}=useSarahChat();
   const currentAgentIdRef=useRef(currentAgentId);
   const voiceTranscriptSeenRef=useRef(new Set());
+  const voiceRecognitionRef=useRef(null);
   useEffect(()=>{ currentAgentIdRef.current=currentAgentId; },[currentAgentId]);
   // Periodically refresh session titles (AI title generates async after first message)
   useEffect(()=>{ const t=setInterval(fetchSessions,8000); return()=>clearInterval(t); },[]);
@@ -5303,25 +5330,74 @@ function App({ authUser }) {
     }
   };
 
+  const stopBrowserDictation=()=>{
+    try { voiceRecognitionRef.current?.stop?.(); } catch {}
+    voiceRecognitionRef.current=null;
+    setVcRec(false);
+  };
+
+  const startBrowserDictation=({onEnd=null}={})=>{
+    const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+    if(!SR) {
+      setOauthToast({type:'error',msg:'Speech-to-text is not available in this browser'});
+      setTimeout(()=>setOauthToast(null),3500);
+      return false;
+    }
+    stopBrowserDictation();
+    const r=new SR();
+    r.continuous=false;
+    r.interimResults=true;
+    r.lang="en-US";
+    r.onresult=(ev)=>{
+      let t="";
+      for(let i=0;i<ev.results.length;i++) t+=ev.results[i][0].transcript;
+      setTx(t);
+    };
+    r.onend=()=>{
+      voiceRecognitionRef.current=null;
+      setVcRec(false);
+      onEnd?.();
+    };
+    r.onerror=()=>{
+      voiceRecognitionRef.current=null;
+      setVcRec(false);
+      onEnd?.();
+    };
+    try {
+      voiceRecognitionRef.current=r;
+      r.start();
+      setVcRec(true);
+      return true;
+    } catch(e) {
+      voiceRecognitionRef.current=null;
+      setVcRec(false);
+      setOauthToast({type:'error',msg:e?.message||'Could not start speech-to-text'});
+      setTimeout(()=>setOauthToast(null),3500);
+      return false;
+    }
+  };
+
   const toggleVoice=()=>{
-    if(isSarahVoiceAgent && window.__bloomieLiveAvatar?.connected) {
+    const liveAvatar=window.__bloomieLiveAvatar;
+    if(isSarahVoiceAgent && (liveAvatar?.videoReady || liveAvatar?.connected)) {
       if(vcRec) {
-        window.__bloomieLiveAvatar.stopListening?.();
-        setVcRec(false);
+        liveAvatar.stopListening?.();
+        stopBrowserDictation();
       } else {
-        window.__bloomieLiveAvatar.startListening?.();
-        setVcRec(true);
+        const started=liveAvatar.startListening?.();
+        if(started!==false) {
+          const dictating=startBrowserDictation({onEnd:()=>liveAvatar.stopListening?.()});
+          if(!dictating) liveAvatar.stopListening?.();
+        } else {
+          setOauthToast({type:'error',msg:'Sarah Live is still connecting. Try again in a moment.'});
+          setTimeout(()=>setOauthToast(null),3500);
+        }
       }
       return;
     }
     if(isSarahVoiceAgent) { startSarahVoice(); return; }
-    if(vcRec){setVcRec(false);return;}
-    const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-    if(!SR) return;
-    const r=new SR(); r.continuous=false; r.interimResults=true; r.lang="en-US";
-    r.onresult=(ev)=>{ let t=""; for(let i=0;i<ev.results.length;i++) t+=ev.results[i][0].transcript; setTx(t); };
-    r.onend=()=>setVcRec(false); r.onerror=()=>setVcRec(false);
-    r.start(); setVcRec(true);
+    if(vcRec){stopBrowserDictation();return;}
+    startBrowserDictation();
   };
 
   const toggleCron=(id)=>setCronJobs(p=>p.map(j=>j.id===id?{...j,on:!j.on}:j));
