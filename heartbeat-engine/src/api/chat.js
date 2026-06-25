@@ -180,7 +180,7 @@ COMMUNICATION
 - NEVER type clarifying questions as text. ALWAYS use bloom_clarify tool.
   The user sees bloom_clarify as interactive buttons — text questions are broken UX.
 - If the user asks whether you can see their screen, what is on their screen, or asks you to look at their screen, call bloom_take_screenshot immediately. Then answer directly from the screenshot. Do not say "I am an LLM" or give a generic capability disclaimer.
-- If the owner asks you to call, phone, ring, or "call me", use ghl_call_owner. Do not answer with text only unless the tool fails. The tool triggers the configured GHL Voice AI outbound-call workflow.
+- If the owner asks you to call, phone, ring, or "call me", use ghl_call_owner. Do not answer with text only unless the tool fails. After the tool succeeds, say exactly: "Ok, calling you now." Do not say "owner", "operator", "reported", or "initiated a call to the owner" to the user.
 - Do not claim you saved a user preference permanently unless you actually updated a persistent setting/tool.
 
 ════════════════════════════════════════
@@ -5053,6 +5053,8 @@ NEVER skip steps 3 and 4 even if step 2 fails.
   const toolResults = []; // Track what tools returned for history
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
+  let latestTaskTodos = null;
+  let unfinishedPlanNudges = 0;
 
   // ── TOOL FAILURE TRACKING — counts failures per tool for smart retry/alternative logic ──
   const toolFailureCounts = {}; // { toolName: count } — tracks how many times each tool has failed
@@ -5305,6 +5307,21 @@ NEVER skip steps 3 and 4 even if step 2 fails.
     return `\n\n<!-- tool-evidence\n${evidence.join('\n')}\n-->`;
   }
 
+  function updateLatestTaskTodosFromProgress(toolName, toolInput) {
+    if (toolName === 'task_progress' && Array.isArray(toolInput?.todos)) {
+      latestTaskTodos = toolInput.todos;
+    }
+  }
+
+  function getUnfinishedTaskTodos() {
+    if (!Array.isArray(latestTaskTodos) || latestTaskTodos.length === 0) return [];
+    return latestTaskTodos.filter(todo => todo?.status !== 'completed');
+  }
+
+  function textLooksLikeDeferredWork(text) {
+    return /\b(i('|’)ll|i will|i am going to|i'm going to|i can continue|i'll continue|will continue|continue working|i'll work on|i will work on|next i('|’)ll|next i will|get back to you|follow up|checking now)\b/i.test(text || '');
+  }
+
   // ── HELPER: log cost and write usage metrics ───────────────────────────
   async function logCostAndUsage(round) {
     // Use unified client's pricing table for accurate cost across all models
@@ -5446,6 +5463,28 @@ NEVER skip steps 3 and 4 even if step 2 fails.
       if (!text.trim() && toolsUsed.length === 0 && round === 0 && round < MAX_EXEC_ROUNDS - 1) {
         logger.warn('Gemini returned empty response on first round — retrying with explicit nudge', { model: chatModel });
         currentMessages.push({ role: 'user', content: [{ type: 'text', text: 'Please process my request and either call a tool or respond with text.' }] });
+        continue;
+      }
+
+      const unfinishedTodos = getUnfinishedTaskTodos();
+      if (
+        unfinishedTodos.length > 0 &&
+        unfinishedPlanNudges < 3 &&
+        round < MAX_EXEC_ROUNDS + MAX_VERIFY_ROUNDS - 1 &&
+        (textLooksLikeDeferredWork(text) || toolsUsed.some(t => t.name === 'task_progress'))
+      ) {
+        unfinishedPlanNudges++;
+        logger.warn('Task tried to end with unfinished task_progress items; forcing continuation', {
+          unfinished: unfinishedTodos.map(t => `${t.status}:${t.content}`).join(' | '),
+          nudge: unfinishedPlanNudges
+        });
+        currentMessages.push({ role: 'assistant', content: response.content });
+        currentMessages.push({ role: 'user', content:
+          `[SYSTEM — UNFINISHED TASK]\n` +
+          `Your active checklist still has unfinished items:\n` +
+          `${unfinishedTodos.map(t => `- ${t.status}: ${t.content}`).join('\n')}\n\n` +
+          `Do not tell the user you will continue later. Continue now: call the next required tool, complete the next step, update task_progress, and only deliver when every checklist item is completed and verified.`
+        });
         continue;
       }
 
@@ -5796,6 +5835,7 @@ NEVER skip steps 3 and 4 even if step 2 fails.
           }
 
           toolsUsed.push({ name: block.name, input: block.input });
+          updateLatestTaskTodosFromProgress(block.name, block.input);
 
 
           // Execute with automatic retry on failure

@@ -136,6 +136,7 @@ export class AgentExecutor {
     this.allStepsPassing = false;
     this.lastVerificationResult = null;
     this.scheduledTerminalFailure = null;
+    this.unfinishedPlanNudges = 0;
     logger.info('Context manager reset for fresh task execution');
 
     // Load AGENTS.md / steering context after reset so every task starts with
@@ -270,6 +271,15 @@ Use the available tools to complete this task. Work step by step and explain you
                 taskType: this._currentTaskType,
                 turn: currentTurn,
                 toolsUsed: this.toolExecutionHistory.length
+              });
+              continue;
+            }
+            if (this.shouldContinueAfterUnfinishedPlan(turnResult.textResponse, currentTurn)) {
+              await this.injectUnfinishedPlanContinuationReminder(turnResult.textResponse);
+              logger.warn('Task attempted to stop with unfinished plan items; continuing', {
+                taskType: this._currentTaskType,
+                turn: currentTurn,
+                unfinishedPlanNudges: this.unfinishedPlanNudges
               });
               continue;
             }
@@ -1345,6 +1355,26 @@ Remember: Plan first. Execute one step. Verify it worked. Then move on.`;
     return currentTurn < 5;
   }
 
+  getUnfinishedPlanSteps() {
+    if (!this.currentPlan || !Array.isArray(this.currentPlan.steps)) return [];
+    return this.currentPlan.steps.filter(step => {
+      const status = step.status || (step.verified ? 'completed' : 'pending');
+      return status !== 'completed' || step.verified !== true;
+    });
+  }
+
+  textLooksLikeDeferredWork(text = '') {
+    return /\b(i('|’)ll|i will|i am going to|i'm going to|i can continue|i'll continue|will continue|continue working|i'll work on|i will work on|next i('|’)ll|next i will|get back to you|follow up|checking now)\b/i.test(text);
+  }
+
+  shouldContinueAfterUnfinishedPlan(textResponse, currentTurn) {
+    const unfinished = this.getUnfinishedPlanSteps();
+    if (unfinished.length === 0 || this.allStepsPassing) return false;
+    if (this.unfinishedPlanNudges >= 3) return false;
+    if (currentTurn >= this.safetyValveThreshold) return false;
+    return this.textLooksLikeDeferredWork(textResponse || '') || this.hasPlanningToolAttempt();
+  }
+
   getScheduledNextToolHint() {
     switch (this._currentTaskType) {
       case 'email':
@@ -1373,6 +1403,27 @@ If the action tool fails, report or escalate the exact error. Do not respond wit
     await this.contextManager.addConversationTurn('system', reminder, {
       type: 'system_critical',
       source: 'scheduled_substantive_tool_guardrail',
+      priority: 10
+    });
+  }
+
+  async injectUnfinishedPlanContinuationReminder(textResponse = '') {
+    this.unfinishedPlanNudges = (this.unfinishedPlanNudges || 0) + 1;
+    const unfinished = this.getUnfinishedPlanSteps();
+    const reminder = `## Unfinished Task Guardrail
+You were about to stop, but the current plan still has unfinished or unverified steps.
+
+Unfinished steps:
+${unfinished.map(step => `- ${step.status || 'pending'}: ${step.content}`).join('\n')}
+
+Do not promise to continue later. Continue now: mark the next unfinished step in_progress, call the required action tool, verify the result, then update the plan. Only respond with TASK COMPLETED after every plan step is completed and verified.
+
+Previous text-only response that was intercepted:
+${String(textResponse || '').slice(0, 800)}`;
+
+    await this.contextManager.addConversationTurn('system', reminder, {
+      type: 'system_critical',
+      source: 'unfinished_plan_guardrail',
       priority: 10
     });
   }

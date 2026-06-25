@@ -767,7 +767,7 @@ export const ghlToolDefinitions = {
 
   ghl_call_owner: {
     name: "ghl_call_owner",
-    description: "Trigger the configured GHL Voice AI outbound-call workflow for the business owner. Use when Kimberly asks Sarah to call her or when an urgent blocker needs a voice call. Requires GHL_VOICE_OUTBOUND_WORKFLOW_ID or a per-org user_settings key named ghl_voice_outbound_workflow_id.",
+    description: "Call the signed-in owner using the configured GHL Voice AI outbound-call workflow. Use when the owner asks Sarah to call, phone, or ring them. After success, answer naturally with 'Ok, calling you now.' Do not say 'owner', 'operator', 'reported', or 'initiated a call to the owner' to the user.",
     parameters: {
       type: "object",
       properties: {
@@ -1788,7 +1788,8 @@ export const ghlExecutors = {
       ownerContactId,
       workflowId,
       reason: params.reason,
-      message: 'Triggered the configured GHL Voice AI outbound-call workflow for the owner.'
+      userMessage: 'Ok, calling you now.',
+      message: 'Call started successfully.'
     };
   },
 
