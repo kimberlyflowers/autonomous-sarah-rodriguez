@@ -4817,6 +4817,7 @@ async function chatWithAgent(userMessage, history, agentConfig, sessionId = null
   const agentClient = getAnthropicClient(agentConfig);
   const messageText = getMessageText(userMessage);
   const isConversationOnly = !hasNonTextContent(userMessage) && isConversationalMessage(messageText);
+  const isPptxIntent = /\b(presentation|slide\s*deck|slides?|powerpoint|\.pptx\b|pptx\b|pitch\s*deck|keynote|slideshow|slide\s*show)\b/i.test(messageText);
 
   if (isConversationOnly) {
     const trackingKey = sessionId || 'default';
@@ -5044,7 +5045,7 @@ NEVER skip steps 3 and 4 even if step 2 fails.
     const _skillMsgText = typeof userMessage === 'string' ? userMessage
       : (Array.isArray(userMessage) ? userMessage.filter(b => b.type === 'text').map(b => b.text).join(' ') : '');
     const _injectedSkillNames = new Set();
-    const _isPptxIntent = /\b(presentation|slide\s*deck|slides?|powerpoint|\.pptx\b|pptx\b|pitch\s*deck|keynote|slideshow|slide\s*show)\b/i.test(_skillMsgText);
+    const _isPptxIntent = isPptxIntent;
 
     // Helper: load a skill by exact name from catalog, replace {{template}} vars with agentConfig
     const _injectSkillByName = async (skillName, fallback = null) => {
@@ -5412,7 +5413,7 @@ NEVER skip steps 3 and 4 even if step 2 fails.
   }
 
   async function executeWithRetry(toolName, toolInput, sid, agentCfg = null, orgIdForTool = null) {
-    if (_isPptxIntent && isHtmlArtifactInput(toolName, toolInput)) {
+    if (isPptxIntent && isHtmlArtifactInput(toolName, toolInput)) {
       const error = 'PowerPoint request guard: HTML artifacts are blocked for presentation/slide deck requests. Use create_pptx with a complete pptxgenjs script and save a real .pptx file.';
       toolFailureCounts[toolName] = (toolFailureCounts[toolName] || 0) + 1;
       failedTools.push({ name: toolName, error, round: toolsUsed.length });
@@ -6906,7 +6907,9 @@ router.post('/message', async (req, res) => {
     // ── END SARAH BUILD ROUTING ───────────────────────────────────────────────────
 
     // ── INJECT RECENT BUILDS CONTEXT ─────────────────────────────────────────────
-    if (userOrgId) {
+    const needsRecentBuildContext =
+      /\b(build|website|site|landing page|work session|build tab|work tab|recent work|recent build|queued|progress|session status)\b/i.test(enrichedMessage);
+    if (userOrgId && needsRecentBuildContext) {
       try {
         const { createClient: _sbc2 } = await import('@supabase/supabase-js');
         const _sbs2 = _sbc2(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
