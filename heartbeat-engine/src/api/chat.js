@@ -1380,6 +1380,44 @@ const _ALL_TOOLS = [
     }
   },
   {
+    name: "ghl_list_knowledge_bases",
+    description: "List GHL/HighLevel CRM Knowledge Bases for the connected location. Use this before adding approved FAQ, SOP, or knowledge-base content if the target knowledgeBaseId is not already known.",
+    input_schema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Optional search query for the knowledge base name." },
+        limit: { type: "number", description: "Maximum number of knowledge bases to return. Defaults to 20." },
+        lastKnowledgeBaseId: { type: "string", description: "Pagination cursor from a previous response." }
+      },
+      required: []
+    }
+  },
+  {
+    name: "ghl_create_knowledge_base",
+    description: "Create a new GHL/HighLevel CRM Knowledge Base for this tenant/location. Use only when the user wants a new knowledge base container.",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Knowledge base name." },
+        description: { type: "string", description: "Optional knowledge base description." }
+      },
+      required: ["name"]
+    }
+  },
+  {
+    name: "ghl_create_knowledge_base_faq",
+    description: "Add an approved question/answer entry to a GHL/HighLevel CRM Knowledge Base. Use this when the user approves a BLOOM document, answer, SOP, or FAQ and says to add it to the CRM knowledgebase.",
+    input_schema: {
+      type: "object",
+      properties: {
+        knowledgeBaseId: { type: "string", description: "Target GHL Knowledge Base ID. If omitted, tenant env GHL_KNOWLEDGE_BASE_ID/GHL_KB_ID may be used." },
+        question: { type: "string", description: "FAQ question or searchable title." },
+        answer: { type: "string", description: "Approved answer/body content to add." }
+      },
+      required: ["question", "answer"]
+    }
+  },
+  {
     name: "ghl_list_email_templates",
     description: "List email templates.",
     input_schema: { type: "object", properties: {}, required: [] }

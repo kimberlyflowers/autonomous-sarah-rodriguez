@@ -64,18 +64,20 @@ async function callGHL(endpoint, method = 'GET', data = null, params = {}, orgId
     logger.info(`Using org-specific GHL credentials (org: ${orgId}, location: ${locationId})`);
   }
 
+  const apiVersion = params?.__version || GHL_API_VERSION;
   const queryParams = {
     ...(params?.__omitLocationId ? {} : { locationId }),
     ...params
   };
   delete queryParams.__omitLocationId;
+  delete queryParams.__version;
 
   const config = {
     method,
     url: `${GHL_BASE_URL}${endpoint}`,
     headers: {
       'Authorization': `Bearer ${apiKey}`,
-      'Version': GHL_API_VERSION,
+      'Version': apiVersion,
       'Content-Type': 'application/json',
       'Accept': 'application/json'
     },
@@ -91,7 +93,7 @@ async function callGHL(endpoint, method = 'GET', data = null, params = {}, orgId
     queryParams: config.params,
     hasBody: !!config.data,
     bodyKeys: config.data ? Object.keys(config.data) : [],
-    version: GHL_API_VERSION
+    version: apiVersion
   });
 
   try {
@@ -1537,6 +1539,54 @@ export const ghlToolDefinitions = {
     operation: "write"
   },
 
+  // KNOWLEDGE BASE
+  ghl_list_knowledge_bases: {
+    name: "ghl_list_knowledge_bases",
+    description: "List GHL/HighLevel Knowledge Bases for the connected location. Use this before adding approved FAQ or knowledge-base content if the user did not provide a knowledgeBaseId.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Optional search query for the knowledge base name." },
+        limit: { type: "number", description: "Maximum number of knowledge bases to return. Defaults to 20." },
+        lastKnowledgeBaseId: { type: "string", description: "Pagination cursor from a previous response." }
+      },
+      required: []
+    },
+    category: "knowledge_base",
+    operation: "read"
+  },
+
+  ghl_create_knowledge_base: {
+    name: "ghl_create_knowledge_base",
+    description: "Create a new GHL/HighLevel Knowledge Base for the connected location. Use only when the user wants a new CRM knowledge base, not just a new FAQ inside an existing one.",
+    parameters: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Knowledge base name." },
+        description: { type: "string", description: "Optional knowledge base description." }
+      },
+      required: ["name"]
+    },
+    category: "knowledge_base",
+    operation: "write"
+  },
+
+  ghl_create_knowledge_base_faq: {
+    name: "ghl_create_knowledge_base_faq",
+    description: "Add an approved question/answer entry to a GHL/HighLevel CRM Knowledge Base. Use this when the user says an approved BLOOM document, answer, SOP, or FAQ should be added to the CRM knowledgebase.",
+    parameters: {
+      type: "object",
+      properties: {
+        knowledgeBaseId: { type: "string", description: "Target GHL Knowledge Base ID. If omitted, the tool uses GHL_KNOWLEDGE_BASE_ID/GHL_KB_ID when configured." },
+        question: { type: "string", description: "FAQ question or searchable title." },
+        answer: { type: "string", description: "Approved answer/body content to add to the CRM knowledge base." }
+      },
+      required: ["question", "answer"]
+    },
+    category: "knowledge_base",
+    operation: "write"
+  },
+
   // DOCUMENTS/CONTRACTS
   ghl_list_documents: {
     name: "ghl_list_documents",
@@ -2508,6 +2558,81 @@ export const ghlExecutors = {
         _assembledHTML: rawHTML || null
       };
     }
+  },
+
+  // KNOWLEDGE BASE
+  // GET /knowledge-bases/?locationId= — list paginated knowledge bases
+  // Docs: https://marketplace.gohighlevel.com/docs/ghl/knowledge-base/list-all-knowledge-bases-paginated
+  ghl_list_knowledge_bases: async (params) => {
+    const locationId = await resolveLocationId(params._orgId);
+    const limit = Number.isFinite(Number(params.limit)) ? Number(params.limit) : 20;
+    const query = params.query ? String(params.query) : undefined;
+    const lastKnowledgeBaseId = params.lastKnowledgeBaseId ? String(params.lastKnowledgeBaseId) : undefined;
+    return await callGHL('/knowledge-bases/', 'GET', null, {
+      locationId,
+      limit,
+      ...(query ? { query } : {}),
+      ...(lastKnowledgeBaseId ? { lastKnowledgeBaseId } : {}),
+      __version: '2023-02-21'
+    }, params._orgId);
+  },
+
+  // POST /knowledge-bases/ — create a knowledge base
+  // Docs: https://marketplace.gohighlevel.com/docs/ghl/knowledge-base/create-knowledge-base
+  ghl_create_knowledge_base: async (params) => {
+    if (!params.name || !String(params.name).trim()) {
+      return { _status: 'FAILED', _message: 'KNOWLEDGE BASE CREATE FAILED: name is required.' };
+    }
+    const locationId = await resolveLocationId(params._orgId);
+    return await callGHL('/knowledge-bases/', 'POST', {
+      name: String(params.name).trim(),
+      ...(params.description ? { description: String(params.description) } : {}),
+      locationId
+    }, { __version: 'v3' }, params._orgId);
+  },
+
+  // POST /knowledge-bases/faqs — create a FAQ inside a knowledge base
+  // Docs: https://marketplace.gohighlevel.com/docs/ghl/knowledge-base/create
+  ghl_create_knowledge_base_faq: async (params) => {
+    let knowledgeBaseId = params.knowledgeBaseId || process.env.GHL_KNOWLEDGE_BASE_ID || process.env.GHL_KB_ID;
+    const locationId = await resolveLocationId(params._orgId);
+    if (!knowledgeBaseId) {
+      const kbList = await callGHL('/knowledge-bases/', 'GET', null, {
+        locationId,
+        limit: 20,
+        __version: '2023-02-21'
+      }, params._orgId);
+      const knowledgeBases = kbList?.data?.knowledgeBases || kbList?.knowledgeBases || [];
+      const preferred = knowledgeBases.find(kb => /bloomie|bloom/i.test(kb.name || ''))
+        || knowledgeBases.find(kb => kb.isDefault)
+        || knowledgeBases[0];
+      knowledgeBaseId = preferred?.id;
+      if (knowledgeBaseId) {
+        logger.info('Auto-selected GHL knowledge base for FAQ creation', {
+          knowledgeBaseId,
+          name: preferred?.name,
+          orgId: params._orgId
+        });
+      }
+    }
+    if (!knowledgeBaseId) {
+      return {
+        _status: 'FAILED',
+        _message: 'KNOWLEDGE BASE FAQ FAILED: no GHL knowledge base was found. Call ghl_create_knowledge_base first or configure GHL_KNOWLEDGE_BASE_ID for this tenant.'
+      };
+    }
+    if (!params.question || !String(params.question).trim()) {
+      return { _status: 'FAILED', _message: 'KNOWLEDGE BASE FAQ FAILED: question is required.' };
+    }
+    if (!params.answer || !String(params.answer).trim()) {
+      return { _status: 'FAILED', _message: 'KNOWLEDGE BASE FAQ FAILED: answer is required.' };
+    }
+    return await callGHL('/knowledge-bases/faqs', 'POST', {
+      locationId,
+      question: String(params.question).trim(),
+      answer: String(params.answer).trim(),
+      knowledgeBaseId
+    }, { __version: 'v3' }, params._orgId);
   },
 
   // DOCUMENTS/CONTRACTS

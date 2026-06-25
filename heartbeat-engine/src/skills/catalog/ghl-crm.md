@@ -77,6 +77,14 @@ Context: Show contact name, date/time, timezone, and calendar name.
 - `ghl_update_opportunity` — Move deal to different stage
 - **Log all stage changes** with notes
 
+### Knowledge Base
+- `ghl_list_knowledge_bases` — List CRM Knowledge Bases for the connected GHL location
+- `ghl_create_knowledge_base` — Create a new CRM Knowledge Base container
+- `ghl_create_knowledge_base_faq` — Add approved Q&A/SOP/document content to an existing CRM Knowledge Base
+- When the user says "add it to the CRM knowledgebase" after approving a BLOOM document, do not say there is no tool. Use `ghl_create_knowledge_base_faq`.
+- If the target knowledge base is unclear, first call `ghl_list_knowledge_bases`. Use the best match by name. If no match exists, ask whether to create a new knowledge base.
+- Convert long approved documents into one or more clear FAQ entries: `question` should be the searchable user/customer question, and `answer` should be the approved content in concise CRM knowledge-base form.
+
 ## Operational Preferences
 
 ### Contact Hygiene
