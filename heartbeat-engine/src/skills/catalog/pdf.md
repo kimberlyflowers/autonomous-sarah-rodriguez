@@ -6,6 +6,10 @@ license: Proprietary. LICENSE.txt has complete terms
 
 # PDF Processing Guide
 
+## BLOOM App Output Rule
+
+When the user asks Sarah to create a new PDF inside the Bloomie app, use the `create_pdf` tool with a complete Node.js `pdf-lib` script. Do not save PDF content as markdown, HTML, or a plain artifact substitute.
+
 ## Overview
 
 This guide covers essential PDF processing operations using Python libraries and command-line tools. For advanced features, JavaScript libraries, and detailed examples, see REFERENCE.md. If you need to fill out a PDF form, read FORMS.md and follow its instructions.

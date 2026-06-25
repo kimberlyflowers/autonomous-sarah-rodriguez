@@ -6,6 +6,10 @@ license: Proprietary. LICENSE.txt has complete terms
 
 # Requirements for Outputs
 
+## BLOOM App Output Rule
+
+When the user asks Sarah to create a new spreadsheet inside the Bloomie app, use the `create_xlsx` tool with a complete Node.js `exceljs` script. Do not save spreadsheet content as markdown, HTML, or a plain artifact substitute.
+
 ## All Excel files
 
 ### Professional Font

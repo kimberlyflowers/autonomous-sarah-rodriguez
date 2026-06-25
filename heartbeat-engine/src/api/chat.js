@@ -2311,7 +2311,7 @@ const _ALL_TOOLS = [
       type: "object",
       properties: {
         sessionId: { type: "string", description: "The session ID to look up files for. Use the current session ID." },
-        fileType: { type: "string", enum: ["image", "html", "markdown", "docx", "all"], description: "Filter by file type. Use 'all' to see everything." }
+        fileType: { type: "string", enum: ["image", "html", "markdown", "docx", "pptx", "pdf", "xlsx", "all"], description: "Filter by file type. Use 'all' to see everything." }
       },
       required: ["sessionId"]
     }
@@ -2424,6 +2424,32 @@ const _ALL_TOOLS = [
         name: { type: "string", description: "File name ending in .pptx (e.g. 'sales-pitch-deck.pptx')" },
         description: { type: "string", description: "Brief description of the presentation" },
         script: { type: "string", description: "Complete Node.js script using pptxgenjs. Must write the file to OUTPUT_PATH, e.g. await pptx.writeFile({ fileName: OUTPUT_PATH }); console.log('SUCCESS');. The variable OUTPUT_PATH will be replaced with the actual save path." }
+      },
+      required: ["name", "description", "script"]
+    }
+  },
+  {
+    name: "create_pdf",
+    description: "Create a real PDF file (.pdf) with formatted pages, text, shapes, tables, and embedded images. Use this instead of create_artifact whenever the user asks for a PDF, printable document, downloadable report, one-pager, or export as PDF. Never create markdown or HTML as a PDF substitute. CRITICAL: After creating the file, tell the client that you've created it and include the filename in quotes. Provide a complete Node.js script using the 'pdf-lib' library. The script will be executed and the resulting .pdf file saved for download.",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "File name ending in .pdf (e.g. 'client-proposal.pdf')" },
+        description: { type: "string", description: "Brief description of the PDF" },
+        script: { type: "string", description: "Complete Node.js script using pdf-lib. Must write the PDF bytes to OUTPUT_PATH, e.g. fs.writeFileSync(OUTPUT_PATH, await pdfDoc.save()); console.log('SUCCESS');. The variable OUTPUT_PATH will be replaced with the actual save path." }
+      },
+      required: ["name", "description", "script"]
+    }
+  },
+  {
+    name: "create_xlsx",
+    description: "Create a real Excel spreadsheet (.xlsx) with worksheets, tables, formulas, formatting, widths, and professional styling. Use this instead of create_artifact whenever the user asks for Excel, XLSX, spreadsheet, tracker, workbook, budget sheet, or data table deliverable. Never create markdown tables as a spreadsheet substitute. CRITICAL: After creating the file, tell the client that you've created it and include the filename in quotes. Provide a complete Node.js script using the 'exceljs' library. The script will be executed and the resulting .xlsx file saved for download.",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "File name ending in .xlsx (e.g. 'sales-tracker.xlsx')" },
+        description: { type: "string", description: "Brief description of the spreadsheet" },
+        script: { type: "string", description: "Complete Node.js script using exceljs. Must write the workbook to OUTPUT_PATH, e.g. await workbook.xlsx.writeFile(OUTPUT_PATH); console.log('SUCCESS');. The variable OUTPUT_PATH will be replaced with the actual save path." }
       },
       required: ["name", "description", "script"]
     }
@@ -4121,7 +4147,7 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
         return { success: false, error: 'Script ran but no .docx file was created. Check script output: ' + result };
       } catch (docxErr) {
         logger.error('DOCX creation failed', { error: docxErr.message });
-        return { success: false, error: `DOCX creation failed: ${docxErr.message}. Try creating as HTML instead using create_artifact.` };
+        return { success: false, error: `DOCX creation failed: ${docxErr.message}. Do not create an HTML substitute; fix the DOCX script or report this exact error.` };
       }
     }
 
@@ -4179,6 +4205,120 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
       } catch (pptxErr) {
         logger.error('PPTX creation failed', { error: pptxErr.message });
         return { success: false, error: `PPTX creation failed: ${pptxErr.message}. Do not create an HTML landing page as a substitute; fix the PPTX script or report this exact error.` };
+      }
+    }
+
+    // PDF creation — executes a Node.js script using pdf-lib
+    if (toolName === 'create_pdf') {
+      try {
+        const rawName = toolInput.name || 'document.pdf';
+        const filename = rawName.toLowerCase().endsWith('.pdf') ? rawName : `${rawName}.pdf`;
+        const tmpDir = '/tmp/bloom-pdf';
+        const tmpScript = `${tmpDir}/build-${Date.now()}.js`;
+        const tmpOutput = `${tmpDir}/${filename}`;
+
+        const fsMod = await import('fs');
+        if (!fsMod.default.existsSync(tmpDir)) fsMod.default.mkdirSync(tmpDir, { recursive: true });
+
+        const script = toolInput.script.replace(/OUTPUT_PATH/g, `"${tmpOutput}"`);
+        fsMod.default.writeFileSync(tmpScript, script);
+
+        const { execSync } = await import('child_process');
+        const result = execSync(`cd /app && node "${tmpScript}"`, { timeout: 60000, encoding: 'utf8' });
+
+        if (fsMod.default.existsSync(tmpOutput)) {
+          const pdfBuffer = fsMod.default.readFileSync(tmpOutput);
+          const base64 = pdfBuffer.toString('base64');
+
+          const port = process.env.PORT || 3000;
+          const saveResp = await fetch(`http://localhost:${port}/api/files/artifacts`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: filename,
+              description: toolInput.description,
+              fileType: 'binary',
+              mimeType: 'application/pdf',
+              content: base64,
+              sessionId: sessionId,
+              organizationId: orgId || agentConfig?.organizationId || agentConfig?.organization_id || process.env.BLOOM_ORG_ID
+            })
+          });
+          const saveData = await saveResp.json();
+
+          try { fsMod.default.unlinkSync(tmpScript); fsMod.default.unlinkSync(tmpOutput); } catch {}
+
+          if (saveData.success) {
+            return {
+              success: true,
+              message: `Created "${filename}" — PDF ready for download.`,
+              artifact: saveData.artifact,
+              downloadUrl: saveData.artifact?.downloadUrl
+            };
+          }
+          return { success: false, error: saveData.error || 'Failed to save PDF artifact' };
+        }
+        return { success: false, error: 'Script ran but no .pdf file was created. Check script output: ' + result };
+      } catch (pdfErr) {
+        logger.error('PDF creation failed', { error: pdfErr.message });
+        return { success: false, error: `PDF creation failed: ${pdfErr.message}. Do not create a markdown or HTML substitute; fix the PDF script or report this exact error.` };
+      }
+    }
+
+    // XLSX spreadsheet creation — executes a Node.js script using exceljs
+    if (toolName === 'create_xlsx') {
+      try {
+        const rawName = toolInput.name || 'spreadsheet.xlsx';
+        const filename = rawName.toLowerCase().endsWith('.xlsx') ? rawName : `${rawName}.xlsx`;
+        const tmpDir = '/tmp/bloom-xlsx';
+        const tmpScript = `${tmpDir}/build-${Date.now()}.js`;
+        const tmpOutput = `${tmpDir}/${filename}`;
+
+        const fsMod = await import('fs');
+        if (!fsMod.default.existsSync(tmpDir)) fsMod.default.mkdirSync(tmpDir, { recursive: true });
+
+        const script = toolInput.script.replace(/OUTPUT_PATH/g, `"${tmpOutput}"`);
+        fsMod.default.writeFileSync(tmpScript, script);
+
+        const { execSync } = await import('child_process');
+        const result = execSync(`cd /app && node "${tmpScript}"`, { timeout: 60000, encoding: 'utf8' });
+
+        if (fsMod.default.existsSync(tmpOutput)) {
+          const xlsxBuffer = fsMod.default.readFileSync(tmpOutput);
+          const base64 = xlsxBuffer.toString('base64');
+
+          const port = process.env.PORT || 3000;
+          const saveResp = await fetch(`http://localhost:${port}/api/files/artifacts`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: filename,
+              description: toolInput.description,
+              fileType: 'binary',
+              mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+              content: base64,
+              sessionId: sessionId,
+              organizationId: orgId || agentConfig?.organizationId || agentConfig?.organization_id || process.env.BLOOM_ORG_ID
+            })
+          });
+          const saveData = await saveResp.json();
+
+          try { fsMod.default.unlinkSync(tmpScript); fsMod.default.unlinkSync(tmpOutput); } catch {}
+
+          if (saveData.success) {
+            return {
+              success: true,
+              message: `Created "${filename}" — Excel spreadsheet ready for download.`,
+              artifact: saveData.artifact,
+              downloadUrl: saveData.artifact?.downloadUrl
+            };
+          }
+          return { success: false, error: saveData.error || 'Failed to save XLSX artifact' };
+        }
+        return { success: false, error: 'Script ran but no .xlsx file was created. Check script output: ' + result };
+      } catch (xlsxErr) {
+        logger.error('XLSX creation failed', { error: xlsxErr.message });
+        return { success: false, error: `XLSX creation failed: ${xlsxErr.message}. Do not create a markdown table substitute; fix the XLSX script or report this exact error.` };
       }
     }
 
@@ -4976,7 +5116,7 @@ NEVER skip steps 3 and 4 even if step 2 fails.
     // WEBSITE / LANDING PAGE
     if (!_isPptxIntent && /\b(website|landing page|web page|homepage|build.*site|create.*site|online.*presence|web.*design|event.*site|conference.*site|sales.*page|opt.?in.*page)\b/i.test(_skillMsgText)) {
       await _injectSkillByName('website-creation',
-        'IMPORTANT: Every website must be mobile-first HTML, include brand kit colors, have a CRM-connected form, and be saved as a published artifact.\n\n## MANDATORY PARALLEL BUILD PROTOCOL — NO EXCEPTIONS\n\nYou MUST follow this exact build order for EVERY website. Deviating from this order causes inconsistency and broken multi-page navigation.\n\n### STEP 1 — GENERATE SHARED CONTEXT FIRST (one call, no tools)\nBefore touching any tool, decide and output your shared context as a JSON block:\n```json\n{\n  "site_name": "Business Name",\n  "nav_pages": ["Home", "About", "Services", "Contact"],\n  "nav_links": { "Home": "slug", "About": "slug-about", "Services": "slug-services", "Contact": "slug-contact" },\n  "primary_color": "#hex",\n  "accent_color": "#hex",\n  "font_heading": "Font Name",\n  "font_body": "Font Name",\n  "tone": "professional and warm",\n  "cta_text": "Book a Free Consultation",\n  "cta_anchor": "#contact"\n}\n```\nThis shared context MUST be embedded at the top of every page\'s HTML generation. This is what makes all pages consistent.\n\n### STEP 2 — GENERATE ALL IMAGES IN PARALLEL (one tool call)\nCall `generate_images_parallel` ONCE with ALL images needed across ALL pages. Do NOT call `image_generate` individually. Pass every hero, about, service, and feature image at once. Wait for the imageMap to return before writing ANY HTML.\n\n### STEP 3 — BUILD PAGES (using shared context + real image URLs from Step 2)\nNow create each page. Every page MUST:\n- Start with the shared context CSS variables (colors, fonts)\n- Use the identical nav linking to ALL pages (use the nav_links from shared context)\n- Use the identical footer\n- Use the real image URLs from the imageMap (never placeholders)\n- Include the CRM form on at least one page\n\nFor multi-page sites: create each page with `create_artifact`. Use `get_site_pages` to confirm slugs before writing nav links.\n\n### STEP 4 — VERIFY NAV LINKS\nAfter all pages are created, call `get_site_pages` to confirm all slugs. If any nav link is wrong, use `edit_artifact` to correct it across all pages.\n\n### WHY THIS MATTERS\n- Step 1 (shared context) → fixes tone/color/font inconsistency between pages\n- Step 2 (parallel images) → fixes slow sequential generation, fixes partial failures\n- Step 3 (pages use shared context) → fixes broken navigation and mismatched styling\n- Step 4 (verify slugs) → fixes dead nav links\n\nNEVER call image_generate individually during website builds. ALWAYS use generate_images_parallel.');
+        'IMPORTANT: Every website must be mobile-first HTML, include brand kit colors, have a CRM-connected form, and be saved as a published artifact. Before choosing a layout, write and follow a creative brief based on the user\'s exact audience, offer, industry, requested style, and what should make this site visually distinct. Do not reuse the same generic hero/cards/sections across unrelated sites.\n\n## MANDATORY PARALLEL BUILD PROTOCOL — NO EXCEPTIONS\n\nYou MUST follow this exact build order for EVERY website. Deviating from this order causes inconsistency and broken multi-page navigation.\n\n### STEP 1 — GENERATE SHARED CONTEXT FIRST (one call, no tools)\nBefore touching any tool, decide and output your shared context as a JSON block:\n```json\n{\n  "site_name": "Business Name",\n  "nav_pages": ["Home", "About", "Services", "Contact"],\n  "nav_links": { "Home": "slug", "About": "slug-about", "Services": "slug-services", "Contact": "slug-contact" },\n  "primary_color": "#hex",\n  "accent_color": "#hex",\n  "font_heading": "Font Name",\n  "font_body": "Font Name",\n  "tone": "professional and warm",\n  "cta_text": "Book a Free Consultation",\n  "cta_anchor": "#contact"\n}\n```\nThis shared context MUST be embedded at the top of every page\'s HTML generation. This is what makes all pages consistent.\n\n### STEP 2 — GENERATE ALL IMAGES IN PARALLEL (one tool call)\nCall `generate_images_parallel` ONCE with ALL images needed across ALL pages. Do NOT call `image_generate` individually. Pass every hero, about, service, and feature image at once. Wait for the imageMap to return before writing ANY HTML.\n\n### STEP 3 — BUILD PAGES (using shared context + real image URLs from Step 2)\nNow create each page. Every page MUST:\n- Start with the shared context CSS variables (colors, fonts)\n- Use the identical nav linking to ALL pages (use the nav_links from shared context)\n- Use the identical footer\n- Use the real image URLs from the imageMap (never placeholders)\n- Include the CRM form on at least one page\n\nFor multi-page sites: create each page with `create_artifact`. Use `get_site_pages` to confirm slugs before writing nav links.\n\n### STEP 4 — VERIFY NAV LINKS\nAfter all pages are created, call `get_site_pages` to confirm all slugs. If any nav link is wrong, use `edit_artifact` to correct it across all pages.\n\n### WHY THIS MATTERS\n- Step 1 (shared context) → fixes tone/color/font inconsistency between pages\n- Step 2 (parallel images) → fixes slow sequential generation, fixes partial failures\n- Step 3 (pages use shared context) → fixes broken navigation and mismatched styling\n- Step 4 (verify slugs) → fixes dead nav links\n\nNEVER call image_generate individually during website builds. ALWAYS use generate_images_parallel.');
     }
 
     // EMAIL — marketing emails, newsletters, campaigns, AND editing existing emails
@@ -4994,25 +5134,25 @@ NEVER skip steps 3 and 4 even if step 2 fails.
     // WORD DOCUMENT — .docx, reports, memos, formal letters
     if (/\b(word.*doc(ument)?|\.docx|\bdocx\b|report.*document|formal.*document|letterhead|table.*of.*contents|memo|business.*letter)\b/i.test(_skillMsgText)) {
       await _injectSkillByName('docx',
-        'IMPORTANT: Use the docx npm library to generate real .docx files with proper formatting. Never use markdown as a substitute.');
+        'IMPORTANT: Use create_docx with a complete docx script to generate a real .docx file. Never use markdown or HTML as a substitute.');
     }
 
     // PDF — create, convert, merge, fill
     if (/\b(\.pdf|\bpdf\b|create.*pdf|save.*as.*pdf|export.*pdf|merge.*pdf|split.*pdf|pdf.*form|fill.*pdf|convert.*to.*pdf)\b/i.test(_skillMsgText)) {
       await _injectSkillByName('pdf',
-        'IMPORTANT: Use pdf-lib or puppeteer to generate real .pdf files. Never use markdown as a PDF substitute.');
+        'IMPORTANT: Use create_pdf with a complete pdf-lib script to generate a real .pdf file. Never use markdown or HTML as a PDF substitute.');
     }
 
     // SPREADSHEET — xlsx, csv, data tables, trackers
     if (/\b(spreadsheet|excel|\bxlsx\b|\.xlsx|\bcsv\b|\.csv|data.*table|budget.*sheet|expense.*tracker|create.*spreadsheet|export.*csv)\b/i.test(_skillMsgText)) {
       await _injectSkillByName('xlsx',
-        'IMPORTANT: Use exceljs to generate real .xlsx files with proper formatting. Never use markdown tables as a spreadsheet substitute.');
+        'IMPORTANT: Use create_xlsx with a complete exceljs script to generate a real .xlsx file. Never use markdown or HTML tables as a spreadsheet substitute.');
     }
 
     // PROFESSIONAL DOCUMENTS — SOPs, proposals, handbooks, contracts
     if (/\b(sop|standard.*operating.*procedure|proposal|handbook|contract|policy.*document|onboarding.*doc|business.*plan|one.?pager|scope.*of.*work|statement.*of.*work)\b/i.test(_skillMsgText)) {
       await _injectSkillByName('professional-documents',
-        'IMPORTANT: Professional documents must be real .docx files with tables, headers, footers, and page numbers. Use the docx npm library.');
+        'IMPORTANT: Professional documents must be real .docx files with tables, headers, footers, and page numbers. Use create_docx, not markdown or HTML.');
     }
 
   } catch(e) {
@@ -5264,7 +5404,25 @@ NEVER skip steps 3 and 4 even if step 2 fails.
   // Retries once with same params before reporting failure to the agent.
   // Skips retry for tools where retry doesn't make sense (task_progress, bloom_log).
   const noRetryTools = new Set(['task_progress', 'bloom_log', 'bloom_take_screenshot', 'bloom_browser_screenshot', 'load_skill']);
+  function isHtmlArtifactInput(toolName, toolInput) {
+    if (toolName !== 'create_artifact') return false;
+    const name = String(toolInput?.name || '').toLowerCase();
+    const fileType = String(toolInput?.fileType || '').toLowerCase();
+    return fileType === 'html' || name.endsWith('.html') || /<!doctype html|<html[\s>]/i.test(String(toolInput?.content || ''));
+  }
+
   async function executeWithRetry(toolName, toolInput, sid, agentCfg = null, orgIdForTool = null) {
+    if (_isPptxIntent && isHtmlArtifactInput(toolName, toolInput)) {
+      const error = 'PowerPoint request guard: HTML artifacts are blocked for presentation/slide deck requests. Use create_pptx with a complete pptxgenjs script and save a real .pptx file.';
+      toolFailureCounts[toolName] = (toolFailureCounts[toolName] || 0) + 1;
+      failedTools.push({ name: toolName, error, round: toolsUsed.length });
+      logger.warn('Blocked HTML artifact during PPTX intent', {
+        requestedName: toolInput?.name,
+        fileType: toolInput?.fileType
+      });
+      return { success: false, error, blocked: true, requiredTool: 'create_pptx' };
+    }
+
     let result;
     try {
       result = await executeTool(toolName, toolInput, sid, agentCfg, orgIdForTool);
@@ -5424,7 +5582,7 @@ NEVER skip steps 3 and 4 even if step 2 fails.
       const today = new Date().toISOString().split('T')[0];
       const orgId = process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001';
       const resolvedAgentId = agentConfig?.agentId || process.env.AGENT_UUID || 'c3000000-0000-0000-0000-000000000003';
-      const artifactsCreated = toolsUsed.filter(t => t.name === 'create_artifact' || t.name === 'image_generate').length;
+      const artifactsCreated = toolsUsed.filter(t => ['create_artifact', 'create_docx', 'create_pptx', 'create_pdf', 'create_xlsx', 'image_generate'].includes(t.name)).length;
 
       await supabase.rpc('upsert_usage_metrics', {
         p_org_id: orgId,

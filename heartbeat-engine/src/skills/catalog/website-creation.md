@@ -7,6 +7,21 @@ description: Build professional, conversion-optimized websites and landing pages
 
 **MISSION:** Build conversion-focused, mobile-first websites with brand kit styling, real AI-generated images, CRM-connected forms, multi-page support, and 2026 design trends.
 
+## CREATIVE BRIEF LOCK — DO THIS BEFORE ANY TEMPLATE THINKING
+
+Every website must be designed from the user's actual request, not from a reusable default layout.
+
+Before writing HTML, write a one-paragraph creative brief for yourself in plain text covering:
+- the exact audience
+- the exact offer or purpose
+- the industry/domain cues
+- the user's requested tone/style
+- what should feel visually different from a generic Bloomie landing page
+
+Then make the design choices match that brief. If the user asks for a real estate landing page, a webinar page, a local service page, a recruiting page, or a product page, those should look and read materially different from each other.
+
+Do NOT reuse the same hero/card/section pattern across unrelated websites. Vary layout, typography scale, imagery, color balance, section rhythm, and CTA treatment based on the brief. Brand consistency is required, but sameness is not.
+
 ---
 
 ## MANDATORY PARALLEL BUILD PROTOCOL — RUNS AFTER PRE-BUILD GATE
