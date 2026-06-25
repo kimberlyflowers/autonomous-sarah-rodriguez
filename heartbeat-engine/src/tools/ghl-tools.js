@@ -179,6 +179,12 @@ function getNonPublicSocialMediaUrls(media = []) {
     .filter((url) => typeof url !== 'string' || !/^https?:\/\//i.test(url));
 }
 
+function omitInternalParams(params = {}) {
+  return Object.fromEntries(
+    Object.entries(params || {}).filter(([key]) => !key.startsWith('_'))
+  );
+}
+
 function normalizeSocialScheduleDate(value) {
   if (!value) return null;
 
@@ -2248,7 +2254,7 @@ export const ghlExecutors = {
   // POST /social-media-posting/{locationId}/posts/list
   ghl_list_social_posts: async (params) => {
     const locationId = await resolveLocationId(params._orgId);
-    return await callGHL(`/social-media-posting/${locationId}/posts/list`, 'POST', params || {}, { __omitLocationId: true }, params._orgId);
+    return await callGHL(`/social-media-posting/${locationId}/posts/list`, 'POST', omitInternalParams(params), { __omitLocationId: true }, params._orgId);
   },
 
   // GET /social-media-posting/{locationId}/accounts
