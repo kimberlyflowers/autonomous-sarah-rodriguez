@@ -213,6 +213,7 @@ ERROR RECOVERY
 - Tool fails once → retry with adjusted parameters
 - Tool fails twice → try a different approach or alternative tool
 - Truly blocked → report the EXACT error message (never vague language)
+- Browser/login tools: never claim you are logged in, authenticated, or able to access a site if the tool result says blocked, unverified, CAPTCHA, Cloudflare, challenge, or verification. For logged-in work, prefer browser_task with siteName so login and work happen in one session. If BLOOM Desktop is connected and the site blocks cloud automation, use bloom_browser_* step tools in the user's real browser.
 - Internal errors (skill failures, tool errors) → NEVER expose to user. Fix silently.
 - Never brute-force the same failing approach. Consider alternatives first.
 
@@ -1592,7 +1593,7 @@ const _ALL_TOOLS = [
   },
   {
     name: "browser_login",
-    description: "Test logging into a website using saved credentials from the credential registry. For real logged-in work, prefer browser_task with siteName so login and the task happen in the same browser session.",
+    description: "Test logging into a website using saved credentials from the credential registry. This does not guarantee a long-lived authenticated session. If the result says blocked/unverified, report that plainly. For real logged-in work, prefer browser_task with siteName so login and the task happen in the same browser session; if cloud automation is blocked and BLOOM Desktop is connected, use bloom_browser_* step tools in the user's real browser.",
     input_schema: {
       type: "object",
       properties: {
@@ -2944,7 +2945,7 @@ function getCapabilityNotes(options = {}) {
     capabilities.push('Web search is AVAILABLE — use web_search for any research, finding information, or looking up current data.');
   }
   if (available.some(t => t.name === 'browser_task')) {
-    capabilities.push('Server-side browser automation is AVAILABLE — use browser_task or browser_screenshot to navigate/read websites. Do NOT use bloom_browser_* unless BLOOM Desktop is connected.');
+    capabilities.push('Server-side browser automation is AVAILABLE — use browser_task or browser_screenshot to navigate/read websites. If a site blocks automation or requires a real logged-in browser and BLOOM Desktop is connected, use bloom_browser_* step tools instead. Do not claim login/access succeeded when a browser result reports blocked, CAPTCHA, Cloudflare, challenge, or unverified.');
   }
   if (available.some(t => t.name === 'create_artifact')) {
     capabilities.push('File creation is AVAILABLE — use create_artifact for NEW files, use edit_artifact for modifying existing files (server-side find-and-replace). NEVER use create_artifact to update an existing file.');
@@ -5217,6 +5218,9 @@ NEVER skip steps 3 and 4 even if step 2 fails.
     const isFailed = result?.success === false || result?.error;
     if (isFailed && (toolFailureCounts[block.name] || 0) >= 2) {
       contextSafeResult._systemNote = `⚠️ This tool has failed ${toolFailureCounts[block.name]} times. Try a DIFFERENT approach or alternative tool instead of retrying the same thing.`;
+    }
+    if ((block.name === 'browser_task' || block.name === 'browser_login') && result?.blocked) {
+      contextSafeResult._systemNote = 'Browser access was blocked or unverified. Do not claim login, authentication, or task success. Report the exact block evidence and use BLOOM Desktop browser tools if connected and appropriate.';
     }
 
     return {

@@ -1089,6 +1089,7 @@ Do NOT say "TASK COMPLETED" until all steps are verified.
 
 ## Site Credentials
 Kimberly has saved login credentials for certain websites in the dashboard. When a task requires a logged-in site (Quora, Reddit, LinkedIn, etc.), use \`browser_list_sites\` to check which sites have credentials, then call \`browser_task\` with \`siteName\` (example: \`browser_task({ siteName: "reddit", task: "find questions about AI employees" })\`). Login and work must happen in the same browser_task session. Use \`browser_login\` only as a quick login test, not as a prerequisite for later browser_task calls.
+Never claim login/access succeeded if a browser result reports blocked, unverified, CAPTCHA, Cloudflare, challenge, or verification. Report the exact blocker instead.
 
 ## Browser Anti-Bot Fallback
 browser_task has a 3-tier automatic fallback chain for Cloudflare-protected sites:
@@ -1096,7 +1097,7 @@ browser_task has a 3-tier automatic fallback chain for Cloudflare-protected site
 - Tier 2: Cloud stealth browser (anti-detect) — auto-activates if Cloudflare blocks
 - Tier 3: BLOOM Desktop (real browser on user's machine) — last resort
 The response includes \`tier_used\` so you know which path worked.
-If all tiers fail, log the issue and escalate — do NOT retry endlessly.
+If a site blocks server/cloud automation and BLOOM Desktop is connected in an interactive session, use \`bloom_browser_*\` step tools in the user's real browser. If all tiers fail, log the issue and escalate — do NOT retry endlessly.
 IMPORTANT: Never use BLOOM Desktop (bloom_* tools) during background heartbeat tasks without prior user permission. Desktop control is only for interactive sessions where the user explicitly grants access.
 
 ## Documents (bloom_create_document)

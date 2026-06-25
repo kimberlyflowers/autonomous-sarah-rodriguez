@@ -60,7 +60,7 @@ export const browserToolDefinitions = {
 
   browser_login: {
     name: "browser_login",
-    description: "Test logging into a website using stored credentials from the credential registry. For real work on a logged-in site, prefer browser_task with siteName so login and work happen in the same browser session.",
+    description: "Test logging into a website using stored credentials from the credential registry. This does not guarantee a long-lived authenticated session. If the result says blocked/unverified, report that plainly. For real work on a logged-in site, prefer browser_task with siteName so login and work happen in the same browser session; if cloud automation is blocked and BLOOM Desktop is connected, use bloom_browser_* step tools in the user's real browser.",
     parameters: {
       type: "object",
       properties: {
@@ -268,6 +268,7 @@ export const browserToolExecutors = {
       const data = await response.json();
 
       if (data.success) {
+        const blockEvidence = getBrowserBlockEvidence(data);
         // Push screenshot to dashboard
         try {
           if (data.screenshot_base64) {
@@ -281,12 +282,34 @@ export const browserToolExecutors = {
           }
         } catch (ssErr) { /* non-critical */ }
 
+        if (blockEvidence) {
+          return {
+            success: false,
+            site: creds.name,
+            blocked: true,
+            block_evidence: blockEvidence,
+            url_final: data.url_final,
+            steps_taken: data.steps_taken,
+            result: data.result,
+            used_cloud: data.used_cloud || false,
+            used_desktop: data.used_desktop || false,
+            tier_used: data.tier_used || 'self-hosted',
+            error: `Login to ${creds.name} was blocked or could not be verified: ${blockEvidence}`,
+            message: `Login to ${creds.name} was blocked or could not be verified. Do not claim the session is authenticated. Evidence: ${blockEvidence}`
+          };
+        }
+
         return {
           success: true,
           site: creds.name,
+          verified: true,
           url_final: data.url_final,
           steps_taken: data.steps_taken,
-          message: `Successfully logged into ${creds.name}. Session is now authenticated — subsequent browser_task calls will use this session.`
+          used_cloud: data.used_cloud || false,
+          used_desktop: data.used_desktop || false,
+          tier_used: data.tier_used || 'self-hosted',
+          session_persistence: 'not_guaranteed',
+          message: `Login test for ${creds.name} completed without block evidence. For real logged-in work, use browser_task with siteName so login and work happen in the same browser session.`
         };
       } else {
         return {

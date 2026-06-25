@@ -347,7 +347,10 @@ async def check_desktop_available() -> bool:
             )
             if resp.status == 200:
                 data = await resp.json()
-                return data.get("connected", False)
+                if data.get("connected", False):
+                    return True
+                sessions = data.get("sessions")
+                return isinstance(sessions, list) and len(sessions) > 0
     except Exception:
         pass
     return False
@@ -370,20 +373,36 @@ async def run_via_desktop(task: str, url: str = None) -> dict:
 
         command_id = str(uuid.uuid4())
 
-        # Build the desktop browser command
-        # The Desktop app's browser-bridge supports: navigate, snapshot, click, type, etc.
-        # We send a composite command that the desktop can execute step-by-step
-        command_payload = {
-            "commandId": command_id,
-            "action": "browser_task",
-            "data": {
-                "task": task,
-                "url": url,
-                "source": "cloud-fallback",  # Desktop knows this is a fallback
-            }
-        }
-
         async with aiohttp.ClientSession() as s:
+            status_resp = await s.get(
+                f"{SARAH_BASE_URL}/api/desktop/status",
+                timeout=aiohttp.ClientTimeout(total=5),
+            )
+            if status_resp.status != 200:
+                return {"success": False, "error": f"Desktop status failed: {status_resp.status}"}
+            status_data = await status_resp.json()
+            sessions = status_data.get("sessions") or []
+            if not sessions:
+                return {"success": False, "error": "No BLOOM Desktop session connected"}
+            session_id = sessions[0].get("sessionId")
+            if not session_id:
+                return {"success": False, "error": "Connected desktop session is missing a sessionId"}
+
+            if not url:
+                return {
+                    "success": False,
+                    "error": "Desktop fallback cannot execute natural-language browser_task without a starting URL. Use BLOOM Desktop bloom_browser_* tools directly in an interactive session.",
+                }
+
+            command_payload = {
+                "sessionId": session_id,
+                "commandId": command_id,
+                "tool": "bloom_browser_navigate",
+                "args": {
+                    "url": url,
+                },
+            }
+
             # Queue command for desktop
             resp = await s.post(
                 f"{SARAH_BASE_URL}/api/desktop/command",
@@ -404,13 +423,17 @@ async def run_via_desktop(task: str, url: str = None) -> dict:
                     )
                     if result_resp.status == 200:
                         result_data = await result_resp.json()
-                        if result_data.get("completed"):
+                        if result_data.get("ready"):
+                            payload = result_data.get("result") or {}
+                            if not isinstance(payload, dict):
+                                payload = {"result": payload}
                             return {
-                                "success": result_data.get("success", True),
-                                "result": result_data.get("result", "Task completed via BLOOM Desktop"),
-                                "url_final": result_data.get("url", url),
-                                "steps_taken": result_data.get("steps", 0),
-                                "screenshot_base64": result_data.get("screenshot"),
+                                "success": False,
+                                "error": "Cloud automation was blocked; opened the site in BLOOM Desktop, but the natural-language browser task still needs to continue with bloom_browser_* step tools in the interactive session.",
+                                "result": payload.get("result") or payload.get("content") or "Opened the site via BLOOM Desktop real browser. Continue with bloom_browser_snapshot/click/type tools in the interactive session.",
+                                "url_final": payload.get("url") or payload.get("url_final") or url,
+                                "steps_taken": payload.get("steps") or payload.get("steps_taken") or 0,
+                                "screenshot_base64": payload.get("screenshot") or payload.get("screenshot_base64"),
                             }
                 except Exception:
                     continue
