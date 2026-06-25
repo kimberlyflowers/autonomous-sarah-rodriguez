@@ -235,6 +235,17 @@ function stripInternalEvidence(text = '') {
     .trim();
 }
 
+function shouldInjectSelfImageSystemHint(messageText = '', agentConfig = {}) {
+  const text = String(messageText || '').toLowerCase();
+  const asksForImage = /\b(generate|create|make|design|produce|draw|render)\b[\s\S]{0,80}\b(image|photo|picture|portrait|headshot|profile|avatar|graphic|visual)\b/i.test(text) ||
+    /\b(image|photo|picture|portrait|headshot|profile photo|avatar)\b[\s\S]{0,80}\b(of|for)\b/i.test(text);
+  return asksForImage && looksLikeSelfImageRequest({ prompt: text }, agentConfig);
+}
+
+function getAgentVisualIdentityName(agentConfig = {}) {
+  return agentConfig?.name || agentConfig?.displayName || agentConfig?.agentName || 'the current Bloomie';
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // TASK INJECTIONS — Loaded per task type into messages array (not system prompt)
 // Modeled after Anthropic's <system-reminder> architecture in Claude Code.
@@ -2194,7 +2205,7 @@ const _ALL_TOOLS = [
   // ── IMAGE GENERATION & EDITING ───────────────────────────────────────────
   {
     name: "image_generate",
-    description: "Generate an image from a text description. Perfect for creating flyers, social media posts, banners, book covers, logos, product mockups, brand assets, and any visual content. Be very specific and detailed in your prompt — include exact text you want displayed, colors, layout, and style. Uses the configured image engine by default; OpenRouter can be primary when enabled. Set engine to 'gemini' for Nano Banana if text consistency needs fixing. IMPORTANT: When creating platform-specific images (Facebook covers, Instagram posts, Eventbrite headers, etc.), ALWAYS set target_width and target_height to the exact pixel dimensions required. Common sizes: Facebook cover 820x312, Instagram post 1080x1080, Instagram story 1080x1920, Eventbrite header 2160x1080, Twitter header 1500x500, LinkedIn banner 1128x191.",
+    description: "Generate an image from a text description. Perfect for creating flyers, social media posts, banners, book covers, logos, product mockups, brand assets, and any visual content. Be very specific and detailed in your prompt — include exact text you want displayed, colors, layout, and style. Uses the configured image engine by default; OpenRouter can be primary when enabled. Set engine to 'gemini' for Nano Banana if text consistency needs fixing. If the user asks for an image of you/the current Bloomie/this employee, call image_generate directly; the platform will use the current agent's saved avatar_url as the reference image when available. IMPORTANT: When creating platform-specific images (Facebook covers, Instagram posts, Eventbrite headers, etc.), ALWAYS set target_width and target_height to the exact pixel dimensions required. Common sizes: Facebook cover 820x312, Instagram post 1080x1080, Instagram story 1080x1920, Eventbrite header 2160x1080, Twitter header 1500x500, LinkedIn banner 1128x191.",
     input_schema: {
       type: "object",
       properties: {
@@ -2927,7 +2938,7 @@ function getCapabilityNotes(options = {}) {
   // Tell Sarah what she CAN do
   const capabilities = [];
   if (available.some(t => t.name === 'image_generate')) {
-    capabilities.push('Image generation is AVAILABLE — use image_generate to create visuals for websites, social posts, flyers, etc. Prompts are auto-enhanced for quality, but YOU should still write detailed prompts: describe subject, lighting, camera/lens, composition, colors, mood. Set engine=openrouter when OpenRouter is the preferred provider, engine=gpt for social/flyers/thumbnails when OpenAI images are configured, engine=gemini for website heroes/blog images or reference-image consistency. Default style is PHOTOREALISTIC — never produce cartoon or illustrated unless the user asks.');
+    capabilities.push('Image generation is AVAILABLE — use image_generate to create visuals for websites, social posts, flyers, etc. Prompts are auto-enhanced for quality, but YOU should still write detailed prompts: describe subject, lighting, camera/lens, composition, colors, mood. If the user asks for an image of you, the current Bloomie, or this employee, generate it directly and describe your own employee identity/visual style; the platform will attach your saved agent avatar_url as the reference image when available. Do not invent a different person for self-images. Set engine=openrouter when OpenRouter is the preferred provider, engine=gpt for social/flyers/thumbnails when OpenAI images are configured, engine=gemini for website heroes/blog images or reference-image consistency. Default style is PHOTOREALISTIC — never produce cartoon or illustrated unless the user asks.');
   }
   if (available.some(t => t.name === 'web_search')) {
     capabilities.push('Web search is AVAILABLE — use web_search for any research, finding information, or looking up current data.');
@@ -4550,6 +4561,17 @@ async function chatWithAgent(userMessage, history, agentConfig, sessionId = null
   let systemPrompt = buildSystemPrompt(agentConfig);
   let desktopConnected = false;
 
+  if (shouldInjectSelfImageSystemHint(messageText, agentConfig)) {
+    const agentName = getAgentVisualIdentityName(agentConfig);
+    systemPrompt += `\n\nSELF-IMAGE REQUEST — CURRENT BLOOMIE VISUAL IDENTITY:
+The user is asking for an image of you, ${agentName}, or the current Bloomie employee.
+Call image_generate directly. Write the prompt as a professional photorealistic image of ${agentName} in a context that fits the user's request.
+Do not ask the user for a public reference URL and do not invent a different person.
+Do not hardcode Sarah Rodriguez or any other employee name unless that is this loaded agent's name.
+The platform will attach this loaded agent's saved avatar_url as the reference image when available.`;
+    logger.info('Injected self-image system hint', { agentId: agentConfig?.agentId, agentName });
+  }
+
   // LIVE DESKTOP DETECTION — auto-detect if BLOOM Desktop app is running
   // Pings /api/desktop/status to check for active desktop sessions.
   // If no desktop connected → strip desktop tools so agent doesn't hallucinate.
@@ -5913,8 +5935,11 @@ function looksLikeSelfImageRequest(input = {}, agentConfig = {}) {
   const text = `${input.prompt || ''} ${input.description || ''}`.toLowerCase();
   const agentName = String(agentConfig.name || '').toLowerCase();
   const firstName = agentName.split(/\s+/)[0];
-  return /\b(herself|yourself|your face|same person|sarah|employee avatar|profile image|headshot)\b/i.test(text) ||
-    (!!firstName && text.includes(firstName));
+  const nameMatches =
+    (!!agentName && text.includes(agentName)) ||
+    (!!firstName && firstName.length > 2 && text.includes(firstName));
+  return /\b(yourself|myself|me as|of you|your face|your photo|your image|same person as you|this employee|current employee|current bloomie|employee avatar|your profile image|your profile photo|your headshot)\b/i.test(text) ||
+    nameMatches;
 }
 
 function isUsablePublicImageUrl(url) {

@@ -53,6 +53,19 @@ If the user says "create an image of a woman at a desk" — that means a real-lo
 
 ---
 
+## CURRENT BLOOMIE / EMPLOYEE SELF-IMAGES
+
+When the user asks for an image of "you," "yourself," "your face," "this employee," "the current Bloomie," or the loaded employee by name:
+
+- Generate the image directly with `image_generate`.
+- Describe the current loaded employee/Bloomie in the prompt. Do not hardcode Sarah Rodriguez or any other specific employee unless that is the loaded employee's actual name.
+- Do not ask the user for a public reference URL. The platform can attach the current agent's saved `avatar_url` as the reference image when available.
+- Keep the same person consistent: face, hair, approximate age, general styling, and recognizable visual identity.
+- Do not invent a random model, stock-photo person, or different employee.
+- Only ask a clarification if the output format is genuinely missing and the user gave no platform or use case.
+
+---
+
 ## MANDATORY PRE-BUILD GATE
 
 **Skip this gate when called from a parent skill** (marketing-graphics, flyer-generation, website-creation already collected context).
