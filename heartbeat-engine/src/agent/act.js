@@ -540,18 +540,19 @@ async function executeReplyToContact(decision, agentConfig) {
   const { createClient } = await import('@supabase/supabase-js');
   const type = channelType || 'SMS';
 
-  // ── DEDUPLICATION: check if we already replied to this conversation this cycle ──
-  // Prevents double-replies if the same inbound message appears in two consecutive heartbeat cycles
-  // (can happen if markConversationRead fails or GHL takes time to update unreadCount)
+  // ── DEDUPLICATION: check if we already replied to this exact inbound text ──
+  // Prevents loops if GHL keeps a conversation unread or mark-read is unavailable.
   const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
   });
   const convIdForCheck = conversationId || 'unknown';
-  const recentWindow = new Date(Date.now() - 12 * 60 * 1000).toISOString(); // 12 min window
+  const recentWindow = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(); // 7 day window
+  const inboundForCheck = inboundMessageBody || '(unknown)';
   const { data: existing } = await supabase
     .from('inbound_reply_log')
     .select('id, replied_at')
     .eq('conversation_id', convIdForCheck)
+    .eq('inbound_message', inboundForCheck)
     .gte('created_at', recentWindow)
     .not('reply_message_id', 'is', null) // only rows where we actually sent a reply
     .limit(1)
