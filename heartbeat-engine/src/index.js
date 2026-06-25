@@ -639,6 +639,7 @@ app.post('/webhook/ghl-inbound', async (req, res) => {
         message: replyText,
         conversationId,
         contactId: incomingContactId,
+        phone: contactPhone || undefined,
       }, orgId);
       if (!sendResult.success) {
         throw new Error(`Failed to send Sarah reply to GHL conversation: ${sendResult.error}`);

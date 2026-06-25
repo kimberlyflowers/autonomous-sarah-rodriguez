@@ -202,7 +202,7 @@ ${VALID_ACTION_TYPES.map(t => `  • "${t}"`).join('\n')}
 Note: "read_ghl", "read_email", "read_tasks", "read_calendar" are NOT valid.
 Sensing already happened in Phase 1. You are in Phase 3: deciding what to DO.
 
-If inbound reply details are present, create an "act" decision with action_type "reply_to_contact" for each reply unless the message is unsafe or impossible to answer. Use the exact conversationId/contactId shown in the environment. input_data must include conversationId, contactId, message, channelType, inboundMessageBody, and inboundReceivedAt.
+If inbound reply details are present, create an "act" decision with action_type "reply_to_contact" for each reply unless the message is unsafe or impossible to answer. Use the exact conversationId/contactId shown in the environment. input_data must include conversationId, contactId, message, channelType, inboundMessageBody, inboundReceivedAt, and phone if present.
 
 RESPONSE FORMAT: Return ONLY a JSON array inside a markdown code block:
 \`\`\`json
@@ -438,7 +438,7 @@ interface Decision {
 CONSTRAINT: action_type must be one of the ActionType values above.
 Do NOT use: "read_ghl", "read_email", "read_tasks", "read_calendar" — these are not valid ActionType values and will crash the system.
 
-INBOUND REPLY RULE: If inbound reply details are present, create an act decision with action_type "reply_to_contact". Use the exact conversationId/contactId and include input_data.message, input_data.channelType, input_data.inboundMessageBody, and input_data.inboundReceivedAt.
+INBOUND REPLY RULE: If inbound reply details are present, create an act decision with action_type "reply_to_contact". Use the exact conversationId/contactId and include input_data.message, input_data.channelType, input_data.inboundMessageBody, input_data.inboundReceivedAt, and input_data.phone if present.
 
 Example valid JSON response:
 {
@@ -657,6 +657,7 @@ export async function think(context) {
         input_data: {
           conversationId: reply.conversationId,
           contactId: reply.contactId,
+          phone: reply.phone || '',
           channelType: reply.channelType || 'SMS',
           inboundMessageBody: reply.lastMessageBody || '',
           inboundReceivedAt: reply.lastMessageDate || new Date().toISOString(),

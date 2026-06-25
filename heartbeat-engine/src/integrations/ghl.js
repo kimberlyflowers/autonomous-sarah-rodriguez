@@ -584,14 +584,15 @@ class GHLClient {
       return withInbound.map(conv => {
         const rawType = conv.lastMessageType || conv.messageType || conv.type || '';
         const channelType = String(rawType).toUpperCase().includes('EMAIL') ? 'Email' : 'SMS';
-        return {
-          conversationId: conv.id,
-          contactId: conv.contactId,
-          contactName: conv.contactName || conv.fullName || '',
-          lastMessageBody: conv.lastMessageBody || '',
-          lastMessageDate: conv.lastMessageDate,
-          unreadCount: conv.unreadCount || 0,
-          channelType,
+      return {
+        conversationId: conv.id,
+        contactId: conv.contactId,
+        contactName: conv.contactName || conv.fullName || '',
+        phone: conv.phone || conv.contactPhone || conv.phoneNumber || conv.contact?.phone || '',
+        lastMessageBody: conv.lastMessageBody || '',
+        lastMessageDate: conv.lastMessageDate,
+        unreadCount: conv.unreadCount || 0,
+        channelType,
         };
       });
 
@@ -602,9 +603,15 @@ class GHLClient {
   }
 
   // Reply to a contact in an existing conversation thread
-  async replyToConversation(conversationId, contactId, message, type = 'SMS') {
+  async replyToConversation(conversationId, contactId, message, type = 'SMS', phone = '') {
     try {
-      const payload = { type, message, conversationId, contactId };
+      const payload = {
+        type,
+        message,
+        conversationId,
+        contactId,
+        ...(phone ? { phone } : {})
+      };
       const response = await this.client.post('/conversations/messages', payload);
       logger.info('Reply sent to conversation', {
         conversationId, contactId, type,

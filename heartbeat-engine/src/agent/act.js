@@ -101,7 +101,10 @@ export async function act(decision, agentConfig) {
   } catch (error) {
     const duration = Date.now() - startTime;
 
-    logger.error(`❌ Action failed: ${decision.action_type}`, error, {
+    logger.error(`❌ Action failed: ${decision.action_type}`, {
+      error: error.message,
+      status: error.response?.status,
+      response: error.response?.data,
       duration: `${duration}ms`,
       input: decision.input_data
     });
@@ -527,7 +530,7 @@ If you need to reschedule, please let us know as soon as possible.
 
 // Execute reply to a contact in an existing conversation thread
 async function executeReplyToContact(decision, agentConfig) {
-  const { conversationId, contactId, message, channelType, inboundMessageBody, inboundReceivedAt } = decision.input_data || {};
+  const { conversationId, contactId, phone, message, channelType, inboundMessageBody, inboundReceivedAt } = decision.input_data || {};
 
   if (!conversationId && !contactId) {
     throw new Error('reply_to_contact requires conversationId or contactId in input_data');
@@ -539,6 +542,11 @@ async function executeReplyToContact(decision, agentConfig) {
   const { ghlClient } = await import('../integrations/ghl.js');
   const { createClient } = await import('@supabase/supabase-js');
   const type = channelType || 'SMS';
+  let replyPhone = phone || '';
+  if (!replyPhone && contactId) {
+    const contact = await ghlClient.getContact(contactId).catch(() => null);
+    replyPhone = contact?.phone || contact?.phoneNumber || contact?.contact?.phone || '';
+  }
 
   // ── DEDUPLICATION: check if we already replied to this exact inbound text ──
   // Prevents loops if GHL keeps a conversation unread or mark-read is unavailable.
@@ -585,8 +593,8 @@ async function executeReplyToContact(decision, agentConfig) {
   // ── SEND THE REPLY ──
   let result;
   if (conversationId) {
-    result = await ghlClient.replyToConversation(conversationId, contactId, message, type);
-    logger.info('Replied to conversation', { conversationId, contactId, type, messageId: result.messageId });
+    result = await ghlClient.replyToConversation(conversationId, contactId, message, type, replyPhone);
+    logger.info('Replied to conversation', { conversationId, contactId, hasPhone: !!replyPhone, type, messageId: result.messageId });
     await ghlClient.markConversationRead(conversationId).catch(() => {});
   } else {
     const conversations = await ghlClient.getUnreadInboundMessages();
@@ -594,8 +602,8 @@ async function executeReplyToContact(decision, agentConfig) {
     if (!convo) {
       throw new Error('reply_to_contact: no active conversation found for contactId ' + contactId);
     }
-    result = await ghlClient.replyToConversation(convo.conversationId, contactId, message, type);
-    logger.info('Replied to contact via conversation lookup', { conversationId: convo.conversationId, contactId, type });
+    result = await ghlClient.replyToConversation(convo.conversationId, contactId, message, type, replyPhone || convo.phone || '');
+    logger.info('Replied to contact via conversation lookup', { conversationId: convo.conversationId, contactId, hasPhone: !!(replyPhone || convo.phone), type });
     await ghlClient.markConversationRead(convo.conversationId).catch(() => {});
     logEntry.conversation_id = convo.conversationId;
   }
