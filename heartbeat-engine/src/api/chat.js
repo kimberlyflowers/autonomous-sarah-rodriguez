@@ -2416,6 +2416,19 @@ const _ALL_TOOLS = [
     }
   },
   {
+    name: "create_pptx",
+    description: "Create a real PowerPoint presentation (.pptx) with slides, layouts, shapes, images, charts, and speaker notes. Use this instead of create_artifact whenever the user asks for PowerPoint, PPTX, slides, a slide deck, pitch deck, or presentation. Never create an HTML landing page for a PowerPoint request. CRITICAL: After creating the file, ALWAYS tell the client that you've created it and include the filename in quotes. Provide a complete Node.js script that uses the 'pptxgenjs' library to build the deck. The script will be executed and the resulting .pptx file saved for download.",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "File name ending in .pptx (e.g. 'sales-pitch-deck.pptx')" },
+        description: { type: "string", description: "Brief description of the presentation" },
+        script: { type: "string", description: "Complete Node.js script using pptxgenjs. Must write the file to OUTPUT_PATH, e.g. await pptx.writeFile({ fileName: OUTPUT_PATH }); console.log('SUCCESS');. The variable OUTPUT_PATH will be replaced with the actual save path." }
+      },
+      required: ["name", "description", "script"]
+    }
+  },
+  {
     name: "create_scheduled_task",
     description: "Create a recurring scheduled task for yourself. Use when the client asks you to do something regularly — daily blog posts, weekly newsletters, daily lead checks, etc. This adds it to your daily task schedule.",
     input_schema: {
@@ -4112,6 +4125,63 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
       }
     }
 
+    // PPTX presentation creation — executes a Node.js script using pptxgenjs
+    if (toolName === 'create_pptx') {
+      try {
+        const rawName = toolInput.name || 'presentation.pptx';
+        const filename = rawName.toLowerCase().endsWith('.pptx') ? rawName : `${rawName}.pptx`;
+        const tmpDir = '/tmp/bloom-pptx';
+        const tmpScript = `${tmpDir}/build-${Date.now()}.js`;
+        const tmpOutput = `${tmpDir}/${filename}`;
+
+        const fsMod = await import('fs');
+        if (!fsMod.default.existsSync(tmpDir)) fsMod.default.mkdirSync(tmpDir, { recursive: true });
+
+        const script = toolInput.script.replace(/OUTPUT_PATH/g, `"${tmpOutput}"`);
+        fsMod.default.writeFileSync(tmpScript, script);
+
+        const { execSync } = await import('child_process');
+        const result = execSync(`cd /app && node "${tmpScript}"`, { timeout: 60000, encoding: 'utf8' });
+
+        if (fsMod.default.existsSync(tmpOutput)) {
+          const pptxBuffer = fsMod.default.readFileSync(tmpOutput);
+          const base64 = pptxBuffer.toString('base64');
+
+          const port = process.env.PORT || 3000;
+          const saveResp = await fetch(`http://localhost:${port}/api/files/artifacts`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: filename,
+              description: toolInput.description,
+              fileType: 'binary',
+              mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+              content: base64,
+              sessionId: sessionId,
+              organizationId: orgId || agentConfig?.organizationId || agentConfig?.organization_id || process.env.BLOOM_ORG_ID
+            })
+          });
+          const saveData = await saveResp.json();
+
+          try { fsMod.default.unlinkSync(tmpScript); fsMod.default.unlinkSync(tmpOutput); } catch {}
+
+          if (saveData.success) {
+            return {
+              success: true,
+              message: `Created "${filename}" — PowerPoint presentation ready for download.`,
+              artifact: saveData.artifact,
+              downloadUrl: saveData.artifact?.downloadUrl
+            };
+          }
+          return { success: false, error: saveData.error || 'Failed to save pptx artifact' };
+        }
+        return { success: false, error: 'Script ran but no .pptx file was created. Check script output: ' + result };
+      } catch (pptxErr) {
+        logger.error('PPTX creation failed', { error: pptxErr.message });
+        return { success: false, error: `PPTX creation failed: ${pptxErr.message}. Do not create an HTML landing page as a substitute; fix the PPTX script or report this exact error.` };
+      }
+    }
+
     // Scheduled task creation
     if (toolName === 'create_scheduled_task') {
       const port = process.env.PORT || 3000;
@@ -4834,6 +4904,7 @@ NEVER skip steps 3 and 4 even if step 2 fails.
     const _skillMsgText = typeof userMessage === 'string' ? userMessage
       : (Array.isArray(userMessage) ? userMessage.filter(b => b.type === 'text').map(b => b.text).join(' ') : '');
     const _injectedSkillNames = new Set();
+    const _isPptxIntent = /\b(presentation|slide\s*deck|slides?|powerpoint|\.pptx\b|pptx\b|pitch\s*deck|keynote|slideshow|slide\s*show)\b/i.test(_skillMsgText);
 
     // Helper: load a skill by exact name from catalog, replace {{template}} vars with agentConfig
     const _injectSkillByName = async (skillName, fallback = null) => {
@@ -4894,8 +4965,16 @@ NEVER skip steps 3 and 4 even if step 2 fails.
         'IMPORTANT: Write prompts as rich narrative paragraphs, NOT keyword lists. Include: subject with specific details, lighting (direction + quality), camera + lens (e.g. "Canon R5, 85mm f/1.4"), composition, color palette, mood anchor. Default to PHOTOREALISTIC. Set engine=openrouter when OpenRouter is primary, engine=gpt only when OpenAI images are configured, engine=gemini for reference-image consistency. Prompts are auto-enhanced but start detailed for best results.');
     }
 
+    // POWERPOINT — slide decks, presentations, pitch decks. This must run
+    // before website detection because deck topics often mention sales pages,
+    // landing pages, or websites as subject matter.
+    if (_isPptxIntent) {
+      await _injectSkillByName('pptx',
+        'IMPORTANT: Use create_pptx with a complete pptxgenjs script to generate a real .pptx file. Never create HTML, a web page, a landing page, or a create_artifact HTML substitute for PowerPoint/deck/presentation requests. If details are missing, use bloom_clarify buttons first.');
+    }
+
     // WEBSITE / LANDING PAGE
-    if (/\b(website|landing page|web page|homepage|build.*site|create.*site|online.*presence|web.*design|event.*site|conference.*site|sales.*page|opt.?in.*page)\b/i.test(_skillMsgText)) {
+    if (!_isPptxIntent && /\b(website|landing page|web page|homepage|build.*site|create.*site|online.*presence|web.*design|event.*site|conference.*site|sales.*page|opt.?in.*page)\b/i.test(_skillMsgText)) {
       await _injectSkillByName('website-creation',
         'IMPORTANT: Every website must be mobile-first HTML, include brand kit colors, have a CRM-connected form, and be saved as a published artifact.\n\n## MANDATORY PARALLEL BUILD PROTOCOL — NO EXCEPTIONS\n\nYou MUST follow this exact build order for EVERY website. Deviating from this order causes inconsistency and broken multi-page navigation.\n\n### STEP 1 — GENERATE SHARED CONTEXT FIRST (one call, no tools)\nBefore touching any tool, decide and output your shared context as a JSON block:\n```json\n{\n  "site_name": "Business Name",\n  "nav_pages": ["Home", "About", "Services", "Contact"],\n  "nav_links": { "Home": "slug", "About": "slug-about", "Services": "slug-services", "Contact": "slug-contact" },\n  "primary_color": "#hex",\n  "accent_color": "#hex",\n  "font_heading": "Font Name",\n  "font_body": "Font Name",\n  "tone": "professional and warm",\n  "cta_text": "Book a Free Consultation",\n  "cta_anchor": "#contact"\n}\n```\nThis shared context MUST be embedded at the top of every page\'s HTML generation. This is what makes all pages consistent.\n\n### STEP 2 — GENERATE ALL IMAGES IN PARALLEL (one tool call)\nCall `generate_images_parallel` ONCE with ALL images needed across ALL pages. Do NOT call `image_generate` individually. Pass every hero, about, service, and feature image at once. Wait for the imageMap to return before writing ANY HTML.\n\n### STEP 3 — BUILD PAGES (using shared context + real image URLs from Step 2)\nNow create each page. Every page MUST:\n- Start with the shared context CSS variables (colors, fonts)\n- Use the identical nav linking to ALL pages (use the nav_links from shared context)\n- Use the identical footer\n- Use the real image URLs from the imageMap (never placeholders)\n- Include the CRM form on at least one page\n\nFor multi-page sites: create each page with `create_artifact`. Use `get_site_pages` to confirm slugs before writing nav links.\n\n### STEP 4 — VERIFY NAV LINKS\nAfter all pages are created, call `get_site_pages` to confirm all slugs. If any nav link is wrong, use `edit_artifact` to correct it across all pages.\n\n### WHY THIS MATTERS\n- Step 1 (shared context) → fixes tone/color/font inconsistency between pages\n- Step 2 (parallel images) → fixes slow sequential generation, fixes partial failures\n- Step 3 (pages use shared context) → fixes broken navigation and mismatched styling\n- Step 4 (verify slugs) → fixes dead nav links\n\nNEVER call image_generate individually during website builds. ALWAYS use generate_images_parallel.');
     }
@@ -4916,12 +4995,6 @@ NEVER skip steps 3 and 4 even if step 2 fails.
     if (/\b(word.*doc(ument)?|\.docx|\bdocx\b|report.*document|formal.*document|letterhead|table.*of.*contents|memo|business.*letter)\b/i.test(_skillMsgText)) {
       await _injectSkillByName('docx',
         'IMPORTANT: Use the docx npm library to generate real .docx files with proper formatting. Never use markdown as a substitute.');
-    }
-
-    // POWERPOINT — slide decks, presentations, pitch decks
-    if (/\b(presentation|slide.*deck|\bdeck\b|powerpoint|\.pptx|\bpptx\b|pitch.*deck|slideshow|slide.*show)\b/i.test(_skillMsgText)) {
-      await _injectSkillByName('pptx',
-        'IMPORTANT: Use pptxgenjs to generate real .pptx files with proper slides and layouts. Never use HTML as a substitute.');
     }
 
     // PDF — create, convert, merge, fill
@@ -6595,7 +6668,8 @@ router.post('/message', async (req, res) => {
     // route to the Managed Agent instead of Sarah's normal chat loop.
     const sessionType = req.body?.sessionType;
     const action = req.body?.action;
-    const isWebsiteBuild = sessionType === 'website_build' || action === 'build_website';
+    const isPptxIntent = /\b(presentation|slide\s*deck|slides?|powerpoint|\.pptx\b|pptx\b|pitch\s*deck|keynote|slideshow|slide\s*show)\b/i.test(enrichedMessage);
+    const isWebsiteBuild = !isPptxIntent && (sessionType === 'website_build' || action === 'build_website');
 
     if (isWebsiteBuild) {
       const websiteAgent = await getWebsiteAgent();
@@ -6632,7 +6706,7 @@ router.post('/message', async (req, res) => {
     const _buildSignal = /\b(build|create|make|design|launch|start)\s+(me\s+)?(a\s+|an\s+)?website\b|\bI\s+need\s+(a\s+)?website\b|\bbuild\s+me\s+a\s+site\b/i;
     const _workSignal  = /\b(new|start|create|add)\s+(a\s+)?(work\s+(task|session)|task\s+for\s+you)\b/i;
 
-    if (userOrgId && (_buildSignal.test(enrichedMessage) || _workSignal.test(enrichedMessage))) {
+    if (userOrgId && !isPptxIntent && (_buildSignal.test(enrichedMessage) || _workSignal.test(enrichedMessage))) {
       const _isBuild = _buildSignal.test(enrichedMessage);
       try {
         const { createClient: _sbc } = await import('@supabase/supabase-js');

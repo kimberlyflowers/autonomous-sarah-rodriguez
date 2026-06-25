@@ -110,6 +110,7 @@ const TASK_TO_SKILL_MAP = {
 
 // Additional keyword matching for more specific skill selection
 const KEYWORD_SKILL_MAP = [
+  { keywords: /\b(powerpoint|pptx|slide deck|slides|presentation|pitch deck|keynote)\b/i, skill: 'pptx' },
   { keywords: /\b(blog|article|post|content marketing|seo)\b/i, skill: 'blog-content' },
   { keywords: /\b(email|newsletter|drip|sequence|subject line|sms)\b/i, skill: 'email-marketing' },
   { keywords: /\b(social|instagram|tiktok|facebook|linkedin|twitter|caption|hashtag)\b/i, skill: 'social-media' },
@@ -123,7 +124,6 @@ const KEYWORD_SKILL_MAP = [
   // Orphaned skills — now reachable via keyword matching
   { keywords: /\b(book|novel|manuscript|chapter|ebook|write a book|memoir|nonfiction book|fiction book)\b/i, skill: 'book-writing' },
   { keywords: /\b(pdf|convert to pdf|merge pdf|split pdf|fill pdf|pdf form)\b/i, skill: 'pdf' },
-  { keywords: /\b(powerpoint|pptx|slide deck|slides|presentation|pitch deck|keynote)\b/i, skill: 'pptx' },
   { keywords: /\b(excel|xlsx|spreadsheet|workbook|pivot table|vlookup|sheet)\b/i, skill: 'xlsx' },
   { keywords: /\b(generate image|ai image|create image|image prompt|midjourney|dall-?e|stable diffusion|generate a photo|create a photo)\b/i, skill: 'image-generation' },
   { keywords: /\b(schedule|scheduled task|recurring task|automate task|cron|run daily|run weekly|run every)\b/i, skill: 'task-scheduling' },
