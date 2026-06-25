@@ -21,6 +21,7 @@ const SARAH_AGENT_ID = process.env.SARAH_AGENT_ID || process.env.AGENT_UUID || '
 const ELEVENLABS_SARAH_AGENT_ID = process.env.ELEVENLABS_CONVAI_SARAH_AGENT_ID || 'agent_7401kcdd80w2fs5r0fdn6f8ktjy9';
 const ELEVENLABS_SARAH_VOICE_ID = process.env.ELEVENLABS_SARAH_VOICE_ID || 'TOhxx937tpk5BU3jtXir';
 const SARAH_FIRST_MESSAGE = process.env.ELEVENLABS_SARAH_FIRST_MESSAGE || '';
+const GHL_VOICE_WEBHOOK_SECRET = process.env.GHL_VOICE_WEBHOOK_SECRET || '';
 const SARAH_VOICE_PROMPT = `You are Sarah Rodriguez, Kimberly's Bloomie AI employee inside the Bloomie Staffing app. You are warm, direct, capable, and calm.
 
 When the user asks whether you can hear them, answer directly: "Yes, I can hear you." Do not repeat your opening greeting.
@@ -46,6 +47,59 @@ function getServiceClient() {
 
 function normalizeText(v) {
   return String(v || '').trim().toLowerCase();
+}
+
+function compactVoiceText(value, maxLength = 700) {
+  return String(value || '')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/\[[^\]]+\]\([^)]*\)/g, '$1')
+    .replace(/[*_`#>]+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLength);
+}
+
+function verifyVoiceWebhook(req, res) {
+  if (!GHL_VOICE_WEBHOOK_SECRET) return true;
+  const provided = req.headers['x-bloom-voice-secret']
+    || req.headers['x-ghl-voice-secret']
+    || req.body?.secret
+    || req.query?.secret;
+  if (provided && String(provided) === GHL_VOICE_WEBHOOK_SECRET) return true;
+  res.status(401).json({ success: false, error: 'Invalid voice webhook secret' });
+  return false;
+}
+
+function buildInternalBaseUrl() {
+  return process.env.INTERNAL_BASE_URL
+    || process.env.BASE_URL
+    || `http://localhost:${process.env.PORT || 8080}`;
+}
+
+async function runSarahVoiceToolTurn({ message, sessionId, agentId = SARAH_AGENT_ID }) {
+  const baseUrl = buildInternalBaseUrl();
+  const resp = await fetch(`${baseUrl}/api/chat/message`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-bloom-internal-source': 'ghl-voice-ai'
+    },
+    body: JSON.stringify({
+      message,
+      sessionId,
+      agentId,
+      source: 'ghl_voice_ai'
+    })
+  });
+
+  const raw = await resp.text();
+  let data = {};
+  try { data = raw ? JSON.parse(raw) : {}; } catch { data = { response: raw }; }
+  if (!resp.ok) {
+    const detail = data?.error || data?.message || raw || resp.statusText;
+    throw new Error(`Sarah tool turn failed: ${detail}`);
+  }
+  return data;
 }
 
 async function requireAuth(req, res, next) {
@@ -173,6 +227,99 @@ router.post('/elevenlabs/token', requireAuth, async (req, res) => {
   }
 });
 
+router.post('/action', async (req, res) => {
+  if (!verifyVoiceWebhook(req, res)) return;
+
+  try {
+    const body = req.body || {};
+    const action = body.action || body.intent || body.name || 'voice_action';
+    const utterance = body.utterance || body.query || body.message || body.task || body.user_message || body.transcript || '';
+    const contactId = body.contactId || body.contact_id || body.caller_contact_id || body.contact?.id || '';
+    const contactName = body.contactName || body.contact_name || body.caller_name || body.contact?.name || '';
+    const contactPhone = body.contactPhone || body.contact_phone || body.caller_phone || body.contact?.phone || '';
+    const callId = body.callId || body.call_id || body.conversationId || body.conversation_id || Date.now();
+    const sessionId = body.sessionId || `voice-${contactId || callId}`;
+
+    if (!String(utterance || '').trim()) {
+      return res.status(400).json({ success: false, error: 'Voice action requires an utterance, query, message, task, or transcript field.' });
+    }
+
+    const message = [
+      'VOICE CUSTOM ACTION FROM GHL VOICE AI.',
+      'Respond with one or two short spoken sentences.',
+      'If the caller asks for a lookup, scheduling check, CRM update, browser/search task, or document/status check, use the available tools now before answering.',
+      'Do not say you will check and get back unless you actually created a follow-up task or sent a notification.',
+      `Action: ${action}`,
+      contactName ? `Caller/contact name: ${contactName}` : '',
+      contactPhone ? `Caller/contact phone: ${contactPhone}` : '',
+      contactId ? `GHL contactId: ${contactId}` : '',
+      `Caller said: ${utterance}`
+    ].filter(Boolean).join('\n');
+
+    logger.info('GHL Voice AI custom action received', { action, contactId, sessionId, preview: String(utterance).slice(0, 120) });
+    const sarahResult = await runSarahVoiceToolTurn({ message, sessionId, agentId: body.agentId || SARAH_AGENT_ID });
+    const spoken = compactVoiceText(sarahResult.response || sarahResult.text || sarahResult.message || 'I handled that.');
+
+    return res.json({
+      success: true,
+      response: spoken,
+      answer: spoken,
+      message: spoken,
+      sessionId: sarahResult.sessionId || sessionId,
+      agentId: sarahResult.agentId || body.agentId || SARAH_AGENT_ID,
+      toolsUsed: sarahResult.toolsUsed || sarahResult.skillsUsed || []
+    });
+  } catch (e) {
+    logger.error('GHL Voice AI custom action failed', { error: e.message });
+    const spoken = 'I hit a tool issue while checking that. I am logging it for Kimberly now.';
+    return res.status(500).json({ success: false, error: e.message, response: spoken, answer: spoken, message: spoken });
+  }
+});
+
+router.post('/ingest-call', async (req, res) => {
+  if (!verifyVoiceWebhook(req, res)) return;
+
+  try {
+    const body = req.body || {};
+    const transcript = body.transcript || body.call_transcript || body.fullTranscript || '';
+    const summary = body.summary || body.call_summary || '';
+    const contactId = body.contactId || body.contact_id || body.contact?.id || '';
+    const contactName = body.contactName || body.contact_name || body.contact?.name || '';
+    const contactPhone = body.contactPhone || body.contact_phone || body.contact?.phone || '';
+    const callId = body.callId || body.call_id || Date.now();
+    const sessionId = body.sessionId || `voice-${contactId || callId}`;
+
+    if (!String(transcript || summary || '').trim()) {
+      return res.status(400).json({ success: false, error: 'Call ingest requires transcript or summary.' });
+    }
+
+    const message = [
+      'POST-CALL TRANSCRIPT FROM GHL VOICE AI.',
+      'Review this call. Extract any promised follow-ups or tasks, use tools if needed, and log concise completion/blocker details.',
+      contactName ? `Caller/contact name: ${contactName}` : '',
+      contactPhone ? `Caller/contact phone: ${contactPhone}` : '',
+      contactId ? `GHL contactId: ${contactId}` : '',
+      summary ? `Summary: ${summary}` : '',
+      transcript ? `Transcript:\n${transcript}` : ''
+    ].filter(Boolean).join('\n');
+
+    logger.info('GHL Voice AI transcript ingest received', { contactId, sessionId, hasTranscript: Boolean(transcript), hasSummary: Boolean(summary) });
+    const sarahResult = await runSarahVoiceToolTurn({ message, sessionId, agentId: body.agentId || SARAH_AGENT_ID });
+    const responseText = compactVoiceText(sarahResult.response || sarahResult.text || sarahResult.message || 'Call transcript processed.');
+
+    return res.json({
+      success: true,
+      response: responseText,
+      message: responseText,
+      sessionId: sarahResult.sessionId || sessionId,
+      agentId: sarahResult.agentId || body.agentId || SARAH_AGENT_ID
+    });
+  } catch (e) {
+    logger.error('GHL Voice AI transcript ingest failed', { error: e.message });
+    return res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 router.get('/prompt', async (req, res) => {
   // Pull agent config (could come from DB in multi-client future)
   const agentName = process.env.AGENT_NAME || 'Sarah Rodriguez';
@@ -248,33 +395,31 @@ ${companySkillsText}
 
   const customActions = [
     {
-      name: "Look Up Contact",
-      description: "When the caller asks about a specific contact, lead, or person in the CRM",
-      trigger: "When caller mentions a person's name and wants info about them",
-      webhook: `${sarahBaseUrl}/api/chat/message`,
-      body: { message: "Look up contact: {contact_name}", sessionId: "voice-{call_id}" },
-    },
-    {
-      name: "Take Task",
-      description: "When the caller gives you a task or instruction to complete",
-      trigger: "When caller asks you to write, create, send, check, schedule, or do something",
-      webhook: `${sarahBaseUrl}/api/chat/message`,
-      body: { message: "[📞 Voice task from {caller_name}]: {task_description}", sessionId: "voice-{caller_contact_id}" },
-    },
-    {
-      name: "Check Status",
-      description: "When the caller asks about the status of something",
-      trigger: "When caller asks 'what's the status of', 'did you finish', 'how's that going'",
-      webhook: `${sarahBaseUrl}/api/chat/message`,
-      body: { message: "Check status: {status_query}", sessionId: "voice-{caller_contact_id}" },
+      name: "Ask Sarah Tools",
+      description: "Use this whenever the caller asks Sarah to look up, check, create, schedule, search, update, or verify anything using Bloomie/GHL tools.",
+      trigger: "Caller gives a task, asks for a CRM/search/status lookup, wants Sarah to check something, or needs a tool-backed answer.",
+      webhook: `${sarahBaseUrl}/api/voice/action`,
+      method: "POST",
+      responsePath: "response",
+      body: {
+        secret: "{{GHL_VOICE_WEBHOOK_SECRET}}",
+        action: "{action_name}",
+        utterance: "{caller_request_or_question}",
+        contactId: "{contact.id}",
+        contactName: "{contact.name}",
+        contactPhone: "{contact.phone}",
+        callId: "{call.id}",
+        sessionId: "voice-{call.id}"
+      },
     },
   ];
 
   const postCallWorkflow = {
     trigger: "Transcript Generated",
     action: "Custom Webhook POST",
-    url: `${sarahBaseUrl}/api/chat/ingest-call`,
+    url: `${sarahBaseUrl}/api/voice/ingest-call`,
     body: {
+      secret: "{{GHL_VOICE_WEBHOOK_SECRET}}",
       transcript: "{{transcript}}",
       contactId: "{{contact.id}}",
       contactName: "{{contact.name}}",
@@ -301,6 +446,7 @@ ${companySkillsText}
       step8: "Assign to your phone number under Phone & Availability",
       step9: "Create a workflow with the 'postCallWorkflow' config for post-call processing",
       step10: "Test with 'Call Me' button in GHL",
+      secretNote: "Set GHL_VOICE_WEBHOOK_SECRET in Railway and use that same value in the GHL custom action body where the placeholder appears.",
     },
   });
 });

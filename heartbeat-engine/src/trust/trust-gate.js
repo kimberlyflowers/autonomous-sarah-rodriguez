@@ -93,6 +93,7 @@ const ACTION_PERMISSIONS = {
   'ghl_create_trigger_link':         { level: 1, category: 'data_creation', risk: 'low' },
   'ghl_create_product':              { level: 1, category: 'data_creation', risk: 'medium' },
   'notify_owner':                    { level: 0, category: 'communication', risk: 'low' },
+  'ghl_call_owner':                  { level: 0, category: 'communication', risk: 'medium' },
 
   // ── GMAIL TOOLS ────────────────────────────────────────────────────────────
   'gmail_check_inbox':   { level: 1, category: 'read', risk: 'low' },
@@ -610,6 +611,7 @@ export class TrustGate {
       'ghl_update_contact': `update the contact information`,
       'ghl_send_message': `send a message to the contact`,
       'notify_owner': `notify the business owner via SMS or email`,
+      'ghl_call_owner': `call the business owner using the configured GHL Voice AI workflow`,
       'ghl_create_opportunity': `create a new opportunity: ${parameters.title || 'untitled opportunity'}`,
       'ghl_update_opportunity_stage': `move the opportunity to the next stage`,
       'ghl_create_appointment': `schedule an appointment`,

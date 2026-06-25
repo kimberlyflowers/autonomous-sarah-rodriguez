@@ -1027,6 +1027,18 @@ const _ALL_TOOLS = [
       required: ["message"]
     }
   },
+  {
+    name: "ghl_call_owner",
+    description: "Trigger the configured GHL Voice AI outbound-call workflow for the business owner. Use when the owner asks you to call them, or when an urgent blocker needs a voice call. Requires the Voice AI outbound-call workflow ID to be configured.",
+    input_schema: {
+      type: "object",
+      properties: {
+        reason: { type: "string", description: "Short reason for the call" },
+        urgency: { type: "string", enum: ["normal", "urgent"], default: "normal" }
+      },
+      required: ["reason"]
+    }
+  },
 
   // ── CALENDARS & APPOINTMENTS ──────────────────────────────────────────────
   {

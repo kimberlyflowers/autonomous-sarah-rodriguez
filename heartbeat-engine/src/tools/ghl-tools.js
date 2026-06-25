@@ -763,6 +763,21 @@ export const ghlToolDefinitions = {
     operation: "write"
   },
 
+  ghl_call_owner: {
+    name: "ghl_call_owner",
+    description: "Trigger the configured GHL Voice AI outbound-call workflow for the business owner. Use when Kimberly asks Sarah to call her or when an urgent blocker needs a voice call. Requires GHL_VOICE_OUTBOUND_WORKFLOW_ID or a per-org user_settings key named ghl_voice_outbound_workflow_id.",
+    parameters: {
+      type: "object",
+      properties: {
+        reason: { type: "string", description: "Short reason Sarah is calling the owner" },
+        urgency: { type: "string", enum: ["normal", "urgent"], description: "urgent = time-sensitive blocker or VIP issue", default: "normal" }
+      },
+      required: ["reason"]
+    },
+    category: "conversations",
+    operation: "write"
+  },
+
   // CALENDARS
   ghl_list_calendars: {
     name: "ghl_list_calendars",
@@ -1672,6 +1687,59 @@ export const ghlExecutors = {
   // POST /conversations/messages
   ghl_send_message: async (params) => {
     return await callGHL('/conversations/messages', 'POST', params, {}, params._orgId);
+  },
+
+  ghl_call_owner: async (params) => {
+    const orgId = params._orgId || process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001';
+    let ownerContactId = process.env.OWNER_GHL_CONTACT_ID;
+    let workflowId = process.env.GHL_VOICE_OUTBOUND_WORKFLOW_ID;
+
+    try {
+      const { createClient } = await import('@supabase/supabase-js');
+      const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
+
+      const { data: org } = await supabase
+        .from('organizations')
+        .select('owner_ghl_contact_id, owner_name')
+        .eq('id', orgId)
+        .maybeSingle();
+      if (org?.owner_ghl_contact_id) ownerContactId = org.owner_ghl_contact_id;
+
+      const { data: setting } = await supabase
+        .from('user_settings')
+        .select('value')
+        .eq('organization_id', orgId)
+        .eq('key', 'ghl_voice_outbound_workflow_id')
+        .maybeSingle();
+      const settingValue = setting?.value;
+      if (typeof settingValue === 'string' && settingValue.trim()) workflowId = settingValue.trim();
+      if (settingValue && typeof settingValue === 'object' && settingValue.workflowId) workflowId = settingValue.workflowId;
+    } catch (e) {
+      logger.warn('ghl_call_owner: Supabase lookup failed, falling back to env vars', { error: e.message });
+    }
+
+    if (!ownerContactId) {
+      throw new Error('ghl_call_owner: no owner_ghl_contact_id found in Supabase organizations table or OWNER_GHL_CONTACT_ID env var');
+    }
+    if (!workflowId) {
+      throw new Error('ghl_call_owner: missing GHL_VOICE_OUTBOUND_WORKFLOW_ID or user_settings key ghl_voice_outbound_workflow_id. Create a GHL workflow with the Voice AI Outbound Call action and save its workflow ID.');
+    }
+
+    const result = await callGHL(`/contacts/${ownerContactId}/workflow/${workflowId}`, 'POST', {}, {}, params._orgId);
+    logger.info('ghl_call_owner: owner added to Voice AI outbound workflow', {
+      ownerContactId,
+      workflowId,
+      urgency: params.urgency || 'normal',
+      reason: String(params.reason || '').slice(0, 120)
+    });
+
+    return {
+      ...result,
+      ownerContactId,
+      workflowId,
+      reason: params.reason,
+      message: 'Triggered the configured GHL Voice AI outbound-call workflow for the owner.'
+    };
   },
 
   // OWNER NOTIFICATIONS
