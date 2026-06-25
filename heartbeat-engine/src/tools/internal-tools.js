@@ -1509,7 +1509,8 @@ export const internalToolExecutors = {
           instruction: params.instruction,
           frequency: params.frequency || 'daily',
           runTime: params.runTime || '09:00',
-          taskType: params.taskType || 'custom'
+          taskType: params.taskType || 'custom',
+          agentId: params.agentId || undefined
         })
       });
       const data = await resp.json();

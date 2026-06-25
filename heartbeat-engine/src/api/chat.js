@@ -3101,7 +3101,8 @@ async function executeTool(toolName, toolInput, sessionId = null, agentConfig = 
             instruction: toolInput.instruction,
             frequency: toolInput.frequency || 'daily',
             runTime: toolInput.runTime || '09:00',
-            taskType: toolInput.taskType || 'custom'
+            taskType: toolInput.taskType || 'custom',
+            agentId: agentConfig?.agentId || agentConfig?.id || undefined
           })
         });
         const data = await resp.json();
@@ -3125,7 +3126,10 @@ async function executeTool(toolName, toolInput, sessionId = null, agentConfig = 
     if (toolName === 'bloom_list_scheduled_tasks') {
       try {
         const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3001}`;
-        const resp = await fetch(`${BASE_URL}/api/agent/tasks`);
+        const qs = new URLSearchParams();
+        const currentAgentId = agentConfig?.agentId || agentConfig?.id;
+        if (currentAgentId) qs.set('agentId', currentAgentId);
+        const resp = await fetch(`${BASE_URL}/api/agent/tasks${qs.toString() ? `?${qs}` : ''}`);
         const data = await resp.json();
         if (!resp.ok) throw new Error('Failed to list scheduled tasks');
         const tasks = (data.tasks || []).map(t => ({

@@ -540,6 +540,7 @@ router.post('/tasks', async (req, res) => {
     const taskId  = 'task_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
     const cron    = frequencyToCron(frequency || 'daily', runTime);
     const nextRun = nextRunTime(frequency || 'daily', runTime);
+    const createdBy = extractUserFromJWT(req) || process.env.BLOOM_OWNER_USER_ID || '823e2fb5-2f8f-4279-9c84-c8f4bf78bcce';
 
     const { data, error } = await supabase
       .from('scheduled_tasks')
@@ -547,6 +548,7 @@ router.post('/tasks', async (req, res) => {
         task_id:         taskId,
         agent_id:        targetAgentId,
         organization_id: access.orgId,  // Use resolved org from JWT, not hardcoded
+        created_by:      createdBy,
         name,
         description:     description || '',
         task_type:       taskType || 'custom',
