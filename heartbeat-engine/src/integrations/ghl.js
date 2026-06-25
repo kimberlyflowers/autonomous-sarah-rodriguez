@@ -565,10 +565,15 @@ class GHLClient {
       const withInbound = conversations.filter(conv => {
         if (!conv.lastMessageDate) return false;
         const lastDate = new Date(conv.lastMessageDate);
+        const unreadInbound = conv.lastMessageDirection === 'inbound' && (conv.unreadCount || 0) > 0;
         return (
-          lastDate > sinceTime &&
-          conv.lastMessageDirection === 'inbound' &&
-          (conv.unreadCount || 0) > 0
+          unreadInbound &&
+          (
+            lastDate > sinceTime ||
+            // If GHL still marks the conversation unread, process it even when
+            // a deploy/restart made the reply older than the polling window.
+            (conv.unreadCount || 0) > 0
+          )
         );
       });
 
@@ -576,15 +581,19 @@ class GHLClient {
         since: sinceTime.toISOString()
       });
 
-      return withInbound.map(conv => ({
-        conversationId: conv.id,
-        contactId: conv.contactId,
-        contactName: conv.contactName || conv.fullName || '',
-        lastMessageBody: conv.lastMessageBody || '',
-        lastMessageDate: conv.lastMessageDate,
-        unreadCount: conv.unreadCount || 0,
-        channelType: conv.type, // SMS, Email, etc.
-      }));
+      return withInbound.map(conv => {
+        const rawType = conv.lastMessageType || conv.messageType || conv.type || '';
+        const channelType = String(rawType).toUpperCase().includes('EMAIL') ? 'Email' : 'SMS';
+        return {
+          conversationId: conv.id,
+          contactId: conv.contactId,
+          contactName: conv.contactName || conv.fullName || '',
+          lastMessageBody: conv.lastMessageBody || '',
+          lastMessageDate: conv.lastMessageDate,
+          unreadCount: conv.unreadCount || 0,
+          channelType,
+        };
+      });
 
     } catch (error) {
       logger.error('Failed to get unread inbound messages:', error.message);
