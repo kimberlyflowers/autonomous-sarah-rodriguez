@@ -38,6 +38,7 @@ import commsMcpRoutes from './api/comms-mcp.js';
 import opsMcpRoutes from './api/ops-mcp.js';
 import ghlMcpProxyRoutes from './api/ghl-mcp-proxy.js';  // GHL MCP Proxy — injects PIT auth headers before forwarding to GHL official MCP
 import websiteMcpRoutes from './api/website-mcp.js';
+import { executeGHLTool } from './tools/ghl-tools.js';
 import buildsRoutes from './api/builds.js';    // BLOOM Website MCP — layout blueprints, bloom_clarify, task_progress
 import integrationRoutes from './api/integrations.js';
 import cookieParser from 'cookie-parser';
@@ -509,20 +510,38 @@ app.get('/oauth/callback/:slug', async (req, res) => {
 //   Kimberly texts in → matches BLOOM org → routes to Sarah
 //   Unknown contact → routes to BLOOM default agent (Sarah)
 //
-// GHL Workflow: Trigger = "Inbound Message" → Webhook POST to:
-// https://autonomous-sarah-rodriguez-production.up.railway.app/webhook/ghl-inbound
+// GHL Workflow: Trigger = "Customer Replied" / "Inbound Message" → Webhook POST to:
+// https://app.bloomiestaffing.com/webhook/ghl-inbound
 // ═══════════════════════════════════════════════════════════════
 app.post('/webhook/ghl-inbound', async (req, res) => {
   try {
     const body = req.body;
+    const messageObj = body.message && typeof body.message === 'object' ? body.message : {};
 
     // Normalize GHL payload — they use different field names depending on trigger type
-    const incomingContactId = body.contactId || body.contact_id || body.contact?.id || '';
-    const messageText       = body.message || body.body || body.text || body.messageText || '';
+    const incomingContactId = body.contactId || body.contact_id || body.contact?.id || messageObj.contactId || '';
+    const incomingConversationId = body.conversationId || body.conversation_id || body.conversation?.id || messageObj.conversationId || '';
+    const incomingMessageId = body.messageId || body.message_id || body.id || messageObj.id || '';
+    const messageText       = messageObj.body || messageObj.message || body.body || body.text || body.messageText || (typeof body.message === 'string' ? body.message : '');
     const contactName       = body.contactName || body.contact?.name || 'Unknown';
     const contactPhone      = body.phone || body.contact?.phone || '';
+    const direction         = String(body.direction || messageObj.direction || '').toLowerCase();
+    const source            = String(body.source || body.type || messageObj.type || '').toLowerCase();
 
-    logger.info('📱 GHL inbound message received', { incomingContactId, contactName, preview: messageText.slice(0, 60) });
+    logger.info('📱 GHL inbound message received', {
+      incomingContactId,
+      incomingConversationId,
+      incomingMessageId,
+      contactName,
+      direction,
+      source,
+      preview: messageText.slice(0, 60)
+    });
+
+    if (direction === 'outbound') {
+      logger.info('GHL inbound: skipped outbound/bot echo', { incomingMessageId, incomingConversationId });
+      return res.json({ success: true, skipped: 'outbound message' });
+    }
 
     if (!messageText) {
       logger.warn('GHL inbound: no message text found', { body: JSON.stringify(body).slice(0, 200) });
@@ -586,13 +605,53 @@ app.post('/webhook/ghl-inbound', async (req, res) => {
     });
 
     const result = await messageRes.json();
+    if (!messageRes.ok) {
+      throw new Error(`Chat pipeline failed (${messageRes.status}): ${JSON.stringify(result).slice(0, 300)}`);
+    }
+
+    const sarahReply = String(result.response || '').trim();
+    if (!sarahReply) {
+      logger.warn('📱 Inbound SMS processed but chat pipeline returned no response', { sessionId, agent: agentName });
+      return res.json({ success: true, sessionId, agent: agentName, skipped: 'empty agent response' });
+    }
+
+    let conversationId = incomingConversationId;
+    if (!conversationId && incomingContactId) {
+      const lookup = await executeGHLTool('ghl_get_conversations', { contactId: incomingContactId, limit: 1 }, orgId);
+      conversationId = lookup?.data?.conversations?.[0]?.id || lookup?.data?.conversations?.[0]?.conversationId || '';
+    }
+
+    if (!conversationId) {
+      throw new Error(`Cannot reply to GHL inbound message: missing conversationId and no conversation found for contact ${incomingContactId || contactPhone}`);
+    }
+
+    const sendResult = await executeGHLTool('ghl_send_message', {
+      type: source === 'email' ? 'Email' : 'SMS',
+      message: sarahReply,
+      conversationId,
+      contactId: incomingContactId,
+    }, orgId);
+
+    if (!sendResult.success) {
+      throw new Error(`Failed to send Sarah reply to GHL conversation: ${sendResult.error}`);
+    }
 
     logger.info('📱 Inbound SMS processed', { 
-      agent: agentName, sessionId, 
-      responseLength: result.response?.length 
+      agent: agentName,
+      sessionId,
+      conversationId,
+      responseLength: sarahReply.length,
+      ghlMessageId: sendResult.data?.messageId || sendResult.data?.id,
     });
 
-    return res.json({ success: true, sessionId, agent: agentName });
+    return res.json({
+      success: true,
+      sessionId,
+      agent: agentName,
+      conversationId,
+      replied: true,
+      messageId: sendResult.data?.messageId || sendResult.data?.id || null,
+    });
 
   } catch (error) {
     logger.error('GHL inbound webhook failed:', error);

@@ -1656,7 +1656,7 @@ export const ghlExecutors = {
   // GET /conversations/search?locationId=&contactId=
   ghl_get_conversations: async (params) => {
     const locationId = await resolveLocationId(params._orgId);
-    return await callGHL('/conversations/search', 'GET', null, { locationId, contactId: params.contactId, limit: params.limit || 20 });
+    return await callGHL('/conversations/search', 'GET', null, { locationId, contactId: params.contactId, limit: params.limit || 20 }, params._orgId);
   },
 
   // GET /conversations/{conversationId}/messages — read replies in thread
@@ -1671,7 +1671,7 @@ export const ghlExecutors = {
 
   // POST /conversations/messages
   ghl_send_message: async (params) => {
-    return await callGHL('/conversations/messages', 'POST', params);
+    return await callGHL('/conversations/messages', 'POST', params, {}, params._orgId);
   },
 
   // OWNER NOTIFICATIONS
