@@ -4127,7 +4127,7 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
             body: JSON.stringify({
               name: filename,
               description: toolInput.description,
-              fileType: 'binary',
+              fileType: 'docx',
               mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
               content: base64,
               sessionId: sessionId,
@@ -4190,7 +4190,7 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
             body: JSON.stringify({
               name: filename,
               description: toolInput.description,
-              fileType: 'binary',
+              fileType: 'pptx',
               mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
               content: base64,
               sessionId: sessionId,
@@ -4252,7 +4252,7 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
             body: JSON.stringify({
               name: filename,
               description: toolInput.description,
-              fileType: 'binary',
+              fileType: 'pdf',
               mimeType: 'application/pdf',
               content: base64,
               sessionId: sessionId,
@@ -4314,7 +4314,7 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
             body: JSON.stringify({
               name: filename,
               description: toolInput.description,
-              fileType: 'binary',
+              fileType: 'xlsx',
               mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
               content: base64,
               sessionId: sessionId,

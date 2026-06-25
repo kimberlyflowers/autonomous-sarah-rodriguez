@@ -393,8 +393,32 @@ function ArtifactCard({ artifact, c, onView }) {
 }
 
 // ─── Artifact preview modal ───────────────────────────────────────────────────
+function artifactExt(name='') {
+  return String(name).split('.').pop()?.toLowerCase() || '';
+}
+
+function isOfficeArtifact(name='') {
+  return ['docx', 'pptx', 'xlsx'].includes(artifactExt(name));
+}
+
+function isPdfArtifact(name='') {
+  return artifactExt(name) === 'pdf';
+}
+
+function artifactEmbedUrl(fileId) {
+  if (!fileId) return '';
+  return `${window.location.origin}/api/files/embed/${fileId}`;
+}
+
+function officeViewerUrl(fileId) {
+  return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(artifactEmbedUrl(fileId))}`;
+}
+
 function ArtifactPreview({ artifact, c, onClose }) {
   if (!artifact) return null;
+  const fileId = artifact.fileId || artifact.id;
+  const canPdfPreview = fileId && isPdfArtifact(artifact.name);
+  const canOfficePreview = fileId && isOfficeArtifact(artifact.name);
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 1000,
@@ -468,6 +492,18 @@ function ArtifactPreview({ artifact, c, onClose }) {
               style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 8 }}
             />
           </div>
+        ) : canPdfPreview ? (
+          <iframe
+            src={artifactEmbedUrl(fileId)}
+            style={{ width: '100%', height: '100%', border: 'none', background: '#fff' }}
+            title={artifact.name}
+          />
+        ) : canOfficePreview ? (
+          <iframe
+            src={officeViewerUrl(fileId)}
+            style={{ width: '100%', height: '100%', border: 'none', background: '#fff' }}
+            title={artifact.name}
+          />
         ) : (
           <div style={{ width: '100%', height: '100%', overflow: 'auto', padding: 16 }}>
             <pre style={{

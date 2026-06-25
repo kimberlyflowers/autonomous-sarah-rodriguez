@@ -2376,6 +2376,68 @@ function SessionFilesPanel({c, sessionId, setActiveArtifact, aFN="Agent"}){
   );
 }
 
+function artifactExt(name='') {
+  return String(name).split('.').pop()?.toLowerCase() || '';
+}
+
+function isOfficeArtifact(name='') {
+  return ['docx', 'pptx', 'xlsx'].includes(artifactExt(name));
+}
+
+function isPdfArtifact(name='') {
+  return artifactExt(name) === 'pdf';
+}
+
+function isBinaryArtifactName(name='') {
+  return ['docx', 'pptx', 'xlsx', 'pdf', 'zip'].includes(artifactExt(name));
+}
+
+function artifactEmbedUrl(fileId) {
+  if (!fileId) return '';
+  return `${window.location.origin}/api/files/embed/${fileId}`;
+}
+
+function officeViewerUrl(fileId) {
+  return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(artifactEmbedUrl(fileId))}`;
+}
+
+function BinaryArtifactPreview({ file, c, compact=false }) {
+  const name = file?.name || 'file';
+  const fileId = file?.fileId;
+  const ext = artifactExt(name).toUpperCase() || 'FILE';
+  const embedUrl = artifactEmbedUrl(fileId);
+  const canOfficePreview = fileId && isOfficeArtifact(name) && window.location.protocol.startsWith('http');
+  const canPdfPreview = fileId && isPdfArtifact(name);
+
+  if (canPdfPreview) {
+    return (
+      <div style={{height:'100%',display:'flex',flexDirection:'column',background:c.bg}}>
+        <iframe src={embedUrl} title={name} style={{flex:1,width:'100%',border:'none',background:'#fff'}}/>
+      </div>
+    );
+  }
+
+  if (canOfficePreview) {
+    return (
+      <div style={{height:'100%',display:'flex',flexDirection:'column',background:c.bg}}>
+        <iframe src={officeViewerUrl(fileId)} title={name} style={{flex:1,width:'100%',border:'none',background:'#fff'}}/>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{height:'100%',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:14,padding:compact?20:32,textAlign:'center',color:c.so}}>
+      <div style={{width:64,height:64,borderRadius:16,background:c.ac+'18',border:'1px solid '+c.ac+'44',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,fontWeight:800,color:c.ac}}>{ext}</div>
+      <div style={{fontSize:16,fontWeight:700,color:c.tx,maxWidth:'90%',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{name}</div>
+      <div style={{fontSize:13,lineHeight:1.5,maxWidth:420}}>Preview is available for PDF, PowerPoint, Word, and Excel when the file has a public embed URL. You can still open or download this file.</div>
+      <div style={{display:'flex',gap:8,flexWrap:'wrap',justifyContent:'center',marginTop:4}}>
+        {fileId && <a href={`/api/files/embed/${fileId}`} target="_blank" rel="noopener noreferrer" style={{padding:'10px 18px',borderRadius:10,border:'1px solid '+c.ln,background:c.cd,color:c.tx,textDecoration:'none',fontSize:13,fontWeight:700}}>Open</a>}
+        {fileId && <a href={`/api/files/download/${fileId}`} download={name} style={{padding:'10px 20px',borderRadius:10,background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',textDecoration:'none',fontSize:13,fontWeight:800}}>Download {ext}</a>}
+      </div>
+    </div>
+  );
+}
+
 // ── ArtifactPane — Claude-style code/preview panel in right sidebar ──────────
 function ArtifactPane({ art, c, onClose, onRequestChanges }) {
   const [artView, setArtView] = useState('preview'); // 'preview' | 'code'
@@ -2466,13 +2528,8 @@ function ArtifactPane({ art, c, onClose, onRequestChanges }) {
               <pre style={{margin:0,padding:'14px 16px',fontSize:11,lineHeight:1.6,color:'#e8e8f0',fontFamily:'monospace',whiteSpace:'pre-wrap',wordBreak:'break-all'}}>{artContent}</pre>
             </div>
           )
-        ) : art.name?.match(/\.(docx|pdf|xlsx|pptx)$/) ? (
-          <div style={{height:'100%',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:12,padding:32,textAlign:'center'}}>
-            <div style={{fontSize:13,color:c.so}}>This file type can't be previewed</div>
-            <a href={art.fileId?`/api/files/download/${art.fileId}`:'#'} download style={{padding:'10px 24px',borderRadius:10,background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',textDecoration:'none',fontSize:13,fontWeight:700}}>
-              Download {art.name?.split('.').pop()?.toUpperCase()}
-            </a>
-          </div>
+        ) : isBinaryArtifactName(art.name) ? (
+          <BinaryArtifactPreview file={art} c={c} compact />
         ) : (
           <div style={{height:'100%',overflowY:'auto',padding:'14px 18px',fontSize:13,lineHeight:1.8,color:c.tx}}
             dangerouslySetInnerHTML={{__html:(artContent||'')
@@ -2528,7 +2585,7 @@ function ArtifactCard({ name, c, onOpenSide, mob }) {
         content = pd.content || content;
       }
       if (onOpenSide) {
-        onOpenSide({ name: artData.name, content, fileId: artData.fileId });
+        onOpenSide({ ...artData, name: artData.name, content, fileId: artData.fileId });
       }
     } catch {}
   };
@@ -7249,6 +7306,10 @@ function App({ authUser }) {
                               setChatLightbox({src:f.storagePath||f.previewUrl||`/api/files/preview/${f.fileId}`,alt:f.name});
                               return;
                             }
+                            if(isBinaryArtifactName(f.name)){
+                              setPreviewFile({...f,name:f.name,fileId:f.fileId,fileType:f.fileType,slug:f.slug||null,sessionId:f.sessionId||null});
+                              return;
+                            }
                             try{
                               const pr=await fetch(`/api/files/preview/${f.fileId}`);
                               if(pr.headers.get('content-type')?.includes('json')){
@@ -8161,18 +8222,22 @@ function App({ authUser }) {
                 <div style={{fontSize:15,fontWeight:700,color:c.tx,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{previewFile.name}</div>
               </div>
               {/* Mode toggle */}
-              <div style={{display:"flex",gap:2,background:c.cd,padding:2,borderRadius:8,border:"1px solid "+c.ln}}>
-                <button onClick={()=>setEditMode(false)} style={{padding:"5px 12px",borderRadius:6,border:"none",fontSize:11,fontWeight:600,cursor:"pointer",background:!editMode?c.ac+"20":"transparent",color:!editMode?c.ac:c.so,fontFamily:"inherit"}}>View</button>
-                <button onClick={()=>{setEditMode(true);setEditContent(previewFile.content||'');}} style={{padding:"5px 12px",borderRadius:6,border:"none",fontSize:11,fontWeight:600,cursor:"pointer",background:editMode?c.ac+"20":"transparent",color:editMode?c.ac:c.so,fontFamily:"inherit"}}>Edit</button>
-              </div>
+              {!isBinaryArtifactName(previewFile.name) && (
+                <div style={{display:"flex",gap:2,background:c.cd,padding:2,borderRadius:8,border:"1px solid "+c.ln}}>
+                  <button onClick={()=>setEditMode(false)} style={{padding:"5px 12px",borderRadius:6,border:"none",fontSize:11,fontWeight:600,cursor:"pointer",background:!editMode?c.ac+"20":"transparent",color:!editMode?c.ac:c.so,fontFamily:"inherit"}}>View</button>
+                  <button onClick={()=>{setEditMode(true);setEditContent(previewFile.content||'');}} style={{padding:"5px 12px",borderRadius:6,border:"none",fontSize:11,fontWeight:600,cursor:"pointer",background:editMode?c.ac+"20":"transparent",color:editMode?c.ac:c.so,fontFamily:"inherit"}}>Edit</button>
+                </div>
+              )}
               {editMode?(
                 <button onClick={()=>setEditorFullscreen(!editorFullscreen)} style={{padding:"5px 12px",borderRadius:8,border:"none",background:c.gradient,fontSize:11,fontWeight:700,color:"#fff",cursor:"pointer",fontFamily:"inherit"}}>{editorFullscreen?"↙ Exit Full Screen":"↗ Full Screen"}</button>
               ):(
-                <a href={previewFile.slug?`/p/${previewFile.slug}`:`/api/files/publish/${previewFile.fileId}`} target="_blank" rel="noopener noreferrer" style={{padding:"5px 12px",borderRadius:8,border:"none",background:c.gradient,fontSize:11,fontWeight:700,color:"#fff",textDecoration:"none"}}>↗ {previewFile.slug?"View Live":"Full Screen"}</a>
+                <a href={previewFile.slug?`/p/${previewFile.slug}`:isBinaryArtifactName(previewFile.name)?`/api/files/embed/${previewFile.fileId}`:`/api/files/publish/${previewFile.fileId}`} target="_blank" rel="noopener noreferrer" style={{padding:"5px 12px",borderRadius:8,border:"none",background:c.gradient,fontSize:11,fontWeight:700,color:"#fff",textDecoration:"none"}}>↗ {previewFile.slug?"View Live":isBinaryArtifactName(previewFile.name)?"Open":"Full Screen"}</a>
               )}
-              <button onClick={()=>{setPublishOpen(true);setPublishSlug(previewFile.slug||previewFile.name?.replace(/\.[^.]+$/,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'');setPublishError('');setPublishedUrl(previewFile.slug?`${window.location.origin}/p/${previewFile.slug}`:null);}} style={{padding:"5px 12px",borderRadius:8,border:previewFile.slug?"1px solid "+c.gr:"1px solid "+c.ac,background:previewFile.slug?c.gr+"15":c.ac+"15",fontSize:11,fontWeight:700,color:previewFile.slug?c.gr:c.ac,cursor:"pointer",fontFamily:"inherit"}}>
-                {previewFile.slug?"✓ Published":"Publish"}
-              </button>
+              {previewFile.name?.endsWith('.html') && (
+                <button onClick={()=>{setPublishOpen(true);setPublishSlug(previewFile.slug||previewFile.name?.replace(/\.[^.]+$/,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'');setPublishError('');setPublishedUrl(previewFile.slug?`${window.location.origin}/p/${previewFile.slug}`:null);}} style={{padding:"5px 12px",borderRadius:8,border:previewFile.slug?"1px solid "+c.gr:"1px solid "+c.ac,background:previewFile.slug?c.gr+"15":c.ac+"15",fontSize:11,fontWeight:700,color:previewFile.slug?c.gr:c.ac,cursor:"pointer",fontFamily:"inherit"}}>
+                  {previewFile.slug?"✓ Published":"Publish"}
+                </button>
+              )}
               <a href={`/api/files/download/${previewFile.fileId}`} download style={{padding:"5px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.cd,fontSize:11,fontWeight:600,color:c.ac,textDecoration:"none"}}>↓</a>
               <button onClick={()=>{setPreviewFile(null);setEditMode(false);setEditorFullscreen(false);}} style={{width:30,height:30,borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:14,color:c.so,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
             </div>
@@ -8302,17 +8367,9 @@ function App({ authUser }) {
             ):(
               /* View Mode */
               <>
-                {(previewFile.name?.endsWith('.docx')||previewFile.name?.endsWith('.pdf')||previewFile.name?.endsWith('.xlsx')||previewFile.name?.endsWith('.pptx')||previewFile.name?.endsWith('.zip'))?(
-                  /* Binary files — show download button, don't try to render */
-                  <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,color:c.so}}>
-                    <span style={{fontSize:48}}>null</span>
-                    <div style={{fontSize:16,fontWeight:600,color:c.tx}}>{previewFile.name}</div>
-                    <div style={{fontSize:13}}>This file type can't be previewed in the browser</div>
-                    {previewFile.fileId&&(
-                      <a href={`/api/files/download/${previewFile.fileId}`} download={previewFile.name} style={{padding:"12px 28px",borderRadius:10,background:"linear-gradient(135deg,#F4A261,#E76F8B)",color:"#fff",textDecoration:"none",fontSize:14,fontWeight:700,marginTop:8}}>
-                        Download {previewFile.name?.split('.').pop()?.toUpperCase()}
-                      </a>
-                    )}
+                {isBinaryArtifactName(previewFile.name)?(
+                  <div style={{flex:1,minHeight:0}}>
+                    <BinaryArtifactPreview file={previewFile} c={c} />
                   </div>
                 ):previewFile.name?.endsWith('.html')?(
                   <iframe

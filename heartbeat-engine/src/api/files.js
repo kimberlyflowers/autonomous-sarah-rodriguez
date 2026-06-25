@@ -26,6 +26,34 @@ function sb() {
   });
 }
 
+function isPublicUrl(value) {
+  return /^https?:\/\//i.test(String(value || ''));
+}
+
+function isBinaryArtifact(fileType, mimeType = '') {
+  const ft = String(fileType || '').toLowerCase();
+  const mt = String(mimeType || '').toLowerCase();
+  return ['binary', 'document', 'pdf', 'docx', 'pptx', 'xlsx', 'zip'].includes(ft)
+    || mt.includes('pdf')
+    || mt.includes('officedocument')
+    || mt.includes('application/zip')
+    || mt.includes('octet-stream');
+}
+
+function binaryExt(name = '', fileType = '', mimeType = '') {
+  const lowerName = String(name || '').toLowerCase();
+  const fromName = lowerName.match(/(\.[a-z0-9]+)$/)?.[1];
+  if (fromName) return fromName;
+  const ft = String(fileType || '').toLowerCase();
+  const mt = String(mimeType || '').toLowerCase();
+  if (ft === 'pdf' || mt.includes('pdf')) return '.pdf';
+  if (ft === 'docx' || mt.includes('wordprocessingml')) return '.docx';
+  if (ft === 'pptx' || mt.includes('presentationml')) return '.pptx';
+  if (ft === 'xlsx' || mt.includes('spreadsheetml')) return '.xlsx';
+  if (ft === 'zip' || mt.includes('zip')) return '.zip';
+  return '.bin';
+}
+
 // ── CREATE ARTIFACT ──────────────────────────────────────────────────────────
 router.post('/artifacts', async (req, res) => {
   try {
@@ -71,12 +99,25 @@ router.post('/artifacts', async (req, res) => {
         }
       } catch (e) { logger.warn('Supabase Storage upload failed', { error: e.message }); }
 
-    } else if (fileType === 'document' || fileType === 'pdf') {
+    } else if (isBinaryArtifact(fileType, mimeType)) {
       const buffer = Buffer.from(content, 'base64');
-      const ext = mimeType.includes('pdf') ? '.pdf' : mimeType.includes('word') ? '.docx' : '.bin';
+      const ext = binaryExt(name, fileType, mimeType);
       filePath = path.join(FILE_STORAGE, `${fileId}${ext}`);
       fs.writeFileSync(filePath, buffer);
       fileSize = buffer.length;
+
+      // Upload binary deliverables so the app can preview/embed them by URL.
+      try {
+        const supabase = sb();
+        const storageKey = `artifacts/${fileId}${ext}`;
+        const { error: upErr } = await supabase.storage.from('bloom-artifacts').upload(storageKey, buffer, { contentType: mimeType, upsert: true });
+        if (!upErr) {
+          const { data: urlData } = supabase.storage.from('bloom-artifacts').getPublicUrl(storageKey);
+          storagePath = urlData?.publicUrl || null;
+        } else {
+          logger.warn('Supabase binary artifact upload failed', { error: upErr.message, name });
+        }
+      } catch (e) { logger.warn('Supabase binary artifact upload failed', { error: e.message, name }); }
     } else {
       contentText = content;
       fileSize = Buffer.byteLength(content, 'utf8');
@@ -249,8 +290,8 @@ router.get('/preview/:fileId', async (req, res) => {
       });
     }
 
-    // Binary with storage_path — redirect
-    if (file.storage_path) return res.redirect(302, file.storage_path);
+    // Binary with public storage URL — redirect so iframe/object viewers can load it.
+    if (file.storage_path && isPublicUrl(file.storage_path)) return res.redirect(302, file.storage_path);
 
     return res.json({ name: file.name, fileType: file.file_type, mimeType: file.mime_type, preview: 'binary' });
   } catch (error) {
@@ -274,15 +315,25 @@ router.get('/download/:fileId', async (req, res) => {
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
 
     // Binary stored in Supabase Storage — redirect to CDN for download
-    if (file.storage_path && file.file_type === 'image') {
+    if (file.storage_path && isPublicUrl(file.storage_path)) {
       res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
       return res.redirect(302, file.storage_path);
     }
 
-    // Text content — send directly
+    // Binary cached on local disk
+    if (file.storage_path && !isPublicUrl(file.storage_path) && fs.existsSync(file.storage_path)) {
+      res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+      res.setHeader('Content-Type', file.mime_type || 'application/octet-stream');
+      return res.sendFile(file.storage_path);
+    }
+
+    // Text content or legacy base64 binary content — send directly
     if (file.content) {
       res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
       res.setHeader('Content-Type', file.mime_type || 'text/plain');
+      if (isBinaryArtifact(file.file_type, file.mime_type)) {
+        return res.send(Buffer.from(file.content, 'base64'));
+      }
       return res.send(file.content);
     }
 
@@ -290,6 +341,43 @@ router.get('/download/:fileId', async (req, res) => {
   } catch (error) {
     logger.error('Download error', { error: error.message });
     return res.status(500).json({ error: 'Download failed' });
+  }
+});
+
+// ── EMBED FILE INLINE ────────────────────────────────────────────────────────
+router.get('/embed/:fileId', async (req, res) => {
+  try {
+    const { fileId } = req.params;
+    const supabase = sb();
+    const { data: file, error } = await supabase.from('artifacts')
+      .select('name, file_type, mime_type, content, storage_path')
+      .eq('id', fileId)
+      .single();
+
+    if (error || !file) return res.status(404).send('File not found');
+
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    res.setHeader('Content-Disposition', `inline; filename="${safeName}"`);
+
+    if (file.storage_path && isPublicUrl(file.storage_path)) {
+      return res.redirect(302, file.storage_path);
+    }
+    if (file.storage_path && !isPublicUrl(file.storage_path) && fs.existsSync(file.storage_path)) {
+      res.setHeader('Content-Type', file.mime_type || 'application/octet-stream');
+      return res.sendFile(file.storage_path);
+    }
+    if (file.content) {
+      res.setHeader('Content-Type', file.mime_type || 'text/plain');
+      if (isBinaryArtifact(file.file_type, file.mime_type)) {
+        return res.send(Buffer.from(file.content, 'base64'));
+      }
+      return res.send(file.content);
+    }
+
+    return res.status(404).send('File content not available');
+  } catch (error) {
+    logger.error('Embed error', { error: error.message });
+    return res.status(500).send('Embed failed');
   }
 });
 
