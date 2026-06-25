@@ -59,6 +59,30 @@ function compactVoiceText(value, maxLength = 700) {
     .slice(0, maxLength);
 }
 
+function isSensitivePublicVoiceRequest(text) {
+  const s = String(text || '').toLowerCase();
+  return /\b(password|secret|api key|token|login|credentials|private|confidential|owner info|bank|card|ssn|social security)\b/.test(s)
+    || /\b(list|send|give|read|show|tell me)\b.*\b(contacts?|customers?|clients?|leads?|emails?|phone numbers?|numbers?|addresses?)\b/.test(s)
+    || /\b(email|phone|number|address)\b.*\b(for|of)\b.*\b[a-z]+ [a-z]+\b/.test(s)
+    || /\b(did|has|have|was|is)\b.*\b(call|called|text|messag|email|appointment|book)\b.*\b[a-z]+ [a-z]+\b/.test(s);
+}
+
+async function resolveOwnerContactId(orgId = BLOOM_ORG_ID) {
+  let ownerContactId = process.env.OWNER_GHL_CONTACT_ID || '';
+  try {
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) return ownerContactId;
+    const { data: org } = await getServiceClient()
+      .from('organizations')
+      .select('owner_ghl_contact_id')
+      .eq('id', orgId || BLOOM_ORG_ID)
+      .maybeSingle();
+    if (org?.owner_ghl_contact_id) ownerContactId = org.owner_ghl_contact_id;
+  } catch (e) {
+    logger.warn('Owner contact lookup failed for voice bridge', { error: e.message });
+  }
+  return ownerContactId;
+}
+
 function verifyVoiceWebhook(req, res) {
   if (!GHL_VOICE_WEBHOOK_SECRET) return true;
   const provided = req.headers['x-bloom-voice-secret']
@@ -239,9 +263,17 @@ router.post('/action', async (req, res) => {
     const contactPhone = body.contactPhone || body.contact_phone || body.caller_phone || body.contact?.phone || '';
     const callId = body.callId || body.call_id || body.conversationId || body.conversation_id || Date.now();
     const sessionId = body.sessionId || `voice-${contactId || callId}`;
+    const ownerContactId = await resolveOwnerContactId(body.orgId || body.organizationId || BLOOM_ORG_ID);
+    const isVerifiedOwner = Boolean(contactId && ownerContactId && String(contactId) === String(ownerContactId));
 
     if (!String(utterance || '').trim()) {
       return res.status(400).json({ success: false, error: 'Voice action requires an utterance, query, message, task, or transcript field.' });
+    }
+
+    if (!isVerifiedOwner && isSensitivePublicVoiceRequest(utterance)) {
+      const safe = 'I can help with Bloomie services, appointments, or relay a message to Kimberly, but I cannot share private contact or account details.';
+      logger.warn('Blocked sensitive public GHL Voice AI request', { action, contactId, sessionId, preview: String(utterance).slice(0, 120) });
+      return res.json({ success: true, blocked: true, response: safe, answer: safe, message: safe, sessionId, agentId: body.agentId || SARAH_AGENT_ID });
     }
 
     const message = [
@@ -249,6 +281,9 @@ router.post('/action', async (req, res) => {
       'Respond with one or two short spoken sentences.',
       'If the caller asks for a lookup, scheduling check, CRM update, browser/search task, or document/status check, use the available tools now before answering.',
       'Do not say you will check and get back unless you actually created a follow-up task or sent a notification.',
+      isVerifiedOwner
+        ? 'Caller is verified as the organization owner. Owner-level CRM/status lookups are allowed.'
+        : 'Caller is not verified as the organization owner. Do not reveal private CRM details, contact details, secrets, internal lists, passwords, or account information. You may answer product/service questions, schedule appointments, and relay messages to Kimberly.',
       `Action: ${action}`,
       contactName ? `Caller/contact name: ${contactName}` : '',
       contactPhone ? `Caller/contact phone: ${contactPhone}` : '',
