@@ -2560,7 +2560,7 @@ function ArtifactCard({ name, c, onOpenSide, mob }) {
 
   const dn = artData?.name || (name === '__latest__' ? 'Loading...' : name);
   const ext = dn.split('.').pop()?.toLowerCase() || '';
-  const icon = null;
+  const icon = isBinaryArtifactName(dn) ? ext.toUpperCase() : 'FILE';
 
   useEffect(() => {
     (async () => {
@@ -2594,7 +2594,7 @@ function ArtifactCard({ name, c, onOpenSide, mob }) {
     <div onClick={handleClick} style={{marginTop:8,borderRadius:12,border:"1px solid rgba(52,168,83,0.3)",background:c.cd,cursor:"pointer",overflow:"hidden",transition:"transform .15s",display:"flex",alignItems:"center",gap:10,padding:"10px 14px"}}
       onMouseEnter={e=>e.currentTarget.style.transform="translateY(-1px)"}
       onMouseLeave={e=>e.currentTarget.style.transform="translateY(0)"}>
-      <span style={{fontSize:20}}>{icon}</span>
+      <span style={{minWidth:38,padding:"4px 6px",borderRadius:7,background:isBinaryArtifactName(dn)?c.ac+"12":c.gf,border:"1px solid "+(isBinaryArtifactName(dn)?c.ac+"33":c.ln),fontSize:10,fontWeight:800,color:isBinaryArtifactName(dn)?c.ac:c.so,textAlign:"center"}}>{icon}</span>
       <div style={{flex:1,minWidth:0}}>
         <div style={{fontSize:11,fontWeight:700,color:c.gr,textTransform:"uppercase",letterSpacing:"0.5px"}}>New File — Saved</div>
         <div style={{fontSize:13,fontWeight:600,color:c.tx,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{dn}</div>
@@ -7297,7 +7297,7 @@ function App({ authUser }) {
                     const date=f.approvedAt?new Date(f.approvedAt).toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'';
                     return (
                       <div key={f.fileId} style={{background:c.cd,borderRadius:14,border:"1px solid "+c.ln,transition:"border-color .15s"}}
-                        onMouseEnter={e=>e.currentTarget.style.borderColor=c.ac}
+                        onMouseEnter={e=>e.currentTarget.style.borderColor=isBinaryArtifactName(f.name)?c.gr:c.ac}
                         onMouseLeave={e=>e.currentTarget.style.borderColor=c.ln}>
                         {/* Preview area */}
                         <div style={{height:120,background:c.sf,display:"flex",alignItems:"center",justifyContent:"center",borderBottom:"1px solid "+c.ln,cursor:"pointer",position:"relative",overflow:"hidden"}}
@@ -7346,6 +7346,12 @@ function App({ authUser }) {
                                 />
                               </div>
                             )
+                          ) : isBinaryArtifactName(f.name) ? (
+                            <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,padding:14,textAlign:"center",background:`linear-gradient(135deg, ${c.cd}, ${c.gf})`}}>
+                              <div style={{padding:"8px 12px",borderRadius:10,background:c.ac+"14",border:"1px solid "+c.ac+"35",fontSize:13,fontWeight:900,color:c.ac,letterSpacing:0}}>{ext.toUpperCase()}</div>
+                              <div style={{maxWidth:"85%",fontSize:12,fontWeight:700,color:c.tx,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</div>
+                              <div style={{fontSize:10,fontWeight:700,color:c.gr,textTransform:"uppercase",letterSpacing:0}}>Open preview</div>
+                            </div>
                           ) : (
                             /* Modern SVG icons for other file types */
                             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke={c.so} strokeWidth="1.5" opacity="0.4">
