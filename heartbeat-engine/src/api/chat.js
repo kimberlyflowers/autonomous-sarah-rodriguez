@@ -3489,6 +3489,7 @@ Use edit_artifact with find-and-replace operations to modify the existing page c
 
       const mimeMap = { text: 'text/plain', html: 'text/html', code: 'text/javascript', markdown: 'text/markdown' };
       const port = process.env.PORT || 3000;
+      const artifactOrgId = orgId || agentConfig?.organizationId || agentConfig?.organization_id || process.env.BLOOM_ORG_ID;
       // Retry artifact creation up to 2 times on transient failures
       let data = null;
       const artifactPayload = JSON.stringify({
@@ -3498,7 +3499,8 @@ Use edit_artifact with find-and-replace operations to modify the existing page c
         mimeType: mimeMap[toolInput.fileType] || 'text/markdown',
         content: cleanContent,
         sessionId: sessionId,
-        agentId: agentConfig?.agentId || null
+        agentId: agentConfig?.agentId || null,
+        organizationId: artifactOrgId || null
       });
       for (let attempt = 0; attempt < 3; attempt++) {
         try {

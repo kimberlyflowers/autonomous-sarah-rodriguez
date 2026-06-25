@@ -72,7 +72,7 @@ export async function getUserOrgId(req) {
 const agentOrgCache = new Map();
 const AGENT_CACHE_TTL = 60_000;
 
-async function getAgentOrgId(agentId) {
+export async function getAgentOrgId(agentId) {
   const cached = agentOrgCache.get(agentId);
   if (cached && Date.now() < cached.expiry) return cached.orgId;
 

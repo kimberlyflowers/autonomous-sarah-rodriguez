@@ -8,7 +8,7 @@ import crypto from 'crypto';
 import path from 'path';
 import fs from 'fs';
 import { createClient } from '@supabase/supabase-js';
-import { validateAgentAccess, getUserOrgId, extractUserId } from './org-boundary.js';
+import { validateAgentAccess, getAgentOrgId, getUserOrgId, extractUserId } from './org-boundary.js';
 
 const logger = createLogger('files-api');
 const router = Router();
@@ -33,9 +33,21 @@ router.post('/artifacts', async (req, res) => {
     if (!name || !content) return res.status(400).json({ error: 'name and content required' });
 
     // ── Org-boundary: if agentId provided, verify ownership ──
+    // create_artifact calls this route internally from the same service without
+    // a user JWT. In that path, require organizationId and verify the agent
+    // belongs to that org instead of returning a false auth failure.
     if (agentId) {
-      const access = await validateAgentAccess(req, agentId);
-      if (!access.authorized) return res.status(access.status).json({ error: access.error });
+      const userId = extractUserId(req);
+      if (!userId && req.body.organizationId) {
+        const agentOrgId = await getAgentOrgId(agentId);
+        if (!agentOrgId) return res.status(404).json({ error: 'Agent not found' });
+        if (agentOrgId !== req.body.organizationId) {
+          return res.status(403).json({ error: 'Access denied — agent belongs to a different organization' });
+        }
+      } else {
+        const access = await validateAgentAccess(req, agentId);
+        if (!access.authorized) return res.status(access.status).json({ error: access.error });
+      }
     }
 
     const fileId = `art_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
