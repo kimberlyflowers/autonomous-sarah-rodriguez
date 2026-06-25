@@ -12,6 +12,7 @@ import { appendProgress, getProgressText, getRecentProgress } from './agent/prog
 import { lettaClient } from './memory/letta-client.js';
 import { logHeartbeat, logAction, logRejection, logHandoff, initCycleRow } from './logging/index.js';
 import { isWithinScope } from './config/autonomy-levels.js';
+import { isTrustGateEnabled } from './trust/trust-gate.js';
 
 const logger = createLogger('heartbeat');
 
@@ -102,7 +103,7 @@ export async function runHeartbeat(agentConfig, trigger = {}) {
       try {
         if (decision.type === 'act') {
           // Check if action is within current autonomy scope
-          if (isWithinScope(decision, agentConfig.currentAutonomyLevel)) {
+          if (!isTrustGateEnabled() || isWithinScope(decision, agentConfig.currentAutonomyLevel)) {
             logger.info(`Executing action: ${decision.action_type}`, {
               description: decision.description
             });

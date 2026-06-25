@@ -114,6 +114,7 @@ function detectProvider(model) {
 function buildSharedContext(context) {
   const { environment, memory, trigger, agentProfile, autonomyLevel } = context;
   const level = getAutonomyLevel(autonomyLevel);
+  const inboundReplies = Array.isArray(environment.inboundReplies) ? environment.inboundReplies : [];
 
   return {
     agentName: agentProfile.name,
@@ -145,6 +146,18 @@ function buildSharedContext(context) {
       conflicts: environment.calendar?.conflicts?.length || 0,
     },
     alerts: environment.alerts?.map(a => `${a.type}: ${a.message} (${a.urgency})`).join('\n') || 'None',
+    inboundReplies,
+    inboundReplyDetails: inboundReplies.length
+      ? inboundReplies.map((r, i) => [
+          `Inbound reply ${i + 1}:`,
+          `conversationId=${r.conversationId || ''}`,
+          `contactId=${r.contactId || ''}`,
+          `contactName=${r.contactName || ''}`,
+          `channelType=${r.channelType || 'SMS'}`,
+          `lastMessageDate=${r.lastMessageDate || ''}`,
+          `message=${JSON.stringify(r.lastMessageBody || '')}`
+        ].join(' ')).join('\n')
+      : 'None',
     recentActions: memory.recentActions?.map(a =>
       `- ${a.action_type}: ${a.description} (${a.success ? 'SUCCESS' : 'FAILED'})`
     ).join('\n') || 'No recent actions',
@@ -189,6 +202,8 @@ ${VALID_ACTION_TYPES.map(t => `  • "${t}"`).join('\n')}
 Note: "read_ghl", "read_email", "read_tasks", "read_calendar" are NOT valid.
 Sensing already happened in Phase 1. You are in Phase 3: deciding what to DO.
 
+If inbound reply details are present, create an "act" decision with action_type "reply_to_contact" for each reply unless the message is unsafe or impossible to answer. Use the exact conversationId/contactId shown in the environment. input_data must include conversationId, contactId, message, channelType, inboundMessageBody, and inboundReceivedAt.
+
 RESPONSE FORMAT: Return ONLY a JSON array inside a markdown code block:
 \`\`\`json
 [
@@ -220,6 +235,8 @@ ${progressContext || 'No recent progress entries.'}
   Tasks: ${c.tasks.pending} pending, ${c.tasks.overdue} overdue, ${c.tasks.assigned} assigned to me
   Calendar: ${c.calendar.today} today, ${c.calendar.needsPrep} need prep, ${c.calendar.conflicts} conflicts
   Alerts: ${c.alerts}
+  Inbound reply details:
+${c.inboundReplyDetails}
 </environment>
 
 <memory>
@@ -267,6 +284,9 @@ IMPORTANT: Do not invent action types. The execution engine only recognizes the 
 "read_ghl", "read_email", "read_tasks", "read_calendar" will cause a crash — do not use them.
 Sensing already completed in Phase 1. Decide what actions to EXECUTE, not what to read.
 
+INBOUND REPLY RULE:
+If inbound reply details are present, create an "act" decision with action_type "reply_to_contact" for each reply. Use the provided conversationId/contactId. Put your reply in input_data.message. Also include input_data.channelType, input_data.inboundMessageBody, and input_data.inboundReceivedAt.
+
 RECENT PROGRESS:
 ${progressContext || 'No recent progress.'}`;
 
@@ -278,6 +298,8 @@ Email: ${c.email.unread} unread | ${c.email.urgent} urgent | ${c.email.fromClien
 Tasks: ${c.tasks.pending} pending | ${c.tasks.overdue} overdue | ${c.tasks.assigned} assigned to me
 Calendar: ${c.calendar.today} today | ${c.calendar.needsPrep} need prep | ${c.calendar.conflicts} conflicts
 Alerts: ${c.alerts}
+Inbound reply details:
+${c.inboundReplyDetails}
 
 MEMORY:
 Recent actions:
@@ -325,6 +347,8 @@ ${VALID_ACTION_TYPES.map((t, i) => `  ${i + 1}. "${t}"`).join('\n')}
 Never use: "read_ghl", "read_email", "read_tasks", "read_calendar" — these have no handlers.
 The sensing phase (Phase 1) already ran. You are deciding what ACTIONS to EXECUTE.
 
+Inbound reply rule: if inbound reply details are present, create an act decision with action_type "reply_to_contact". Use the provided conversationId/contactId, and include input_data.message, input_data.channelType, input_data.inboundMessageBody, and input_data.inboundReceivedAt.
+
 Recent operational progress:
 ${progressContext || 'No recent progress.'}`;
 
@@ -336,6 +360,8 @@ Current environment:
 - Tasks: ${c.tasks.pending} pending, ${c.tasks.overdue} overdue, ${c.tasks.assigned} assigned
 - Calendar: ${c.calendar.today} today, ${c.calendar.needsPrep} need prep, ${c.calendar.conflicts} conflicts
 - Alerts: ${c.alerts}
+- Inbound reply details:
+${c.inboundReplyDetails}
 
 Recent actions:
 ${c.recentActions}
@@ -385,7 +411,8 @@ type ActionType =
   | "update_task_status"
   | "log_interaction"
   | "schedule_reminder"
-  | "create_appointment";
+  | "create_appointment"
+  | "reply_to_contact";
 
 interface Decision {
   type: DecisionType;
@@ -410,6 +437,8 @@ interface Decision {
 
 CONSTRAINT: action_type must be one of the ActionType values above.
 Do NOT use: "read_ghl", "read_email", "read_tasks", "read_calendar" — these are not valid ActionType values and will crash the system.
+
+INBOUND REPLY RULE: If inbound reply details are present, create an act decision with action_type "reply_to_contact". Use the exact conversationId/contactId and include input_data.message, input_data.channelType, input_data.inboundMessageBody, and input_data.inboundReceivedAt.
 
 Example valid JSON response:
 {
@@ -440,6 +469,8 @@ Environment data:
 - Tasks: ${c.tasks.pending} pending, ${c.tasks.overdue} overdue, ${c.tasks.assigned} assigned
 - Calendar: ${c.calendar.today} today, ${c.calendar.needsPrep} prep needed, ${c.calendar.conflicts} conflicts
 - Alerts: ${c.alerts}
+- Inbound reply details:
+${c.inboundReplyDetails}
 
 Recent actions:
 ${c.recentActions}
@@ -606,7 +637,40 @@ export async function think(context) {
 
     // MULTI-TENANT: pass agentId from context so decisions are tagged correctly
     const agentId = context.agentProfile?.agentId || process.env.AGENT_ID || 'unknown-agent';
-    const decisions = parseDecisionResponse(response.text, provider, agentId);
+    let decisions = parseDecisionResponse(response.text, provider, agentId);
+    const inboundReplies = Array.isArray(context.environment?.inboundReplies)
+      ? context.environment.inboundReplies
+      : [];
+    const hasInboundReplyAction = decisions.some(
+      (decision) => decision.type === 'act' && decision.action_type === 'reply_to_contact'
+    );
+    if (inboundReplies.length > 0 && !hasInboundReplyAction) {
+      logger.warn('Model did not produce reply_to_contact for inbound replies; using deterministic fallback', {
+        inboundReplies: inboundReplies.length,
+        generatedTypes: decisions.map(d => `${d.type}:${d.action_type || d.issue || d.candidate || 'unknown'}`)
+      });
+      decisions = inboundReplies.map((reply) => ({
+        type: 'act',
+        action_type: 'reply_to_contact',
+        description: `Reply to inbound ${reply.channelType || 'SMS'} from ${reply.contactName || reply.contactId || 'contact'}`,
+        target_system: 'GHL',
+        input_data: {
+          conversationId: reply.conversationId,
+          contactId: reply.contactId,
+          channelType: reply.channelType || 'SMS',
+          inboundMessageBody: reply.lastMessageBody || '',
+          inboundReceivedAt: reply.lastMessageDate || new Date().toISOString(),
+          message: `Yes, I'm here. I saw your message: "${reply.lastMessageBody || 'your text'}". How can I help?`,
+        },
+        reasoning: 'A contact sent an unread inbound reply; the phone thread needs a direct response.',
+        confidence: 0.95,
+        urgency: 'HIGH',
+        verify_by: 'api_check',
+        success_criteria: 'GHL returns a message id and the conversation is marked read.',
+        timestamp: new Date().toISOString(),
+        agentId,
+      }));
+    }
 
     logger.info(`Model generated ${decisions.length} decisions`, {
       provider,

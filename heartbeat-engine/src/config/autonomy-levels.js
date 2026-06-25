@@ -33,6 +33,7 @@ export const autonomyLevels = {
       'remove_contact_tag',
       'add_contact_to_workflow',
       'send_sms',
+      'reply_to_contact',
       'generate_reports'
     ],
     blocked: [
@@ -85,6 +86,7 @@ export const autonomyLevels = {
       'add_contact_to_workflow',
       'remove_contact_from_workflow',
       'send_sms',
+      'reply_to_contact',
       'send_invoice',
       'create_invoice',
       'upload_media',
