@@ -1257,7 +1257,7 @@ const _ALL_TOOLS = [
   },
   {
     name: "ghl_list_social_posts",
-    description: "List scheduled or published social media posts.",
+    description: "List scheduled or published social media posts using GHL's posts/list endpoint.",
     input_schema: { type: "object", properties: {}, required: [] }
   },
   {
@@ -1267,7 +1267,7 @@ const _ALL_TOOLS = [
   },
   {
     name: "ghl_create_social_post",
-    description: "Create or schedule a GHL Social Planner post. Use accountIds from ghl_list_social_accounts. The tool accepts legacy content/platforms/scheduledDate aliases but sends GHL's current payload shape.",
+    description: "Create or schedule a GHL Social Planner post. Use accountIds from ghl_list_social_accounts. Media URLs must be public https:// URLs from image_generate or a CDN/Supabase URL; never pass /api/files/preview/... because GHL cannot render internal app preview URLs. The tool accepts legacy content/platforms/scheduledDate aliases but sends GHL's current payload shape.",
     input_schema: {
       type: "object",
       properties: {
@@ -1281,7 +1281,7 @@ const _ALL_TOOLS = [
           items: {
             type: "object",
             properties: {
-              url: { type: "string", description: "Public media URL." },
+              url: { type: "string", description: "Public https:// media URL. Use image_generate.image_url or a CDN/Supabase URL, not /api/files/preview/..." },
               type: { type: "string", description: "Media type, usually image or video." },
               caption: { type: "string", description: "Optional media caption." },
               thumbnail: { type: "string", description: "Optional thumbnail URL." }
@@ -1289,7 +1289,7 @@ const _ALL_TOOLS = [
             required: ["url"]
           }
         },
-        imageUrl: { type: "string", description: "Public image URL to attach as image media." },
+        imageUrl: { type: "string", description: "Public https:// image URL to attach as image media. Use image_generate.image_url or a CDN/Supabase URL, not /api/files/preview/..." },
         type: { type: "string", enum: ["post", "story", "reel"], description: "GHL post type. Defaults to post." },
         status: { type: "string", enum: ["draft", "scheduled", "published"], description: "Defaults to scheduled when scheduleDate is provided, otherwise draft." },
         scheduleDate: { type: "string", description: "Scheduled date/time (ISO format)." },

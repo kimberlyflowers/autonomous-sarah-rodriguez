@@ -173,6 +173,12 @@ function normalizeSocialMedia(media, imageUrl, summary = '') {
   return normalized;
 }
 
+function getNonPublicSocialMediaUrls(media = []) {
+  return media
+    .map((item) => item?.url)
+    .filter((url) => typeof url !== 'string' || !/^https?:\/\//i.test(url));
+}
+
 function normalizeSocialScheduleDate(value) {
   if (!value) return null;
 
@@ -1380,7 +1386,7 @@ export const ghlToolDefinitions = {
   // SOCIAL PLANNER
   ghl_list_social_posts: {
     name: "ghl_list_social_posts",
-    description: "List social media posts",
+    description: "List Social Planner posts using GHL's posts/list endpoint.",
     parameters: { type: "object", properties: {}, required: [] },
     category: "social_planner",
     operation: "read"
@@ -1396,7 +1402,7 @@ export const ghlToolDefinitions = {
 
   ghl_create_social_post: {
     name: "ghl_create_social_post",
-    description: "Create or schedule a GHL Social Planner post. Use accountIds from ghl_list_social_accounts. Do not send content/platforms/scheduledDate directly to GHL; this tool maps legacy fields safely.",
+    description: "Create or schedule a GHL Social Planner post. Use accountIds from ghl_list_social_accounts. Media URLs must be public https:// URLs from image_generate or a CDN/Supabase URL; never pass /api/files/preview/... because GHL cannot render internal app preview URLs. Do not send content/platforms/scheduledDate directly to GHL; this tool maps legacy fields safely.",
     parameters: {
       type: "object",
       properties: {
@@ -1410,7 +1416,7 @@ export const ghlToolDefinitions = {
           items: {
             type: "object",
             properties: {
-              url: { type: "string", description: "Public media URL." },
+              url: { type: "string", description: "Public https:// media URL. Use image_generate.image_url or a CDN/Supabase URL, not /api/files/preview/..." },
               type: { type: "string", description: "Media type, usually image or video." },
               caption: { type: "string", description: "Optional media caption." },
               thumbnail: { type: "string", description: "Optional thumbnail URL." }
@@ -1418,7 +1424,7 @@ export const ghlToolDefinitions = {
             required: ["url"]
           }
         },
-        imageUrl: { type: "string", description: "Public image URL to attach as image media." },
+        imageUrl: { type: "string", description: "Public https:// image URL to attach as image media. Use image_generate.image_url or a CDN/Supabase URL, not /api/files/preview/..." },
         type: { type: "string", enum: ["post", "story", "reel"], description: "GHL post type. Defaults to post." },
         status: { type: "string", enum: ["draft", "scheduled", "published"], description: "GHL post status. Defaults to scheduled when scheduleDate is provided, otherwise draft." },
         scheduleDate: { type: "string", description: "Scheduled date/time (ISO format)." },
@@ -2239,10 +2245,10 @@ export const ghlExecutors = {
   },
 
   // SOCIAL PLANNER
-  // GET /social-media-posting/{locationId}/posts
+  // POST /social-media-posting/{locationId}/posts/list
   ghl_list_social_posts: async (params) => {
     const locationId = await resolveLocationId(params._orgId);
-    return await callGHL(`/social-media-posting/${locationId}/posts`, 'GET', null, { __omitLocationId: true }, params._orgId);
+    return await callGHL(`/social-media-posting/${locationId}/posts/list`, 'POST', params || {}, { __omitLocationId: true }, params._orgId);
   },
 
   // GET /social-media-posting/{locationId}/accounts
@@ -2261,11 +2267,13 @@ export const ghlExecutors = {
     const userId = await getGhlUserId(params);
     const accountIds = await resolveSocialAccountIds(params, locationId);
     const media = normalizeSocialMedia(params.media, params.imageUrl, summary);
+    const nonPublicMediaUrls = getNonPublicSocialMediaUrls(media);
 
     const missing = [];
     if (!summary) missing.push('summary');
     if (!userId) missing.push('userId (configure GHL_USER_ID/HUMAN_GHL_USER_ID or pass userId)');
     if (!accountIds.length) missing.push('accountIds (call ghl_list_social_accounts and select a connected account)');
+    if (nonPublicMediaUrls.length) missing.push(`public media URL (use the https:// image_url returned by image_generate, not ${nonPublicMediaUrls.join(', ')})`);
 
     if (missing.length) {
       return {
@@ -2273,7 +2281,7 @@ export const ghlExecutors = {
         _message: `GHL SOCIAL POST NOT CREATED. Missing required setup: ${missing.join(', ')}.`,
         _error: 'missing_required_social_post_fields',
         requiredFields: missing,
-        hint: 'Use ghl_list_social_accounts to get connected Instagram/Facebook/etc. account IDs, and configure GHL_USER_ID for the posting user.'
+        hint: 'Use ghl_list_social_accounts to get connected Instagram/Facebook/etc. account IDs. For images, pass the public https:// image_url returned by image_generate or a Supabase/CDN URL; never pass /api/files/preview/... or a local app URL.'
       };
     }
 
