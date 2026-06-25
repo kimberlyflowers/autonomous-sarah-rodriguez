@@ -106,6 +106,14 @@ function getZonedWeekday(date, timeZone) {
   return new Intl.DateTimeFormat('en-US', { timeZone, weekday: 'short' }).format(date);
 }
 
+function isUuid(value = '') {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value));
+}
+
+function taskIdMatchFilter(taskId) {
+  return isUuid(taskId) ? `task_id.eq.${taskId},id.eq.${taskId}` : `task_id.eq.${taskId}`;
+}
+
 // Helper: calculate next run time in the task timezone, stored as UTC ISO
 function nextRunTime(frequency, runTime = '09:00', timeZone = 'America/Chicago') {
   const now = new Date();
@@ -638,7 +646,7 @@ router.patch('/tasks/:taskId', async (req, res) => {
     const { data: existing } = await supabase
       .from('scheduled_tasks')
       .select('frequency, run_time')
-      .or(`task_id.eq.${taskId},id.eq.${taskId}`)
+      .or(taskIdMatchFilter(taskId))
       .eq('agent_id', targetAgentId)
       .single();
 
@@ -665,7 +673,7 @@ router.patch('/tasks/:taskId', async (req, res) => {
     const { data, error } = await supabase
       .from('scheduled_tasks')
       .update(updates)
-      .or(`task_id.eq.${taskId},id.eq.${taskId}`)
+      .or(taskIdMatchFilter(taskId))
       .eq('agent_id', targetAgentId)
       .select()
       .single();
@@ -694,7 +702,7 @@ router.delete('/tasks/:taskId', async (req, res) => {
     const { data, error } = await supabase
       .from('scheduled_tasks')
       .delete()
-      .or(`task_id.eq.${taskId},id.eq.${taskId}`)
+      .or(taskIdMatchFilter(taskId))
       .eq('agent_id', targetAgentId)
       .select('task_id, id')
       .single();
