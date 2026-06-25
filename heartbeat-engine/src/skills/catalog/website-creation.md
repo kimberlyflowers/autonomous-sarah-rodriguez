@@ -224,9 +224,9 @@ If NO brand kit exists, choose palette based on industry:
 
 ## DESIGN STYLE PRESETS — VISUAL IDENTITY SYSTEM
 
-You have 20 professional design style presets available. Each has a **genuinely distinct HTML structure** — not just different colors. When a client wants a specific visual feel or references a brand aesthetic, match them to the right style preset.
+You have 20 professional design style presets available. Each style is a **visual direction** for layout, typography, spacing, and interaction decisions — not a separate tool call. When a client wants a specific visual feel or references a brand aesthetic, match them to the right style preset and build the HTML directly with the available website tools.
 
-**CRITICAL: Always call `get_layout_blueprint(style_id)` FIRST before writing any HTML.** This returns the actual HTML skeleton for that style — the structural blueprint that ensures every design looks truly different. Do NOT invent a layout from scratch.
+**CRITICAL: There is no `get_layout_blueprint` tool. Do not call it and do not mention it.** Select a style preset, create the structure yourself, generate any needed images with the available image tools, then save the finished HTML using `create_artifact`.
 
 ### Available Design Styles:
 | ID | Style Name | Vibe | Best For |
@@ -264,13 +264,14 @@ You have 20 professional design style presets available. Each has a **genuinely 
 - Client says "professional/corporate" → use `royal-navy` or `slate-pro`
 
 ### Building with a Style:
-1. **Call `get_layout_blueprint(style_id)`** → Returns the full HTML skeleton for that style
-2. **Replace `{{PLACEHOLDER}}` tokens** with real content from the brand kit and pre-build gate answers
-3. **Apply brand kit CSS variables** (`--color-primary`, `--color-secondary`, `--color-accent`, `--color-dark`, `--color-light`, `--font-heading`, `--font-body`) in a `<style>` block
-4. **Connect all forms** to `/api/forms/submit` and embed GHL calendars via iframe
-5. **Generate images** with `image_generate` before building the HTML — use the returned URL in the blueprint's `{{HERO_IMAGE_URL}}` placeholder
+1. **Select the style preset** that best matches the request and use it as design direction.
+2. **Generate needed images first** with `generate_images_parallel` when multiple images are needed, or `image_generate` when only one image is needed.
+3. **Write complete mobile-first HTML** with embedded CSS. Do not output code in chat instead of saving it.
+4. **Apply brand kit CSS variables** (`--color-primary`, `--color-secondary`, `--color-accent`, `--color-dark`, `--color-light`, `--font-heading`, `--font-body`) in a `<style>` block.
+5. **Connect all forms** to `/api/forms/submit` and embed GHL calendars via iframe when scheduling is needed.
+6. **Save the finished page** with `create_artifact` as an `.html` file, then include the required hidden `<!-- file:... -->` tag in your response.
 
-Each blueprint has a `hero_type`, `section_order`, and full `html_skeleton`. The section order tells you what sections exist — add content to each one.
+Each style should produce a genuinely distinct layout. Vary the hero composition, section rhythm, image treatment, CTA placement, and information density. Do not reuse the same generic landing-page structure for every preset.
 
 ---
 
@@ -787,4 +788,3 @@ Before delivering, verify:
 9. **No placeholders** — No Lorem Ipsum, no stock photos, no dummy forms
 
 The goal: A website that converts visitors to action, looks professional, works flawlessly on every device, and sends every lead directly to the CRM.
-

@@ -65,9 +65,9 @@ function getSystemPrompt() {
     const skillPath = join(__dirname, '../skills/catalog/website-creation.md');
     const raw = readFileSync(skillPath, 'utf-8');
     const content = raw.replace(/^---[\s\S]*?---\n/, '').trim();
-    return `${content}\n\n## TOOL USAGE NOTE\nAlways call get_layout_blueprint(style_id) FIRST before writing any HTML — this gives you the real structural blueprint. Post updates using bloom_post_progress so the user can follow along in their chat session.`;
+    return `${content}\n\n## TOOL USAGE NOTE\nDo not call get_layout_blueprint; that tool is not available. Build complete mobile-first HTML directly, and when running in the normal chat tool path save the finished page with create_artifact. Post updates using bloom_post_progress when that tool is available so the user can follow along in their chat session.`;
   } catch {
-    return `You are BLOOM's professional website builder. Build conversion-optimized, mobile-first websites. Always call get_layout_blueprint first to get the correct HTML structure.`;
+    return `You are BLOOM's professional website builder. Build conversion-optimized, mobile-first websites. Do not call get_layout_blueprint; build the complete HTML directly and save it with create_artifact when that tool is available.`;
   }
 }
 
@@ -281,7 +281,7 @@ async function runOpenRouterBuild(brief, { orgId, chatSessionId, buildId } = {})
   }
 
   const result = await callModel(model, {
-    system: `${getSystemPrompt()}\n\nYou are running inside Bloomie's Work/Build tab. Respond with clear progress and useful next steps. If the user is checking availability, answer briefly and confirm you are ready. If they ask for a website or build task, produce a practical first-pass plan or artifact content in the conversation. Do not claim browser or deployment actions unless a tool actually performed them.`,
+    system: `${getSystemPrompt()}\n\nYou are running inside Bloomie's Work/Build tab through an OpenRouter fallback that does not have file/artifact tools attached. Respond with clear progress and useful next steps. If the user asks for a website or build task, produce the complete HTML only if asked, but explicitly hand back to the main Sarah chat tool path to save it with create_artifact. Do not claim that an artifact, file, browser action, or deployment was created unless a tool actually performed it.`,
     messages: [{ role: 'user', content: brief }],
     maxTokens: 1800,
     temperature: 0.3,
