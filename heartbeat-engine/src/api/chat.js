@@ -2456,7 +2456,7 @@ const _ALL_TOOLS = [
   },
   {
     name: "bloom_clarify",
-    description: "MANDATORY: Ask the user a clarifying question before starting any multi-step task from chat. You MUST call this BEFORE creating a task plan or using any other tools. Present 2-4 options as clickable buttons for the user to choose from. This pauses execution until the user responds.\n\nALWAYS use when the task involves creating content, contacting someone, updating data, or has multiple possible interpretations. ONLY skip when the request is 100% unambiguous with all details provided, or it's a single trivial action.",
+    description: "MANDATORY UI TOOL: Ask the user a clarifying question with clickable button options. You MUST call this tool instead of typing the question in plain text. Never write 'Clarification needed', 'Which option', numbered options, or multiple-choice questions in normal chat text. Call bloom_clarify and let the UI render the buttons. Use before starting any multi-step task from chat when details are missing. This pauses execution until the user responds.\n\nALWAYS use when the task involves creating content, contacting someone, updating data, or has multiple possible interpretations. ONLY skip when the request is 100% unambiguous with all details provided, or it's a single trivial action.",
     input_schema: {
       type: "object",
       properties: {
@@ -5322,6 +5322,19 @@ NEVER skip steps 3 and 4 even if step 2 fails.
     return /\b(i('|’)ll|i will|i am going to|i'm going to|i can continue|i'll continue|will continue|continue working|i'll work on|i will work on|next i('|’)ll|next i will|get back to you|follow up|checking now)\b/i.test(text || '');
   }
 
+  function textLooksLikePlainClarification(text) {
+    const raw = String(text || '').trim();
+    if (!raw || raw.length > 1600) return false;
+    const explicitClarify = /\b(clarification needed|i need to clarify|before i proceed|before i start|which .* would you like|what .* is this for|please choose|please select|choose one|select one)\b/i.test(raw);
+    const hasQuestion = raw.includes('?');
+    const optionLineCount = raw
+      .split('\n')
+      .filter(line => /^\s*(?:[-*•]|\d+[.)]|[A-D][.)])\s+\S+/.test(line) || /^\s*(?:✓\s*)?[A-Z][A-Za-z0-9 /&-]{2,60}:?\s*$/.test(line))
+      .length;
+    const hasOptionSection = /\b(options?|choices?)\s*:/i.test(raw);
+    return explicitClarify || (hasQuestion && (optionLineCount >= 2 || hasOptionSection));
+  }
+
   // ── HELPER: log cost and write usage metrics ───────────────────────────
   async function logCostAndUsage(round) {
     // Use unified client's pricing table for accurate cost across all models
@@ -5463,6 +5476,25 @@ NEVER skip steps 3 and 4 even if step 2 fails.
       if (!text.trim() && toolsUsed.length === 0 && round === 0 && round < MAX_EXEC_ROUNDS - 1) {
         logger.warn('Gemini returned empty response on first round — retrying with explicit nudge', { model: chatModel });
         currentMessages.push({ role: 'user', content: [{ type: 'text', text: 'Please process my request and either call a tool or respond with text.' }] });
+        continue;
+      }
+
+      if (
+        textLooksLikePlainClarification(text) &&
+        !toolsUsed.some(t => t.name === 'bloom_clarify') &&
+        round < MAX_EXEC_ROUNDS + MAX_VERIFY_ROUNDS - 1
+      ) {
+        logger.warn('Plain-text clarification detected; forcing bloom_clarify tool use', {
+          model: chatModel,
+          preview: text.slice(0, 300)
+        });
+        currentMessages.push({ role: 'assistant', content: response.content });
+        currentMessages.push({ role: 'user', content:
+          `[SYSTEM — CLARIFICATION UI VIOLATION]\n` +
+          `You just asked a qualifying or clarifying question in plain text. That breaks the app UI.\n\n` +
+          `Infer the question and 2-4 options from your previous text, then call the bloom_clarify tool now.\n` +
+          `Do not answer in text. Do not repeat the question in chat. The user must see clickable multiple-choice buttons.`
+        });
         continue;
       }
 
@@ -6668,7 +6700,8 @@ router.post('/message', async (req, res) => {
       logger.info(`💬 Chat [${sessionId}] ${agentConfig.name || 'Agent'}: [CLARIFICATION] ${response.clarification?.question || ''}`);
       // Save the clarification as a message so conversation history is preserved
       const clarifyText = response.text || `I need to clarify something before I proceed.`;
-      await saveMessages(null, sessionId, message, clarifyText, null, userId, agentConfig.agentId, { skipUserSave: true });
+      const persistedClarifyText = `${clarifyText}\n\n${JSON.stringify({ __clarification: true, clarification: response.clarification })}`;
+      await saveMessages(null, sessionId, message, persistedClarifyText, null, userId, agentConfig.agentId, { skipUserSave: true });
 
       if (history.length === 0) {
         generateSessionTitle(sessionId, message, clarifyText).catch(() => {});
@@ -6848,10 +6881,11 @@ router.post('/upload', async (req, res) => {
       logger.info(`💬 Upload Chat [${sessionId}] User: ${(message || '').slice(0, 100)}`);
       logger.info(`💬 Upload Chat [${sessionId}] Agent: [CLARIFICATION] ${response.clarification?.question || ''}`);
       const clarifyText = response.text || `I need to clarify something before I proceed.`;
+      const persistedClarifyText = `${clarifyText}\n\n${JSON.stringify({ __clarification: true, clarification: response.clarification })}`;
       const historyLabel = files.length
         ? `[Files: ${files.map(f => f.name).join(', ')}]${message ? ' ' + message : ''}`
         : message || '';
-      await saveMessages(null, sessionId, historyLabel, clarifyText, files.map(f => ({ name: f.name, type: f.type })), userId, agentConfig.agentId, { skipUserSave: true });
+      await saveMessages(null, sessionId, historyLabel, persistedClarifyText, files.map(f => ({ name: f.name, type: f.type })), userId, agentConfig.agentId, { skipUserSave: true });
 
       if (history.length === 0) {
         const titleMsg = message || (files.length ? `Uploaded ${files.map(f=>f.name).join(', ')}` : 'Shared files');
