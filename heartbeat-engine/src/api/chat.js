@@ -4107,7 +4107,12 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
         
         // Execute the script
         const { execSync } = await import('child_process');
-        const result = execSync(`cd /app && node "${tmpScript}"`, { timeout: 30000, encoding: 'utf8' });
+        const result = execSync(`node "${tmpScript}"`, {
+          timeout: 30000,
+          encoding: 'utf8',
+          cwd: process.cwd(),
+          env: { ...process.env, NODE_PATH: `${process.cwd()}/node_modules` }
+        });
         
         if (fsMod.default.existsSync(tmpOutput)) {
           // Read the docx file and save as artifact
@@ -4167,7 +4172,12 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
         fsMod.default.writeFileSync(tmpScript, script);
 
         const { execSync } = await import('child_process');
-        const result = execSync(`cd /app && node "${tmpScript}"`, { timeout: 60000, encoding: 'utf8' });
+        const result = execSync(`node "${tmpScript}"`, {
+          timeout: 60000,
+          encoding: 'utf8',
+          cwd: process.cwd(),
+          env: { ...process.env, NODE_PATH: `${process.cwd()}/node_modules` }
+        });
 
         if (fsMod.default.existsSync(tmpOutput)) {
           const pptxBuffer = fsMod.default.readFileSync(tmpOutput);
@@ -4224,7 +4234,12 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
         fsMod.default.writeFileSync(tmpScript, script);
 
         const { execSync } = await import('child_process');
-        const result = execSync(`cd /app && node "${tmpScript}"`, { timeout: 60000, encoding: 'utf8' });
+        const result = execSync(`node "${tmpScript}"`, {
+          timeout: 60000,
+          encoding: 'utf8',
+          cwd: process.cwd(),
+          env: { ...process.env, NODE_PATH: `${process.cwd()}/node_modules` }
+        });
 
         if (fsMod.default.existsSync(tmpOutput)) {
           const pdfBuffer = fsMod.default.readFileSync(tmpOutput);
@@ -4281,7 +4296,12 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
         fsMod.default.writeFileSync(tmpScript, script);
 
         const { execSync } = await import('child_process');
-        const result = execSync(`cd /app && node "${tmpScript}"`, { timeout: 60000, encoding: 'utf8' });
+        const result = execSync(`node "${tmpScript}"`, {
+          timeout: 60000,
+          encoding: 'utf8',
+          cwd: process.cwd(),
+          env: { ...process.env, NODE_PATH: `${process.cwd()}/node_modules` }
+        });
 
         if (fsMod.default.existsSync(tmpOutput)) {
           const xlsxBuffer = fsMod.default.readFileSync(tmpOutput);
