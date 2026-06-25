@@ -68,33 +68,79 @@ function frequencyToCron(frequency, runTime = '09:00') {
   }
 }
 
-// Helper: calculate next run time
-function nextRunTime(frequency, runTime = '09:00') {
+function getTimeZoneOffsetMs(date, timeZone) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  }).formatToParts(date).reduce((acc, part) => {
+    if (part.type !== 'literal') acc[part.type] = part.value;
+    return acc;
+  }, {});
+
+  const asUtc = Date.UTC(
+    Number(parts.year),
+    Number(parts.month) - 1,
+    Number(parts.day),
+    Number(parts.hour),
+    Number(parts.minute),
+    Number(parts.second)
+  );
+  return asUtc - date.getTime();
+}
+
+function zonedLocalTimeToUtc(year, monthIndex, day, hour, minute, timeZone) {
+  let utc = new Date(Date.UTC(year, monthIndex, day, hour, minute, 0, 0));
+  for (let i = 0; i < 2; i += 1) {
+    utc = new Date(Date.UTC(year, monthIndex, day, hour, minute, 0, 0) - getTimeZoneOffsetMs(utc, timeZone));
+  }
+  return utc;
+}
+
+function getZonedWeekday(date, timeZone) {
+  return new Intl.DateTimeFormat('en-US', { timeZone, weekday: 'short' }).format(date);
+}
+
+// Helper: calculate next run time in the task timezone, stored as UTC ISO
+function nextRunTime(frequency, runTime = '09:00', timeZone = 'America/Chicago') {
   const now = new Date();
   const [hour, minute] = (runTime || '09:00').split(':').map(Number);
-  const next = new Date(now);
 
   if (frequency === 'every_10_min') {
     // Next run is now + 10 minutes
-    next.setTime(now.getTime() + 10 * 60 * 1000);
-    return next.toISOString();
+    return new Date(now.getTime() + 10 * 60 * 1000).toISOString();
   }
   if (frequency === 'every_30_min') {
-    next.setTime(now.getTime() + 30 * 60 * 1000);
-    return next.toISOString();
+    return new Date(now.getTime() + 30 * 60 * 1000).toISOString();
   }
   if (frequency === 'hourly') {
     // Next top of the hour (at :MM minutes past each hour)
+    const next = new Date(now);
     next.setMinutes(minute, 0, 0);
     if (next <= now) next.setHours(next.getHours() + 1);
     return next.toISOString();
   }
 
-  next.setHours(hour, minute, 0, 0);
+  const localParts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric'
+  }).formatToParts(now).reduce((acc, part) => {
+    if (part.type !== 'literal') acc[part.type] = Number(part.value);
+    return acc;
+  }, {});
+
+  let next = zonedLocalTimeToUtc(localParts.year, localParts.month - 1, localParts.day, hour, minute, timeZone);
   if (next <= now) next.setDate(next.getDate() + 1);
   if (frequency === 'weekdays') {
-    while (next.getDay() === 0 || next.getDay() === 6) {
-      next.setDate(next.getDate() + 1);
+    while (['Sat', 'Sun'].includes(getZonedWeekday(next, timeZone))) {
+      next = new Date(next.getTime() + 24 * 60 * 60 * 1000);
     }
   }
   return next.toISOString();
