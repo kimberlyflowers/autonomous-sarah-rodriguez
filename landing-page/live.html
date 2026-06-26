@@ -61,7 +61,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      background: #050506;
+      background: linear-gradient(180deg, rgba(5,5,6,.82) 0%, rgba(5,5,6,.5) 54%, rgba(5,5,6,0) 100%);
       backdrop-filter: blur(12px);
     }
 
@@ -70,7 +70,7 @@
       position: absolute;
       inset: 0 0 -34px;
       z-index: -1;
-      background: linear-gradient(180deg, #050506 0%, rgba(5,5,6,.92) 58%, rgba(5,5,6,0) 100%);
+      background: linear-gradient(180deg, rgba(5,5,6,.7) 0%, rgba(5,5,6,.28) 58%, rgba(5,5,6,0) 100%);
       pointer-events: none;
     }
 
@@ -156,9 +156,14 @@
       object-fit: cover;
       object-position: center top;
       z-index: .5;
-      opacity: 1;
+      opacity: 0;
       filter: saturate(1.04) contrast(1.02);
       pointer-events: none;
+      transition: opacity .45s ease;
+    }
+
+    .hero-trailer.playing {
+      opacity: 1;
     }
 
     .hero::before {
@@ -258,6 +263,95 @@
       margin: 0 10px 2px 0;
       border-radius: 999px;
       background: rgba(255,255,255,.48);
+    }
+
+    .sound-toggle {
+      position: absolute;
+      right: max(24px, calc((100vw - 1180px) / 2));
+      bottom: 118px;
+      z-index: 4;
+      width: 46px;
+      height: 46px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,.36);
+      background: rgba(20,20,21,.62);
+      color: #fff;
+      cursor: pointer;
+      backdrop-filter: blur(12px);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: background .2s ease, transform .2s ease, border-color .2s ease;
+    }
+
+    .sound-toggle:hover,
+    .sound-toggle:focus-visible {
+      background: rgba(255,255,255,.16);
+      border-color: rgba(255,255,255,.56);
+      transform: translateY(-1px);
+      outline: none;
+    }
+
+    .sound-icon {
+      position: relative;
+      width: 22px;
+      height: 18px;
+      display: block;
+    }
+
+    .sound-icon::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 5px;
+      width: 7px;
+      height: 8px;
+      background: currentColor;
+      border-radius: 2px;
+    }
+
+    .sound-icon::after {
+      content: "";
+      position: absolute;
+      left: 6px;
+      top: 2px;
+      width: 0;
+      height: 0;
+      border-top: 7px solid transparent;
+      border-bottom: 7px solid transparent;
+      border-right: 10px solid currentColor;
+    }
+
+    .sound-toggle .sound-wave,
+    .sound-toggle .sound-slash {
+      position: absolute;
+      display: block;
+      pointer-events: none;
+    }
+
+    .sound-toggle .sound-wave {
+      right: 11px;
+      width: 9px;
+      height: 9px;
+      border-right: 2px solid currentColor;
+      border-radius: 50%;
+      opacity: 0;
+    }
+
+    .sound-toggle.is-on .sound-wave {
+      opacity: 1;
+    }
+
+    .sound-toggle .sound-slash {
+      width: 24px;
+      height: 2px;
+      background: currentColor;
+      transform: rotate(-42deg);
+      opacity: 1;
+    }
+
+    .sound-toggle.is-on .sound-slash {
+      opacity: 0;
     }
 
     .button {
@@ -984,7 +1078,12 @@
         <div class="hero-slide crop-tight" style="--slide-image: url('https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/04-city.png');"></div>
         <div class="hero-slide crop-center" style="--slide-image: url('https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/05-subway.png');"></div>
         <div class="hero-slide crop-left" style="--slide-image: url('https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/06-library.png');"></div>
-        <video class="hero-trailer" id="heroTrailer" muted autoplay playsinline preload="auto" poster="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/01-apartment.png" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/big-pivot/episode1-list-best-served-cold/big-pivot-episode1-reference-seedance-slider-clean-2x.mp4"></video>
+        <video class="hero-trailer" id="heroTrailer" muted playsinline preload="auto" poster="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/01-apartment.png" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/big-pivot/episode1-list-best-served-cold/big-pivot-episode1-front-hook-audio.mp4"></video>
+        <button class="sound-toggle" id="soundToggle" type="button" aria-label="Turn trailer sound on" aria-pressed="false">
+          <span class="sound-icon" aria-hidden="true"></span>
+          <span class="sound-wave" aria-hidden="true"></span>
+          <span class="sound-slash" aria-hidden="true"></span>
+        </button>
 
         <div class="hero-inner">
           <div class="hero-copy">
@@ -1007,32 +1106,32 @@
           <div class="hero-strip" aria-label="Featured previews">
             <button class="strip-card crop-center active" type="button" data-slide="0" aria-label="Show featured preview 1">
               <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/01-apartment.png" alt="">
-              <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/big-pivot/episode1-list-best-served-cold/big-pivot-episode1-reference-seedance-480p-15s-front-hook.mp4"></video>
+              <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/big-pivot/episode1-list-best-served-cold/big-pivot-episode1-front-hook-audio.mp4"></video>
               <span class="strip-title"><strong>The Big Pivot</strong><span>How To Market To Strangers</span></span>
             </button>
             <button class="strip-card crop-left" type="button" data-slide="1" aria-label="Show featured preview 2">
               <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/02-rooftop.png" alt="">
-              <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/big-pivot/episode1-list-best-served-cold/big-pivot-episode1-reference-seedance-480p-15s-front-hook.mp4"></video>
+              <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/big-pivot/episode1-list-best-served-cold/big-pivot-episode1-front-hook-audio.mp4"></video>
               <span class="strip-title"><strong>The Big Pivot</strong><span>Rooftop Terms</span></span>
             </button>
             <button class="strip-card crop-right" type="button" data-slide="2" aria-label="Show featured preview 3">
               <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/03-awards.png" alt="">
-              <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/big-pivot/episode1-list-best-served-cold/big-pivot-episode1-reference-seedance-480p-15s-front-hook.mp4"></video>
+              <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/big-pivot/episode1-list-best-served-cold/big-pivot-episode1-front-hook-audio.mp4"></video>
               <span class="strip-title"><strong>The Big Pivot</strong><span>The Toast Goes Cold</span></span>
             </button>
             <button class="strip-card crop-tight" type="button" data-slide="3" aria-label="Show featured preview 4">
               <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/04-city.png" alt="">
-              <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/big-pivot/episode1-list-best-served-cold/big-pivot-episode1-reference-seedance-480p-15s-front-hook.mp4"></video>
+              <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/big-pivot/episode1-list-best-served-cold/big-pivot-episode1-front-hook-audio.mp4"></video>
               <span class="strip-title"><strong>The Big Pivot</strong><span>The Club Exit</span></span>
             </button>
             <button class="strip-card crop-center" type="button" data-slide="4" aria-label="Show featured preview 5">
               <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/05-subway.png" alt="">
-              <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/big-pivot/episode1-list-best-served-cold/big-pivot-episode1-reference-seedance-480p-15s-front-hook.mp4"></video>
+              <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/big-pivot/episode1-list-best-served-cold/big-pivot-episode1-front-hook-audio.mp4"></video>
               <span class="strip-title"><strong>The Big Pivot</strong><span>Platform Pressure</span></span>
             </button>
             <button class="strip-card crop-left" type="button" data-slide="5" aria-label="Show featured preview 6">
               <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/06-library.png" alt="">
-              <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/big-pivot/episode1-list-best-served-cold/big-pivot-episode1-reference-seedance-480p-15s-front-hook.mp4"></video>
+              <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/big-pivot/episode1-list-best-served-cold/big-pivot-episode1-front-hook-audio.mp4"></video>
               <span class="strip-title"><strong>The Big Pivot</strong><span>The Library Clause</span></span>
             </button>
           </div>
@@ -1059,7 +1158,7 @@
           <article class="episode js-open-details" tabindex="0" data-episode="1">
             <div class="episode-media crop-center">
               <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/01-apartment.png" alt="Sarah Rodriguez in a penthouse overlooking the city in The Big Pivot">
-              <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/big-pivot/episode1-list-best-served-cold/big-pivot-episode1-reference-seedance-slider-clean-2x.mp4"></video>
+              <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/big-pivot/episode1-list-best-served-cold/big-pivot-episode1-front-hook-audio.mp4"></video>
               <span class="episode-preview-title"><strong>The Big Pivot</strong><span>Episode 1 Preview</span></span>
               <span class="play-pill">Preview</span>
             </div>
@@ -1076,7 +1175,7 @@
           <article class="episode js-open-details" tabindex="0" data-episode="2">
             <div class="episode-media crop-left">
               <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/02-rooftop.png" alt="Sarah Rodriguez confronting executives on a rooftop in The Big Pivot">
-              <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/big-pivot/episode1-list-best-served-cold/big-pivot-episode1-reference-seedance-480p-15s-front-hook.mp4"></video>
+              <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/big-pivot/episode1-list-best-served-cold/big-pivot-episode1-front-hook-audio.mp4"></video>
               <span class="episode-preview-title"><strong>The Big Pivot</strong><span>Episode 2 Preview</span></span>
               <span class="play-pill">Preview</span>
             </div>
@@ -1093,7 +1192,7 @@
           <article class="episode js-open-details" tabindex="0" data-episode="3">
             <div class="episode-media crop-right">
               <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/03-awards.png" alt="Sarah Rodriguez at an awards dinner in The Big Pivot">
-              <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/big-pivot/episode1-list-best-served-cold/big-pivot-episode1-reference-seedance-slider-clean-fisheye.mp4"></video>
+              <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/big-pivot/episode1-list-best-served-cold/big-pivot-episode1-front-hook-fisheye-audio.mp4"></video>
               <span class="episode-preview-title"><strong>The Big Pivot</strong><span>Episode 3 Preview</span></span>
               <span class="play-pill">Preview</span>
             </div>
@@ -1110,7 +1209,7 @@
           <article class="episode js-open-details" tabindex="0" data-episode="4">
             <div class="episode-media crop-tight">
               <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/04-city.png" alt="Sarah Rodriguez leaving a private members club in The Big Pivot">
-              <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/big-pivot/episode1-list-best-served-cold/big-pivot-episode1-reference-seedance-480p-15s-front-hook.mp4"></video>
+              <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/big-pivot/episode1-list-best-served-cold/big-pivot-episode1-front-hook-audio.mp4"></video>
               <span class="episode-preview-title"><strong>The Big Pivot</strong><span>Episode 4 Preview</span></span>
               <span class="play-pill">Preview</span>
             </div>
@@ -1127,7 +1226,7 @@
           <article class="episode js-open-details" tabindex="0" data-episode="5">
             <div class="episode-media crop-center">
               <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/05-subway.png" alt="Sarah Rodriguez in an urgent subway conversation in The Big Pivot">
-              <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/big-pivot/episode1-list-best-served-cold/big-pivot-episode1-reference-seedance-480p-15s-front-hook.mp4"></video>
+              <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/big-pivot/episode1-list-best-served-cold/big-pivot-episode1-front-hook-audio.mp4"></video>
               <span class="episode-preview-title"><strong>The Big Pivot</strong><span>Episode 5 Preview</span></span>
               <span class="play-pill">Preview</span>
             </div>
@@ -1144,7 +1243,7 @@
           <article class="episode js-open-details" tabindex="0" data-episode="6">
             <div class="episode-media crop-left">
               <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/06-library.png" alt="Sarah Rodriguez at a late-night market reveal in The Big Pivot">
-              <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/big-pivot/episode1-list-best-served-cold/big-pivot-episode1-reference-seedance-480p-15s-front-hook.mp4"></video>
+              <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/big-pivot/episode1-list-best-served-cold/big-pivot-episode1-front-hook-audio.mp4"></video>
               <span class="episode-preview-title"><strong>The Big Pivot</strong><span>Episode 6 Preview</span></span>
               <span class="play-pill">Preview</span>
             </div>
@@ -1216,7 +1315,7 @@
   <div class="modal video-modal" id="previewModal" aria-hidden="true" aria-label="The Big Pivot video player">
     <div class="modal-card">
       <button class="close" type="button" aria-label="Close video player">x</button>
-      <video id="modalVideo" controls playsinline preload="metadata" poster="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/01-apartment.png" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/big-pivot/episode1-list-best-served-cold/big-pivot-episode1-reference-seedance-480p-15s-front-hook.mp4" data-hook-src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/big-pivot/episode1-list-best-served-cold/big-pivot-episode1-reference-seedance-480p-15s-front-hook.mp4"></video>
+      <video id="modalVideo" controls playsinline preload="metadata" poster="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/01-apartment.png" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/big-pivot/episode1-list-best-served-cold/big-pivot-episode1-front-hook-audio.mp4" data-hook-src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/big-pivot/episode1-list-best-served-cold/big-pivot-episode1-front-hook-audio.mp4"></video>
     </div>
   </div>
 
@@ -1227,6 +1326,7 @@
     const heroEpisode = document.getElementById('heroEpisode');
     const heroDescription = document.getElementById('heroDescription');
     const heroTrailer = document.getElementById('heroTrailer');
+    const soundToggle = document.getElementById('soundToggle');
     const slideCopy = [
       {
         episode: 'Episode 1: How To Market To Strangers',
@@ -1287,7 +1387,10 @@
     };
     let currentSlide = 0;
     let slideTimer;
-    const trailerAdvanceMs = 15880;
+    let heroTrailerTimer;
+    let soundOn = false;
+    const heroImageDelayMs = 10000;
+    const trailerAdvanceMs = 25880;
 
     function showSlide(index) {
       const previousSlide = currentSlide;
@@ -1307,7 +1410,7 @@
       stripCards.forEach((card, i) => {
         const preview = card.querySelector('video');
         if (!preview) return;
-        preview.muted = true;
+        preview.muted = !soundOn;
         preview.pause();
         preview.currentTime = 0;
       });
@@ -1318,11 +1421,32 @@
       slideTimer = setInterval(() => showSlide((currentSlide + 1) % slides.length), trailerAdvanceMs);
     }
 
-    function restartHeroTrailer() {
+    function playHeroTrailer() {
       if (!heroTrailer) return;
-      heroTrailer.muted = true;
+      heroTrailer.muted = !soundOn;
       heroTrailer.currentTime = 0;
+      heroTrailer.classList.add('playing');
       heroTrailer.play().catch(() => {});
+    }
+
+    function scheduleHeroTrailer() {
+      if (!heroTrailer) return;
+      clearTimeout(heroTrailerTimer);
+      heroTrailer.pause();
+      heroTrailer.currentTime = 0;
+      heroTrailer.classList.remove('playing');
+      heroTrailerTimer = setTimeout(playHeroTrailer, heroImageDelayMs);
+    }
+
+    function updateSoundToggle() {
+      if (!soundToggle) return;
+      soundToggle.classList.toggle('is-on', soundOn);
+      soundToggle.setAttribute('aria-pressed', String(soundOn));
+      soundToggle.setAttribute('aria-label', soundOn ? 'Turn trailer sound off' : 'Turn trailer sound on');
+      if (heroTrailer) heroTrailer.muted = !soundOn;
+      document.querySelectorAll('.strip-card video, .episode-media video').forEach((preview) => {
+        preview.muted = !soundOn;
+      });
     }
 
     function startPreviewTitle(target) {
@@ -1339,11 +1463,12 @@
       const preview = card.querySelector('video');
       card.addEventListener('click', () => {
         showSlide(Number(card.dataset.slide));
-        restartHeroTrailer();
+        scheduleHeroTrailer();
         startSlider();
       });
       card.addEventListener('mouseenter', () => {
         startPreviewTitle(card);
+        if (preview) preview.muted = !soundOn;
         preview && preview.play().catch(() => {});
       });
       card.addEventListener('mouseleave', () => {
@@ -1354,6 +1479,7 @@
       });
       card.addEventListener('focus', () => {
         startPreviewTitle(card);
+        if (preview) preview.muted = !soundOn;
         preview && preview.play().catch(() => {});
       });
       card.addEventListener('blur', () => {
@@ -1367,7 +1493,7 @@
     indicators.forEach((indicator) => {
       indicator.addEventListener('click', () => {
         showSlide(Number(indicator.dataset.slide));
-        restartHeroTrailer();
+        scheduleHeroTrailer();
         startSlider();
       });
     });
@@ -1392,7 +1518,7 @@
         startPreviewTitle(episode);
         episode.classList.add('playing');
         if (preview) {
-          preview.muted = true;
+          preview.muted = !soundOn;
           preview.play().catch(() => {});
         }
       });
@@ -1460,12 +1586,21 @@
     if (heroTrailer) {
       heroTrailer.addEventListener('ended', () => {
         showSlide((currentSlide + 1) % slides.length);
-        restartHeroTrailer();
+        scheduleHeroTrailer();
         startSlider();
       });
-      restartHeroTrailer();
+      scheduleHeroTrailer();
     }
     syncActiveStripVideo();
+    updateSoundToggle();
+
+    soundToggle?.addEventListener('click', () => {
+      soundOn = !soundOn;
+      updateSoundToggle();
+      if (soundOn && heroTrailer && heroTrailer.classList.contains('playing')) {
+        heroTrailer.play().catch(() => {});
+      }
+    });
 
     document.querySelectorAll('.js-open-preview').forEach((button) => button.addEventListener('click', openPreview));
     document.querySelectorAll('.js-open-details').forEach((button) => {
