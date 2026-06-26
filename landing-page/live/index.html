@@ -48,10 +48,7 @@
     .site-shell {
       min-height: 100vh;
       overflow-x: hidden;
-      background:
-        radial-gradient(circle at 18% 12%, rgba(255,155,84,.16), transparent 28%),
-        radial-gradient(circle at 82% 20%, rgba(239,93,136,.14), transparent 26%),
-        var(--bg);
+      background: var(--bg);
     }
 
     .topbar {
@@ -64,16 +61,16 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      background: transparent;
+      background: #050506;
       backdrop-filter: blur(12px);
     }
 
     .topbar::before {
       content: "";
       position: absolute;
-      inset: 0 0 -42px;
+      inset: 0 0 -34px;
       z-index: -1;
-      background: linear-gradient(180deg, rgba(5,5,6,.88) 0%, rgba(5,5,6,.68) 56%, rgba(5,5,6,0) 100%);
+      background: linear-gradient(180deg, #050506 0%, rgba(5,5,6,.92) 58%, rgba(5,5,6,0) 100%);
       pointer-events: none;
     }
 
@@ -115,6 +112,7 @@
 
     .hero {
       position: relative;
+      margin-top: 70px;
       min-height: 690px;
       display: grid;
       align-items: end;
@@ -126,26 +124,37 @@
       position: absolute;
       inset: 0;
       opacity: 0;
-      transform: translateX(12%) scale(1.03);
+      transform: translateX(12%) scale(1.01);
       transition: opacity 850ms ease, transform 1100ms cubic-bezier(.2,.8,.2,1);
+      background-image: var(--slide-image);
       background-size: cover;
       background-position: center;
       z-index: -3;
     }
 
-    .hero-slide.crop-left { background-position: 38% center; }
-    .hero-slide.crop-center { background-position: 50% center; }
-    .hero-slide.crop-right { background-position: 62% center; }
-    .hero-slide.crop-tight { background-position: 55% 28%; }
+    .hero-slide::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image: var(--slide-image);
+      background-repeat: no-repeat;
+      background-size: contain;
+      background-position: center top;
+    }
+
+    .hero-slide.crop-left { background-position: 38% 22%; }
+    .hero-slide.crop-center { background-position: 50% 22%; }
+    .hero-slide.crop-right { background-position: 62% 22%; }
+    .hero-slide.crop-tight { background-position: 55% 18%; }
 
     .hero-slide.active {
       opacity: 1;
-      transform: translateX(0) scale(1.045);
+      transform: translateX(0) scale(1.02);
     }
 
     .hero-slide.prev {
       opacity: 0;
-      transform: translateX(-12%) scale(1.03);
+      transform: translateX(-12%) scale(1.01);
     }
 
     .hero::before {
@@ -161,7 +170,7 @@
     .hero-inner {
       width: min(1180px, calc(100% - 32px));
       margin: 0 auto;
-      padding: 145px 0 92px;
+      padding: 145px 0 118px;
       display: grid;
       gap: 24px;
     }
@@ -297,6 +306,33 @@
       align-items: end;
     }
 
+    .hero-indicators {
+      position: absolute;
+      right: max(24px, calc((100vw - 1180px) / 2));
+      bottom: 112px;
+      z-index: 3;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .hero-indicator {
+      width: 42px;
+      height: 3px;
+      border: 0;
+      border-radius: 999px;
+      background: rgba(255,255,255,.26);
+      cursor: pointer;
+      padding: 0;
+    }
+
+    .hero-indicator.active,
+    .hero-indicator:hover,
+    .hero-indicator:focus-visible {
+      background: rgba(255,255,255,.9);
+      outline: none;
+    }
+
     .strip-card {
       position: relative;
       height: 88px;
@@ -418,9 +454,24 @@
     }
 
     .section {
+      position: relative;
       width: min(1180px, calc(100% - 32px));
-      margin: 0 auto;
-      padding: 54px 0 72px;
+      margin: -42px auto 0;
+      padding: 86px 0 72px;
+      z-index: 2;
+    }
+
+    .section::before {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: -190px;
+      width: 100vw;
+      height: 260px;
+      transform: translateX(-50%);
+      z-index: -1;
+      pointer-events: none;
+      background: linear-gradient(180deg, rgba(13,13,14,0) 0%, rgba(13,13,14,.78) 38%, #0d0d0e 70%, #0d0d0e 100%);
     }
 
     .section-head {
@@ -448,20 +499,27 @@
 
     .episode-row {
       display: grid;
-      grid-template-columns: 1fr;
-      gap: 18px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
     }
 
     .episode {
-      display: grid;
-      grid-template-columns: minmax(360px, .95fr) minmax(320px, 1fr);
-      align-items: stretch;
+      display: block;
       background: var(--panel);
       border: 1px solid rgba(255,255,255,.1);
       border-radius: 8px;
       overflow: hidden;
       box-shadow: var(--shadow);
       min-width: 0;
+      cursor: pointer;
+      transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease;
+    }
+
+    .episode:hover,
+    .episode:focus-within {
+      transform: translateY(-4px);
+      border-color: rgba(255,255,255,.26);
+      box-shadow: 0 26px 64px rgba(0,0,0,.55);
     }
 
     .episode-media {
@@ -499,43 +557,26 @@
     }
 
     .play-pill {
-      position: absolute;
-      right: 12px;
-      top: 12px;
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 10px;
-      border-radius: 999px;
-      background: rgba(0,0,0,.72);
-      color: #fff;
-      font-weight: 900;
-      font-size: .78rem;
-      border: 1px solid rgba(255,255,255,.18);
-      z-index: 4;
+      display: none;
     }
 
     .episode-body {
-      display: grid;
-      align-content: center;
-      gap: 14px;
-      padding: clamp(24px, 4vw, 44px);
+      padding: 18px;
     }
 
     .episode h3 {
       margin: 0;
-      font-size: clamp(1.45rem, 2.5vw, 2.2rem);
+      font-size: clamp(1.05rem, 2vw, 1.35rem);
       line-height: 1.2;
       font-weight: 900;
     }
 
     .episode p {
-      margin: 0;
-      color: rgba(255,255,255,.76);
+      margin: 12px 0 0;
+      color: var(--muted);
       line-height: 1.55;
-      font-size: 1rem;
+      font-size: .95rem;
       font-weight: 400;
-      max-width: 58ch;
     }
 
     .watch-btn {
@@ -567,8 +608,8 @@
     }
 
     .feature-band {
-      border-block: 1px solid rgba(255,255,255,.08);
-      background: linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.015));
+      border-block: 0;
+      background: linear-gradient(180deg, rgba(255,255,255,.025), rgba(255,255,255,.012));
     }
 
     .feature-grid {
@@ -663,16 +704,97 @@
 
     .modal-card {
       width: min(980px, 100%);
-      background: #060607;
+      max-height: calc(100vh - 48px);
+      overflow: auto;
+      background: #171719;
       border: 1px solid rgba(255,255,255,.15);
       border-radius: 8px;
       overflow: hidden;
       box-shadow: 0 36px 90px rgba(0,0,0,.7);
     }
 
-    .modal video {
+    .detail-hero {
+      position: relative;
+      min-height: 410px;
+      display: flex;
+      align-items: end;
+      padding: 42px 52px;
+      background-image: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(23,23,25,.82) 72%, #171719 100%), var(--detail-image);
+      background-size: cover;
+      background-position: center 28%;
+    }
+
+    .detail-hero h3 {
+      margin: 0;
+      font-size: clamp(2rem, 4vw, 3.9rem);
+      line-height: 1;
+      font-weight: 900;
+      max-width: 10ch;
+    }
+
+    .detail-body {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(220px, .42fr);
+      gap: 34px;
+      padding: 0 52px 46px;
+    }
+
+    .detail-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin: 18px 0 22px;
+    }
+
+    .round-action {
+      min-width: 48px;
+      min-height: 48px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,.36);
+      background: rgba(42,42,44,.7);
+      color: #fff;
+      font-size: 1.2rem;
+      cursor: pointer;
+    }
+
+    .detail-description {
+      margin: 0;
+      color: rgba(255,255,255,.82);
+      line-height: 1.6;
+      font-weight: 400;
+    }
+
+    .detail-side {
+      color: rgba(255,255,255,.62);
+      line-height: 1.55;
+      font-size: .92rem;
+      font-weight: 400;
+    }
+
+    .detail-side strong {
+      color: #fff;
+      font-weight: 700;
+    }
+
+    .video-modal {
+      z-index: 90;
+      background: #000;
+      padding: 0;
+    }
+
+    .video-modal .modal-card {
+      width: 100vw;
+      height: 100vh;
+      max-height: none;
+      border: 0;
+      border-radius: 0;
+      background: #000;
+    }
+
+    .video-modal video {
       width: 100%;
-      aspect-ratio: 16 / 9;
+      height: 100%;
+      object-fit: contain;
       display: block;
       background: #000;
     }
@@ -686,11 +808,15 @@
     }
 
     .close {
+      position: absolute;
+      top: 18px;
+      right: 18px;
+      z-index: 4;
       min-width: 42px;
       min-height: 42px;
       border-radius: 999px;
       border: 1px solid rgba(255,255,255,.18);
-      background: rgba(255,255,255,.08);
+      background: rgba(0,0,0,.72);
       color: #fff;
       font-size: 1.4rem;
       cursor: pointer;
@@ -736,12 +862,12 @@
 
     <main>
       <section class="hero" aria-label="The Big Pivot featured episode">
-        <div class="hero-slide crop-center active" style="background-image: url('https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/01-city-crosswalk.png');"></div>
-        <div class="hero-slide crop-left" style="background-image: url('https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/02-subway-platform.png');"></div>
-        <div class="hero-slide crop-right" style="background-image: url('https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/03-diner-conversation.png');"></div>
-        <div class="hero-slide crop-tight" style="background-image: url('https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/04-rug-reveal.png');"></div>
-        <div class="hero-slide crop-center" style="background-image: url('https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/06-running-alley.png');"></div>
-        <div class="hero-slide crop-left" style="background-image: url('https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/07-rooftop-argument.png');"></div>
+        <div class="hero-slide crop-center active" style="--slide-image: url('https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/01-city-crosswalk.png');"></div>
+        <div class="hero-slide crop-left" style="--slide-image: url('https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/02-subway-platform.png');"></div>
+        <div class="hero-slide crop-right" style="--slide-image: url('https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/03-diner-conversation.png');"></div>
+        <div class="hero-slide crop-tight" style="--slide-image: url('https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/04-rug-reveal.png');"></div>
+        <div class="hero-slide crop-center" style="--slide-image: url('https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/06-running-alley.png');"></div>
+        <div class="hero-slide crop-left" style="--slide-image: url('https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/07-rooftop-argument.png');"></div>
 
         <div class="hero-inner">
           <div class="hero-copy">
@@ -792,6 +918,14 @@
               <span class="strip-title"><strong>The Big Pivot</strong><span>Rooftop Terms</span></span>
             </button>
           </div>
+          <div class="hero-indicators" aria-label="Featured slide controls">
+            <button class="hero-indicator active" type="button" data-slide="0" aria-label="Show slide 1"></button>
+            <button class="hero-indicator" type="button" data-slide="1" aria-label="Show slide 2"></button>
+            <button class="hero-indicator" type="button" data-slide="2" aria-label="Show slide 3"></button>
+            <button class="hero-indicator" type="button" data-slide="3" aria-label="Show slide 4"></button>
+            <button class="hero-indicator" type="button" data-slide="4" aria-label="Show slide 5"></button>
+            <button class="hero-indicator" type="button" data-slide="5" aria-label="Show slide 6"></button>
+          </div>
         </div>
       </section>
 
@@ -801,7 +935,7 @@
           <p>Each episode follows a sharp business turning point with a cinematic preview. Hover a card to preview, then watch the trailer.</p>
         </div>
         <div class="episode-row">
-          <article class="episode">
+          <article class="episode js-open-details" tabindex="0" data-episode="1">
             <div class="episode-media crop-center">
               <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/02-subway-platform.png" alt="Sarah Rodriguez on a tense subway platform in The Big Pivot">
               <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/blog-they-spent-10-million-on-leads-and-96-percent-failed/BigPivot_Trailer_480p.mp4"></video>
@@ -812,13 +946,13 @@
               <h3>Episode 1: The Disruption Dilemma</h3>
               <p>A founder faces the moment when the old offer stops working and a smarter, sharper model has to take its place.</p>
               <div class="episode-actions">
-                <button class="watch-btn js-open-preview" type="button">Watch</button>
+                <button class="watch-btn js-open-details" type="button" data-episode="1">Watch</button>
                 <button class="watch-btn secondary" type="button">+ Watchlist</button>
               </div>
             </div>
           </article>
 
-          <article class="episode">
+          <article class="episode js-open-details" tabindex="0" data-episode="2">
             <div class="episode-media crop-left">
               <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/04-rug-reveal.png" alt="Sarah Rodriguez discovering a clue under a rug in The Big Pivot">
               <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/blog-they-spent-10-million-on-leads-and-96-percent-failed/BigPivot_Trailer_480p.mp4"></video>
@@ -829,13 +963,13 @@
               <h3>Episode 2: Scaling New Heights</h3>
               <p>The systems that helped you survive can quietly become the ceiling. This episode looks at the pivot from hustle to leverage.</p>
               <div class="episode-actions">
-                <button class="watch-btn js-open-preview" type="button">Watch</button>
+                <button class="watch-btn js-open-details" type="button" data-episode="2">Watch</button>
                 <button class="watch-btn secondary" type="button">+ Watchlist</button>
               </div>
             </div>
           </article>
 
-          <article class="episode">
+          <article class="episode js-open-details" tabindex="0" data-episode="3">
             <div class="episode-media crop-right">
               <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/08-subway-conversation.png" alt="Sarah Rodriguez in an urgent subway conversation in The Big Pivot">
               <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/blog-they-spent-10-million-on-leads-and-96-percent-failed/BigPivot_Trailer_480p.mp4"></video>
@@ -846,7 +980,7 @@
               <h3>Episode 3: Visionary Leadership</h3>
               <p>When the market changes fast, leaders need more than optimism. They need evidence, timing, and the courage to choose.</p>
               <div class="episode-actions">
-                <button class="watch-btn js-open-preview" type="button">Watch</button>
+                <button class="watch-btn js-open-details" type="button" data-episode="3">Watch</button>
                 <button class="watch-btn secondary" type="button">+ Watchlist</button>
               </div>
             </div>
@@ -883,19 +1017,58 @@
     </footer>
   </div>
 
-  <div class="modal" id="previewModal" aria-hidden="true" aria-label="The Big Pivot video preview">
+  <div class="modal detail-modal" id="detailModal" aria-hidden="true" aria-label="The Big Pivot episode details">
     <div class="modal-card">
-      <video id="modalVideo" controls playsinline preload="metadata" poster="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/01-city-crosswalk.png" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/blog-they-spent-10-million-on-leads-and-96-percent-failed/BigPivot_Trailer_480p.mp4"></video>
-      <div class="modal-meta">
-        <strong>The Big Pivot Trailer</strong>
-        <button class="close" type="button" aria-label="Close video preview">x</button>
+      <button class="close js-close-detail" type="button" aria-label="Close episode details">x</button>
+      <div class="detail-hero" id="detailHero">
+        <h3 id="detailTitle">The Big Pivot</h3>
       </div>
+      <div class="detail-body">
+        <div>
+          <div class="detail-actions">
+            <button class="button primary js-open-preview" type="button">Play</button>
+            <button class="round-action" type="button" aria-label="Add to watchlist">+</button>
+            <button class="round-action" type="button" aria-label="Thumbs up">&#128077;</button>
+          </div>
+          <p class="detail-description" id="detailDescription">A founder faces the moment when the old offer stops working and a smarter, sharper model has to take its place.</p>
+        </div>
+        <div class="detail-side">
+          <p><strong>Cast:</strong> Sarah Rodriguez</p>
+          <p><strong>Genres:</strong> Business drama, founder stories, AI transformation</p>
+          <p><strong>This show is:</strong> Cinematic, tense, strategic</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal video-modal" id="previewModal" aria-hidden="true" aria-label="The Big Pivot video player">
+    <div class="modal-card">
+      <button class="close" type="button" aria-label="Close video player">x</button>
+      <video id="modalVideo" controls playsinline preload="metadata" poster="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/01-city-crosswalk.png" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/blog-they-spent-10-million-on-leads-and-96-percent-failed/BigPivot_Trailer_480p.mp4"></video>
     </div>
   </div>
 
   <script>
     const slides = Array.from(document.querySelectorAll('.hero-slide'));
     const stripCards = Array.from(document.querySelectorAll('.strip-card'));
+    const indicators = Array.from(document.querySelectorAll('.hero-indicator'));
+    const episodeDetails = {
+      1: {
+        title: 'Episode 1: The Disruption Dilemma',
+        image: 'https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/02-subway-platform.png',
+        description: 'A founder faces the moment when the old offer stops working and a smarter, sharper model has to take its place.'
+      },
+      2: {
+        title: 'Episode 2: Scaling New Heights',
+        image: 'https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/04-rug-reveal.png',
+        description: 'The systems that helped you survive can quietly become the ceiling. This episode looks at the pivot from hustle to leverage.'
+      },
+      3: {
+        title: 'Episode 3: Visionary Leadership',
+        image: 'https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/08-subway-conversation.png',
+        description: 'When the market changes fast, leaders need more than optimism. They need evidence, timing, and the courage to choose.'
+      }
+    };
     let currentSlide = 0;
     let slideTimer;
 
@@ -907,6 +1080,7 @@
         slide.classList.toggle('prev', i === previousSlide && i !== index);
       });
       stripCards.forEach((card, i) => card.classList.toggle('active', i === index));
+      indicators.forEach((indicator, i) => indicator.classList.toggle('active', i === index));
     }
 
     function startSlider() {
@@ -952,6 +1126,13 @@
       });
     });
 
+    indicators.forEach((indicator) => {
+      indicator.addEventListener('click', () => {
+        showSlide(Number(indicator.dataset.slide));
+        startSlider();
+      });
+    });
+
     document.querySelectorAll('.episode').forEach((episode) => {
       const preview = episode.querySelector('video');
       episode.addEventListener('mouseenter', () => {
@@ -964,33 +1145,75 @@
         preview.pause();
         preview.currentTime = 0;
       });
+      episode.addEventListener('click', (event) => {
+        if (event.target.closest('button')) return;
+        openDetails(episode.dataset.episode);
+      });
+      episode.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          openDetails(episode.dataset.episode);
+        }
+      });
     });
 
-    const modal = document.getElementById('previewModal');
+    const detailModal = document.getElementById('detailModal');
+    const detailHero = document.getElementById('detailHero');
+    const detailTitle = document.getElementById('detailTitle');
+    const detailDescription = document.getElementById('detailDescription');
+    const videoModal = document.getElementById('previewModal');
     const modalVideo = document.getElementById('modalVideo');
-    const closeButton = modal.querySelector('.close');
+    const closeVideoButton = videoModal.querySelector('.close');
+    const closeDetailButton = detailModal.querySelector('.js-close-detail');
+
+    function openDetails(episodeId = '1') {
+      const detail = episodeDetails[episodeId] || episodeDetails[1];
+      detailHero.style.setProperty('--detail-image', `url('${detail.image}')`);
+      detailTitle.textContent = detail.title;
+      detailDescription.textContent = detail.description;
+      detailModal.classList.add('open');
+      detailModal.setAttribute('aria-hidden', 'false');
+      closeDetailButton.focus();
+    }
+
+    function closeDetails() {
+      detailModal.classList.remove('open');
+      detailModal.setAttribute('aria-hidden', 'true');
+    }
 
     function openPreview() {
-      modal.classList.add('open');
-      modal.setAttribute('aria-hidden', 'false');
+      videoModal.classList.add('open');
+      videoModal.setAttribute('aria-hidden', 'false');
       modalVideo.play().catch(() => {});
-      closeButton.focus();
+      closeVideoButton.focus();
     }
 
     function closePreview() {
-      modal.classList.remove('open');
-      modal.setAttribute('aria-hidden', 'true');
+      videoModal.classList.remove('open');
+      videoModal.setAttribute('aria-hidden', 'true');
       modalVideo.pause();
       modalVideo.currentTime = 0;
     }
 
     document.querySelectorAll('.js-open-preview').forEach((button) => button.addEventListener('click', openPreview));
-    closeButton.addEventListener('click', closePreview);
-    modal.addEventListener('click', (event) => {
-      if (event.target === modal) closePreview();
+    document.querySelectorAll('.js-open-details').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        openDetails(button.dataset.episode || button.closest('.episode')?.dataset.episode || '1');
+      });
+    });
+    closeVideoButton.addEventListener('click', closePreview);
+    closeDetailButton.addEventListener('click', closeDetails);
+    videoModal.addEventListener('click', (event) => {
+      if (event.target === videoModal) closePreview();
+    });
+    detailModal.addEventListener('click', (event) => {
+      if (event.target === detailModal) closeDetails();
     });
     document.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape' && modal.classList.contains('open')) closePreview();
+      if (event.key !== 'Escape') return;
+      if (videoModal.classList.contains('open')) closePreview();
+      else if (detailModal.classList.contains('open')) closeDetails();
     });
 
     startSlider();
