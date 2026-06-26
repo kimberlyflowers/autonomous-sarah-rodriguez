@@ -84,7 +84,7 @@ async function callGHL(endpoint, method = 'GET', data = null, params = {}, orgId
     params: queryParams
   };
 
-  if (data && ['POST', 'PUT', 'PATCH'].includes(method.toUpperCase())) {
+  if (data && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method.toUpperCase())) {
     config.data = data;
   }
 
@@ -175,7 +175,7 @@ async function callGHLTextJson(endpoint, method = 'GET', data = null, params = {
     transformResponse: [(body) => body]
   };
 
-  if (data && ['POST', 'PUT', 'PATCH'].includes(method.toUpperCase())) config.data = data;
+  if (data && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method.toUpperCase())) config.data = data;
 
   try {
     const response = await axios(config);
@@ -245,14 +245,42 @@ async function getRecentContactCallMessages(contactId, orgId, sinceMs) {
   return calls.sort((a, b) => getMessageTimestamp(b) - getMessageTimestamp(a));
 }
 
+function getCallLogTimestamp(callLog) {
+  if (!callLog) return 0;
+  const raw = callLog.createdAt || callLog.updatedAt || callLog.dateAdded || callLog.startTime || callLog.startedAt;
+  const parsed = typeof raw === 'number' ? raw : Date.parse(raw);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+async function getRecentVoiceAiCallLogs(contactId, orgId, sinceMs) {
+  const result = await callGHLTextJson(
+    '/voice-ai/dashboard/call-logs',
+    'GET',
+    null,
+    { page: 1, pageSize: 20 },
+    orgId
+  );
+  const logs = result?.callLogs || result?.logs || result?.data || [];
+  return (Array.isArray(logs) ? logs : [])
+    .filter((log) => {
+      const timestamp = getCallLogTimestamp(log);
+      const matchesContact = !contactId || log.contactId === contactId || log.contact?.id === contactId;
+      return matchesContact && timestamp >= sinceMs;
+    })
+    .sort((a, b) => getCallLogTimestamp(b) - getCallLogTimestamp(a));
+}
+
 async function waitForContactCallRecord(contactId, orgId, sinceMs, timeoutMs = 30000) {
   const deadline = Date.now() + timeoutMs;
   let lastError = null;
 
   while (Date.now() < deadline) {
     try {
+      const voiceAiLogs = await getRecentVoiceAiCallLogs(contactId, orgId, sinceMs);
+      if (voiceAiLogs.length > 0) return { source: 'voice_ai_call_logs', record: voiceAiLogs[0] };
+
       const calls = await getRecentContactCallMessages(contactId, orgId, sinceMs);
-      if (calls.length > 0) return calls[0];
+      if (calls.length > 0) return { source: 'conversations_messages_poll', record: calls[0] };
     } catch (error) {
       lastError = error;
       logger.warn('ghl_call_owner: call verification poll failed', { error: error.message });
@@ -264,6 +292,20 @@ async function waitForContactCallRecord(contactId, orgId, sinceMs, timeoutMs = 3
     logger.warn('ghl_call_owner: call verification ended with polling errors', { error: lastError.message });
   }
   return null;
+}
+
+function isLikelyOutsideGhlVoiceWindow(timeZone = process.env.GHL_VOICE_OUTBOUND_TIMEZONE || 'America/Chicago') {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      hour: '2-digit',
+      hour12: false
+    }).formatToParts(new Date());
+    const hour = Number(parts.find(part => part.type === 'hour')?.value);
+    return Number.isFinite(hour) && (hour < 8 || hour >= 20);
+  } catch {
+    return false;
+  }
 }
 
 // Resolve locationId from orgId (cached) or fall back to env var
@@ -897,7 +939,7 @@ export const ghlToolDefinitions = {
 
   ghl_call_owner: {
     name: "ghl_call_owner",
-    description: "Call the signed-in owner using the configured GHL Voice AI outbound-call workflow. Use when the owner asks Sarah to call, phone, or ring them. After success, answer naturally with 'Ok, calling you now.' Do not say 'owner', 'operator', 'reported', or 'initiated a call to the owner' to the user.",
+    description: "Call the signed-in owner using the configured GHL Voice AI outbound-call workflow. Use when the owner asks Sarah to call, phone, or ring them. If the tool returns userMessage, repeat it naturally. If it verifies an immediate call, answer 'Ok, calling you now.' If it says the call is queued, say that plainly. Do not say 'owner', 'operator', 'reported', or 'initiated a call to the owner' to the user.",
     parameters: {
       type: "object",
       properties: {
@@ -1873,6 +1915,7 @@ export const ghlExecutors = {
     const orgId = params._orgId || process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001';
     let ownerContactId = process.env.OWNER_GHL_CONTACT_ID;
     let workflowId = process.env.GHL_VOICE_OUTBOUND_WORKFLOW_ID;
+    let triggerTag = process.env.GHL_VOICE_OUTBOUND_TRIGGER_TAG || 'bloomie-call-owner-now';
 
     try {
       const { createClient } = await import('@supabase/supabase-js');
@@ -1894,6 +1937,16 @@ export const ghlExecutors = {
       const settingValue = setting?.value;
       if (typeof settingValue === 'string' && settingValue.trim()) workflowId = settingValue.trim();
       if (settingValue && typeof settingValue === 'object' && settingValue.workflowId) workflowId = settingValue.workflowId;
+
+      const { data: tagSetting } = await supabase
+        .from('user_settings')
+        .select('value')
+        .eq('organization_id', orgId)
+        .eq('key', 'ghl_voice_outbound_trigger_tag')
+        .maybeSingle();
+      const tagSettingValue = tagSetting?.value;
+      if (typeof tagSettingValue === 'string' && tagSettingValue.trim()) triggerTag = tagSettingValue.trim();
+      if (tagSettingValue && typeof tagSettingValue === 'object' && tagSettingValue.tag) triggerTag = tagSettingValue.tag;
     } catch (e) {
       logger.warn('ghl_call_owner: Supabase lookup failed, falling back to env vars', { error: e.message });
     }
@@ -1904,46 +1957,75 @@ export const ghlExecutors = {
     if (!workflowId) {
       throw new Error('ghl_call_owner: missing GHL_VOICE_OUTBOUND_WORKFLOW_ID or user_settings key ghl_voice_outbound_workflow_id. Create a GHL workflow with the Voice AI Outbound Call action and save its workflow ID.');
     }
+    if (!triggerTag) {
+      throw new Error('ghl_call_owner: missing GHL_VOICE_OUTBOUND_TRIGGER_TAG or user_settings key ghl_voice_outbound_trigger_tag. The GHL workflow must start from a Contact Tag trigger.');
+    }
 
     const startedAtMs = Date.now() - 2000;
 
-    // GHL's add-to-workflow endpoint can return 201 even when the contact is
-    // already enrolled and the workflow does not re-fire. Remove first so
-    // repeated "call me" requests can re-enter the outbound-call workflow.
+    // The Voice AI outbound action only dials from a published workflow. A
+    // tag trigger gives repeated "call me" requests a concrete event: remove
+    // the tag first, then add it fresh so GHL emits "Tag added" every time.
     try {
-      await callGHL(`/contacts/${ownerContactId}/workflow/${workflowId}`, 'DELETE', null, {}, params._orgId);
-      logger.info('ghl_call_owner: owner removed from workflow before re-entry', { ownerContactId, workflowId });
+      await callGHL(`/contacts/${ownerContactId}/tags`, 'DELETE', { tags: [triggerTag] }, {}, params._orgId);
+      logger.info('ghl_call_owner: owner trigger tag removed before re-entry', { ownerContactId, workflowId, triggerTag });
       await sleep(1000);
     } catch (removeError) {
-      logger.warn('ghl_call_owner: remove-before-add failed; continuing with add', {
+      logger.warn('ghl_call_owner: trigger tag remove-before-add failed; continuing with add', {
         ownerContactId,
         workflowId,
+        triggerTag,
         error: removeError.message
       });
     }
 
-    const result = await callGHL(`/contacts/${ownerContactId}/workflow/${workflowId}`, 'POST', {}, {}, params._orgId);
-    logger.info('ghl_call_owner: owner added to Voice AI outbound workflow', {
+    const result = await callGHL(`/contacts/${ownerContactId}/tags`, 'POST', { tags: [triggerTag] }, {}, params._orgId);
+    logger.info('ghl_call_owner: owner trigger tag added for Voice AI outbound workflow', {
       ownerContactId,
       workflowId,
+      triggerTag,
       urgency: params.urgency || 'normal',
       reason: String(params.reason || '').slice(0, 120)
     });
 
-    const callRecord = await waitForContactCallRecord(ownerContactId, params._orgId, startedAtMs, params.verifyTimeoutMs || 30000);
+    const callVerification = await waitForContactCallRecord(ownerContactId, params._orgId, startedAtMs, params.verifyTimeoutMs || 30000);
+    const callRecord = callVerification?.record;
     if (!callRecord) {
+      const outsideWindow = isLikelyOutsideGhlVoiceWindow();
+      if (outsideWindow) {
+        return {
+          _status: 'QUEUED',
+          _message: 'GHL accepted the Voice AI call trigger and the workflow is waiting for the allowed outbound calling window.',
+          workflowAccepted: true,
+          ownerContactId,
+          workflowId,
+          triggerTag,
+          reason: params.reason,
+          traceId: result?.traceId,
+          verification: {
+            verified: false,
+            method: 'voice_ai_call_logs_then_conversations_poll',
+            waitedMs: params.verifyTimeoutMs || 30000,
+            likelyOutsideHighLevelCallingWindow: true
+          },
+          userMessage: 'I queued the call. HighLevel only places outbound Voice AI calls between 8 AM and 8 PM for your phone timezone, so it is waiting for the allowed calling window.',
+          message: 'Voice AI call queued by GHL outside the allowed outbound calling window.'
+        };
+      }
       return {
         _status: 'FAILED',
-        _message: 'GHL accepted the Voice AI workflow trigger, but no new call record appeared within 30 seconds. The outbound-call workflow may be inactive, missing the Voice AI Outbound Call action, blocked by re-entry settings, or not assigned to the correct phone/agent.',
+        _message: 'GHL accepted the Voice AI call trigger tag, but no new Voice AI call record appeared within the verification window. Check the workflow execution log, outbound Voice AI enablement/KYC, contact phone opt-in/DND, and daily call limits.',
         workflowAccepted: true,
         ownerContactId,
         workflowId,
+        triggerTag,
         reason: params.reason,
         traceId: result?.traceId,
         verification: {
           verified: false,
-          method: 'conversations_messages_poll',
-          waitedMs: params.verifyTimeoutMs || 30000
+          method: 'voice_ai_call_logs_then_conversations_poll',
+          waitedMs: params.verifyTimeoutMs || 30000,
+          likelyOutsideHighLevelCallingWindow: false
         }
       };
     }
@@ -1952,14 +2034,15 @@ export const ghlExecutors = {
       ...result,
       ownerContactId,
       workflowId,
+      triggerTag,
       reason: params.reason,
       callRecordId: callRecord.id,
-      callStatus: callRecord.status || callRecord.meta?.call?.status || null,
-      callDirection: callRecord.direction || null,
-      callDateAdded: callRecord.dateAdded || null,
+      callStatus: callRecord.status || callRecord.callStatus || callRecord.meta?.call?.status || null,
+      callDirection: callRecord.direction || callRecord.callDirection || null,
+      callDateAdded: callRecord.dateAdded || callRecord.createdAt || null,
       verification: {
         verified: true,
-        method: 'conversations_messages_poll',
+        method: callVerification.source,
         callRecordId: callRecord.id
       },
       userMessage: 'Ok, calling you now.',

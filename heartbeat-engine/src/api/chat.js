@@ -1030,7 +1030,7 @@ const _ALL_TOOLS = [
   },
   {
     name: "ghl_call_owner",
-    description: "Trigger the configured GHL Voice AI outbound-call workflow for the business owner. Use when the owner asks you to call them, or when an urgent blocker needs a voice call. Requires the Voice AI outbound-call workflow ID to be configured.",
+    description: "Trigger the configured GHL Voice AI outbound-call workflow for the business owner. Use when the owner asks you to call them, or when an urgent blocker needs a voice call. Requires the Voice AI outbound-call workflow ID to be configured. If the tool returns userMessage, repeat it naturally; if it verifies an immediate call, say 'Ok, calling you now.'; if it says the call is queued, say that plainly.",
     input_schema: {
       type: "object",
       properties: {
