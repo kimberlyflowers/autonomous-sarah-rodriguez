@@ -161,9 +161,9 @@
     .hero-inner {
       width: min(1180px, calc(100% - 32px));
       margin: 0 auto;
-      padding: 145px 0 58px;
+      padding: 145px 0 92px;
       display: grid;
-      gap: 34px;
+      gap: 24px;
     }
 
     .hero-copy {
@@ -215,6 +215,27 @@
       margin-top: 30px;
     }
 
+    .hero-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 18px;
+      color: rgba(255,255,255,.68);
+      font-size: .92rem;
+      line-height: 1.4;
+      font-weight: 400;
+    }
+
+    .hero-meta span + span::before {
+      content: "";
+      display: inline-block;
+      width: 4px;
+      height: 4px;
+      margin: 0 10px 2px 0;
+      border-radius: 999px;
+      background: rgba(255,255,255,.48);
+    }
+
     .button {
       min-height: 50px;
       display: inline-flex;
@@ -261,8 +282,16 @@
       box-shadow: 0 14px 34px rgba(0,0,0,.36);
     }
 
+    .button.watchlist {
+      min-width: 50px;
+      padding: 0 19px;
+      border-color: rgba(255,255,255,.34);
+      background: rgba(20,20,21,.38);
+      color: #fff;
+    }
+
     .hero-strip {
-      display: grid;
+      display: none;
       grid-template-columns: repeat(6, minmax(122px, 1fr));
       gap: 12px;
       align-items: end;
@@ -361,15 +390,15 @@
 
     .strip-card.crop-left img,
     .episode-media.crop-left img,
-    .feature-grid img.crop-left { object-position: 34% center; }
+    .feature-grid img.crop-left { object-position: 34% 28%; }
 
     .strip-card.crop-center img,
     .episode-media.crop-center img,
-    .feature-grid img.crop-center { object-position: 50% center; }
+    .feature-grid img.crop-center { object-position: 50% 28%; }
 
     .strip-card.crop-right img,
     .episode-media.crop-right img,
-    .feature-grid img.crop-right { object-position: 68% center; }
+    .feature-grid img.crop-right { object-position: 68% 28%; }
 
     .strip-card.crop-tight img,
     .episode-media.crop-tight img,
@@ -391,7 +420,7 @@
     .section {
       width: min(1180px, calc(100% - 32px));
       margin: 0 auto;
-      padding: 72px 0;
+      padding: 54px 0 72px;
     }
 
     .section-head {
@@ -419,11 +448,14 @@
 
     .episode-row {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: 1fr;
       gap: 18px;
     }
 
     .episode {
+      display: grid;
+      grid-template-columns: minmax(360px, .95fr) minmax(320px, 1fr);
+      align-items: stretch;
       background: var(--panel);
       border: 1px solid rgba(255,255,255,.1);
       border-radius: 8px;
@@ -444,6 +476,7 @@
       width: 100%;
       height: 100%;
       object-fit: cover;
+      object-position: center 28%;
       display: block;
       transition: transform .35s ease, opacity .2s ease;
     }
@@ -483,22 +516,26 @@
     }
 
     .episode-body {
-      padding: 20px;
+      display: grid;
+      align-content: center;
+      gap: 14px;
+      padding: clamp(24px, 4vw, 44px);
     }
 
     .episode h3 {
       margin: 0;
-      font-size: clamp(1.05rem, 2vw, 1.35rem);
+      font-size: clamp(1.45rem, 2.5vw, 2.2rem);
       line-height: 1.2;
       font-weight: 900;
     }
 
     .episode p {
-      margin: 13px 0 18px;
-      color: var(--muted);
+      margin: 0;
+      color: rgba(255,255,255,.76);
       line-height: 1.55;
-      font-size: .95rem;
+      font-size: 1rem;
       font-weight: 400;
+      max-width: 58ch;
     }
 
     .watch-btn {
@@ -514,6 +551,19 @@
       justify-content: center;
       border: 0;
       cursor: pointer;
+    }
+
+    .episode-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 4px;
+    }
+
+    .watch-btn.secondary {
+      border: 1px solid rgba(255,255,255,.28);
+      background: rgba(255,255,255,.08);
+      color: #fff;
     }
 
     .feature-band {
@@ -653,8 +703,8 @@
       .hero { min-height: 780px; }
       .hero-inner { padding-top: 132px; }
       .hero-copy { padding-top: 70px; }
-      .hero-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
       .episode-row { grid-template-columns: 1fr; }
+      .episode { grid-template-columns: 1fr; }
       .feature-grid { grid-template-columns: 1fr; }
       .section-head { display: block; }
       .section-head p { margin-top: 12px; }
@@ -664,8 +714,6 @@
       .hero { min-height: 760px; }
       .hero-inner { width: min(100% - 24px, 1180px); padding-bottom: 36px; }
       h1 { font-size: clamp(3rem, 18vw, 4.4rem); }
-      .hero-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .strip-card { height: 74px; }
       .actions .button { width: 100%; }
       .subscribe-form { grid-template-columns: 1fr; }
       .subscribe-form .button { width: 100%; }
@@ -703,6 +751,12 @@
             <div class="actions">
               <a class="button primary" href="#subscribe">Subscribe</a>
               <button class="button secondary js-open-preview" type="button">Watch</button>
+              <button class="button watchlist" type="button" aria-label="Add The Big Pivot to watchlist">+ My List</button>
+            </div>
+            <div class="hero-meta" aria-label="Series details">
+              <span>2026</span>
+              <span>Original series</span>
+              <span>Business drama</span>
             </div>
           </div>
 
@@ -757,7 +811,10 @@
             <div class="episode-body">
               <h3>Episode 1: The Disruption Dilemma</h3>
               <p>A founder faces the moment when the old offer stops working and a smarter, sharper model has to take its place.</p>
-              <button class="watch-btn js-open-preview" type="button">Watch Now</button>
+              <div class="episode-actions">
+                <button class="watch-btn js-open-preview" type="button">Watch</button>
+                <button class="watch-btn secondary" type="button">+ Watchlist</button>
+              </div>
             </div>
           </article>
 
@@ -771,7 +828,10 @@
             <div class="episode-body">
               <h3>Episode 2: Scaling New Heights</h3>
               <p>The systems that helped you survive can quietly become the ceiling. This episode looks at the pivot from hustle to leverage.</p>
-              <button class="watch-btn js-open-preview" type="button">Watch Now</button>
+              <div class="episode-actions">
+                <button class="watch-btn js-open-preview" type="button">Watch</button>
+                <button class="watch-btn secondary" type="button">+ Watchlist</button>
+              </div>
             </div>
           </article>
 
@@ -785,7 +845,10 @@
             <div class="episode-body">
               <h3>Episode 3: Visionary Leadership</h3>
               <p>When the market changes fast, leaders need more than optimism. They need evidence, timing, and the courage to choose.</p>
-              <button class="watch-btn js-open-preview" type="button">Watch Now</button>
+              <div class="episode-actions">
+                <button class="watch-btn js-open-preview" type="button">Watch</button>
+                <button class="watch-btn secondary" type="button">+ Watchlist</button>
+              </div>
             </div>
           </article>
         </div>
