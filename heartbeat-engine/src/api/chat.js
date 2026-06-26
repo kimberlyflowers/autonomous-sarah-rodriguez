@@ -6121,34 +6121,51 @@ NEVER skip steps 3 and 4 even if step 2 fails.
             let foundRefUrl = null;
             let foundRefBase64 = null;
             let foundRefMime = null;
+            const isSelfImageRequest = looksLikeSelfImageRequest(block.input, agentConfig);
 
-            // 1) Check for user-uploaded images in conversation (highest priority)
+            // 1) If this is an image of the employee/Sarah, use the canonical
+            // saved avatar first. Otherwise a previous bad generation can become
+            // the next reference and make the visual identity drift.
+            if (isSelfImageRequest) {
+              foundRefUrl = await getAgentReferenceImageUrl(agentConfig.agentId);
+              if (foundRefUrl) {
+                logger.info('Using agent avatar_url as canonical self-image reference', {
+                  agentId: agentConfig.agentId,
+                  url: foundRefUrl.slice(0, 100)
+                });
+              }
+            }
+
+            // 2) Check for user-uploaded images in conversation (highest priority
+            // for non-self images, or fallback if the employee has no avatar).
             // Uploads come through as BOTH base64 AND url — check both formats
-            for (let mi = currentMessages.length - 1; mi >= 0; mi--) {
-              const msg = currentMessages[mi];
-              if (msg.role === 'user' && Array.isArray(msg.content)) {
-                // Check for URL-sourced images first
-                const urlImg = msg.content.find(b => b.type === 'image' && b.source?.type === 'url');
-                if (urlImg) {
-                  foundRefUrl = urlImg.source.url;
-                  logger.info('Found reference image (URL) from user upload');
-                  break;
-                }
-                // Check for base64-sourced images (this is how the /upload endpoint sends them)
-                const b64Img = msg.content.find(b => b.type === 'image' && b.source?.type === 'base64');
-                if (b64Img) {
-                  foundRefBase64 = b64Img.source.data;
-                  foundRefMime = b64Img.source.media_type || null;
-                  logger.info('Found reference image (base64) from user upload', {
-                    dataLength: foundRefBase64?.length || 0,
-                    mediaType: foundRefMime
-                  });
-                  break;
+            if (!foundRefUrl && !foundRefBase64) {
+              for (let mi = currentMessages.length - 1; mi >= 0; mi--) {
+                const msg = currentMessages[mi];
+                if (msg.role === 'user' && Array.isArray(msg.content)) {
+                  // Check for URL-sourced images first
+                  const urlImg = msg.content.find(b => b.type === 'image' && b.source?.type === 'url');
+                  if (urlImg) {
+                    foundRefUrl = urlImg.source.url;
+                    logger.info('Found reference image (URL) from user upload');
+                    break;
+                  }
+                  // Check for base64-sourced images (this is how the /upload endpoint sends them)
+                  const b64Img = msg.content.find(b => b.type === 'image' && b.source?.type === 'base64');
+                  if (b64Img) {
+                    foundRefBase64 = b64Img.source.data;
+                    foundRefMime = b64Img.source.media_type || null;
+                    logger.info('Found reference image (base64) from user upload', {
+                      dataLength: foundRefBase64?.length || 0,
+                      mediaType: foundRefMime
+                    });
+                    break;
+                  }
                 }
               }
             }
 
-            // 2) If no user upload found, check for previously generated image URLs from this session
+            // 3) If no user upload found, check for previously generated image URLs from this session
             if (!foundRefUrl && !foundRefBase64) {
               for (let ti = toolResults.length - 1; ti >= 0; ti--) {
                 const tr = toolResults[ti];
@@ -6160,7 +6177,7 @@ NEVER skip steps 3 and 4 even if step 2 fails.
               }
             }
 
-            // 3) Also check assistant message text for markdown image URLs from prior turns
+            // 4) Also check assistant message text for markdown image URLs from prior turns
             if (!foundRefUrl && !foundRefBase64) {
               for (let mi = currentMessages.length - 1; mi >= 0; mi--) {
                 const msg = currentMessages[mi];
@@ -6174,18 +6191,6 @@ NEVER skip steps 3 and 4 even if step 2 fails.
                     break;
                   }
                 }
-              }
-            }
-
-            // 4) If this is an image of the employee/Sarah, use the employee avatar
-            // stored in Supabase as the canonical reference image.
-            if (!foundRefUrl && !foundRefBase64 && looksLikeSelfImageRequest(block.input, agentConfig)) {
-              foundRefUrl = await getAgentReferenceImageUrl(agentConfig.agentId);
-              if (foundRefUrl) {
-                logger.info('Using agent avatar_url as image generation reference', {
-                  agentId: agentConfig.agentId,
-                  url: foundRefUrl.slice(0, 100)
-                });
               }
             }
 
