@@ -156,7 +156,7 @@
       object-fit: cover;
       object-position: center top;
       z-index: .5;
-      opacity: .86;
+      opacity: 1;
       filter: saturate(1.04) contrast(1.02);
       pointer-events: none;
     }
@@ -469,6 +469,12 @@
       opacity: 1;
     }
 
+    .strip-card.active img,
+    .strip-card:hover img,
+    .strip-card:focus-visible img {
+      opacity: 0;
+    }
+
     .section {
       position: relative;
       width: min(1180px, calc(100% - 32px));
@@ -580,6 +586,12 @@
     .episode:focus-within .episode-media video,
     .episode.playing .episode-media video {
       opacity: 1;
+    }
+
+    .episode:hover .episode-media img,
+    .episode:focus-within .episode-media img,
+    .episode.playing .episode-media img {
+      opacity: 0;
     }
 
     .play-pill {
