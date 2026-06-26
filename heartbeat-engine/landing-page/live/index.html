@@ -113,11 +113,12 @@
     .hero {
       position: relative;
       margin-top: 70px;
-      min-height: clamp(620px, 41vw, 860px);
+      min-height: clamp(500px, 34vw, 680px);
       display: grid;
       align-items: end;
       isolation: isolate;
       overflow: hidden;
+      z-index: 2;
     }
 
     .hero-slide {
@@ -129,7 +130,7 @@
       background-image: var(--slide-image);
       background-size: cover;
       background-position: center top;
-      z-index: -3;
+      z-index: 0;
     }
 
     .hero-slide.crop-left { background-position: 38% top; }
@@ -154,20 +155,23 @@
       background:
         linear-gradient(90deg, rgba(8,8,9,.68) 0%, rgba(8,8,9,.34) 35%, rgba(8,8,9,.08) 67%, rgba(8,8,9,.32) 100%),
         linear-gradient(0deg, #0d0d0e 0%, rgba(13,13,14,.9) 10%, rgba(13,13,14,.45) 24%, rgba(13,13,14,.05) 61%, rgba(13,13,14,.1) 100%);
-      z-index: -2;
+      z-index: 1;
+      pointer-events: none;
     }
 
     .hero-inner {
+      position: relative;
+      z-index: 2;
       width: min(1180px, calc(100% - 32px));
       margin: 0 auto;
-      padding: 145px 0 118px;
+      padding: 78px 0 66px;
       display: grid;
       gap: 24px;
     }
 
     .hero-copy {
       max-width: 650px;
-      padding-top: 112px;
+      padding-top: 46px;
     }
 
     .eyebrow {
@@ -307,7 +311,7 @@
     .hero-indicators {
       position: absolute;
       right: max(24px, calc((100vw - 1180px) / 2));
-      bottom: 112px;
+      bottom: 58px;
       z-index: 3;
       display: flex;
       align-items: center;
@@ -454,9 +458,9 @@
     .section {
       position: relative;
       width: min(1180px, calc(100% - 32px));
-      margin: -42px auto 0;
-      padding: 86px 0 72px;
-      z-index: 2;
+      margin: -126px auto 0;
+      padding: 118px 0 72px;
+      z-index: 1;
     }
 
     .section::before {
@@ -467,12 +471,14 @@
       width: 100vw;
       height: 260px;
       transform: translateX(-50%);
-      z-index: -1;
+      z-index: 0;
       pointer-events: none;
       background: linear-gradient(180deg, rgba(13,13,14,0) 0%, rgba(13,13,14,.78) 38%, #0d0d0e 70%, #0d0d0e 100%);
     }
 
     .section-head {
+      position: relative;
+      z-index: 1;
       display: flex;
       align-items: end;
       justify-content: space-between;
@@ -496,6 +502,8 @@
     }
 
     .episode-row {
+      position: relative;
+      z-index: 1;
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 16px;
@@ -550,7 +558,8 @@
     }
 
     .episode:hover .episode-media video,
-    .episode:focus-within .episode-media video {
+    .episode:focus-within .episode-media video,
+    .episode.playing .episode-media video {
       opacity: 1;
     }
 
@@ -1166,10 +1175,15 @@
       const preview = episode.querySelector('video');
       episode.addEventListener('mouseenter', () => {
         startPreviewTitle(episode);
-        preview && preview.play().catch(() => {});
+        episode.classList.add('playing');
+        if (preview) {
+          preview.muted = true;
+          preview.play().catch(() => {});
+        }
       });
       episode.addEventListener('mouseleave', () => {
         stopPreviewTitle(episode);
+        episode.classList.remove('playing');
         if (!preview) return;
         preview.pause();
         preview.currentTime = 0;
@@ -1211,8 +1225,10 @@
     }
 
     function openPreview() {
+      closeDetails();
       videoModal.classList.add('open');
       videoModal.setAttribute('aria-hidden', 'false');
+      modalVideo.currentTime = 0;
       modalVideo.play().catch(() => {});
       closeVideoButton.focus();
     }
