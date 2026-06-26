@@ -136,6 +136,59 @@ async function callGHL(endpoint, method = 'GET', data = null, params = {}, orgId
   }
 }
 
+function parseGHLJsonLenient(raw) {
+  if (typeof raw !== 'string') return raw;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    const cleaned = raw.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '');
+    return JSON.parse(cleaned);
+  }
+}
+
+async function callGHLTextJson(endpoint, method = 'GET', data = null, params = {}, orgId = null) {
+  const orgCreds = orgId ? await getOrgGHLCredentials(orgId) : null;
+  const apiKey = orgCreds?.apiKey || process.env.GHL_API_KEY;
+  const locationId = orgCreds?.locationId || process.env.GHL_LOCATION_ID;
+
+  if (!apiKey) throw new Error('GHL_API_KEY not configured (no org credentials and no env var)');
+
+  const apiVersion = params?.__version || GHL_API_VERSION;
+  const queryParams = {
+    ...(params?.__omitLocationId ? {} : { locationId }),
+    ...params
+  };
+  delete queryParams.__omitLocationId;
+  delete queryParams.__version;
+
+  const config = {
+    method,
+    url: `${GHL_BASE_URL}${endpoint}`,
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Version': apiVersion,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    },
+    params: queryParams,
+    responseType: 'text',
+    transformResponse: [(body) => body]
+  };
+
+  if (data && ['POST', 'PUT', 'PATCH'].includes(method.toUpperCase())) config.data = data;
+
+  try {
+    const response = await axios(config);
+    return parseGHLJsonLenient(response.data);
+  } catch (error) {
+    const status = error.response?.status || 'unknown';
+    const body = typeof error.response?.data === 'string'
+      ? error.response.data.slice(0, 1000)
+      : JSON.stringify(error.response?.data || {});
+    throw new Error(`GHL API Error (${status}): ${error.message}. Full URL: ${config.url}. Details: ${body}`);
+  }
+}
+
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -161,7 +214,7 @@ function isCallMessage(message) {
 }
 
 async function getRecentContactCallMessages(contactId, orgId, sinceMs) {
-  const conversationsResult = await callGHL(
+  const conversationsResult = await callGHLTextJson(
     '/conversations/search',
     'GET',
     null,
@@ -173,7 +226,7 @@ async function getRecentContactCallMessages(contactId, orgId, sinceMs) {
 
   for (const conversation of conversations) {
     if (!conversation?.id) continue;
-    const messagesResult = await callGHL(
+    const messagesResult = await callGHLTextJson(
       `/conversations/${conversation.id}/messages`,
       'GET',
       null,
