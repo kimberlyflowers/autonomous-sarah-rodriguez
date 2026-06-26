@@ -360,6 +360,32 @@ function formatAssistantMessageOpenAI(content) {
   return msg;
 }
 
+function sanitizeGeminiSchema(schema) {
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) {
+    return { type: 'object', properties: {} };
+  }
+
+  const out = { ...schema };
+  const type = String(out.type || '').toLowerCase();
+  if (type) out.type = type;
+
+  if (type === 'array') {
+    out.items = sanitizeGeminiSchema(out.items || { type: 'string' });
+  }
+
+  if (out.properties && typeof out.properties === 'object' && !Array.isArray(out.properties)) {
+    out.properties = Object.fromEntries(
+      Object.entries(out.properties).map(([key, value]) => [key, sanitizeGeminiSchema(value)])
+    );
+  }
+
+  if (out.additionalProperties && typeof out.additionalProperties === 'object') {
+    delete out.additionalProperties;
+  }
+
+  return out;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // UnifiedLLMClient — main class with silent failover
 // ═══════════════════════════════════════════════════════════════════════════
@@ -908,7 +934,7 @@ export class UnifiedLLMClient {
         functionDeclarations: tools.map(t => ({
           name: t.name,
           description: t.description,
-          parameters: t.input_schema || t.parameters,
+          parameters: sanitizeGeminiSchema(t.input_schema || t.parameters),
         }))
       }];
 
