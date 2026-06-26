@@ -70,6 +70,7 @@ app.use(helmet({
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://fonts.bunny.net", "https://stcdn.leadconnectorhq.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com", "https://fonts.bunny.net", "https://stcdn.leadconnectorhq.com"],
       imgSrc: ["'self'", "data:", "blob:", "https:", "http:"],
+      mediaSrc: ["'self'", "blob:", "data:", "https://njfhzabmaxhfzekbzpzz.supabase.co"],
       connectSrc: ["'self'", "https:", "wss:", "https://www.google-analytics.com", "https://region1.google-analytics.com"],
       frameSrc: ["'self'", "blob:", "data:", "https://api.leadconnectorhq.com", "*"],
       frameAncestors: ["*"],
