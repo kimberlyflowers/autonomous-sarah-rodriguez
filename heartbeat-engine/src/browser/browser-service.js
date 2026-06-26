@@ -88,18 +88,16 @@ class BrowserService extends EventEmitter {
 
       this.page = await this.context.newPage();
 
-      // ── Performance: block images, fonts, and media for scraping tasks ──
-      // Cuts page load time by 60–80% on content-heavy sites
-      await this.page.route('**/*', (route) => {
-        const resourceType = route.request().resourceType();
-        const blockedTypes = ['image', 'media', 'font', 'stylesheet'];
-        // Allow stylesheets only if needed for JS-rendered content detection
-        if (blockedTypes.includes(resourceType)) {
-          route.abort();
-        } else {
-          route.continue();
-        }
-      });
+      // The dashboard Screen Viewer is a visual surface. Keep assets enabled by
+      // default so Kimberly sees the actual page instead of a stripped scraper view.
+      if (process.env.BROWSER_VIEW_BLOCK_HEAVY_ASSETS === 'true') {
+        await this.page.route('**/*', (route) => {
+          const resourceType = route.request().resourceType();
+          const blockedTypes = ['image', 'media', 'font'];
+          if (blockedTypes.includes(resourceType)) route.abort();
+          else route.continue();
+        });
+      }
 
       this.isRunning = true;
 

@@ -169,11 +169,12 @@ export const browserToolExecutors = {
 
       if (data.success) {
         const blockEvidence = getBrowserBlockEvidence(data);
+        let liveTabUpdated = false;
         // Push screenshot to dashboard Screen Viewer (now included in browse response)
         try {
+          const { getBrowserService } = await import('../browser/browser-service.js');
+          const browserSvc = getBrowserService();
           if (data.screenshot_base64) {
-            const { getBrowserService } = await import('../browser/browser-service.js');
-            const browserSvc = getBrowserService();
             browserSvc.isRunning = true;
             browserSvc.currentUrl = data.url_final;
             browserSvc.lastScreenshot = data.screenshot_base64;
@@ -183,10 +184,16 @@ export const browserToolExecutors = {
               url: data.url_final,
               timestamp: Date.now()
             });
+            liveTabUpdated = true;
             logger.info('Pushed screenshot to dashboard', { url: data.url_final });
+          } else if (data.url_final) {
+            await browserSvc.launch();
+            await browserSvc.navigate(data.url_final);
+            liveTabUpdated = true;
+            logger.info('Mirrored browser_task final URL to dashboard browser', { url: data.url_final });
           }
         } catch (ssErr) {
-          logger.warn('Could not push screenshot to dashboard:', ssErr.message);
+          logger.warn('Could not mirror browser task to dashboard:', ssErr.message);
         }
 
         const tierLabel = data.tier_used === 'desktop' ? '(via BLOOM Desktop - real browser)' :
@@ -204,7 +211,8 @@ export const browserToolExecutors = {
           used_cloud: data.used_cloud || false,
           used_desktop: data.used_desktop || false,
           tier_used: data.tier_used || 'self-hosted',
-          message: `Browser navigated to ${url || 'requested page'}. Final URL: ${data.url_final}. ${tierLabel}${blockEvidence ? ` Block evidence: ${blockEvidence}.` : ''} Result: ${data.result}`
+          live_tab_updated: liveTabUpdated,
+          message: `Browser navigated to ${url || 'requested page'}. Final URL: ${data.url_final}. ${tierLabel}${liveTabUpdated ? ' Mirrored to the Live browser tab.' : ' This ran in the background browser and was not visible in the Live tab.'}${blockEvidence ? ` Block evidence: ${blockEvidence}.` : ''} Result: ${data.result}`
         };
       } else {
         return {
