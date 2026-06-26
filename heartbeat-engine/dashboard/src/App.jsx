@@ -2410,6 +2410,10 @@ function googleImportLabel(name='') {
   return null;
 }
 
+function isSpreadsheetArtifact(name='') {
+  return ['xlsx', 'csv'].includes(artifactExt(name));
+}
+
 function GoogleImportButton({ file, c, compact=false }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -2442,13 +2446,90 @@ function GoogleImportButton({ file, c, compact=false }) {
   );
 }
 
+function SpreadsheetGridPreview({ file, c, compact=false }) {
+  const [preview, setPreview] = useState(null);
+  const [error, setError] = useState('');
+  const fileId = file?.fileId || file?.id;
+  const name = file?.name || 'spreadsheet';
+  const ext = artifactExt(name).toUpperCase();
+
+  useEffect(() => {
+    if (!fileId) return;
+    let cancelled = false;
+    const rows = compact ? 8 : 24;
+    const cols = compact ? 6 : 12;
+    fetch(`/api/files/sheet-preview/${fileId}?rows=${rows}&cols=${cols}`)
+      .then(response => response.ok ? response.json() : response.json().then(data => Promise.reject(new Error(data.error || 'Preview failed'))))
+      .then(data => { if (!cancelled) setPreview(data); })
+      .catch(err => { if (!cancelled) setError(err.message || 'Preview failed'); });
+    return () => { cancelled = true; };
+  }, [fileId, compact]);
+
+  const sheet = preview?.sheets?.[0];
+  const rows = sheet?.rows || [];
+
+  if (error) {
+    return (
+      <div style={{height:'100%',display:'flex',alignItems:'center',justifyContent:'center',padding:compact?10:24,textAlign:'center',background:c.bg,color:c.so}}>
+        <div>
+          <div style={{fontSize:compact?11:14,fontWeight:800,color:c.tx,marginBottom:4}}>{ext || 'SHEET'}</div>
+          <div style={{fontSize:compact?9:12,lineHeight:1.35}}>Spreadsheet preview unavailable. Open in Google Sheets or download the file.</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!preview) {
+    return (
+      <div style={{height:'100%',display:'flex',alignItems:'center',justifyContent:'center',background:c.bg,color:c.so,fontSize:compact?10:13,fontWeight:700}}>
+        Loading spreadsheet...
+      </div>
+    );
+  }
+
+  return (
+    <div style={{height:'100%',display:'flex',flexDirection:'column',background:'#fff',color:'#1f2937',overflow:'hidden'}}>
+      {!compact && (
+        <div style={{padding:'8px 10px',borderBottom:'1px solid #e5e7eb',display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,background:'#f9fafb'}}>
+          <div style={{minWidth:0}}>
+            <div style={{fontSize:12,fontWeight:800,color:'#111827',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{name}</div>
+            <div style={{fontSize:10,color:'#6b7280'}}>{sheet?.name || 'Sheet1'}</div>
+          </div>
+          <GoogleImportButton file={file} c={c} compact />
+        </div>
+      )}
+      <div style={{flex:1,overflow:'hidden'}}>
+        <table style={{borderCollapse:'collapse',width:'100%',fontSize:compact?8:12,tableLayout:'fixed'}}>
+          <tbody>
+            {rows.map((row, rowIndex) => (
+              <tr key={rowIndex}>
+                {row.map((cell, cellIndex) => (
+                  <td key={cellIndex} style={{border:'1px solid #e5e7eb',padding:compact?'3px 4px':'7px 8px',fontWeight:rowIndex===0?800:500,background:rowIndex===0?'#f3f4f6':'#fff',color:'#1f2937',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                    {cell || '\u00a0'}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {rows.length === 0 && <div style={{padding:compact?10:24,fontSize:compact?10:13,color:'#6b7280',textAlign:'center'}}>No rows to preview</div>}
+      </div>
+    </div>
+  );
+}
+
 function BinaryArtifactPreview({ file, c, compact=false }) {
   const name = file?.name || 'file';
   const fileId = file?.fileId;
   const ext = artifactExt(name).toUpperCase() || 'FILE';
   const embedUrl = artifactEmbedUrl(fileId);
+  const canSheetPreview = fileId && isSpreadsheetArtifact(name);
   const canOfficePreview = fileId && isOfficeArtifact(name) && window.location.protocol.startsWith('http');
   const canPdfPreview = fileId && isPdfArtifact(name);
+
+  if (canSheetPreview) {
+    return <SpreadsheetGridPreview file={file} c={c} compact={compact} />;
+  }
 
   if (canPdfPreview) {
     return (
@@ -2491,6 +2572,10 @@ function BinaryArtifactCardPreview({ file, c }) {
   const fileId = file?.fileId || file?.id;
   const ext = artifactExt(name);
   const frameScale = 0.26;
+
+  if (fileId && isSpreadsheetArtifact(name)) {
+    return <SpreadsheetGridPreview file={file} c={c} compact />;
+  }
 
   if (fileId && isPdfArtifact(name)) {
     return (

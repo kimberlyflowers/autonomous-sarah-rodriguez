@@ -7,6 +7,7 @@ import { createLogger } from '../logging/logger.js';
 import crypto from 'crypto';
 import path from 'path';
 import fs from 'fs';
+import ExcelJS from 'exceljs';
 import { createClient } from '@supabase/supabase-js';
 import { validateAgentAccess, getAgentOrgId, getUserOrgId, extractUserId } from './org-boundary.js';
 
@@ -171,6 +172,49 @@ async function artifactBuffer(file) {
     return Buffer.from(file.content, 'utf8');
   }
   throw new Error('File content is not available');
+}
+
+function formatSheetCell(value) {
+  if (value == null) return '';
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  if (typeof value === 'object') {
+    if (value.text) return String(value.text);
+    if (value.result != null) return formatSheetCell(value.result);
+    if (value.formula) return `=${value.formula}`;
+    if (Array.isArray(value.richText)) return value.richText.map(part => part.text || '').join('');
+    if (value.hyperlink && value.text) return String(value.text);
+    return String(value);
+  }
+  return String(value);
+}
+
+function csvRows(content = '', maxRows = 20, maxCols = 12) {
+  return String(content || '')
+    .split(/\r?\n/)
+    .filter((line, index) => index === 0 || line.trim())
+    .slice(0, maxRows)
+    .map(line => {
+      const cells = [];
+      let current = '';
+      let quoted = false;
+      for (let i = 0; i < line.length; i += 1) {
+        const ch = line[i];
+        const next = line[i + 1];
+        if (ch === '"' && quoted && next === '"') {
+          current += '"';
+          i += 1;
+        } else if (ch === '"') {
+          quoted = !quoted;
+        } else if (ch === ',' && !quoted) {
+          cells.push(current);
+          current = '';
+        } else {
+          current += ch;
+        }
+      }
+      cells.push(current);
+      return cells.slice(0, maxCols);
+    });
 }
 
 // ── CREATE ARTIFACT ──────────────────────────────────────────────────────────
@@ -482,6 +526,63 @@ router.get('/preview/:fileId', async (req, res) => {
   } catch (error) {
     logger.error('Preview error', { error: error.message });
     return res.status(500).json({ error: 'Preview failed' });
+  }
+});
+
+// ── SPREADSHEET GRID PREVIEW ────────────────────────────────────────────────
+router.get('/sheet-preview/:fileId', async (req, res) => {
+  try {
+    const { fileId } = req.params;
+    const maxRows = Math.min(Math.max(parseInt(req.query.rows, 10) || 20, 1), 50);
+    const maxCols = Math.min(Math.max(parseInt(req.query.cols, 10) || 12, 1), 24);
+    const supabase = sb();
+    const { data: file, error } = await supabase.from('artifacts')
+      .select('id, name, file_type, mime_type, content, storage_path')
+      .eq('id', fileId)
+      .single();
+
+    if (error || !file) return res.status(404).json({ error: 'File not found' });
+
+    const ext = artifactExt(file.name);
+    const ft = String(file.file_type || '').toLowerCase();
+    const mt = String(file.mime_type || '').toLowerCase();
+    const isXlsx = ext === 'xlsx' || ft === 'xlsx' || mt.includes('spreadsheetml');
+    const isCsv = ext === 'csv' || ft === 'csv' || mt.includes('text/csv');
+
+    if (isCsv) {
+      const buffer = await artifactBuffer(file);
+      return res.json({
+        name: file.name,
+        type: 'csv',
+        sheets: [{ name: 'Sheet1', rows: csvRows(buffer.toString('utf8'), maxRows, maxCols) }]
+      });
+    }
+
+    if (!isXlsx) return res.status(400).json({ error: 'File is not a spreadsheet preview type' });
+
+    const buffer = await artifactBuffer(file);
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(buffer);
+
+    const sheets = workbook.worksheets.slice(0, 4).map((worksheet) => {
+      const rows = [];
+      const rowLimit = Math.min(worksheet.actualRowCount || worksheet.rowCount || maxRows, maxRows);
+      const colLimit = Math.min(worksheet.actualColumnCount || worksheet.columnCount || maxCols, maxCols);
+      for (let rowNumber = 1; rowNumber <= rowLimit; rowNumber += 1) {
+        const row = worksheet.getRow(rowNumber);
+        const values = [];
+        for (let colNumber = 1; colNumber <= colLimit; colNumber += 1) {
+          values.push(formatSheetCell(row.getCell(colNumber).value));
+        }
+        rows.push(values);
+      }
+      return { name: worksheet.name, rows };
+    });
+
+    return res.json({ name: file.name, type: 'xlsx', sheets });
+  } catch (error) {
+    logger.error('Sheet preview error', { fileId: req.params.fileId, error: error.message });
+    return res.status(500).json({ error: error.message || 'Spreadsheet preview failed' });
   }
 });
 
