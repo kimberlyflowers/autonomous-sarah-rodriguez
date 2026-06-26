@@ -2486,6 +2486,57 @@ function BinaryArtifactPreview({ file, c, compact=false }) {
   );
 }
 
+function BinaryArtifactCardPreview({ file, c }) {
+  const name = file?.name || '';
+  const fileId = file?.fileId || file?.id;
+  const ext = artifactExt(name);
+  const frameScale = 0.26;
+
+  if (fileId && isPdfArtifact(name)) {
+    return (
+      <div style={{position:'absolute',inset:0,overflow:'hidden',background:'#fff'}}>
+        <iframe
+          src={artifactEmbedUrl(fileId)}
+          title={name}
+          scrolling="no"
+          style={{position:'absolute',top:0,left:0,width:`${100/frameScale}%`,height:`${100/frameScale}%`,border:'none',pointerEvents:'none',transform:`scale(${frameScale})`,transformOrigin:'top left',background:'#fff'}}
+        />
+      </div>
+    );
+  }
+
+  if (fileId && isOfficeArtifact(name) && window.location.protocol.startsWith('http')) {
+    return (
+      <div style={{position:'absolute',inset:0,overflow:'hidden',background:'#fff'}}>
+        <iframe
+          src={officeViewerUrl(fileId)}
+          title={name}
+          scrolling="no"
+          style={{position:'absolute',top:0,left:0,width:`${100/frameScale}%`,height:`${100/frameScale}%`,border:'none',pointerEvents:'none',transform:`scale(${frameScale})`,transformOrigin:'top left',background:'#fff'}}
+        />
+      </div>
+    );
+  }
+
+  if (ext === 'csv') {
+    return (
+      <div style={{position:'absolute',inset:0,overflow:'hidden',background:'#fff',padding:10}}>
+        <pre style={{margin:0,fontSize:9,lineHeight:1.55,color:'#1f2937',whiteSpace:'pre-wrap',fontFamily:'ui-monospace, SFMono-Regular, Menlo, monospace'}}>
+          {(file?.content || 'CSV file').split('\n').slice(0,8).join('\n')}
+        </pre>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,padding:14,textAlign:"center",background:`linear-gradient(135deg, ${c.cd}, ${c.gf})`}}>
+      <div style={{padding:"8px 12px",borderRadius:10,background:c.ac+"14",border:"1px solid "+c.ac+"35",fontSize:13,fontWeight:900,color:c.ac,letterSpacing:0}}>{ext.toUpperCase()}</div>
+      <div style={{maxWidth:"85%",fontSize:12,fontWeight:700,color:c.tx,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{name}</div>
+      <div style={{fontSize:10,fontWeight:700,color:c.gr,textTransform:"uppercase",letterSpacing:0}}>Open preview</div>
+    </div>
+  );
+}
+
 // ── ArtifactPane — Claude-style code/preview panel in right sidebar ──────────
 function ArtifactPane({ art, c, onClose, onRequestChanges }) {
   const [artView, setArtView] = useState('preview'); // 'preview' | 'code'
@@ -7395,11 +7446,7 @@ function App({ authUser }) {
                               </div>
                             )
                           ) : isBinaryArtifactName(f.name) ? (
-                            <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,padding:14,textAlign:"center",background:`linear-gradient(135deg, ${c.cd}, ${c.gf})`}}>
-                              <div style={{padding:"8px 12px",borderRadius:10,background:c.ac+"14",border:"1px solid "+c.ac+"35",fontSize:13,fontWeight:900,color:c.ac,letterSpacing:0}}>{ext.toUpperCase()}</div>
-                              <div style={{maxWidth:"85%",fontSize:12,fontWeight:700,color:c.tx,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</div>
-                              <div style={{fontSize:10,fontWeight:700,color:c.gr,textTransform:"uppercase",letterSpacing:0}}>Open preview</div>
-                            </div>
+                            <BinaryArtifactCardPreview file={f} c={c} />
                           ) : (
                             /* Modern SVG icons for other file types */
                             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke={c.so} strokeWidth="1.5" opacity="0.4">
