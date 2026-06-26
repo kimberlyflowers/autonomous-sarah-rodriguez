@@ -113,7 +113,7 @@
     .hero {
       position: relative;
       margin-top: 70px;
-      min-height: 690px;
+      min-height: clamp(620px, 41vw, 860px);
       display: grid;
       align-items: end;
       isolation: isolate;
@@ -128,24 +128,14 @@
       transition: opacity 850ms ease, transform 1100ms cubic-bezier(.2,.8,.2,1);
       background-image: var(--slide-image);
       background-size: cover;
-      background-position: center;
+      background-position: center top;
       z-index: -3;
     }
 
-    .hero-slide::after {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background-image: var(--slide-image);
-      background-repeat: no-repeat;
-      background-size: contain;
-      background-position: center top;
-    }
-
-    .hero-slide.crop-left { background-position: 38% 22%; }
-    .hero-slide.crop-center { background-position: 50% 22%; }
-    .hero-slide.crop-right { background-position: 62% 22%; }
-    .hero-slide.crop-tight { background-position: 55% 18%; }
+    .hero-slide.crop-left { background-position: 38% top; }
+    .hero-slide.crop-center { background-position: 50% top; }
+    .hero-slide.crop-right { background-position: 62% top; }
+    .hero-slide.crop-tight { background-position: 55% top; }
 
     .hero-slide.active {
       opacity: 1;
@@ -214,6 +204,14 @@
       color: rgba(255,255,255,.78);
       font-size: clamp(.98rem, 1.55vw, 1.12rem);
       line-height: 1.55;
+      font-weight: 400;
+    }
+
+    .hero-episode {
+      margin: 16px 0 0;
+      color: rgba(255,255,255,.86);
+      font-size: clamp(.98rem, 1.5vw, 1.1rem);
+      line-height: 1.45;
       font-weight: 400;
     }
 
@@ -862,18 +860,19 @@
 
     <main>
       <section class="hero" aria-label="The Big Pivot featured episode">
-        <div class="hero-slide crop-center active" style="--slide-image: url('https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/01-city-crosswalk.png');"></div>
-        <div class="hero-slide crop-left" style="--slide-image: url('https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/02-subway-platform.png');"></div>
-        <div class="hero-slide crop-right" style="--slide-image: url('https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/03-diner-conversation.png');"></div>
-        <div class="hero-slide crop-tight" style="--slide-image: url('https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/04-rug-reveal.png');"></div>
-        <div class="hero-slide crop-center" style="--slide-image: url('https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/06-running-alley.png');"></div>
-        <div class="hero-slide crop-left" style="--slide-image: url('https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/07-rooftop-argument.png');"></div>
+        <div class="hero-slide crop-center active" style="--slide-image: url('https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/01-apartment.png');"></div>
+        <div class="hero-slide crop-left" style="--slide-image: url('https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/02-rooftop.png');"></div>
+        <div class="hero-slide crop-right" style="--slide-image: url('https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/03-awards.png');"></div>
+        <div class="hero-slide crop-tight" style="--slide-image: url('https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/04-city.png');"></div>
+        <div class="hero-slide crop-center" style="--slide-image: url('https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/05-subway.png');"></div>
+        <div class="hero-slide crop-left" style="--slide-image: url('https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/06-library.png');"></div>
 
         <div class="hero-inner">
           <div class="hero-copy">
             <span class="eyebrow">Original series</span>
             <h1>The Big Pivot</h1>
-            <p>Explore the stories of entrepreneurs and leaders navigating the critical turning points that change a business, a brand, and the person behind it.</p>
+            <div class="hero-episode" id="heroEpisode">Episode 1: The Penthouse Proof</div>
+            <p id="heroDescription">After the awards dinner, Sarah spots the number that turns a private celebration into a very public problem.</p>
             <div class="actions">
               <a class="button primary" href="#subscribe">Subscribe</a>
               <button class="button secondary js-open-preview" type="button">Watch</button>
@@ -888,34 +887,34 @@
 
           <div class="hero-strip" aria-label="Featured previews">
             <button class="strip-card crop-center active" type="button" data-slide="0" aria-label="Show featured preview 1">
-              <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/01-city-crosswalk.png" alt="">
+              <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/01-apartment.png" alt="">
               <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/blog-they-spent-10-million-on-leads-and-96-percent-failed/BigPivot_Trailer_480p.mp4"></video>
-              <span class="strip-title"><strong>The Big Pivot</strong><span>Rain Walk</span></span>
+              <span class="strip-title"><strong>The Big Pivot</strong><span>The Penthouse Proof</span></span>
             </button>
             <button class="strip-card crop-left" type="button" data-slide="1" aria-label="Show featured preview 2">
-              <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/02-subway-platform.png" alt="">
-              <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/blog-they-spent-10-million-on-leads-and-96-percent-failed/BigPivot_Trailer_480p.mp4"></video>
-              <span class="strip-title"><strong>The Big Pivot</strong><span>Subway Signal</span></span>
-            </button>
-            <button class="strip-card crop-right" type="button" data-slide="2" aria-label="Show featured preview 3">
-              <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/03-diner-conversation.png" alt="">
-              <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/blog-they-spent-10-million-on-leads-and-96-percent-failed/BigPivot_Trailer_480p.mp4"></video>
-              <span class="strip-title"><strong>The Big Pivot</strong><span>The Diner</span></span>
-            </button>
-            <button class="strip-card crop-tight" type="button" data-slide="3" aria-label="Show featured preview 4">
-              <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/04-rug-reveal.png" alt="">
-              <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/blog-they-spent-10-million-on-leads-and-96-percent-failed/BigPivot_Trailer_480p.mp4"></video>
-              <span class="strip-title"><strong>The Big Pivot</strong><span>Under the Rug</span></span>
-            </button>
-            <button class="strip-card crop-center" type="button" data-slide="4" aria-label="Show featured preview 5">
-              <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/06-running-alley.png" alt="">
-              <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/blog-they-spent-10-million-on-leads-and-96-percent-failed/BigPivot_Trailer_480p.mp4"></video>
-              <span class="strip-title"><strong>The Big Pivot</strong><span>The Chase</span></span>
-            </button>
-            <button class="strip-card crop-left" type="button" data-slide="5" aria-label="Show featured preview 6">
-              <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/07-rooftop-argument.png" alt="">
+              <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/02-rooftop.png" alt="">
               <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/blog-they-spent-10-million-on-leads-and-96-percent-failed/BigPivot_Trailer_480p.mp4"></video>
               <span class="strip-title"><strong>The Big Pivot</strong><span>Rooftop Terms</span></span>
+            </button>
+            <button class="strip-card crop-right" type="button" data-slide="2" aria-label="Show featured preview 3">
+              <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/03-awards.png" alt="">
+              <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/blog-they-spent-10-million-on-leads-and-96-percent-failed/BigPivot_Trailer_480p.mp4"></video>
+              <span class="strip-title"><strong>The Big Pivot</strong><span>The Toast Goes Cold</span></span>
+            </button>
+            <button class="strip-card crop-tight" type="button" data-slide="3" aria-label="Show featured preview 4">
+              <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/04-city.png" alt="">
+              <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/blog-they-spent-10-million-on-leads-and-96-percent-failed/BigPivot_Trailer_480p.mp4"></video>
+              <span class="strip-title"><strong>The Big Pivot</strong><span>The Club Exit</span></span>
+            </button>
+            <button class="strip-card crop-center" type="button" data-slide="4" aria-label="Show featured preview 5">
+              <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/05-subway.png" alt="">
+              <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/blog-they-spent-10-million-on-leads-and-96-percent-failed/BigPivot_Trailer_480p.mp4"></video>
+              <span class="strip-title"><strong>The Big Pivot</strong><span>Platform Pressure</span></span>
+            </button>
+            <button class="strip-card crop-left" type="button" data-slide="5" aria-label="Show featured preview 6">
+              <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/06-library.png" alt="">
+              <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/blog-they-spent-10-million-on-leads-and-96-percent-failed/BigPivot_Trailer_480p.mp4"></video>
+              <span class="strip-title"><strong>The Big Pivot</strong><span>The Library Clause</span></span>
             </button>
           </div>
           <div class="hero-indicators" aria-label="Featured slide controls">
@@ -937,14 +936,14 @@
         <div class="episode-row">
           <article class="episode js-open-details" tabindex="0" data-episode="1">
             <div class="episode-media crop-center">
-              <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/02-subway-platform.png" alt="Sarah Rodriguez on a tense subway platform in The Big Pivot">
+              <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/02-rooftop.png" alt="Sarah Rodriguez confronting executives on a rooftop in The Big Pivot">
               <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/blog-they-spent-10-million-on-leads-and-96-percent-failed/BigPivot_Trailer_480p.mp4"></video>
               <span class="episode-preview-title"><strong>The Big Pivot</strong><span>Episode 1 Preview</span></span>
               <span class="play-pill">Preview</span>
             </div>
             <div class="episode-body">
-              <h3>Episode 1: The Disruption Dilemma</h3>
-              <p>A founder faces the moment when the old offer stops working and a smarter, sharper model has to take its place.</p>
+              <h3>Episode 1: Rooftop Terms</h3>
+              <p>A quiet corporate celebration turns tense when Sarah realizes the deal on the table is not the deal everyone agreed to.</p>
               <div class="episode-actions">
                 <button class="watch-btn js-open-details" type="button" data-episode="1">Watch</button>
                 <button class="watch-btn secondary" type="button">+ Watchlist</button>
@@ -954,14 +953,14 @@
 
           <article class="episode js-open-details" tabindex="0" data-episode="2">
             <div class="episode-media crop-left">
-              <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/04-rug-reveal.png" alt="Sarah Rodriguez discovering a clue under a rug in The Big Pivot">
+              <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/04-city.png" alt="Sarah Rodriguez leaving a private members club in The Big Pivot">
               <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/blog-they-spent-10-million-on-leads-and-96-percent-failed/BigPivot_Trailer_480p.mp4"></video>
               <span class="episode-preview-title"><strong>The Big Pivot</strong><span>Episode 2 Preview</span></span>
               <span class="play-pill">Preview</span>
             </div>
             <div class="episode-body">
-              <h3>Episode 2: Scaling New Heights</h3>
-              <p>The systems that helped you survive can quietly become the ceiling. This episode looks at the pivot from hustle to leverage.</p>
+              <h3>Episode 2: The Club Exit</h3>
+              <p>Outside a private club, Sarah catches the look that tells her the story being sold inside is already falling apart.</p>
               <div class="episode-actions">
                 <button class="watch-btn js-open-details" type="button" data-episode="2">Watch</button>
                 <button class="watch-btn secondary" type="button">+ Watchlist</button>
@@ -971,14 +970,14 @@
 
           <article class="episode js-open-details" tabindex="0" data-episode="3">
             <div class="episode-media crop-right">
-              <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/08-subway-conversation.png" alt="Sarah Rodriguez in an urgent subway conversation in The Big Pivot">
+              <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/05-subway.png" alt="Sarah Rodriguez in an urgent subway conversation in The Big Pivot">
               <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/blog-they-spent-10-million-on-leads-and-96-percent-failed/BigPivot_Trailer_480p.mp4"></video>
               <span class="episode-preview-title"><strong>The Big Pivot</strong><span>Episode 3 Preview</span></span>
               <span class="play-pill">Preview</span>
             </div>
             <div class="episode-body">
-              <h3>Episode 3: Visionary Leadership</h3>
-              <p>When the market changes fast, leaders need more than optimism. They need evidence, timing, and the courage to choose.</p>
+              <h3>Episode 3: Platform Pressure</h3>
+              <p>On a late train platform, one message changes the route and forces Sarah to decide who still deserves the truth.</p>
               <div class="episode-actions">
                 <button class="watch-btn js-open-details" type="button" data-episode="3">Watch</button>
                 <button class="watch-btn secondary" type="button">+ Watchlist</button>
@@ -990,7 +989,7 @@
 
       <section class="feature-band" id="about">
         <div class="feature-grid">
-          <img class="crop-center" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/09-market-reveal.png" alt="Sarah Rodriguez at a late-night market reveal in The Big Pivot">
+          <img class="crop-center" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/06-library.png" alt="Sarah Rodriguez at a late-night market reveal in The Big Pivot">
           <div class="feature-copy">
             <h2>Business stories with stakes.</h2>
             <p>The Big Pivot is built for owners, operators, and creators who know that growth is not just about doing more. It is about spotting the decision point before the market forces it for you.</p>
@@ -1044,7 +1043,7 @@
   <div class="modal video-modal" id="previewModal" aria-hidden="true" aria-label="The Big Pivot video player">
     <div class="modal-card">
       <button class="close" type="button" aria-label="Close video player">x</button>
-      <video id="modalVideo" controls playsinline preload="metadata" poster="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/01-city-crosswalk.png" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/blog-they-spent-10-million-on-leads-and-96-percent-failed/BigPivot_Trailer_480p.mp4"></video>
+      <video id="modalVideo" controls playsinline preload="metadata" poster="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/01-apartment.png" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/blog-they-spent-10-million-on-leads-and-96-percent-failed/BigPivot_Trailer_480p.mp4"></video>
     </div>
   </div>
 
@@ -1052,21 +1051,49 @@
     const slides = Array.from(document.querySelectorAll('.hero-slide'));
     const stripCards = Array.from(document.querySelectorAll('.strip-card'));
     const indicators = Array.from(document.querySelectorAll('.hero-indicator'));
+    const heroEpisode = document.getElementById('heroEpisode');
+    const heroDescription = document.getElementById('heroDescription');
+    const slideCopy = [
+      {
+        episode: 'Episode 1: The Penthouse Proof',
+        description: 'After the awards dinner, Sarah spots the number that turns a private celebration into a very public problem.'
+      },
+      {
+        episode: 'Episode 2: Rooftop Terms',
+        description: 'A quiet corporate celebration turns tense when Sarah realizes the deal on the table is not the deal everyone agreed to.'
+      },
+      {
+        episode: 'Episode 3: The Toast Goes Cold',
+        description: 'At the dinner table, one glance across the room exposes the announcement nobody was ready to hear.'
+      },
+      {
+        episode: 'Episode 4: The Club Exit',
+        description: 'Outside a private club, Sarah catches the look that tells her the story being sold inside is already falling apart.'
+      },
+      {
+        episode: 'Episode 5: Platform Pressure',
+        description: 'On a late train platform, one message changes the route and forces Sarah to decide who still deserves the truth.'
+      },
+      {
+        episode: 'Episode 6: The Library Clause',
+        description: 'In a private library, Sarah finds the clause that turns a polished partnership into a power play.'
+      }
+    ];
     const episodeDetails = {
       1: {
-        title: 'Episode 1: The Disruption Dilemma',
-        image: 'https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/02-subway-platform.png',
-        description: 'A founder faces the moment when the old offer stops working and a smarter, sharper model has to take its place.'
+        title: 'Episode 1: Rooftop Terms',
+        image: 'https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/02-rooftop.png',
+        description: 'A quiet corporate celebration turns tense when Sarah realizes the deal on the table is not the deal everyone agreed to.'
       },
       2: {
-        title: 'Episode 2: Scaling New Heights',
-        image: 'https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/04-rug-reveal.png',
-        description: 'The systems that helped you survive can quietly become the ceiling. This episode looks at the pivot from hustle to leverage.'
+        title: 'Episode 2: The Club Exit',
+        image: 'https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/04-city.png',
+        description: 'Outside a private club, Sarah catches the look that tells her the story being sold inside is already falling apart.'
       },
       3: {
-        title: 'Episode 3: Visionary Leadership',
-        image: 'https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/08-subway-conversation.png',
-        description: 'When the market changes fast, leaders need more than optimism. They need evidence, timing, and the courage to choose.'
+        title: 'Episode 3: Platform Pressure',
+        image: 'https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/05-subway.png',
+        description: 'On a late train platform, one message changes the route and forces Sarah to decide who still deserves the truth.'
       }
     };
     let currentSlide = 0;
@@ -1081,6 +1108,8 @@
       });
       stripCards.forEach((card, i) => card.classList.toggle('active', i === index));
       indicators.forEach((indicator, i) => indicator.classList.toggle('active', i === index));
+      heroEpisode.textContent = slideCopy[index].episode;
+      heroDescription.textContent = slideCopy[index].description;
     }
 
     function startSlider() {
