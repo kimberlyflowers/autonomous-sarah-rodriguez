@@ -171,6 +171,9 @@ export function calculateCost(model, usage) {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 export function detectProvider(model) {
   if (!model) return 'anthropic';
+  if (process.env.USE_OPENROUTER === 'true' && process.env.OPENROUTER_API_KEY) {
+    if (model.includes('/') || model.startsWith('gemini')) return 'openrouter';
+  }
   for (const [key, prov] of Object.entries(PROVIDERS)) {
     if (prov.models.includes(model)) return key;
   }
@@ -188,6 +191,13 @@ export function detectProvider(model) {
       model.startsWith('vicuna') || model.startsWith('neural-chat')) return 'ollama';
   if (process.env.USE_OPENROUTER === 'true' && process.env.OPENROUTER_API_KEY) return 'openrouter';
   return 'anthropic';
+}
+
+function normalizeModelForProvider(model, provider) {
+  if (provider === 'openrouter' && model && !model.includes('/')) {
+    if (model.startsWith('gemini')) return `google/${model}`;
+  }
+  return model;
 }
 
 function hasApiKey(provider) {
@@ -520,6 +530,7 @@ export class UnifiedLLMClient {
    */
   async chatWithModel(model, { messages, system, tools = [], maxTokens = 1024, temperature = 0.1 }) {
     const provider = detectProvider(model);
+    const resolvedModel = normalizeModelForProvider(model, provider);
     if (!hasApiKey(provider)) {
       throw new Error(`Cannot use ${model} — missing API key for ${provider}`);
     }
@@ -531,11 +542,13 @@ export class UnifiedLLMClient {
 
     try {
       // Temporarily set model for this call only
-      this._currentModel = model;
+      this._currentModel = resolvedModel;
       this._currentProvider = provider;
 
       if (provider === 'anthropic') {
         return await this._callAnthropic({ messages, system, tools, maxTokens, temperature });
+      } else if (provider === 'gemini') {
+        return await this._callGeminiNative({ messages, system, tools, maxTokens, temperature });
       } else {
         return await this._callOpenAICompatible({ messages, system, tools, maxTokens, temperature });
       }
@@ -1057,6 +1070,7 @@ export function getLLMClient() {
 
 export async function callModel(model, { system, messages, tools = [], maxTokens = 4096, temperature = 0.3, responseFormat = null, forceToolUse = false }) {
   const provider = detectProvider(model);
+  model = normalizeModelForProvider(model, provider);
   const providerConfig = PROVIDERS[provider];
   const apiKey = process.env[providerConfig?.envKey];
 

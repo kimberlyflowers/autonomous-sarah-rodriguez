@@ -2455,6 +2455,19 @@ const _ALL_TOOLS = [
     }
   },
   {
+    name: "create_csv",
+    description: "Create a real CSV file (.csv) for simple tables, exports, lead lists, data lists, and spreadsheet imports. Use this instead of markdown or HTML when the user asks for CSV. For formatted workbooks, formulas, multiple sheets, charts, or Excel files, use create_xlsx instead. CRITICAL: After creating the file, tell the client that you've created it and include the filename in quotes.",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "File name ending in .csv (e.g. 'lead-list.csv')" },
+        description: { type: "string", description: "Brief description of the CSV" },
+        content: { type: "string", description: "Complete RFC4180-style CSV content including headers. Escape commas, quotes, and newlines correctly." }
+      },
+      required: ["name", "description", "content"]
+    }
+  },
+  {
     name: "create_scheduled_task",
     description: "Create a recurring scheduled task for yourself. Use when the client asks you to do something regularly — daily blog posts, weekly newsletters, daily lead checks, etc. This adds it to your daily task schedule.",
     input_schema: {
@@ -4342,6 +4355,45 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
       }
     }
 
+    // CSV creation — saves real .csv text artifact
+    if (toolName === 'create_csv') {
+      try {
+        const rawName = toolInput.name || 'data.csv';
+        const filename = rawName.toLowerCase().endsWith('.csv') ? rawName : `${rawName}.csv`;
+        const content = String(toolInput.content || '').trim();
+        if (!content) return { success: false, error: 'CSV content is required.' };
+
+        const port = process.env.PORT || 3000;
+        const saveResp = await fetch(`http://localhost:${port}/api/files/artifacts`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: filename,
+            description: toolInput.description,
+            fileType: 'csv',
+            mimeType: 'text/csv',
+            content,
+            sessionId: sessionId,
+            organizationId: orgId || agentConfig?.organizationId || agentConfig?.organization_id || process.env.BLOOM_ORG_ID
+          })
+        });
+        const saveData = await saveResp.json();
+
+        if (saveData.success) {
+          return {
+            success: true,
+            message: `Created "${filename}" — CSV ready for download.`,
+            artifact: saveData.artifact,
+            downloadUrl: saveData.artifact?.downloadUrl
+          };
+        }
+        return { success: false, error: saveData.error || 'Failed to save CSV artifact' };
+      } catch (csvErr) {
+        logger.error('CSV creation failed', { error: csvErr.message });
+        return { success: false, error: `CSV creation failed: ${csvErr.message}. Do not create a markdown table substitute; fix the CSV content or report this exact error.` };
+      }
+    }
+
     // Scheduled task creation
     if (toolName === 'create_scheduled_task') {
       const port = process.env.PORT || 3000;
@@ -5167,7 +5219,7 @@ NEVER skip steps 3 and 4 even if step 2 fails.
     // SPREADSHEET — xlsx, csv, data tables, trackers
     if (/\b(spreadsheet|excel|\bxlsx\b|\.xlsx|\bcsv\b|\.csv|data.*table|budget.*sheet|expense.*tracker|create.*spreadsheet|export.*csv)\b/i.test(_skillMsgText)) {
       await _injectSkillByName('xlsx',
-        'IMPORTANT: Use create_xlsx with a complete exceljs script to generate a real .xlsx file. Never use markdown or HTML tables as a spreadsheet substitute.');
+        'IMPORTANT: For Excel/XLSX/workbooks, use create_xlsx with a complete exceljs script to generate a real .xlsx file. For simple CSV/export requests, use create_csv with valid CSV content. Never use markdown or HTML tables as a spreadsheet substitute.');
     }
 
     // PROFESSIONAL DOCUMENTS — SOPs, proposals, handbooks, contracts
@@ -5285,6 +5337,8 @@ NEVER skip steps 3 and 4 even if step 2 fails.
 
   const toolsUsed = [];
   const toolResults = []; // Track what tools returned for history
+  let chatImageGenerations = 0;
+  const maxChatImageGenerations = Number(process.env.CHAT_MAX_IMAGE_GENERATIONS || 4);
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
   let latestTaskTodos = null;
@@ -5957,6 +6011,22 @@ NEVER skip steps 3 and 4 even if step 2 fails.
       const toolResultBlocks = [];
       for (const block of response.content) {
         if (block.type === 'tool_use') {
+          if (block.name === 'image_generate') {
+            chatImageGenerations += 1;
+            if (chatImageGenerations > maxChatImageGenerations) {
+              const limitedResult = {
+                success: false,
+                error: `Image generation limit exceeded for this chat turn (${maxChatImageGenerations}). Ask for a smaller batch or use the dedicated batch image workflow.`
+              };
+              toolsUsed.push({ name: block.name, input: block.input });
+              toolResults.push(limitedResult);
+              failedTools.push({ name: block.name, error: limitedResult.error, round });
+              toolResultBlocks.push(buildToolResultBlock(block, limitedResult));
+              logger.warn('Chat image generation limit exceeded', { sessionId, maxChatImageGenerations });
+              continue;
+            }
+          }
+
           // ── AUTO-INJECT REFERENCE IMAGE for image_generate ──────────────
           // If the agent calls image_generate without a reference image but the
           // conversation contains images (user uploads, previously generated images),

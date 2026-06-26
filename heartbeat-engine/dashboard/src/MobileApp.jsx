@@ -414,6 +414,48 @@ function officeViewerUrl(fileId) {
   return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(artifactEmbedUrl(fileId))}`;
 }
 
+function googleImportLabel(name='') {
+  const ext = artifactExt(name);
+  if (ext === 'docx') return 'Docs';
+  if (ext === 'xlsx' || ext === 'csv') return 'Sheets';
+  if (ext === 'pptx') return 'Slides';
+  if (ext === 'pdf') return 'Drive';
+  return null;
+}
+
+function GoogleImportButton({ artifact, c }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const fileId = artifact?.fileId || artifact?.id;
+  const label = googleImportLabel(artifact?.name);
+  if (!fileId || !label) return null;
+
+  const openInGoogle = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      const headers = await authHeaders();
+      const response = await fetch(`/api/files/google-import/${fileId}`, { method: 'POST', headers });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.webViewLink) throw new Error(data.error || 'Google import failed');
+      window.open(data.webViewLink, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      setError(err.message || 'Google import failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:3}}>
+      <button onClick={openInGoogle} disabled={busy} style={{fontSize:12,fontWeight:700,color:BRAND,textDecoration:'none',padding:'6px 10px',background:`${BRAND}22`,borderRadius:8,border:'none',flexShrink:0,fontFamily:'inherit',opacity:busy?0.65:1}}>
+        {busy ? 'Opening...' : label}
+      </button>
+      {error && <span style={{fontSize:9,lineHeight:1.25,color:'#ea4335',maxWidth:140,textAlign:'right'}}>{error}</span>}
+    </div>
+  );
+}
+
 function ArtifactPreview({ artifact, c, onClose }) {
   if (!artifact) return null;
   const fileId = artifact.fileId || artifact.id;
@@ -458,6 +500,7 @@ function ArtifactPreview({ artifact, c, onClose }) {
             {artifact.fileType}
           </div>
         </div>
+        <GoogleImportButton artifact={artifact} c={c} />
         <a
           href={artifact.downloadUrl}
           target="_blank"

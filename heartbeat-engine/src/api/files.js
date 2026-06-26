@@ -54,6 +54,125 @@ function binaryExt(name = '', fileType = '', mimeType = '') {
   return '.bin';
 }
 
+function artifactExt(name = '') {
+  return String(name || '').split('.').pop()?.toLowerCase() || '';
+}
+
+function googleImportTarget(name = '', fileType = '', mimeType = '') {
+  const ext = artifactExt(name);
+  const ft = String(fileType || '').toLowerCase();
+  const mt = String(mimeType || '').toLowerCase();
+  if (ext === 'docx' || ft === 'docx' || mt.includes('wordprocessingml')) {
+    return {
+      sourceMime: mimeType || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      targetMime: 'application/vnd.google-apps.document',
+      label: 'Google Docs'
+    };
+  }
+  if (ext === 'xlsx' || ft === 'xlsx' || mt.includes('spreadsheetml')) {
+    return {
+      sourceMime: mimeType || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      targetMime: 'application/vnd.google-apps.spreadsheet',
+      label: 'Google Sheets'
+    };
+  }
+  if (ext === 'csv' || ft === 'csv' || mt.includes('text/csv')) {
+    return {
+      sourceMime: 'text/csv',
+      targetMime: 'application/vnd.google-apps.spreadsheet',
+      label: 'Google Sheets'
+    };
+  }
+  if (ext === 'pptx' || ft === 'pptx' || mt.includes('presentationml')) {
+    return {
+      sourceMime: mimeType || 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      targetMime: 'application/vnd.google-apps.presentation',
+      label: 'Google Slides'
+    };
+  }
+  if (ext === 'pdf' || ft === 'pdf' || mt.includes('pdf')) {
+    return { sourceMime: 'application/pdf', targetMime: null, label: 'Google Drive' };
+  }
+  return null;
+}
+
+async function refreshGoogleAccessToken(refreshToken, supabase, userConnRow, orgId) {
+  const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
+  if (!clientId || !clientSecret) throw new Error('Google OAuth client is not configured');
+
+  const response = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
+      client_id: clientId,
+      client_secret: clientSecret
+    }).toString()
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Google token refresh failed: ${response.status} ${text}`);
+  }
+  const tokenData = await response.json();
+  const expiresAt = tokenData.expires_in
+    ? new Date(Date.now() + tokenData.expires_in * 1000).toISOString()
+    : null;
+  await supabase.from('user_connectors').update({
+    access_token: tokenData.access_token,
+    token_expires_at: expiresAt,
+    last_error: null,
+    updated_at: new Date().toISOString()
+  }).eq('id', userConnRow.id).eq('organization_id', orgId);
+  return tokenData.access_token;
+}
+
+async function getGoogleDriveAccessToken(supabase, orgId) {
+  const { data: connector, error: connectorErr } = await supabase
+    .from('connectors')
+    .select('id')
+    .eq('slug', 'google-drive')
+    .maybeSingle();
+  if (connectorErr) throw connectorErr;
+  if (!connector?.id) throw new Error('Google Drive connector is not installed');
+
+  const { data: userConn, error: userConnErr } = await supabase
+    .from('user_connectors')
+    .select('id, access_token, refresh_token, token_expires_at, status, connected_by')
+    .eq('connector_id', connector.id)
+    .eq('organization_id', orgId)
+    .eq('status', 'active')
+    .maybeSingle();
+  if (userConnErr) throw userConnErr;
+  if (!userConn?.access_token) throw new Error('Google Drive is not connected for this organization');
+
+  if (userConn.token_expires_at && userConn.refresh_token) {
+    const expiresAt = new Date(userConn.token_expires_at).getTime();
+    if (Number.isFinite(expiresAt) && expiresAt - Date.now() < 5 * 60 * 1000) {
+      return refreshGoogleAccessToken(userConn.refresh_token, supabase, userConn, orgId);
+    }
+  }
+
+  return userConn.access_token;
+}
+
+async function artifactBuffer(file) {
+  if (file.storage_path && isPublicUrl(file.storage_path)) {
+    const response = await fetch(file.storage_path);
+    if (!response.ok) throw new Error(`Unable to fetch artifact from storage: ${response.status}`);
+    return Buffer.from(await response.arrayBuffer());
+  }
+  if (file.storage_path && !isPublicUrl(file.storage_path) && fs.existsSync(file.storage_path)) {
+    return fs.readFileSync(file.storage_path);
+  }
+  if (file.content) {
+    if (isBinaryArtifact(file.file_type, file.mime_type)) return Buffer.from(file.content, 'base64');
+    return Buffer.from(file.content, 'utf8');
+  }
+  throw new Error('File content is not available');
+}
+
 // ── CREATE ARTIFACT ──────────────────────────────────────────────────────────
 router.post('/artifacts', async (req, res) => {
   try {
@@ -121,7 +240,11 @@ router.post('/artifacts', async (req, res) => {
     } else {
       contentText = content;
       fileSize = Buffer.byteLength(content, 'utf8');
-      const ext = fileType === 'html' ? '.html' : fileType === 'code' ? '.js' : '.md';
+      const ext = fileType === 'html' ? '.html'
+        : fileType === 'code' ? '.js'
+        : fileType === 'csv' ? '.csv'
+        : fileType === 'text' ? '.txt'
+        : '.md';
       filePath = path.join(FILE_STORAGE, `${fileId}${ext}`);
       fs.writeFileSync(filePath, content, 'utf8');
     }
@@ -246,7 +369,7 @@ router.get('/artifacts', async (req, res) => {
       fileSize: r.file_size,
       status: 'approved',
       storagePath: r.storage_path,
-      content: (r.file_type === 'html' || r.file_type === 'markdown' || r.file_type === 'text' || r.file_type === 'code') ? (r.content || null) : null,
+      content: (r.file_type === 'html' || r.file_type === 'markdown' || r.file_type === 'text' || r.file_type === 'code' || r.file_type === 'csv') ? (r.content || null) : null,
       createdAt: r.created_at,
       approvedAt: r.created_at,  // alias for frontend date display/sorting
       slug: r.slug || null,
@@ -261,6 +384,68 @@ router.get('/artifacts', async (req, res) => {
   } catch (error) {
     logger.error('List artifacts error', { error: error.message });
     return res.status(500).json({ error: 'Failed to list artifacts' });
+  }
+});
+
+// ── OPEN IN GOOGLE DRIVE/DOCS/SHEETS/SLIDES ─────────────────────────────────
+router.post('/google-import/:fileId', async (req, res) => {
+  try {
+    const { fileId } = req.params;
+    const supabase = sb();
+    const { data: file, error } = await supabase.from('artifacts')
+      .select('id, name, file_type, mime_type, content, storage_path, organization_id')
+      .eq('id', fileId)
+      .single();
+
+    if (error || !file) return res.status(404).json({ error: 'File not found' });
+
+    const resolvedOrgId = await getUserOrgId(req);
+    if (!resolvedOrgId) return res.status(401).json({ error: 'Authentication required' });
+    if (file.organization_id && file.organization_id !== resolvedOrgId) {
+      return res.status(403).json({ error: 'Access denied — file belongs to a different organization' });
+    }
+
+    const target = googleImportTarget(file.name, file.file_type, file.mime_type);
+    if (!target) {
+      return res.status(400).json({ error: 'This file type cannot be opened in Google Drive from BLOOM yet.' });
+    }
+
+    const accessToken = await getGoogleDriveAccessToken(supabase, resolvedOrgId);
+    const buffer = await artifactBuffer(file);
+    const safeName = file.name.replace(/[^a-zA-Z0-9._ -]/g, '_');
+
+    const metadata = {
+      name: safeName,
+      ...(target.targetMime ? { mimeType: target.targetMime } : {})
+    };
+
+    const form = new FormData();
+    form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+    form.append('file', new Blob([buffer], { type: target.sourceMime }), safeName);
+
+    const uploadResp = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,mimeType,webViewLink', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}` },
+      body: form
+    });
+
+    if (!uploadResp.ok) {
+      const text = await uploadResp.text();
+      logger.warn('Google Drive import failed', { fileId, status: uploadResp.status, error: text.slice(0, 500) });
+      return res.status(uploadResp.status).json({ error: `Google Drive import failed: ${uploadResp.status} ${text}` });
+    }
+
+    const uploaded = await uploadResp.json();
+    logger.info('Artifact imported to Google Drive', { fileId, googleFileId: uploaded.id, target: target.label });
+    return res.json({
+      success: true,
+      target: target.label,
+      file: uploaded,
+      webViewLink: uploaded.webViewLink || `https://drive.google.com/file/d/${uploaded.id}/view`
+    });
+  } catch (error) {
+    logger.error('Google import error', { error: error.message });
+    return res.status(500).json({ error: error.message || 'Google import failed' });
   }
 });
 

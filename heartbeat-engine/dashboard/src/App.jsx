@@ -2389,7 +2389,7 @@ function isPdfArtifact(name='') {
 }
 
 function isBinaryArtifactName(name='') {
-  return ['docx', 'pptx', 'xlsx', 'pdf', 'zip'].includes(artifactExt(name));
+  return ['docx', 'pptx', 'xlsx', 'pdf', 'zip', 'csv'].includes(artifactExt(name));
 }
 
 function artifactEmbedUrl(fileId) {
@@ -2399,6 +2399,47 @@ function artifactEmbedUrl(fileId) {
 
 function officeViewerUrl(fileId) {
   return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(artifactEmbedUrl(fileId))}`;
+}
+
+function googleImportLabel(name='') {
+  const ext = artifactExt(name);
+  if (ext === 'docx') return 'Open in Google Docs';
+  if (ext === 'xlsx' || ext === 'csv') return 'Open in Google Sheets';
+  if (ext === 'pptx') return 'Open in Google Slides';
+  if (ext === 'pdf') return 'Open in Google Drive';
+  return null;
+}
+
+function GoogleImportButton({ file, c, compact=false }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const fileId = file?.fileId || file?.id;
+  const label = googleImportLabel(file?.name);
+  if (!fileId || !label) return null;
+
+  const importFile = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      const response = await fetch(`/api/files/google-import/${fileId}`, { method: 'POST' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.webViewLink) throw new Error(data.error || 'Google import failed');
+      window.open(data.webViewLink, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      setError(err.message || 'Google import failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <span style={{display:'inline-flex',flexDirection:'column',gap:4,alignItems:compact?'stretch':'center'}}>
+      <button onClick={importFile} disabled={busy} style={{padding:compact?'6px 10px':'10px 18px',borderRadius:compact?8:10,border:'1px solid '+c.ln,background:c.cd,color:c.tx,fontSize:compact?11:13,fontWeight:700,cursor:busy?'default':'pointer',fontFamily:'inherit',opacity:busy?0.65:1}}>
+        {busy ? 'Opening...' : label}
+      </button>
+      {error && <span style={{maxWidth:compact?180:360,fontSize:10,lineHeight:1.35,color:'#ea4335',textAlign:compact?'left':'center'}}>{error}</span>}
+    </span>
+  );
 }
 
 function BinaryArtifactPreview({ file, c, compact=false }) {
@@ -2412,6 +2453,9 @@ function BinaryArtifactPreview({ file, c, compact=false }) {
   if (canPdfPreview) {
     return (
       <div style={{height:'100%',display:'flex',flexDirection:'column',background:c.bg}}>
+        <div style={{padding:'8px 10px',borderBottom:'1px solid '+c.ln,background:c.cd,display:'flex',gap:8,justifyContent:'flex-end',alignItems:'center'}}>
+          <GoogleImportButton file={file} c={c} compact />
+        </div>
         <iframe src={embedUrl} title={name} style={{flex:1,width:'100%',border:'none',background:'#fff'}}/>
       </div>
     );
@@ -2420,6 +2464,9 @@ function BinaryArtifactPreview({ file, c, compact=false }) {
   if (canOfficePreview) {
     return (
       <div style={{height:'100%',display:'flex',flexDirection:'column',background:c.bg}}>
+        <div style={{padding:'8px 10px',borderBottom:'1px solid '+c.ln,background:c.cd,display:'flex',gap:8,justifyContent:'flex-end',alignItems:'center'}}>
+          <GoogleImportButton file={file} c={c} compact />
+        </div>
         <iframe src={officeViewerUrl(fileId)} title={name} style={{flex:1,width:'100%',border:'none',background:'#fff'}}/>
       </div>
     );
@@ -2431,6 +2478,7 @@ function BinaryArtifactPreview({ file, c, compact=false }) {
       <div style={{fontSize:16,fontWeight:700,color:c.tx,maxWidth:'90%',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{name}</div>
       <div style={{fontSize:13,lineHeight:1.5,maxWidth:420}}>Preview is available for PDF, PowerPoint, Word, and Excel when the file has a public embed URL. You can still open or download this file.</div>
       <div style={{display:'flex',gap:8,flexWrap:'wrap',justifyContent:'center',marginTop:4}}>
+        <GoogleImportButton file={file} c={c} />
         {fileId && <a href={`/api/files/embed/${fileId}`} target="_blank" rel="noopener noreferrer" style={{padding:'10px 18px',borderRadius:10,border:'1px solid '+c.ln,background:c.cd,color:c.tx,textDecoration:'none',fontSize:13,fontWeight:700}}>Open</a>}
         {fileId && <a href={`/api/files/download/${fileId}`} download={name} style={{padding:'10px 20px',borderRadius:10,background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',textDecoration:'none',fontSize:13,fontWeight:800}}>Download {ext}</a>}
       </div>
@@ -7283,7 +7331,7 @@ function App({ authUser }) {
                       if(filesTypeFilter==='image'&&f.fileType!=='image') return false;
                       if(filesTypeFilter==='markdown'&&ext!=='md') return false;
                       if(filesTypeFilter==='code'&&!['js','py','css','jsx','ts','tsx'].includes(ext)) return false;
-                      if(filesTypeFilter==='document'&&!['pdf','docx','doc','xlsx','pptx'].includes(ext)) return false;
+                      if(filesTypeFilter==='document'&&!['pdf','docx','doc','xlsx','pptx','csv'].includes(ext)) return false;
                     }
                     return true;
                   }).sort((a,b)=>{
@@ -7414,7 +7462,10 @@ function App({ authUser }) {
                             </div>
                           )}
                           {ext!=='html'&&(
-                            <div style={{marginTop:8}}><a href={`/api/files/download/${f.fileId}`} download style={{display:'block',textAlign:'center',padding:'7px 0',borderRadius:8,border:'1px solid '+c.ln,background:c.cd,fontSize:11,fontWeight:600,color:c.ac,textDecoration:'none'}}>↓ Download</a></div>
+                            <div style={{display:'flex',gap:6,marginTop:8,alignItems:'flex-start'}}>
+                              <GoogleImportButton file={f} c={c} compact />
+                              <a href={`/api/files/download/${f.fileId}`} download style={{flex:1,display:'block',textAlign:'center',padding:'7px 0',borderRadius:8,border:'1px solid '+c.ln,background:c.cd,fontSize:11,fontWeight:600,color:c.ac,textDecoration:'none'}}>↓ Download</a>
+                            </div>
                           )}
                         </div>
                       </div>
@@ -8239,6 +8290,7 @@ function App({ authUser }) {
               ):(
                 <a href={previewFile.slug?`/p/${previewFile.slug}`:isBinaryArtifactName(previewFile.name)?`/api/files/embed/${previewFile.fileId}`:`/api/files/publish/${previewFile.fileId}`} target="_blank" rel="noopener noreferrer" style={{padding:"5px 12px",borderRadius:8,border:"none",background:c.gradient,fontSize:11,fontWeight:700,color:"#fff",textDecoration:"none"}}>↗ {previewFile.slug?"View Live":isBinaryArtifactName(previewFile.name)?"Open":"Full Screen"}</a>
               )}
+              <GoogleImportButton file={previewFile} c={c} compact />
               {previewFile.name?.endsWith('.html') && (
                 <button onClick={()=>{setPublishOpen(true);setPublishSlug(previewFile.slug||previewFile.name?.replace(/\.[^.]+$/,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'');setPublishError('');setPublishedUrl(previewFile.slug?`${window.location.origin}/p/${previewFile.slug}`:null);}} style={{padding:"5px 12px",borderRadius:8,border:previewFile.slug?"1px solid "+c.gr:"1px solid "+c.ac,background:previewFile.slug?c.gr+"15":c.ac+"15",fontSize:11,fontWeight:700,color:previewFile.slug?c.gr:c.ac,cursor:"pointer",fontFamily:"inherit"}}>
                   {previewFile.slug?"✓ Published":"Publish"}
