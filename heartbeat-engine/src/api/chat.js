@@ -2997,9 +2997,13 @@ function getAvailableTools(options = {}) {
   return { tools: available, unavailable };
 }
 
+function isImageCreationTool(toolName) {
+  return toolName === 'image_generate' || toolName === 'image_edit' || toolName === 'generate_images_parallel';
+}
+
 function checkToolReadiness(toolName) {
   // Image tools need an API key
-  if (toolName === 'image_generate' || toolName === 'image_edit') {
+  if (isImageCreationTool(toolName)) {
     if (process.env.IMAGE_GENERATION_DISABLED === 'true') {
       return { ready: false, reason: 'Image generation is temporarily disabled by the operator to prevent runaway generation.' };
     }
@@ -3651,6 +3655,25 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
     if (toolName === 'generate_images_parallel') {
       const { images = [], artifactName = '' } = toolInput;
       if (!images.length) return { success: false, error: 'No images specified' };
+      if (process.env.IMAGE_GENERATION_DISABLED === 'true') {
+        return {
+          success: false,
+          error: 'Image generation is temporarily disabled by the operator to prevent runaway generation. Stop generating images and tell the user image generation is paused.'
+        };
+      }
+      if (images.length > maxChatImageGenerations) {
+        return {
+          success: false,
+          error: `Batch image generation requested ${images.length} images, exceeding the per-turn limit of ${maxChatImageGenerations}. Ask for a smaller batch or explicit operator approval.`
+        };
+      }
+      chatImageGenerations += images.length;
+      if (chatImageGenerations > maxChatImageGenerations) {
+        return {
+          success: false,
+          error: `Image generation limit exceeded for this chat turn (${maxChatImageGenerations}). Stop generating more images.`
+        };
+      }
       const { executeImageTool } = await import('../tools/image-tools.js');
 
       // FIXED: Actually await all images concurrently — fire-and-forget is broken on Railway
@@ -6014,7 +6037,7 @@ NEVER skip steps 3 and 4 even if step 2 fails.
       const toolResultBlocks = [];
       for (const block of response.content) {
         if (block.type === 'tool_use') {
-          if (block.name === 'image_generate') {
+          if (isImageCreationTool(block.name)) {
             if (process.env.IMAGE_GENERATION_DISABLED === 'true') {
               const disabledResult = {
                 success: false,
@@ -6027,6 +6050,8 @@ NEVER skip steps 3 and 4 even if step 2 fails.
               logger.warn('Image generation blocked by operator kill switch', { sessionId });
               continue;
             }
+          }
+          if (block.name === 'image_generate') {
             chatImageGenerations += 1;
             if (chatImageGenerations > maxChatImageGenerations) {
               const limitedResult = {
