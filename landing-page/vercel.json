@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/live",
+      "destination": "/live.html"
+    },
+    {
       "source": "/p/:slug*",
       "destination": "https://njfhzabmaxhfzekbzpzz.supabase.co/functions/v1/serve-page?slug=:slug*"
     }
