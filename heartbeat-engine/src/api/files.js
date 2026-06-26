@@ -323,6 +323,10 @@ router.post('/artifacts', async (req, res) => {
           logger.warn('Supabase binary artifact upload failed', { error: upErr.message, name });
         }
       } catch (e) { logger.warn('Supabase binary artifact upload failed', { error: e.message, name }); }
+
+      // Railway's local disk is not durable across deploys. If Storage upload is
+      // unavailable, retain the base64 payload in Supabase so downloads/previews survive.
+      if (!storagePath) contentText = content;
     } else {
       contentText = content;
       fileSize = Buffer.byteLength(content, 'utf8');
