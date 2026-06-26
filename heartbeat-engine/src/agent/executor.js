@@ -69,6 +69,8 @@ const PRE_ACTION_SUPPRESSED_TOOLS = new Set([
   'bloom_escalate_issue'
 ]);
 
+const SCHEDULED_TASK_MAX_IMAGE_GENERATIONS = Number(process.env.SCHEDULED_TASK_MAX_IMAGE_GENERATIONS || 4);
+
 /**
  * Main agentic execution engine
  * Takes a task and executes it autonomously using tool chaining
@@ -136,6 +138,7 @@ export class AgentExecutor {
     this.allStepsPassing = false;
     this.lastVerificationResult = null;
     this.scheduledTerminalFailure = null;
+    this.scheduledImageGenerations = 0;
     this.unfinishedPlanNudges = 0;
     logger.info('Context manager reset for fresh task execution');
 
@@ -728,6 +731,17 @@ Use the available tools to complete this task. Work step by step and explain you
    */
   async executeTool(toolName, parameters, options = {}) {
     try {
+      if (this._isScheduledTask && toolName === 'image_generate') {
+        this.scheduledImageGenerations = (this.scheduledImageGenerations || 0) + 1;
+        if (this.scheduledImageGenerations > SCHEDULED_TASK_MAX_IMAGE_GENERATIONS) {
+          return {
+            success: false,
+            error: `Scheduled task image generation limit exceeded (${SCHEDULED_TASK_MAX_IMAGE_GENERATIONS}). Stopping to prevent runaway file creation.`,
+            limitExceeded: true
+          };
+        }
+      }
+
       logger.info('Executing tool with enhanced capabilities', {
         tool: toolName,
         agentId: this.agentId,

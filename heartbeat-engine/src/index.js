@@ -1852,15 +1852,27 @@ async function runScheduledTasks(agentConfig) {
     const nextRunOffsets = { every_10_min: 600000, every_30_min: 1800000, hourly: 3600000, daily: 86400000, weekdays: 86400000, weekly: 604800000, monthly: 2592000000 };
     const nextRunAt = new Date(Date.now() + (nextRunOffsets[task.frequency] || 86400000)).toISOString();
 
-    // Mark as running — prevent double-execution
+    // Atomically claim the due task before running it. Multiple app instances can
+    // see the same due row during deploy/restart windows; matching the previous
+    // next_run_at makes only one instance win the claim.
     try {
-      await supabase.from('scheduled_tasks').update({
+      const { data: claimed, error: claimError } = await supabase.from('scheduled_tasks').update({
         last_run_at: new Date().toISOString(),
         next_run_at: nextRunAt,
         run_count: (task.run_count || 0) + 1
-      }).eq('id', task.id);
+      })
+        .eq('id', task.id)
+        .eq('next_run_at', task.next_run_at)
+        .select('id')
+        .maybeSingle();
+
+      if (claimError) throw new Error(claimError.message);
+      if (!claimed) {
+        logger.info(`⏭️ Scheduled task already claimed by another worker: ${task.name}`);
+        continue;
+      }
     } catch (e) {
-      logger.warn('Could not update scheduled task timing:', e.message);
+      logger.warn('Could not claim scheduled task:', e.message);
       continue;
     }
 
