@@ -3000,6 +3000,9 @@ function getAvailableTools(options = {}) {
 function checkToolReadiness(toolName) {
   // Image tools need an API key
   if (toolName === 'image_generate' || toolName === 'image_edit') {
+    if (process.env.IMAGE_GENERATION_DISABLED === 'true') {
+      return { ready: false, reason: 'Image generation is temporarily disabled by the operator to prevent runaway generation.' };
+    }
     if (!process.env.OPENAI_API_KEY && !process.env.GEMINI_API_KEY && !process.env.OPENROUTER_API_KEY) {
       return { ready: false, reason: 'No image API key (OPENROUTER_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY)' };
     }
@@ -6012,6 +6015,18 @@ NEVER skip steps 3 and 4 even if step 2 fails.
       for (const block of response.content) {
         if (block.type === 'tool_use') {
           if (block.name === 'image_generate') {
+            if (process.env.IMAGE_GENERATION_DISABLED === 'true') {
+              const disabledResult = {
+                success: false,
+                error: 'Image generation is temporarily disabled by the operator to prevent runaway generation. Stop generating images and tell the user image generation is paused.'
+              };
+              toolsUsed.push({ name: block.name, input: block.input });
+              toolResults.push(disabledResult);
+              failedTools.push({ name: block.name, error: disabledResult.error, round });
+              toolResultBlocks.push(buildToolResultBlock(block, disabledResult));
+              logger.warn('Image generation blocked by operator kill switch', { sessionId });
+              continue;
+            }
             chatImageGenerations += 1;
             if (chatImageGenerations > maxChatImageGenerations) {
               const limitedResult = {

@@ -731,6 +731,14 @@ Use the available tools to complete this task. Work step by step and explain you
    */
   async executeTool(toolName, parameters, options = {}) {
     try {
+      if ((toolName === 'image_generate' || toolName === 'image_edit') && process.env.IMAGE_GENERATION_DISABLED === 'true') {
+        return {
+          success: false,
+          error: 'Image generation is temporarily disabled by the operator to prevent runaway generation.',
+          disabled: true
+        };
+      }
+
       if (this._isScheduledTask && toolName === 'image_generate') {
         this.scheduledImageGenerations = (this.scheduledImageGenerations || 0) + 1;
         if (this.scheduledImageGenerations > SCHEDULED_TASK_MAX_IMAGE_GENERATIONS) {
