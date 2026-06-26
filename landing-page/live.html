@@ -64,9 +64,17 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      background: rgba(5,5,6,.74);
-      border-bottom: 1px solid rgba(255,255,255,.08);
-      backdrop-filter: blur(16px);
+      background: transparent;
+      backdrop-filter: blur(12px);
+    }
+
+    .topbar::before {
+      content: "";
+      position: absolute;
+      inset: 0 0 -42px;
+      z-index: -1;
+      background: linear-gradient(180deg, rgba(5,5,6,.88) 0%, rgba(5,5,6,.68) 56%, rgba(5,5,6,0) 100%);
+      pointer-events: none;
     }
 
     .topbar-inner {
@@ -112,15 +120,14 @@
       align-items: end;
       isolation: isolate;
       overflow: hidden;
-      border-bottom: 1px solid rgba(255,255,255,.08);
     }
 
     .hero-slide {
       position: absolute;
       inset: 0;
       opacity: 0;
-      transform: scale(1.02);
-      transition: opacity 950ms ease, transform 5200ms ease;
+      transform: translateX(12%) scale(1.03);
+      transition: opacity 850ms ease, transform 1100ms cubic-bezier(.2,.8,.2,1);
       background-size: cover;
       background-position: center;
       z-index: -3;
@@ -133,7 +140,12 @@
 
     .hero-slide.active {
       opacity: 1;
-      transform: scale(1.08);
+      transform: translateX(0) scale(1.045);
+    }
+
+    .hero-slide.prev {
+      opacity: 0;
+      transform: translateX(-12%) scale(1.03);
     }
 
     .hero::before {
@@ -141,8 +153,8 @@
       position: absolute;
       inset: 0;
       background:
-        linear-gradient(90deg, rgba(8,8,9,.97) 0%, rgba(8,8,9,.72) 34%, rgba(8,8,9,.28) 66%, rgba(8,8,9,.76) 100%),
-        linear-gradient(0deg, #0d0d0e 0%, rgba(13,13,14,.72) 17%, rgba(13,13,14,.1) 58%, rgba(13,13,14,.34) 100%);
+        linear-gradient(90deg, rgba(8,8,9,.68) 0%, rgba(8,8,9,.34) 35%, rgba(8,8,9,.08) 67%, rgba(8,8,9,.32) 100%),
+        linear-gradient(0deg, #0d0d0e 0%, rgba(13,13,14,.9) 10%, rgba(13,13,14,.45) 24%, rgba(13,13,14,.05) 61%, rgba(13,13,14,.1) 100%);
       z-index: -2;
     }
 
@@ -163,11 +175,11 @@
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      margin-bottom: 18px;
+      margin-bottom: 15px;
       color: var(--orange);
-      font-weight: 900;
+      font-weight: 600;
       text-transform: uppercase;
-      font-size: .78rem;
+      font-size: .72rem;
     }
 
     .eyebrow::before {
@@ -181,19 +193,19 @@
 
     h1 {
       margin: 0;
-      font-size: clamp(3.4rem, 9vw, 6.8rem);
-      line-height: .88;
-      font-weight: 900;
-      max-width: 9ch;
+      font-size: clamp(2.9rem, 7.2vw, 5.55rem);
+      line-height: .94;
+      font-weight: 800;
+      max-width: 10ch;
     }
 
     .hero-copy p {
-      margin: 22px 0 0;
+      margin: 18px 0 0;
       max-width: 550px;
-      color: rgba(255,255,255,.86);
-      font-size: clamp(1.02rem, 1.8vw, 1.22rem);
-      line-height: 1.6;
-      font-weight: 600;
+      color: rgba(255,255,255,.78);
+      font-size: clamp(.98rem, 1.55vw, 1.12rem);
+      line-height: 1.55;
+      font-weight: 400;
     }
 
     .actions {
@@ -204,18 +216,19 @@
     }
 
     .button {
-      min-height: 48px;
+      min-height: 50px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
       gap: 10px;
-      border-radius: 8px;
-      padding: 0 22px;
+      border-radius: 6px;
+      padding: 0 25px;
       border: 1px solid transparent;
-      font-size: .95rem;
+      font-size: 1rem;
       font-weight: 900;
       cursor: pointer;
-      transition: transform .2s ease, border-color .2s ease, background .2s ease;
+      box-shadow: 0 10px 26px rgba(0,0,0,.28);
+      transition: transform .2s ease, border-color .2s ease, background .2s ease, box-shadow .2s ease;
     }
 
     .button:hover,
@@ -225,15 +238,27 @@
     }
 
     .button.primary {
-      background: linear-gradient(135deg, var(--orange), var(--pink));
-      color: #171719;
+      background: #e50914;
+      color: #fff;
     }
 
     .button.secondary {
-      background: rgba(255,255,255,.12);
+      background: rgba(109,109,110,.76);
       color: #fff;
-      border-color: rgba(255,255,255,.22);
+      border-color: rgba(255,255,255,.2);
       backdrop-filter: blur(12px);
+    }
+
+    .button.primary:hover,
+    .button.primary:focus-visible {
+      background: #f6121d;
+      box-shadow: 0 14px 34px rgba(229,9,20,.24);
+    }
+
+    .button.secondary:hover,
+    .button.secondary:focus-visible {
+      background: rgba(136,136,138,.82);
+      box-shadow: 0 14px 34px rgba(0,0,0,.36);
     }
 
     .hero-strip {
@@ -271,6 +296,69 @@
       display: block;
     }
 
+    .strip-card::before,
+    .episode-media::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 58%;
+      z-index: 2;
+      pointer-events: none;
+      background: linear-gradient(0deg, rgba(0,0,0,.82), rgba(0,0,0,.36) 54%, rgba(0,0,0,0));
+      opacity: .92;
+      transition: opacity .2s ease;
+    }
+
+    .strip-title,
+    .episode-preview-title {
+      position: absolute;
+      left: 11px;
+      right: 11px;
+      bottom: 10px;
+      z-index: 3;
+      display: grid;
+      gap: 2px;
+      color: #fff;
+      text-align: left;
+      pointer-events: none;
+      text-shadow: 0 2px 10px rgba(0,0,0,.72);
+    }
+
+    .strip-title strong,
+    .episode-preview-title strong {
+      display: block;
+      font-size: .78rem;
+      line-height: 1;
+      font-weight: 900;
+    }
+
+    .strip-title span,
+    .episode-preview-title span {
+      display: block;
+      color: rgba(255,255,255,.78);
+      font-size: .64rem;
+      line-height: 1.15;
+      font-weight: 400;
+    }
+
+    .strip-card.previewing .strip-title,
+    .episode.previewing .episode-preview-title {
+      animation: preview-title-hold 3.2s ease forwards;
+    }
+
+    @keyframes preview-title-hold {
+      0%, 82% {
+        opacity: 1;
+        transform: translateY(0);
+      }
+      100% {
+        opacity: 0;
+        transform: translateY(6px);
+      }
+    }
+
     .strip-card.crop-left img,
     .episode-media.crop-left img,
     .feature-grid img.crop-left { object-position: 34% center; }
@@ -292,6 +380,7 @@
       inset: 0;
       opacity: 0;
       transition: opacity .2s ease;
+      z-index: 1;
     }
 
     .strip-card:hover video,
@@ -325,7 +414,7 @@
       max-width: 480px;
       color: var(--muted);
       line-height: 1.55;
-      font-weight: 600;
+      font-weight: 400;
     }
 
     .episode-row {
@@ -363,6 +452,7 @@
       position: absolute;
       inset: 0;
       opacity: 0;
+      z-index: 1;
     }
 
     .episode:hover .episode-media img,
@@ -377,8 +467,8 @@
 
     .play-pill {
       position: absolute;
-      left: 12px;
-      bottom: 12px;
+      right: 12px;
+      top: 12px;
       display: inline-flex;
       align-items: center;
       gap: 8px;
@@ -389,6 +479,7 @@
       font-weight: 900;
       font-size: .78rem;
       border: 1px solid rgba(255,255,255,.18);
+      z-index: 4;
     }
 
     .episode-body {
@@ -407,7 +498,7 @@
       color: var(--muted);
       line-height: 1.55;
       font-size: .95rem;
-      font-weight: 600;
+      font-weight: 400;
     }
 
     .watch-btn {
@@ -457,7 +548,7 @@
       color: var(--muted);
       line-height: 1.65;
       font-size: 1.02rem;
-      font-weight: 600;
+      font-weight: 400;
     }
 
     .subscribe {
@@ -470,7 +561,7 @@
     .subscribe p {
       color: var(--muted);
       line-height: 1.6;
-      font-weight: 600;
+      font-weight: 400;
       margin: 16px auto 24px;
       max-width: 620px;
     }
@@ -505,7 +596,7 @@
       padding: 24px 16px 34px;
       text-align: center;
       font-size: .86rem;
-      font-weight: 700;
+      font-weight: 400;
     }
 
     .modal {
@@ -619,26 +710,32 @@
             <button class="strip-card crop-center active" type="button" data-slide="0" aria-label="Show featured preview 1">
               <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/01-city-crosswalk.png" alt="">
               <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/blog-they-spent-10-million-on-leads-and-96-percent-failed/BigPivot_Trailer_480p.mp4"></video>
+              <span class="strip-title"><strong>The Big Pivot</strong><span>Rain Walk</span></span>
             </button>
             <button class="strip-card crop-left" type="button" data-slide="1" aria-label="Show featured preview 2">
               <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/02-subway-platform.png" alt="">
               <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/blog-they-spent-10-million-on-leads-and-96-percent-failed/BigPivot_Trailer_480p.mp4"></video>
+              <span class="strip-title"><strong>The Big Pivot</strong><span>Subway Signal</span></span>
             </button>
             <button class="strip-card crop-right" type="button" data-slide="2" aria-label="Show featured preview 3">
               <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/03-diner-conversation.png" alt="">
               <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/blog-they-spent-10-million-on-leads-and-96-percent-failed/BigPivot_Trailer_480p.mp4"></video>
+              <span class="strip-title"><strong>The Big Pivot</strong><span>The Diner</span></span>
             </button>
             <button class="strip-card crop-tight" type="button" data-slide="3" aria-label="Show featured preview 4">
               <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/04-rug-reveal.png" alt="">
               <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/blog-they-spent-10-million-on-leads-and-96-percent-failed/BigPivot_Trailer_480p.mp4"></video>
+              <span class="strip-title"><strong>The Big Pivot</strong><span>Under the Rug</span></span>
             </button>
             <button class="strip-card crop-center" type="button" data-slide="4" aria-label="Show featured preview 5">
               <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/06-running-alley.png" alt="">
               <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/blog-they-spent-10-million-on-leads-and-96-percent-failed/BigPivot_Trailer_480p.mp4"></video>
+              <span class="strip-title"><strong>The Big Pivot</strong><span>The Chase</span></span>
             </button>
             <button class="strip-card crop-left" type="button" data-slide="5" aria-label="Show featured preview 6">
               <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/07-rooftop-argument.png" alt="">
               <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/blog-they-spent-10-million-on-leads-and-96-percent-failed/BigPivot_Trailer_480p.mp4"></video>
+              <span class="strip-title"><strong>The Big Pivot</strong><span>Rooftop Terms</span></span>
             </button>
           </div>
         </div>
@@ -654,6 +751,7 @@
             <div class="episode-media crop-center">
               <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/02-subway-platform.png" alt="Sarah Rodriguez on a tense subway platform in The Big Pivot">
               <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/blog-they-spent-10-million-on-leads-and-96-percent-failed/BigPivot_Trailer_480p.mp4"></video>
+              <span class="episode-preview-title"><strong>The Big Pivot</strong><span>Episode 1 Preview</span></span>
               <span class="play-pill">Preview</span>
             </div>
             <div class="episode-body">
@@ -667,6 +765,7 @@
             <div class="episode-media crop-left">
               <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/04-rug-reveal.png" alt="Sarah Rodriguez discovering a clue under a rug in The Big Pivot">
               <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/blog-they-spent-10-million-on-leads-and-96-percent-failed/BigPivot_Trailer_480p.mp4"></video>
+              <span class="episode-preview-title"><strong>The Big Pivot</strong><span>Episode 2 Preview</span></span>
               <span class="play-pill">Preview</span>
             </div>
             <div class="episode-body">
@@ -680,6 +779,7 @@
             <div class="episode-media crop-right">
               <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/08-subway-conversation.png" alt="Sarah Rodriguez in an urgent subway conversation in The Big Pivot">
               <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/blog-they-spent-10-million-on-leads-and-96-percent-failed/BigPivot_Trailer_480p.mp4"></video>
+              <span class="episode-preview-title"><strong>The Big Pivot</strong><span>Episode 3 Preview</span></span>
               <span class="play-pill">Preview</span>
             </div>
             <div class="episode-body">
@@ -737,8 +837,12 @@
     let slideTimer;
 
     function showSlide(index) {
+      const previousSlide = currentSlide;
       currentSlide = index;
-      slides.forEach((slide, i) => slide.classList.toggle('active', i === index));
+      slides.forEach((slide, i) => {
+        slide.classList.toggle('active', i === index);
+        slide.classList.toggle('prev', i === previousSlide && i !== index);
+      });
       stripCards.forEach((card, i) => card.classList.toggle('active', i === index));
     }
 
@@ -747,20 +851,38 @@
       slideTimer = setInterval(() => showSlide((currentSlide + 1) % slides.length), 5200);
     }
 
+    function startPreviewTitle(target) {
+      target.classList.remove('previewing');
+      void target.offsetWidth;
+      target.classList.add('previewing');
+    }
+
+    function stopPreviewTitle(target) {
+      target.classList.remove('previewing');
+    }
+
     stripCards.forEach((card) => {
       const preview = card.querySelector('video');
       card.addEventListener('click', () => {
         showSlide(Number(card.dataset.slide));
         startSlider();
       });
-      card.addEventListener('mouseenter', () => preview && preview.play().catch(() => {}));
+      card.addEventListener('mouseenter', () => {
+        startPreviewTitle(card);
+        preview && preview.play().catch(() => {});
+      });
       card.addEventListener('mouseleave', () => {
+        stopPreviewTitle(card);
         if (!preview) return;
         preview.pause();
         preview.currentTime = 0;
       });
-      card.addEventListener('focus', () => preview && preview.play().catch(() => {}));
+      card.addEventListener('focus', () => {
+        startPreviewTitle(card);
+        preview && preview.play().catch(() => {});
+      });
       card.addEventListener('blur', () => {
+        stopPreviewTitle(card);
         if (!preview) return;
         preview.pause();
         preview.currentTime = 0;
@@ -769,8 +891,12 @@
 
     document.querySelectorAll('.episode').forEach((episode) => {
       const preview = episode.querySelector('video');
-      episode.addEventListener('mouseenter', () => preview && preview.play().catch(() => {}));
+      episode.addEventListener('mouseenter', () => {
+        startPreviewTitle(episode);
+        preview && preview.play().catch(() => {});
+      });
       episode.addEventListener('mouseleave', () => {
+        stopPreviewTitle(episode);
         if (!preview) return;
         preview.pause();
         preview.currentTime = 0;
