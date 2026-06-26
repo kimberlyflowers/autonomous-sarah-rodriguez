@@ -1436,6 +1436,10 @@ app.get('/analytics', (req, res) => {
   res.sendFile(path.join(landingPageDir, 'analytics.html'));
 });
 
+app.get('/live', (req, res) => {
+  res.sendFile(path.join(landingPageDir, 'live.html'));
+});
+
 app.get(['/pricing', '/plans'], (req, res) => {
   res.sendFile(path.join(landingPageDir, 'pricing.html'));
 });
