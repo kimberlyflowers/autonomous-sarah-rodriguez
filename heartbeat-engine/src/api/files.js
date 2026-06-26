@@ -386,12 +386,13 @@ router.post('/artifacts', async (req, res) => {
       success: true,
       artifact: {
         id: artifact.id,
-        fileId,
+        fileId: artifact.id,
+        localFileId: fileId,
         name,
         status: 'approved',
         createdAt: new Date().toISOString(),
-        downloadUrl: `/api/files/download/${fileId}`,
-        previewUrl: `/api/files/preview/${fileId}`,
+        downloadUrl: `/api/files/download/${artifact.id}`,
+        previewUrl: `/api/files/preview/${artifact.id}`,
         bloomshieldPending: true
       }
     });
