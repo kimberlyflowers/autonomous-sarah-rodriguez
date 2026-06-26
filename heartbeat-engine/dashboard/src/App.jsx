@@ -2417,6 +2417,7 @@ function isSpreadsheetArtifact(name='') {
 function GoogleImportButton({ file, c, compact=false }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [reconnectUrl, setReconnectUrl] = useState('');
   const fileId = file?.fileId || file?.id;
   const label = googleImportLabel(file?.name);
   if (!fileId || !label) return null;
@@ -2424,9 +2425,14 @@ function GoogleImportButton({ file, c, compact=false }) {
   const importFile = async () => {
     setBusy(true);
     setError('');
+    setReconnectUrl('');
     try {
       const response = await fetch(`/api/files/google-import/${fileId}`, { method: 'POST' });
       const data = await response.json().catch(() => ({}));
+      if (response.status === 401 && data.reconnectUrl) {
+        setReconnectUrl(data.reconnectUrl);
+        throw new Error(data.error || 'Google Drive needs to be reconnected.');
+      }
       if (!response.ok || !data.webViewLink) throw new Error(data.error || 'Google import failed');
       window.open(data.webViewLink, '_blank', 'noopener,noreferrer');
     } catch (err) {
@@ -2442,6 +2448,7 @@ function GoogleImportButton({ file, c, compact=false }) {
         {busy ? 'Opening...' : label}
       </button>
       {error && <span style={{maxWidth:compact?180:360,fontSize:10,lineHeight:1.35,color:'#ea4335',textAlign:compact?'left':'center'}}>{error}</span>}
+      {reconnectUrl && <a href={reconnectUrl} target="_blank" rel="noopener noreferrer" style={{fontSize:10,fontWeight:800,color:c.ac,textDecoration:'underline',textAlign:compact?'left':'center'}}>Reconnect Google Drive</a>}
     </span>
   );
 }

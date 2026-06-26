@@ -20,6 +20,7 @@ if (!fs.existsSync(FILE_STORAGE)) fs.mkdirSync(FILE_STORAGE, { recursive: true }
 const ORG_ID    = () => process.env.BLOOM_ORG_ID        || 'a1000000-0000-0000-0000-000000000001';
 const USER_ID   = () => process.env.BLOOM_OWNER_USER_ID || '823e2fb5-2f8f-4279-9c84-c8f4bf78bcce';
 const AGENT_ID  = () => process.env.AGENT_UUID          || 'c3000000-0000-0000-0000-000000000003';
+const DEFAULT_ORG_ID = 'a1000000-0000-0000-0000-000000000001';
 
 function sb() {
   return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
@@ -29,6 +30,23 @@ function sb() {
 
 function isPublicUrl(value) {
   return /^https?:\/\//i.test(String(value || ''));
+}
+
+function normalizeBaseUrl(url) {
+  if (!url) return null;
+  const normalized = url.startsWith('http') ? url : `https://${url}`;
+  return normalized.replace(/\/+$/, '');
+}
+
+function googleDriveReconnectUrl(orgId) {
+  const baseUrl = normalizeBaseUrl(
+    process.env.GOOGLE_OAUTH_REDIRECT_BASE_URL ||
+    process.env.OAUTH_BASE_URL ||
+    process.env.BLOOM_API_URL ||
+    process.env.RAILWAY_PUBLIC_DOMAIN
+  ) || 'https://autonomous-sarah-rodriguez-production.up.railway.app';
+  const params = new URLSearchParams({ orgId: orgId || DEFAULT_ORG_ID });
+  return `${baseUrl}/oauth/connect/google-drive?${params.toString()}`;
 }
 
 function isBinaryArtifact(fileType, mimeType = '') {
@@ -114,6 +132,18 @@ async function refreshGoogleAccessToken(refreshToken, supabase, userConnRow, org
   });
   if (!response.ok) {
     const text = await response.text();
+    if (text.includes('invalid_grant')) {
+      const reconnectUrl = googleDriveReconnectUrl(orgId);
+      const message = `Google rejected the stored Google Drive refresh token with invalid_grant. Reconnect Google Drive here: ${reconnectUrl}`;
+      await supabase.from('user_connectors').update({
+        last_error: message,
+        updated_at: new Date().toISOString()
+      }).eq('id', userConnRow.id).eq('organization_id', orgId);
+      const err = new Error(message);
+      err.code = 'GOOGLE_DRIVE_RECONNECT_REQUIRED';
+      err.reconnectUrl = reconnectUrl;
+      throw err;
+    }
     throw new Error(`Google token refresh failed: ${response.status} ${text}`);
   }
   const tokenData = await response.json();
@@ -147,6 +177,18 @@ async function getGoogleDriveAccessToken(supabase, orgId) {
     .maybeSingle();
   if (userConnErr) throw userConnErr;
   if (!userConn?.access_token) throw new Error('Google Drive is not connected for this organization');
+  if (!userConn.refresh_token && userConn.token_expires_at && new Date(userConn.token_expires_at).getTime() <= Date.now()) {
+    const reconnectUrl = googleDriveReconnectUrl(orgId);
+    const message = `Google Drive token expired and no refresh token is available. Reconnect Google Drive here: ${reconnectUrl}`;
+    await supabase.from('user_connectors').update({
+      last_error: message,
+      updated_at: new Date().toISOString()
+    }).eq('id', userConn.id).eq('organization_id', orgId);
+    const err = new Error(message);
+    err.code = 'GOOGLE_DRIVE_RECONNECT_REQUIRED';
+    err.reconnectUrl = reconnectUrl;
+    throw err;
+  }
 
   if (userConn.token_expires_at && userConn.refresh_token) {
     const expiresAt = new Date(userConn.token_expires_at).getTime();
@@ -489,6 +531,12 @@ router.post('/google-import/:fileId', async (req, res) => {
     });
   } catch (error) {
     logger.error('Google import error', { error: error.message });
+    if (error.code === 'GOOGLE_DRIVE_RECONNECT_REQUIRED') {
+      return res.status(401).json({
+        error: 'Google Drive needs to be reconnected before opening files in Google Sheets.',
+        reconnectUrl: error.reconnectUrl
+      });
+    }
     return res.status(500).json({ error: error.message || 'Google import failed' });
   }
 });
