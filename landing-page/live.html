@@ -487,12 +487,10 @@
     }
 
     .strip-card:hover video,
-    .strip-card.active video,
     .strip-card:focus-visible video {
       opacity: 1;
     }
 
-    .strip-card.active img,
     .strip-card:hover img,
     .strip-card:focus-visible img {
       opacity: 0;
@@ -501,8 +499,8 @@
     .section {
       position: relative;
       width: min(1180px, calc(100% - 32px));
-      margin: -126px auto 0;
-      padding: 118px 0 72px;
+      margin: -78px auto 0;
+      padding: 138px 0 72px;
       z-index: 1;
     }
 
@@ -525,6 +523,37 @@
       display: block;
       margin-bottom: 28px;
       text-align: center;
+    }
+
+    .episode-controls {
+      position: absolute;
+      right: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      display: flex;
+      gap: 10px;
+    }
+
+    .rail-button {
+      width: 42px;
+      height: 42px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,.22);
+      background: rgba(255,255,255,.12);
+      color: #fff;
+      font-size: 1.35rem;
+      line-height: 1;
+      cursor: pointer;
+      backdrop-filter: blur(12px);
+      transition: background .2s ease, transform .2s ease, border-color .2s ease;
+    }
+
+    .rail-button:hover,
+    .rail-button:focus-visible {
+      background: rgba(255,255,255,.22);
+      border-color: rgba(255,255,255,.38);
+      transform: translateY(-1px);
+      outline: none;
     }
 
     .section-head h2 {
@@ -550,13 +579,23 @@
     .episode-row {
       position: relative;
       z-index: 1;
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      display: flex;
       gap: 16px;
+      overflow-x: auto;
+      overflow-y: visible;
+      scroll-snap-type: x mandatory;
+      scroll-padding-inline: 2px;
+      padding: 4px 2px 18px;
+      scrollbar-width: none;
+    }
+
+    .episode-row::-webkit-scrollbar {
+      display: none;
     }
 
     .episode {
       display: block;
+      flex: 0 0 clamp(290px, 31vw, 372px);
       background: var(--panel);
       border: 1px solid rgba(255,255,255,.1);
       border-radius: 8px;
@@ -564,6 +603,7 @@
       box-shadow: var(--shadow);
       min-width: 0;
       cursor: pointer;
+      scroll-snap-align: start;
       transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease;
     }
 
@@ -901,11 +941,15 @@
       .hero { min-height: 780px; }
       .hero-inner { padding-top: 132px; }
       .hero-copy { padding-top: 70px; }
-      .episode-row { grid-template-columns: 1fr; }
-      .episode { grid-template-columns: 1fr; }
+      .episode { flex-basis: min(82vw, 340px); }
       .feature-grid { grid-template-columns: 1fr; }
       .section-head { display: block; }
-      .section-head p { margin-top: 12px; }
+      .episode-controls {
+        position: static;
+        transform: none;
+        justify-content: center;
+        margin-top: 16px;
+      }
     }
 
     @media (max-width: 560px) {
@@ -1006,12 +1050,16 @@
       <section class="section" id="episodes">
         <div class="section-head">
           <h2>Latest Episodes</h2>
+          <div class="episode-controls" aria-label="Episode rail controls">
+            <button class="rail-button js-episode-prev" type="button" aria-label="Previous episodes">&#8249;</button>
+            <button class="rail-button js-episode-next" type="button" aria-label="Next episodes">&#8250;</button>
+          </div>
         </div>
         <div class="episode-row">
           <article class="episode js-open-details" tabindex="0" data-episode="1">
             <div class="episode-media crop-center">
-              <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/02-rooftop.png" alt="Sarah Rodriguez confronting executives on a rooftop in The Big Pivot">
-              <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/big-pivot/episode1-list-best-served-cold/big-pivot-episode1-reference-seedance-480p-15s-front-hook.mp4"></video>
+              <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/01-apartment.png" alt="Sarah Rodriguez in a penthouse overlooking the city in The Big Pivot">
+              <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/big-pivot/episode1-list-best-served-cold/big-pivot-episode1-reference-seedance-slider-clean-2x.mp4"></video>
               <span class="episode-preview-title"><strong>The Big Pivot</strong><span>Episode 1 Preview</span></span>
               <span class="play-pill">Preview</span>
             </div>
@@ -1027,7 +1075,7 @@
 
           <article class="episode js-open-details" tabindex="0" data-episode="2">
             <div class="episode-media crop-left">
-              <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/04-city.png" alt="Sarah Rodriguez leaving a private members club in The Big Pivot">
+              <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/02-rooftop.png" alt="Sarah Rodriguez confronting executives on a rooftop in The Big Pivot">
               <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/big-pivot/episode1-list-best-served-cold/big-pivot-episode1-reference-seedance-480p-15s-front-hook.mp4"></video>
               <span class="episode-preview-title"><strong>The Big Pivot</strong><span>Episode 2 Preview</span></span>
               <span class="play-pill">Preview</span>
@@ -1044,16 +1092,67 @@
 
           <article class="episode js-open-details" tabindex="0" data-episode="3">
             <div class="episode-media crop-right">
-              <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/05-subway.png" alt="Sarah Rodriguez in an urgent subway conversation in The Big Pivot">
-              <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/big-pivot/episode1-list-best-served-cold/big-pivot-episode1-reference-seedance-480p-15s-front-hook.mp4"></video>
+              <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/03-awards.png" alt="Sarah Rodriguez at an awards dinner in The Big Pivot">
+              <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/big-pivot/episode1-list-best-served-cold/big-pivot-episode1-reference-seedance-slider-clean-fisheye.mp4"></video>
               <span class="episode-preview-title"><strong>The Big Pivot</strong><span>Episode 3 Preview</span></span>
               <span class="play-pill">Preview</span>
             </div>
             <div class="episode-body">
-              <h3>Episode 3: Platform Pressure</h3>
-              <p>On a late train platform, one message changes the route and forces Sarah to decide who still deserves the truth.</p>
+              <h3>Episode 3: The Toast Goes Cold</h3>
+              <p>At the dinner table, one glance across the room exposes the announcement nobody was ready to hear.</p>
               <div class="episode-actions">
                 <button class="watch-btn js-open-details" type="button" data-episode="3">Watch</button>
+                <button class="watch-btn secondary" type="button">+ Watchlist</button>
+              </div>
+            </div>
+          </article>
+
+          <article class="episode js-open-details" tabindex="0" data-episode="4">
+            <div class="episode-media crop-tight">
+              <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/04-city.png" alt="Sarah Rodriguez leaving a private members club in The Big Pivot">
+              <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/big-pivot/episode1-list-best-served-cold/big-pivot-episode1-reference-seedance-480p-15s-front-hook.mp4"></video>
+              <span class="episode-preview-title"><strong>The Big Pivot</strong><span>Episode 4 Preview</span></span>
+              <span class="play-pill">Preview</span>
+            </div>
+            <div class="episode-body">
+              <h3>Episode 4: The Club Exit</h3>
+              <p>Outside a private club, Sarah catches the look that tells her the story being sold inside is already falling apart.</p>
+              <div class="episode-actions">
+                <button class="watch-btn js-open-details" type="button" data-episode="4">Watch</button>
+                <button class="watch-btn secondary" type="button">+ Watchlist</button>
+              </div>
+            </div>
+          </article>
+
+          <article class="episode js-open-details" tabindex="0" data-episode="5">
+            <div class="episode-media crop-center">
+              <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/05-subway.png" alt="Sarah Rodriguez in an urgent subway conversation in The Big Pivot">
+              <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/big-pivot/episode1-list-best-served-cold/big-pivot-episode1-reference-seedance-480p-15s-front-hook.mp4"></video>
+              <span class="episode-preview-title"><strong>The Big Pivot</strong><span>Episode 5 Preview</span></span>
+              <span class="play-pill">Preview</span>
+            </div>
+            <div class="episode-body">
+              <h3>Episode 5: Platform Pressure</h3>
+              <p>On a late train platform, one message changes the route and forces Sarah to decide who still deserves the truth.</p>
+              <div class="episode-actions">
+                <button class="watch-btn js-open-details" type="button" data-episode="5">Watch</button>
+                <button class="watch-btn secondary" type="button">+ Watchlist</button>
+              </div>
+            </div>
+          </article>
+
+          <article class="episode js-open-details" tabindex="0" data-episode="6">
+            <div class="episode-media crop-left">
+              <img src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/06-library.png" alt="Sarah Rodriguez at a late-night market reveal in The Big Pivot">
+              <video muted loop playsinline preload="metadata" src="https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-artifacts/videos/big-pivot/episode1-list-best-served-cold/big-pivot-episode1-reference-seedance-480p-15s-front-hook.mp4"></video>
+              <span class="episode-preview-title"><strong>The Big Pivot</strong><span>Episode 6 Preview</span></span>
+              <span class="play-pill">Preview</span>
+            </div>
+            <div class="episode-body">
+              <h3>Episode 6: The Library Clause</h3>
+              <p>In a private library, Sarah finds the clause that turns a polished partnership into a power play.</p>
+              <div class="episode-actions">
+                <button class="watch-btn js-open-details" type="button" data-episode="6">Watch</button>
                 <button class="watch-btn secondary" type="button">+ Watchlist</button>
               </div>
             </div>
@@ -1157,18 +1256,33 @@
     const episodeDetails = {
       1: {
         title: 'Episode 1: How To Market To Strangers',
+        image: 'https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/01-apartment.png',
+        description: 'After the awards dinner, Sarah spots the number that turns a private celebration into a very public problem.'
+      },
+      2: {
+        title: 'Episode 2: Rooftop Terms',
         image: 'https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/02-rooftop.png',
         description: 'A quiet corporate celebration turns tense when Sarah realizes the deal on the table is not the deal everyone agreed to.'
       },
-      2: {
-        title: 'Episode 2: The Club Exit',
+      3: {
+        title: 'Episode 3: The Toast Goes Cold',
+        image: 'https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/03-awards.png',
+        description: 'At the dinner table, one glance across the room exposes the announcement nobody was ready to hear.'
+      },
+      4: {
+        title: 'Episode 4: The Club Exit',
         image: 'https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/04-city.png',
         description: 'Outside a private club, Sarah catches the look that tells her the story being sold inside is already falling apart.'
       },
-      3: {
-        title: 'Episode 3: Platform Pressure',
+      5: {
+        title: 'Episode 5: Platform Pressure',
         image: 'https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/05-subway.png',
         description: 'On a late train platform, one message changes the route and forces Sarah to decide who still deserves the truth.'
+      },
+      6: {
+        title: 'Episode 6: The Library Clause',
+        image: 'https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/big-pivot/live-2026-06-26/heroes-clean-hires/06-library.png',
+        description: 'In a private library, Sarah finds the clause that turns a polished partnership into a power play.'
       }
     };
     let currentSlide = 0;
@@ -1194,13 +1308,8 @@
         const preview = card.querySelector('video');
         if (!preview) return;
         preview.muted = true;
-        if (i === currentSlide) {
-          preview.currentTime = heroTrailer ? heroTrailer.currentTime : 0;
-          preview.play().catch(() => {});
-        } else {
-          preview.pause();
-          preview.currentTime = 0;
-        }
+        preview.pause();
+        preview.currentTime = 0;
       });
     }
 
@@ -1262,6 +1371,20 @@
         startSlider();
       });
     });
+
+    const episodeRow = document.querySelector('.episode-row');
+    const previousEpisodesButton = document.querySelector('.js-episode-prev');
+    const nextEpisodesButton = document.querySelector('.js-episode-next');
+
+    function scrollEpisodes(direction) {
+      if (!episodeRow) return;
+      const card = episodeRow.querySelector('.episode');
+      const distance = card ? card.getBoundingClientRect().width + 16 : 360;
+      episodeRow.scrollBy({ left: direction * distance, behavior: 'smooth' });
+    }
+
+    previousEpisodesButton?.addEventListener('click', () => scrollEpisodes(-1));
+    nextEpisodesButton?.addEventListener('click', () => scrollEpisodes(1));
 
     document.querySelectorAll('.episode').forEach((episode) => {
       const preview = episode.querySelector('video');
