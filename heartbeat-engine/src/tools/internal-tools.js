@@ -1728,6 +1728,16 @@ export const internalToolExecutors = {
           error: 'Blog HTML contains a private or expiring image URL. Use the public uploaded image URL returned by image_generate before calling create_artifact.'
         };
       }
+      if (content.includes('Bloomie Blog Master')) {
+        const heroSrc = content.match(/<img[^>]+class=["'][^"']*hero-image[^"']*["'][^>]+src=["']([^"']+)["']/i)?.[1] ||
+          content.match(/<img[^>]+src=["']([^"']+)["'][^>]+class=["'][^"']*hero-image[^"']*["']/i)?.[1];
+        if (heroSrc && !/^https:\/\/njfhzabmaxhfzekbzpzz\.supabase\.co\/storage\/v1\/object\/public\/bloom-images\//i.test(heroSrc)) {
+          return {
+            success: false,
+            error: `Bloomie blog hero image must use the public Bloomie generated image URL from image_generate. Invalid hero image URL: ${heroSrc}`
+          };
+        }
+      }
 
       const port = process.env.PORT || 3000;
       const BASE_URL = process.env.BASE_URL || `http://localhost:${port}`;
