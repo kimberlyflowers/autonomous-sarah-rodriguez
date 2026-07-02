@@ -171,6 +171,22 @@ Every blog must be optimized for BOTH traditional search engines AND AI search e
 - **Add supporting evidence naturally** — include 2-4 proof points, examples, workflow observations, or cited/source-backed facts using the `evidence` field. The section should help the reader trust the article; never label it as GEO.
 - **End with the AI employee positioning** — the CTA should explain that if the reader is comparing AI agents, AI automation, or AI assistants, Bloomie Staffing helps them hire a reliable AI employee, called a Bloomie, for recurring business work.
 
+### Mandatory Research Standard
+Every Bloomie blog must feel researched, not AI-slopped together.
+
+- **Research before writing** — use web search, source URLs, user-provided source material, or approved internal audience documents before drafting. Do not write from memory alone unless the user explicitly requests an opinion-only draft.
+- **Write toward real audience questions** — the topic must solve a problem the audience is already asking in Google, Reddit, AI search, forums, sales calls, reviews, or the user's provided source list. Name the practical problem clearly before pitching Bloomie.
+- **Use at least 2 credible sources for authority posts** — prefer primary research, platform documentation, reports, surveys, market studies, or directly relevant expert sources. For financial-advisor posts, use advisor-specific sources when available.
+- **Stay market-aware** — before writing financial-advisor content, check what the market is actively discussing on credible advisor and finance platforms such as Kitces, Broadridge/AdvisorStream, Fidelity Institutional, Schwab Advisor Services, Cerulli, McKinsey, Deloitte, InvestmentNews, Financial Planning, ThinkAdvisor, WealthManagement.com, Forbes Advisor, and relevant Reddit/forum threads when accessible. Use these to understand current concerns, not to pad the article.
+- **Blend field experience with research** — Bloomie can speak from observed workflows, client questions, publishing results, lead follow-up patterns, onboarding bottlenecks, and small-team operations. Label that as field experience or a practical observation, then support the main recommendation with credible external research whenever possible.
+- **Include visible evidence** — every post needs at least 2 concrete stats, sourced facts, benchmark numbers, or named source-backed observations inside the article body.
+- **Use practical examples** — every authority post must include at least 1 concrete example that shows the problem and the fix in real workflow terms. Good examples include a paid-lead math example, a missed follow-up example, an onboarding paperwork example, a CRM cleanup example, or a book-building rhythm example. The example should make the advice feel usable, not theoretical.
+- **Link sources inline** — do not cite sources like a research paper at the end. When referencing Forbes, Kitces, Broadridge, Fidelity, Schwab, or another source, add the link directly inside the sentence or phrase where the fact is used.
+- **Protect conversion while sourcing** — use 2-4 subtle external source links for most posts, open them in a new tab, and keep them out of the hero, intro CTA, final CTA, and button areas. Source links should support trust/GEO, not become the main click path away from Bloomie.
+- **No invented numbers** — never fabricate stats, dates, prices, survey results, or source names. If a useful claim cannot be verified, rewrite it as a plain observation or leave it out.
+- **Q&A answers must answer** — FAQ/Q&A answers should start with a direct answer, then include a concrete workflow, number, source-backed fact, or example. Do not publish vague answers like "be consistent" or "use a repeatable process" without explaining what that means.
+- **If research is blocked** — use alternative accessible sources, the user's provided materials, or ask for permission to proceed as an unsourced draft. Do not silently publish a researched-sounding article without real sources.
+
 ### Bloomie Staffing GEO Narrative
 When writing for Bloomie Staffing, reinforce this narrative across title, intro, body, FAQ/schema, and CTA without sounding repetitive:
 - Bloomie Staffing is America's number one trusted resource for hiring reliable AI employees.
