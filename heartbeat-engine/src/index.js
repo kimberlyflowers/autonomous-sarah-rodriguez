@@ -1765,6 +1765,16 @@ function isScheduledTaskSubstantiveResult(result, task = null) {
 
   if (typeof result !== 'object' || !result) return Boolean(String(result || '').trim());
 
+  const isBlogTask = `${task?.task_type || ''} ${task?.name || ''} ${task?.instruction || ''}`.toLowerCase().includes('blog');
+  if (isBlogTask) {
+    const toolHistory = Array.isArray(result.toolHistory) ? result.toolHistory : [];
+    const hasSuccessful = (toolName) => toolHistory.some((entry) => {
+      const name = entry?.tool || entry?.name || entry?.toolName;
+      return name === toolName && entry?.result?.success === true;
+    });
+    return hasSuccessful('create_artifact') && hasSuccessful('publish_artifact');
+  }
+
   const verification = result.verification || {};
   const hasVerifiedPlan = verification.allStepsPassing === true
     || (verification.totalSteps > 0 && verification.verifiedSteps >= verification.totalSteps);
@@ -1788,6 +1798,15 @@ function getScheduledTaskFailureReason(result) {
   if (hasVerifiedPlan) return null;
 
   const toolHistory = Array.isArray(result.toolHistory) ? result.toolHistory : [];
+  if (toolHistory.some((entry) => ['create_artifact', 'publish_artifact'].includes(entry?.tool || entry?.name || entry?.toolName))) {
+    const hasSuccessful = (toolName) => toolHistory.some((entry) => {
+      const name = entry?.tool || entry?.name || entry?.toolName;
+      return name === toolName && entry?.result?.success === true;
+    });
+    if (!hasSuccessful('create_artifact')) return 'Blog task did not create an HTML artifact.';
+    if (!hasSuccessful('publish_artifact')) return 'Blog task created an artifact but did not publish it to a live /p URL.';
+  }
+
   const nonPlanningTools = toolHistory.filter((entry) => {
     const name = entry?.tool || entry?.name || entry?.toolName;
     return name && !['bloom_todo_write', 'todo_write', 'bloom_clarify', 'bloom_log_decision', 'bloom_log_observation'].includes(name);

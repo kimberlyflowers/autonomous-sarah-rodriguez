@@ -1,9 +1,9 @@
 ---
 name: blog-content
-description: "Write high-performing blog posts that rank on Google AND AI search engines (GEO), and get published as drafts in the CRM. Use whenever the task involves writing a blog post, article, thought leadership piece, how-to guide, listicle, case study, or any SEO content. Also triggers for content calendars, topic ideation, 'blog', 'article', 'post', 'write about', or 'SEO'. Every post must include a generated hero image and be saved as a draft in the CRM for review."
+description: "Write high-performing blog posts that rank on Google AND AI search engines (GEO), then publish them directly to Bloomie's live /p blog system. Use whenever the task involves writing a blog post, article, thought leadership piece, how-to guide, listicle, case study, or any SEO content. Also triggers for content calendars, topic ideation, 'blog', 'article', 'post', 'write about', or 'SEO'. Every post must include a generated hero image, be saved as an HTML artifact, published to /p, and verified live."
 ---
 
-# Blog & Article Writing — Expert-Grade Content + CRM Publishing
+# Blog & Article Writing — Expert-Grade Content + Direct /p Publishing
 
 Every blog post should read like it came from a paid content strategist, not a chatbot. The standard: would an editor at a respected publication approve this?
 
@@ -75,74 +75,46 @@ TECHNICAL: Natural window light from the side creating gentle shadows and warm g
 - Quality: `high`
 - Save the returned image URL.
 
-### Step 2: Write Content & Save to CRM
-Call `ghl_create_blog_post` with STRUCTURED DATA. The tool auto-assembles the HTML using the locked BLOOM template. You do NOT write any HTML, CSS, or template code. Just provide the content fields.
+### Step 2: Write Complete HTML Using the Bloomie Master Template
+Build the full blog post as a complete HTML document. Do NOT use GHL for Bloomie blog publishing.
 
-**IMPORTANT: Do NOT pass a `content` field with raw HTML. Pass the structured fields instead. The handler builds the HTML for you.**
-**IMPORTANT: Do NOT pass `slug`, `author`, or `categories` — the GHL API does not accept these fields and will reject the request.**
+Required page rules:
+- Include `<!-- Bloomie Blog Master v2026-06-19 -->` in the HTML.
+- Use `header.blog-master-header` followed by one direct `img.hero-image`, then `div.content`.
+- The hero image must use the public URL from Step 1 and display as 16:9 landscape. CSS must include `max-width: 980px` and `aspect-ratio: 16 / 9`.
+- Public copy must say `Bloomie Staffing`, not `BLOOM Ecosystem`.
+- Include the standard Bloomie CTA labels and a professional blog layout, not markdown.
 
-```json
-{
-  "title": "5 Signs Your Business Needs an AI Employee",
-  "subtitle": "How to Know When It's Time to Scale with AI Automation",
-  "intro": "Your competitor just cut their admin overhead by 40% — and they did it without hiring a single new person. An AI employee handled everything from scheduling to follow-ups to data entry. If you're still doing these tasks manually, here's how to know it's time to make the switch.",
-  "sections": [
-    {
-      "heading": "1. Your Team Spends Hours on Tasks That Don't Need a Brain",
-      "paragraphs": [
-        "Data entry. Invoice processing. Email sorting. Appointment confirmations. Report generation. These tasks eat thousands of hours annually and require zero creative thinking.",
-        "AI automation handles all of it silently in the background — no supervision, no sick days, no training period. Your team gets those hours back for work that actually moves the needle."
-      ],
-      "highlight": "One mid-size agency reclaimed 520 hours per year just by automating data entry — the equivalent of a part-time hire, without the salary.",
-      "highlightLabel": "Real impact:"
-    },
-    {
-      "heading": "2. Costly Mistakes Keep Slipping Through",
-      "paragraphs": "Humans get tired. We make typos, miss details, and occasionally lose focus after lunch. AI systems execute the same task identically every single time — no coffee breaks needed.",
-      "bullets": [
-        "100% consistency on repetitive processes",
-        "Fewer costly mistakes and rework cycles",
-        "Better compliance and audit trails",
-        "Faster issue resolution when problems do occur"
-      ]
-    }
-  ],
-  "ctaHeadline": "Ready to Transform Your Operations?",
-  "ctaBody": "See how AI automation can streamline your workflows and cut costs without cutting corners.",
-  "imageUrl": "https://...",
-  "metaDescription": "Discover the 5 clear signs your business is ready for an AI employee. Learn how AI automation eliminates manual tasks, reduces errors, and cuts costs.",
-  "keywords": "AI employee, business automation, AI for small business, hiring AI",
-  "status": "DRAFT",
-  "tags": ["AI", "automation", "business growth"]
-}
-```
-
-### Step 3: ALWAYS Save as Artifact (MANDATORY — even if Step 2 failed)
-Call `create_artifact` to save the blog as an HTML file. This step is NON-OPTIONAL.
-- If ghl_create_blog_post succeeded: the response contains `_assembledHTML` — use that EXACT HTML as the artifact content. Do NOT rewrite it, do NOT convert to markdown.
-- If ghl_create_blog_post FAILED: the response STILL contains `_assembledHTML` — use that for the artifact.
-- Name the artifact: `Blog — [Post Title] — PUBLISH [Tomorrow Date]`
+### Step 3: Save as Artifact
+Call `create_artifact` to save the blog as an HTML file.
+- Name: `Blog - [Post Title].html`
 - File type: `html`
-- **The artifact content MUST be the full HTML with CSS styling from `_assembledHTML`. NEVER save plain text or markdown as the artifact. The user expects a fully formatted, styled HTML page they can preview.**
-- NEVER skip this step. The artifact is the user's backup and preview.
-- After saving, include `<!-- file:{slug}.html -->` in your response so the file card appears in chat.
+- MIME type: `text/html`
+- Content: the complete HTML document from Step 2.
+- NEVER save markdown or plain text for a blog post.
 
-### Step 4: Notify the User
-Send the user a message with:
+### Step 4: Publish to /p and Verify Live
+Call `publish_artifact` using the artifact ID returned by `create_artifact`.
+- Use a clean, keyword-rich slug beginning with `blog-`.
+- The returned URL must be `https://bloomiestaffing.com/p/[slug]`.
+- Verify the live URL with `web_fetch`.
+- The task is not complete until the live URL loads and contains the title, master marker, public hero image, and Bloomie Staffing copy.
+
+### Step 5: Report Completion
+Report:
 - Blog title
-- A brief summary (1-2 sentences)
-- If CRM succeeded: "Saved as draft in your CRM — ready for your review."
-- If CRM failed: "I saved the blog as an HTML file for you. Here's the CRM error: [error]. The blog content is ready — we just need to fix the CRM connection to publish it."
-- Always include the `<!-- file:{slug}.html -->` tag so the file shows in chat.
+- Live URL
+- Artifact ID
+- Verification result
 
-If ghl_create_blog_post FAILS, report the exact error to the user. Do NOT pretend it worked.
-CRITICAL: NEVER abandon the task if CRM fails. You MUST still complete Steps 3 and 4.
+If `create_artifact`, `publish_artifact`, or `web_fetch` fails, report the exact error. Do NOT pretend it was published.
+CRITICAL: A Bloomie blog task is not complete until the /p URL is live and verified.
 
 ## WHAT THE TEMPLATE LOOKS LIKE (for reference — you don't build this)
 
 The handler auto-assembles this design using the org's brand kit colors (primary + accent). The template adapts to whatever brand colors are configured:
 - **Full-width gradient header** (primary → accent) with white title + subtitle
-- **Full-width hero image** below the header
+- **16:9 hero image** below the header, constrained to the master template width
 - **800px content area** on white background (#FFFFFF)
 - **Italic intro blockquote** with primary color left border
 - **Primary color H2 headings** with accent color top border
@@ -152,7 +124,7 @@ The handler auto-assembles this design using the org's brand kit colors (primary
 - **Tagline from brand kit** (or "Hire an AI Employee. Get Work Done." if none configured)
 - Full SEO meta tags, OG tags, Schema.org JSON-LD (auto-generated from your fields)
 
-You NEVER touch the CSS, layout, or HTML structure. You only provide content through the structured fields.
+Use the Bloomie Blog Master structure exactly. Keep CSS minimal and consistent with the locked template.
 
 ## SEO + GEO (GENERATIVE ENGINE OPTIMIZATION)
 
@@ -269,12 +241,11 @@ Start with ONE of these patterns:
 - Use filler or throat-clearing sentences
 - Produce content under 1,000 words
 - Skip the hero image generation
-- Pass raw HTML in the `content` field — always use structured `sections`
-- Pass `slug`, `author`, or `categories` to ghl_create_blog_post — these fields cause API errors
-- Publish without user approval (always draft first)
+- Call GHL for Bloomie blog publishing
+- Publish without a live /p verification step
 - Use emojis in the content
-- Fake success if ghl_create_blog_post fails
-- Save the artifact as markdown or plain text — it MUST be the styled HTML from `_assembledHTML`
+- Fake success if artifact creation, publishing, or verification fails
+- Save the artifact as markdown or plain text — it MUST be styled HTML
 
 ## SOFT-SELL CTA RULES
 

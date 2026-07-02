@@ -5157,7 +5157,7 @@ When a user asks you to edit, modify, or update something you previously created
   try {
     const msgText = typeof userMessage === 'string' ? userMessage :
       (Array.isArray(userMessage) ? userMessage.filter(b => b.type === 'text').map(b => b.text).join(' ') : '');
-    const blogKeywords = /\b(blog|article|post|seo.?optim|geo.?optim|content marketing|write.*about|publish.*to.*ghl|publish.*to.*crm)\b/i;
+    const blogKeywords = /\b(blog|article|post|seo.?optim|geo.?optim|content marketing|write.*about|publish.*to.*\/p|publish.*to.*blog)\b/i;
 
     if (blogKeywords.test(msgText)) {
       const { findSkills } = await import('../skills/skill-loader.js');
@@ -5171,16 +5171,17 @@ When a user asks you to edit, modify, or update something you previously created
         systemPrompt += `\n\n<blog-fallback-instructions>
 When writing a blog post:
 1. FIRST call image_generate to create a hero image
-2. THEN call ghl_create_blog_post with structured data (title, sections[], intro, imageUrl)
-3. ALWAYS call create_artifact to save the blog as an HTML file (even if GHL fails)
-4. Include <!-- file:blog-slug.html --> in your response
-NEVER skip steps 3 and 4 even if step 2 fails.
+2. Build the complete Bloomie Blog Master HTML
+3. Call create_artifact to save the HTML file
+4. Call publish_artifact to publish the artifact to a clean /p slug
+5. Verify the live URL with fetch_url
+NEVER call ghl_create_blog_post for Bloomie blog publishing.
 </blog-fallback-instructions>`;
       }
     }
   } catch(e) {
     logger.warn('Blog skill auto-injection failed:', e.message);
-    systemPrompt += `\n\nIMPORTANT: When writing a blog, always: 1) generate hero image, 2) call ghl_create_blog_post, 3) call create_artifact to save HTML, 4) include <!-- file:name.html --> tag. Never skip step 3 even if step 2 fails.`;
+    systemPrompt += `\n\nIMPORTANT: When writing a Bloomie blog, always: 1) generate hero image, 2) build full Bloomie Blog Master HTML, 3) call create_artifact to save HTML, 4) call publish_artifact for a /p slug, 5) verify the live URL. Never call ghl_create_blog_post for Bloomie blog publishing.`;
   }
 
   // ══════════════════════════════════════════════════════════════════════════

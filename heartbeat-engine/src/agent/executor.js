@@ -877,7 +877,7 @@ Use the available tools to complete this task. Work step by step and explain you
     const TASK_TOOL_MAP = {
       blog: [
         // Core blog creation
-        'ghl_create_blog_post', 'ghl_list_blog_posts',
+        'create_artifact', 'publish_artifact',
         // Content research
         'web_search', 'web_fetch',
         // Image for blog hero
@@ -885,8 +885,6 @@ Use the available tools to complete this task. Work step by step and explain you
         // Planning & logging
         'bloom_todo_write', 'bloom_create_document', 'bloom_log_decision',
         'bloom_log_observation', 'bloom_escalate_issue',
-        // Media upload for blog images
-        'ghl_upload_media', 'ghl_list_media',
       ],
       social: [
         // Social posting
@@ -1179,11 +1177,11 @@ ${skillContent}
 
 ## ⚠️ CRITICAL: SCHEDULED TASK EXECUTION RULES
 When executing a scheduled task (not interactive chat):
-1. You MUST use the tools specified in the task instruction. If the instruction says to use ghl_create_blog_post, you MUST call that tool. If it says to use ghl_create_social_post, you MUST call that tool.
+1. You MUST use the tools specified in the task instruction. If the instruction says to use create_artifact and publish_artifact, you MUST call those tools. If it says to use ghl_create_social_post, you MUST call that tool.
 2. NEVER just write text as your response and stop. Text-only output means NOTHING was actually created.
 3. Your text response alone does NOT create blog posts, does NOT schedule social media, does NOT save artifacts. You MUST call the actual tools.
 4. If a tool call fails, report the failure — do NOT pretend the task succeeded.
-5. A blog post is NOT created until ghl_create_blog_post returns success. Writing blog content as text is NOT the same as publishing it.
+5. A Bloomie blog post is NOT live until create_artifact returns an artifact ID, publish_artifact returns a /p slug, and web_fetch verifies the public URL. Writing blog content as text is NOT the same as publishing it.
 6. After creating the plan, the next tool call MUST be a substantive action tool, not another planning/logging tool.
    - Email inbox tasks: call gmail_check_inbox first.
    - Research/forum tasks: call web_search or browser_task.
@@ -1364,6 +1362,9 @@ Remember: Plan first. Execute one step. Verify it worked. Then move on.`;
   }
 
   isScheduledEmailCheckInComplete() {
+    if (this._isScheduledTask && this._currentTaskType === 'blog') {
+      return this.hasSuccessfulToolAttempt('create_artifact') && this.hasSuccessfulToolAttempt('publish_artifact');
+    }
     return this._isScheduledTask &&
       this._currentTaskType === 'email' &&
       this.hasSuccessfulToolAttempt('gmail_check_inbox') &&
@@ -1426,7 +1427,7 @@ Remember: Plan first. Execute one step. Verify it worked. Then move on.`;
       case 'followup':
         return 'Call a GHL read/search tool now, such as ghl_search_contacts, ghl_get_conversations, or ghl_list_tasks.';
       case 'blog':
-        return 'Call web_search, web_fetch, image_generate, or ghl_create_blog_post now, depending on the current plan step.';
+        return 'Call web_search, web_fetch, image_generate, create_artifact, or publish_artifact now, depending on the current plan step. Do not call ghl_create_blog_post for Bloomie blog publishing.';
       case 'social':
         return 'Call web_search, image_generate, or ghl_create_social_post now, depending on the current plan step.';
       default:

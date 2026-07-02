@@ -660,6 +660,41 @@ WHEN TO USE:
     },
     category: "documents",
     operation: "write"
+  },
+
+  // PUBLIC ARTIFACT / BLOG PAGE TOOLS
+  create_artifact: {
+    name: "create_artifact",
+    description: "Create and save a full HTML artifact. For Bloomie blog posts, use this to save the complete HTML page before publishing it to /p/{slug}.",
+    parameters: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Filename or page title, e.g. Blog - Advisor Follow Up.html" },
+        description: { type: "string", description: "Short description of the artifact" },
+        fileType: { type: "string", enum: ["html", "markdown", "text", "code"], description: "Use html for blog pages" },
+        mimeType: { type: "string", description: "Use text/html for HTML blog pages" },
+        content: { type: "string", description: "Full artifact content. For blogs, this must be complete HTML with CSS and the Bloomie Blog Master marker." },
+        metadata: { type: "object", description: "Optional metadata" }
+      },
+      required: ["name", "content"]
+    },
+    category: "artifacts",
+    operation: "write"
+  },
+
+  publish_artifact: {
+    name: "publish_artifact",
+    description: "Publish an existing HTML artifact to a clean /p/{slug} URL. Use after create_artifact for Bloomie blog posts, then verify the returned publicUrl with web_fetch.",
+    parameters: {
+      type: "object",
+      properties: {
+        artifactId: { type: "string", description: "Artifact UUID returned by create_artifact as artifact.id" },
+        slug: { type: "string", description: "Clean URL slug without /p/, e.g. blog-advisor-follow-up" }
+      },
+      required: ["artifactId", "slug"]
+    },
+    category: "artifacts",
+    operation: "write"
   }
 };
 
@@ -1680,6 +1715,67 @@ export const internalToolExecutors = {
       return { success: true, document: data, message: `Document "${data.title}" updated.` };
     } catch (e) {
       logger.error('bloom_update_document failed:', e.message);
+      return { success: false, error: e.message };
+    }
+  },
+
+  create_artifact: async (params) => {
+    try {
+      const port = process.env.PORT || 3000;
+      const BASE_URL = process.env.BASE_URL || `http://localhost:${port}`;
+      const resp = await fetch(`${BASE_URL}/api/files/artifacts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: params.name,
+          description: params.description || '',
+          fileType: params.fileType || 'html',
+          mimeType: params.mimeType || (params.fileType === 'html' || !params.fileType ? 'text/html' : 'text/plain'),
+          content: params.content,
+          agentId: params.agentId || process.env.AGENT_UUID || 'c3000000-0000-0000-0000-000000000003',
+          organizationId: params.organizationId || 'a1000000-0000-0000-0000-000000000001',
+          metadata: params.metadata || {}
+        })
+      });
+      const data = await resp.json();
+      if (!resp.ok || data.error || data.success === false) throw new Error(data.error || 'Failed to create artifact');
+      return {
+        success: true,
+        artifact: data.artifact,
+        artifactId: data.artifact?.id || data.artifact?.fileId,
+        message: `Artifact "${params.name}" created.`
+      };
+    } catch (e) {
+      logger.error('create_artifact failed:', e.message);
+      return { success: false, error: e.message };
+    }
+  },
+
+  publish_artifact: async (params) => {
+    try {
+      const artifactId = params.artifactId || params.fileId || params.id;
+      if (!artifactId) return { success: false, error: 'publish_artifact requires artifactId from create_artifact' };
+      if (!params.slug) return { success: false, error: 'publish_artifact requires slug' };
+
+      const port = process.env.PORT || 3000;
+      const BASE_URL = process.env.BASE_URL || `http://localhost:${port}`;
+      const resp = await fetch(`${BASE_URL}/api/files/artifacts/${artifactId}/publish`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug: params.slug })
+      });
+      const data = await resp.json();
+      if (!resp.ok || data.error || data.success === false) throw new Error(data.error || 'Failed to publish artifact');
+      return {
+        success: true,
+        slug: data.slug,
+        url: data.url,
+        publicUrl: `https://bloomiestaffing.com${data.url}`,
+        artifact: data.artifact,
+        message: `Published to https://bloomiestaffing.com${data.url}`
+      };
+    } catch (e) {
+      logger.error('publish_artifact failed:', e.message);
       return { success: false, error: e.message };
     }
   }
