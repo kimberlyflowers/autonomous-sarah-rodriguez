@@ -1218,6 +1218,7 @@ When executing a scheduled task (not interactive chat):
    - Research/forum tasks: call web_search or browser_task.
    - CRM/follow-up tasks: call the matching ghl_* read/search tool.
    - If a required tool is unavailable or fails, escalate with the exact error.
+7. When asked to change or fix "this post", "the current blog", "the one we are working on", or a live /p URL, resolve the artifact yourself. Use the artifact ID from your last tool result when available; otherwise use update_artifact with slug/publicUrl/name so it can find the correct existing artifact. Do not ask the operator to paste code or click "ask for changes" unless you cannot resolve the artifact after trying.
 
 Remember: Plan first. Execute one step. Verify it worked. Then move on.`;
   }

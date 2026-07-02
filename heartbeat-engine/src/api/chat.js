@@ -2728,12 +2728,17 @@ WHEN TO USE WHICH:
 - Add/remove a section, fix broken page, restructure → MODE 3 (FULL REWRITE)
 - If MODE 2 fails twice → switch to MODE 3 (FULL REWRITE)
 
-NEVER use create_artifact to update an existing file — ALWAYS use edit_artifact instead.`,
+NEVER use create_artifact to update an existing file — ALWAYS use edit_artifact instead.
+
+If the user says "this", "that page", "the current artifact", "the one we are working on", or gives a live /p URL, do not ask them to paste code. Resolve the artifact yourself using artifactId, slug, publicUrl, artifactName, or the latest HTML artifact in the current session.`,
     input_schema: {
       type: "object",
       properties: {
-        artifactName: { type: "string", description: "Filename of the artifact to edit (e.g. 'mountain-peak-coffee-landing.html'). Must match the name from get_session_files." },
-        sessionId: { type: "string", description: "Session ID where the artifact lives. Use the current session ID." },
+        artifactName: { type: "string", description: "Filename of the artifact to edit (e.g. 'mountain-peak-coffee-landing.html'). If unknown, omit it and provide artifactId, slug, publicUrl, or let the tool use the latest HTML artifact in the current session." },
+        artifactId: { type: "string", description: "Optional artifact UUID to edit directly." },
+        slug: { type: "string", description: "Optional published slug, e.g. blog-how-ai-employees-boost-ecommerce-sales." },
+        publicUrl: { type: "string", description: "Optional live URL, e.g. https://bloomiestaffing.com/p/blog-example." },
+        sessionId: { type: "string", description: "Optional. The server uses the real current session ID automatically." },
         fullRewrite: { type: "string", description: "MODE 3: Complete replacement HTML. Replaces the ENTIRE file content. Use for major changes (new sections, restructuring) or when find-and-replace keeps failing. When using fullRewrite, operations can be an empty array []." },
         operations: {
           type: "array",
@@ -2751,7 +2756,7 @@ NEVER use create_artifact to update an existing file — ALWAYS use edit_artifac
           }
         }
       },
-      required: ["artifactName", "sessionId"]
+      required: []
     }
   },
   {
@@ -3811,32 +3816,74 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
 
     // edit_artifact — server-side find-and-replace on HTML artifacts (surgical editing)
     if (toolName === 'edit_artifact') {
-      const { artifactName, operations = [], fullRewrite } = toolInput;
+      let { artifactName, operations = [], fullRewrite } = toolInput;
       try {
-        if (!artifactName) return { success: false, error: 'artifactName is required' };
         if (!operations.length && !fullRewrite) return { success: false, error: 'Provide operations (find/replace or CSS edits) OR fullRewrite (complete replacement HTML)' };
 
         const { createClient } = await import('@supabase/supabase-js');
         const editSupabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
         // ALWAYS use the real chat session ID — ignore whatever the LLM passes as sessionId
         const sid = sessionId;
-        console.log(`[edit_artifact] Looking up artifact: name="${artifactName}", session="${sid}"`);
+        console.log(`[edit_artifact] Looking up artifact: name="${artifactName || ''}", session="${sid}"`);
 
-        // Find the artifact by name + session
-        let { data: arts, error: findErr } = await editSupabase
-          .from('artifacts')
-          .select('id, name, content, file_type')
-          .eq('session_id', sid)
-          .eq('name', artifactName)
-          .order('created_at', { ascending: false })
-          .limit(1);
+        let arts = [];
+        let findErr = null;
+        const artifactId = toolInput.artifactId || toolInput.artifact_id || toolInput.fileId || toolInput.file_id;
+        const publicUrl = String(toolInput.publicUrl || toolInput.url || '');
+        let slug = String(toolInput.slug || '').trim();
+        if (!slug && publicUrl) {
+          try {
+            const parsed = new URL(publicUrl.startsWith('http') ? publicUrl : `https://bloomiestaffing.com${publicUrl}`);
+            slug = parsed.pathname.replace(/^\/p\//, '').replace(/^\/+|\/+$/g, '');
+          } catch {}
+        }
+
+        if (artifactId) {
+          const lookup = await editSupabase
+            .from('artifacts')
+            .select('id, name, content, file_type, session_id, slug')
+            .eq('id', artifactId)
+            .limit(1);
+          arts = lookup.data || [];
+          findErr = lookup.error;
+        } else if (slug) {
+          const lookup = await editSupabase
+            .from('artifacts')
+            .select('id, name, content, file_type, session_id, slug')
+            .eq('slug', slug)
+            .order('updated_at', { ascending: false })
+            .limit(1);
+          arts = lookup.data || [];
+          findErr = lookup.error;
+        } else if (artifactName) {
+          // Find the artifact by name + session
+          const lookup = await editSupabase
+            .from('artifacts')
+            .select('id, name, content, file_type, session_id, slug')
+            .eq('session_id', sid)
+            .eq('name', artifactName)
+            .order('created_at', { ascending: false })
+            .limit(1);
+          arts = lookup.data || [];
+          findErr = lookup.error;
+        } else {
+          const lookup = await editSupabase
+            .from('artifacts')
+            .select('id, name, content, file_type, session_id, slug')
+            .eq('session_id', sid)
+            .in('file_type', ['html', 'code'])
+            .order('updated_at', { ascending: false })
+            .limit(1);
+          arts = lookup.data || [];
+          findErr = lookup.error;
+        }
 
         // Fallback: if not found by session, try by name alone (most recent)
-        if ((!arts || arts.length === 0) && !findErr) {
+        if ((!arts || arts.length === 0) && !findErr && artifactName) {
           console.log(`[edit_artifact] Not found in session "${sid}", trying name-only fallback`);
           const fallback = await editSupabase
             .from('artifacts')
-            .select('id, name, content, file_type, session_id')
+            .select('id, name, content, file_type, session_id, slug')
             .eq('name', artifactName)
             .order('created_at', { ascending: false })
             .limit(1);
@@ -3847,9 +3894,10 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
         }
 
         if (findErr) return { success: false, error: `DB error: ${findErr.message}` };
-        if (!arts || arts.length === 0) return { success: false, error: `Artifact "${artifactName}" not found. Check the filename.` };
+        if (!arts || arts.length === 0) return { success: false, error: `Artifact not found. I tried artifactId, slug/publicUrl, artifactName, and the latest HTML artifact in the current session. Ask for a specific file only if none of those are available.` };
 
         const artifact = arts[0];
+        artifactName = artifactName || artifact.name;
         if (!artifact.content && !fullRewrite) return { success: false, error: `Artifact "${artifactName}" has no content to edit.` };
 
         // ── MODE 3: FULL REWRITE — replace entire content ──
@@ -6928,10 +6976,28 @@ router.post('/voice-transcript', async (req, res) => {
   }
 });
 
+function buildActiveArtifactHint(activeArtifact) {
+  if (!activeArtifact || typeof activeArtifact !== 'object') return '';
+  const clean = (value, max = 240) => String(value || '').replace(/[\r\n]+/g, ' ').trim().slice(0, max);
+  const fileId = clean(activeArtifact.fileId || activeArtifact.artifactId || activeArtifact.id, 80);
+  const name = clean(activeArtifact.name, 240);
+  const slug = clean(activeArtifact.slug, 240);
+  const artifactSessionId = clean(activeArtifact.sessionId, 160);
+  const fileType = clean(activeArtifact.fileType, 80);
+  if (!fileId && !name && !slug) return '';
+  return `\n\n[Dashboard active artifact context:
+- artifactId/fileId: ${fileId || '(unknown)'}
+- artifactName: ${name || '(unknown)'}
+- slug: ${slug || '(none)'}
+- artifactSessionId: ${artifactSessionId || '(current chat session)'}
+- fileType: ${fileType || '(unknown)'}
+If the user says "this", "that", "the current page/file/artifact/post", or asks for a change without naming a file, they mean this active artifact. Use edit_artifact on the existing artifact. Prefer artifactId/fileId when available; otherwise use slug/publicUrl/name. Do not ask the user to paste code or click Ask for Changes before trying this context.]`;
+}
+
 router.post('/message', async (req, res) => {
   // Track which skills the agent loads during this turn — shown as badges in the dashboard
   let skillsUsedThisTurn = [];
-  const { message, sessionId = 'session-' + Date.now(), agentId, projectId, skipUserSave } = req.body || {};
+  const { message, sessionId = 'session-' + Date.now(), agentId, projectId, skipUserSave, activeArtifact } = req.body || {};
   try {
     if (!message?.trim()) return res.status(400).json({ error: 'Message required' });
 
@@ -6958,6 +7024,10 @@ router.post('/message', async (req, res) => {
 
     // Auto-fetch Google Docs/Sheets/Slides if URL detected in message
     let enrichedMessage = message;
+    const activeArtifactHint = buildActiveArtifactHint(activeArtifact);
+    if (activeArtifactHint) {
+      enrichedMessage = `${enrichedMessage}${activeArtifactHint}`;
+    }
     const gdocsMatch = message.match(/https:\/\/docs\.google\.com\/(document|spreadsheets|presentation)\/d\/([a-zA-Z0-9_-]+)/);
     if (gdocsMatch) {
       try {

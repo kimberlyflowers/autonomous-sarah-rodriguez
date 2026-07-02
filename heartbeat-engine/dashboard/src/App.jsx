@@ -313,7 +313,7 @@ function useSarahChat() {
     setWorkingStatus("");
   };
 
-  const send = async (text, projectId = null) => {
+  const send = async (text, projectId = null, activeArtifactContext = null) => {
     if(!text.trim()) return false;
     if(!sid.current) { const id="session-"+Date.now(); sid.current=id; setCurrentSessionId(id); }
     const ts = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
@@ -374,7 +374,7 @@ function useSarahChat() {
       const res = await fetch("/api/chat/message",{
         method:"POST",
         headers:authHeaders,
-        body:JSON.stringify({message:text,sessionId:sid.current,agentId:currentAgentId,projectId,audio:false}),
+        body:JSON.stringify({message:text,sessionId:sid.current,agentId:currentAgentId,projectId,audio:false,activeArtifact:activeArtifactContext}),
         signal: controller.signal
       });
       clearTimeout(timeoutId);
@@ -5385,6 +5385,17 @@ function App({ authUser }) {
   const [filesTypeFilter,setFilesTypeFilter]=useState('all'); // 'all','html','image','markdown','code','document'
   const [filesRefresh,setFilesRefresh]=useState(0);
   const [previewFile,setPreviewFile]=useState(null); // {name, content, fileId}
+  const getActiveArtifactContext = () => {
+    const art = activeArtifact || previewFile;
+    if (!art) return null;
+    return {
+      name: art.name || null,
+      fileId: art.fileId || art.artifactId || null,
+      slug: art.slug || null,
+      sessionId: art.sessionId || sid.current || null,
+      fileType: art.fileType || null
+    };
+  };
 
   // Clear files immediately when switching agents (prevents stale data flash)
   useEffect(()=>{ setFiles([]); setFilesRefresh(r=>r+1); },[currentAgentId]);
@@ -5535,7 +5546,7 @@ function App({ authUser }) {
         if(ok && selectedProject?.id) await loadProjectConversations(selectedProject);
       }
     } else {
-      const ok = await send(text, activeProjectId);
+      const ok = await send(text, activeProjectId, getActiveArtifactContext());
       if(ok && selectedProject?.id) await loadProjectConversations(selectedProject);
     }
   };

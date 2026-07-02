@@ -724,15 +724,18 @@ WHEN TO USE:
 
   update_artifact: {
     name: "update_artifact",
-    description: "Update an existing HTML artifact in place. Use this to repair a live Bloomie blog page after verification finds broken images, missing author/date/template elements, or other fixable HTML problems. Do not create a duplicate when the same artifact can be corrected.",
+    description: "Update an existing HTML artifact in place. Use this to repair a live Bloomie blog page after verification finds broken images, missing author/date/template elements, or other fixable HTML problems. Do not create a duplicate when the same artifact can be corrected. If artifactId is unknown, pass slug, publicUrl, or name so the tool can resolve the current artifact.",
     parameters: {
       type: "object",
       properties: {
         artifactId: { type: "string", description: "Artifact UUID to update" },
+        slug: { type: "string", description: "Optional published slug, e.g. blog-how-ai-employees-boost-ecommerce-sales" },
+        publicUrl: { type: "string", description: "Optional live /p URL to resolve, e.g. https://bloomiestaffing.com/p/blog-example" },
+        name: { type: "string", description: "Optional artifact name if artifactId/slug are unknown" },
         content: { type: "string", description: "Corrected full artifact HTML content" },
-        name: { type: "string", description: "Optional updated artifact name" }
+        newName: { type: "string", description: "Optional updated artifact name" }
       },
-      required: ["artifactId", "content"]
+      required: ["content"]
     },
     category: "artifacts",
     operation: "write"
@@ -1827,9 +1830,8 @@ export const internalToolExecutors = {
 
   update_artifact: async (params) => {
     try {
-      const artifactId = params.artifactId || params.fileId || params.id;
+      let artifactId = params.artifactId || params.fileId || params.id;
       const content = String(params.content || '');
-      if (!artifactId) return { success: false, error: 'update_artifact requires artifactId' };
       if (!content) return { success: false, error: 'update_artifact requires corrected full HTML content' };
 
       if (/oaidalleapiprod[a-z]*\.blob\.core\.windows\.net\/private|[?&]se=\d{4}-\d{2}-\d{2}T/i.test(content)) {
@@ -1848,12 +1850,65 @@ export const internalToolExecutors = {
 
       const port = process.env.PORT || 3000;
       const BASE_URL = process.env.BASE_URL || `http://localhost:${port}`;
+      let resolvedArtifact = null;
+      if (!artifactId) {
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
+          auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+        });
+        const publicUrl = String(params.publicUrl || params.url || '');
+        let slug = String(params.slug || '').trim();
+        if (!slug && publicUrl) {
+          try {
+            const parsed = new URL(publicUrl.startsWith('http') ? publicUrl : `https://bloomiestaffing.com${publicUrl}`);
+            slug = parsed.pathname.replace(/^\/p\//, '').replace(/^\/+|\/+$/g, '');
+          } catch {}
+        }
+        if (slug) {
+          const found = await supabase
+            .from('artifacts')
+            .select('id, name, slug')
+            .eq('slug', slug)
+            .maybeSingle();
+          if (found.error) throw new Error(found.error.message);
+          resolvedArtifact = found.data;
+        } else if (params.name) {
+          const found = await supabase
+            .from('artifacts')
+            .select('id, name, slug')
+            .eq('name', params.name)
+            .order('updated_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (found.error) throw new Error(found.error.message);
+          resolvedArtifact = found.data;
+        } else {
+          const found = await supabase
+            .from('artifacts')
+            .select('id, name, slug')
+            .eq('file_type', 'html')
+            .eq('published', true)
+            .like('slug', 'blog-%')
+            .order('updated_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (found.error) throw new Error(found.error.message);
+          resolvedArtifact = found.data;
+        }
+        artifactId = resolvedArtifact?.id;
+      }
+      if (!artifactId) {
+        return {
+          success: false,
+          error: 'update_artifact could not resolve which artifact to edit. Provide artifactId, slug, publicUrl, or exact name.'
+        };
+      }
       const resp = await fetch(`${BASE_URL}/api/files/artifacts/${artifactId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           content,
-          ...(params.name ? { name: params.name } : {})
+          ...(params.newName ? { name: params.newName } : {})
         })
       });
       const data = await resp.json();
@@ -1861,6 +1916,7 @@ export const internalToolExecutors = {
       return {
         success: true,
         artifactId,
+        resolvedFrom: resolvedArtifact || null,
         artifact: data.artifact,
         message: `Artifact ${artifactId} updated in place. Verify the live URL again with web_fetch.`
       };
