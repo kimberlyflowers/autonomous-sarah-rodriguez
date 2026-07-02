@@ -1721,6 +1721,14 @@ export const internalToolExecutors = {
 
   create_artifact: async (params) => {
     try {
+      const content = String(params.content || '');
+      if (/oaidalleapiprod[a-z]*\.blob\.core\.windows\.net\/private|[?&]se=\d{4}-\d{2}-\d{2}T/i.test(content)) {
+        return {
+          success: false,
+          error: 'Blog HTML contains a private or expiring image URL. Use the public uploaded image URL returned by image_generate before calling create_artifact.'
+        };
+      }
+
       const port = process.env.PORT || 3000;
       const BASE_URL = process.env.BASE_URL || `http://localhost:${port}`;
       const resp = await fetch(`${BASE_URL}/api/files/artifacts`, {
@@ -1739,11 +1747,14 @@ export const internalToolExecutors = {
       });
       const data = await resp.json();
       if (!resp.ok || data.error || data.success === false) throw new Error(data.error || 'Failed to create artifact');
+      const artifactId = data.fileId || data.artifact?.fileId || data.artifact?.id;
       return {
         success: true,
         artifact: data.artifact,
-        artifactId: data.artifact?.id || data.artifact?.fileId,
-        message: `Artifact "${params.name}" created.`
+        artifactId,
+        fileId: artifactId,
+        localFileId: data.localFileId || data.artifact?.localFileId || null,
+        message: `Artifact "${params.name}" created with artifactId ${artifactId}.`
       };
     } catch (e) {
       logger.error('create_artifact failed:', e.message);
@@ -1753,21 +1764,41 @@ export const internalToolExecutors = {
 
   publish_artifact: async (params) => {
     try {
-      const artifactId = params.artifactId || params.fileId || params.id;
+      let artifactId = params.artifactId || params.fileId || params.id;
       if (!artifactId) return { success: false, error: 'publish_artifact requires artifactId from create_artifact' };
       if (!params.slug) return { success: false, error: 'publish_artifact requires slug' };
 
       const port = process.env.PORT || 3000;
       const BASE_URL = process.env.BASE_URL || `http://localhost:${port}`;
-      const resp = await fetch(`${BASE_URL}/api/files/artifacts/${artifactId}/publish`, {
+      let resp = await fetch(`${BASE_URL}/api/files/artifacts/${artifactId}/publish`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ slug: params.slug })
       });
-      const data = await resp.json();
+      let data = await resp.json();
+      if ((!resp.ok || data.error || data.success === false) && /artifact not found/i.test(data.error || '')) {
+        const fallback = await supabase
+          .from('artifacts')
+          .select('id, name, created_at')
+          .eq('file_type', 'html')
+          .is('slug', null)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (fallback.data?.id) {
+          artifactId = fallback.data.id;
+          resp = await fetch(`${BASE_URL}/api/files/artifacts/${artifactId}/publish`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ slug: params.slug })
+          });
+          data = await resp.json();
+        }
+      }
       if (!resp.ok || data.error || data.success === false) throw new Error(data.error || 'Failed to publish artifact');
       return {
         success: true,
+        artifactId,
         slug: data.slug,
         url: data.url,
         publicUrl: `https://bloomiestaffing.com${data.url}`,
