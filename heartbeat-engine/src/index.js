@@ -1158,6 +1158,9 @@ function normalizeBloomiePageHtml(html, slug = '') {
     normalized.includes('profile-layout') ||
     normalized.includes('Bloomie Staffing - Hire Your AI Employee') ||
     (normalized.includes('Bloomie Staffing') && (normalized.includes('/p/blog') || normalized.includes('/p/faq')));
+  if (/^blog-/.test(String(slug || '')) && !/<nav\b/i.test(normalized)) {
+    normalized = normalized.replace(/<body([^>]*)>/i, `<body$1>\n${currentNav}`);
+  }
   if (shouldUseCurrentBloomieNav) {
     normalized = normalized.replace(/<nav[\s\S]*?<\/nav>/, currentNav);
   }

@@ -35,6 +35,7 @@ function validateBloomieBlogHtml(content) {
   const hasAuthorAvatar = /<div[^>]+class=["'][^"']*author-row[^"']*["'][\s\S]*?<img[^>]+src=["']https:\/\/njfhzabmaxhfzekbzpzz\.supabase\.co\/storage\/v1\/object\/public\/bloom-images\//i.test(html);
   const hasCtaCard = /class=["'][^"']*cta-card[^"']*["']/i.test(html);
   const hasCtaButtons = ['Call Us Now', 'Schedule a Demo', 'Interview an AI Employee'].every(label => html.includes(label));
+  const hasTopNav = /<nav[^>]+class=["'][^"']*site-nav[^"']*["'][\s\S]*?href=["']\/["'][\s\S]*?href=["']\/p\/blog["'][\s\S]*?href=["']\/book-demo["']/i.test(html);
   const hasNavSafety = /bloomie-nav-safety|body>nav\.site-nav|\.site-nav/i.test(html);
   const hasHeroOverlap = /\.hero-image[^}]*margin\s*:\s*-\d+px\s+auto\s+0/i.test(html) ||
     /img\.hero-image[^}]*margin\s*:\s*-\d+px\s+auto\s+0/i.test(html);
@@ -43,6 +44,7 @@ function validateBloomieBlogHtml(content) {
     /<div[^>]+class=["']content["']/i.test(html);
 
   if (!hasMasterStructure) errors.push('Use the locked Bloomie Blog Master v2026-06-19 structure: marker comment, header.blog-master-header, one direct img.hero-image, then div.content.');
+  if (!hasTopNav) errors.push('Add the standard top nav before the header: nav.site-nav.bloomie-nav-safety with Bloomie Staffing logo linking to /, Blog link to /p/blog, and Book a Demo link to /book-demo so readers can navigate out.');
   if (!heroSrc) errors.push('Add one direct img.hero-image immediately below the header.');
   if (heroSrc && !/^https:\/\/njfhzabmaxhfzekbzpzz\.supabase\.co\/storage\/v1\/object\/public\/bloom-images\//i.test(heroSrc)) {
     errors.push(`Hero image must use the public Bloomie generated image URL from image_generate. Invalid hero image URL: ${heroSrc}`);
