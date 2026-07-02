@@ -967,6 +967,7 @@ Use the available tools to complete this task. Work step by step and explain you
         // After a scheduled task has attempted its plan, hide internal paperwork
         // tools until at least one real external/action tool is attempted.
         if (this.shouldSuppressPlanningToolsForScheduledTask(toolName)) continue;
+        if (this.shouldSuppressRepeatedBlogImageTool(toolName)) continue;
 
         // If filtering is active, only include allowed tools
         if (allowedTools && !allowedTools.has(toolName)) continue;
@@ -1392,6 +1393,13 @@ Remember: Plan first. Execute one step. Verify it worked. Then move on.`;
     return PRE_ACTION_SUPPRESSED_TOOLS.has(toolName);
   }
 
+  shouldSuppressRepeatedBlogImageTool(toolName) {
+    return this._isScheduledTask &&
+      this._currentTaskType === 'blog' &&
+      toolName === 'image_generate' &&
+      this.hasSuccessfulToolAttempt('image_generate');
+  }
+
   shouldContinueScheduledTaskAfterPlanningOnly(currentTurn) {
     if (this.isTextOnlyScheduledTask()) return false;
     if (!this._isScheduledTask || this.hasSubstantiveToolUse()) return false;
@@ -1427,6 +1435,12 @@ Remember: Plan first. Execute one step. Verify it worked. Then move on.`;
       case 'followup':
         return 'Call a GHL read/search tool now, such as ghl_search_contacts, ghl_get_conversations, or ghl_list_tasks.';
       case 'blog':
+        if (this.hasSuccessfulToolAttempt('image_generate') && !this.hasSuccessfulToolAttempt('create_artifact')) {
+          return 'Use the existing successful hero image URL and call create_artifact now. Do not call image_generate again.';
+        }
+        if (this.hasSuccessfulToolAttempt('create_artifact') && !this.hasSuccessfulToolAttempt('publish_artifact')) {
+          return 'Call publish_artifact now using the artifact ID returned by create_artifact.';
+        }
         return 'Call web_search, web_fetch, image_generate, create_artifact, or publish_artifact now, depending on the current plan step. Do not call ghl_create_blog_post for Bloomie blog publishing.';
       case 'social':
         return 'Call web_search, image_generate, or ghl_create_social_post now, depending on the current plan step.';
