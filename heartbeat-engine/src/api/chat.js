@@ -2331,6 +2331,18 @@ const _ALL_TOOLS = [
     }
   },
   {
+    name: "publish_artifact",
+    description: "Publish an existing HTML artifact to a clean /p/{slug} URL. Use after create_artifact for Bloomie blog posts that should be live on the public blog, then verify the returned URL with fetch_url.",
+    input_schema: {
+      type: "object",
+      properties: {
+        artifactId: { type: "string", description: "Artifact UUID returned by create_artifact as artifact.id" },
+        slug: { type: "string", description: "Clean URL slug, without /p/. Example: blog-client-review-prep-what-advisors-forget-to-show" }
+      },
+      required: ["artifactId", "slug"]
+    }
+  },
+  {
     name: "generate_images_parallel",
     description: "Generate multiple images simultaneously for a website. Pass all image prompts at once — they run concurrently and ALL complete before this tool returns. Returns an imageMap with real CDN URLs keyed by your ID strings. Use these real URLs directly in your HTML. This tool WAITS for all images — do not build HTML until it returns. Typical time: 30-90 seconds for 10-14 images.",
     input_schema: {
@@ -3524,6 +3536,31 @@ Use edit_artifact with find-and-replace operations to modify the existing page c
     }
 
     // Artifact creation — save deliverables for client review
+    if (toolName === 'publish_artifact') {
+      const artifactId = toolInput.artifactId || toolInput.artifact_id || toolInput.fileId || toolInput.file_id;
+      if (!artifactId) return { success: false, error: 'publish_artifact requires artifactId from create_artifact' };
+      if (!toolInput.slug) return { success: false, error: 'publish_artifact requires a slug' };
+
+      const port = process.env.PORT || 3000;
+      const resp = await fetch(`http://localhost:${port}/api/files/artifacts/${encodeURIComponent(artifactId)}/publish`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug: toolInput.slug })
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || !data.success) {
+        return { success: false, error: data.error || `Publish failed with HTTP ${resp.status}`, status: resp.status };
+      }
+      return {
+        success: true,
+        slug: data.slug,
+        url: data.url,
+        publicUrl: `https://bloomiestaffing.com${data.url}`,
+        artifact: data.artifact,
+        message: `Artifact published at ${data.url}`
+      };
+    }
+
     if (toolName === 'create_artifact') {
       // ──── OVERWRITE PROTECTION ────
       // If an artifact with this name already exists in ANY recent session, BLOCK the create
