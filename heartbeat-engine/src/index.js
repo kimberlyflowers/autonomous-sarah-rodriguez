@@ -1102,7 +1102,7 @@ function injectBloomiePostViews(html, slug = '') {
   if (!mount || document.querySelector('.bloomie-post-view-count')) return;
   const viewNode = document.createElement('span');
   viewNode.className = 'bloomie-post-view-count';
-  viewNode.style.cssText = 'color:#9aa3a6;font-size:13px;font-weight:500;line-height:1.4;';
+  viewNode.style.cssText = 'color:#9aa3a6;font-size:13px;font-weight:500;line-height:1.4;white-space:nowrap;';
   viewNode.textContent = ' · views loading';
   if (mount.classList && mount.classList.contains('author-row')) {
     viewNode.style.display = 'block';
