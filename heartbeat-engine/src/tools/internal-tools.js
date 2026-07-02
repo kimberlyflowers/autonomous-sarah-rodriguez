@@ -36,6 +36,8 @@ function validateBloomieBlogHtml(content) {
   const hasCtaCard = /class=["'][^"']*cta-card[^"']*["']/i.test(html);
   const hasCtaButtons = ['Call Us Now', 'Schedule a Demo', 'Interview an AI Employee'].every(label => html.includes(label));
   const hasNavSafety = /bloomie-nav-safety|body>nav\.site-nav|\.site-nav/i.test(html);
+  const hasHeroOverlap = /\.hero-image[^}]*margin\s*:\s*-\d+px\s+auto\s+0/i.test(html) ||
+    /img\.hero-image[^}]*margin\s*:\s*-\d+px\s+auto\s+0/i.test(html);
   const hasMasterStructure = /<!--\s*Bloomie Blog Master v2026-06-19\s*-->/i.test(html) &&
     /<header[^>]+class=["']blog-master-header["'][\s\S]*?<\/header>\s*<img[^>]+class=["'][^"']*hero-image/i.test(html) &&
     /<div[^>]+class=["']content["']/i.test(html);
@@ -44,6 +46,9 @@ function validateBloomieBlogHtml(content) {
   if (!heroSrc) errors.push('Add one direct img.hero-image immediately below the header.');
   if (heroSrc && !/^https:\/\/njfhzabmaxhfzekbzpzz\.supabase\.co\/storage\/v1\/object\/public\/bloom-images\//i.test(heroSrc)) {
     errors.push(`Hero image must use the public Bloomie generated image URL from image_generate. Invalid hero image URL: ${heroSrc}`);
+  }
+  if (!hasHeroOverlap) {
+    errors.push('Match the locked Bloomie hero treatment: img.hero-image must overlap the colored header with a negative top margin like margin: -28px auto 0, rounded corners, soft shadow, subtle light border, position: relative, and z-index: 2.');
   }
   if (wordCount < 1000) {
     errors.push(`Bloomie authority blog posts must be at least 1,000 visible words unless the owner explicitly requested a short announcement. Current visible word count: ${wordCount}.`);

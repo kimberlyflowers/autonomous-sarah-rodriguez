@@ -962,7 +962,7 @@ async function serveClientSitePage(orgSlug, pageSlug, res) {
           .maybeSingle();
         if (artifact && artifact.file_type === 'html' && artifact.content) {
           res.setHeader('Content-Type', 'text/html; charset=utf-8');
-          return res.send(normalizeBloomiePageHtml(artifact.content));
+          return res.send(normalizeBloomiePageHtml(artifact.content, orgSlug));
         }
         if (artifact && artifact.file_type === 'markdown' && artifact.content) {
           const md = artifact.content
@@ -998,7 +998,7 @@ async function serveClientSitePage(orgSlug, pageSlug, res) {
     // If raw HTML is stored, serve it directly
     if (page.content_html) {
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
-      return res.send(normalizeBloomiePageHtml(page.content_html));
+      return res.send(normalizeBloomiePageHtml(page.content_html, pageSlug));
     }
 
     // Otherwise render via template engine
@@ -1018,7 +1018,7 @@ async function serveClientSitePage(orgSlug, pageSlug, res) {
     };
 
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    return res.send(normalizeBloomiePageHtml(tmpl.render(contentData)));
+    return res.send(normalizeBloomiePageHtml(tmpl.render(contentData), pageSlug));
   } catch (e) {
     logger.error('serveClientSitePage error:', e);
     return res.status(500).send('<html><body>Server error.</body></html>');
@@ -1082,7 +1082,49 @@ function injectBloomieFirstPartyAnalytics(html) {
   return html;
 }
 
-function normalizeBloomiePageHtml(html) {
+function injectBloomiePostViews(html, slug = '') {
+  if (!html || typeof html !== 'string') return html;
+  if (!/^blog-/.test(String(slug || '')) || slug === 'blog') return html;
+  if (html.includes('bloomie-post-view-count-script')) return html;
+  if (!html.includes('</body>')) return html;
+  const script = `
+<script id="bloomie-post-view-count-script">
+(() => {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('views') === '0') {
+    localStorage.removeItem('bloomie_post_views_visible');
+    return;
+  }
+  const enabled = params.get('views') === '1' || localStorage.getItem('bloomie_post_views_visible') === '1';
+  if (!enabled) return;
+  localStorage.setItem('bloomie_post_views_visible', '1');
+  const mount = document.querySelector('.author-info') || document.querySelector('.author-row') || document.querySelector('.content');
+  if (!mount || document.querySelector('.bloomie-post-view-count')) return;
+  const viewNode = document.createElement('span');
+  viewNode.className = 'bloomie-post-view-count';
+  viewNode.style.cssText = 'color:#9aa3a6;font-size:13px;font-weight:500;line-height:1.4;';
+  viewNode.textContent = ' · views loading';
+  if (mount.classList && mount.classList.contains('author-row')) {
+    viewNode.style.display = 'block';
+    viewNode.style.marginTop = '4px';
+    mount.appendChild(viewNode);
+  } else {
+    mount.appendChild(viewNode);
+  }
+  fetch('/api/analytics/page-views?days=90&path=' + encodeURIComponent(window.location.pathname), { cache: 'no-store' })
+    .then((res) => res.ok ? res.json() : Promise.reject(new Error('views unavailable')))
+    .then((data) => {
+      const row = (data.pages || [])[0] || { views: 0 };
+      const views = Number(row.views || 0);
+      viewNode.textContent = ' · ' + new Intl.NumberFormat().format(views) + (views === 1 ? ' view' : ' views');
+    })
+    .catch(() => { viewNode.remove(); });
+})();
+</script>`;
+  return html.replace('</body>', `${script}\n</body>`);
+}
+
+function normalizeBloomiePageHtml(html, slug = '') {
   if (!html || typeof html !== 'string') return html;
   const playIcon = '<svg class="play-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" style="width:.95em;height:.95em;vertical-align:-.12em;margin-right:.42rem"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>';
   const currentNav = `<nav class="site-nav">
@@ -1119,7 +1161,10 @@ function normalizeBloomiePageHtml(html) {
   if (shouldUseCurrentBloomieNav) {
     normalized = normalized.replace(/<nav[\s\S]*?<\/nav>/, currentNav);
   }
-  return injectBloomieFirstPartyAnalytics(injectBloomieGoogleAnalytics(normalized));
+  normalized = injectBloomieGoogleAnalytics(normalized);
+  normalized = injectBloomieFirstPartyAnalytics(normalized);
+  normalized = injectBloomiePostViews(normalized, slug);
+  return normalized;
 }
 
 // Custom domain middleware — must be registered before /p/ routes
@@ -1272,7 +1317,7 @@ const servePublishedPage = async (req, res) => {
     const file = { name: data.name, file_type: data.file_type, content_text: data.content };
     if (file.file_type === 'html' && file.content_text) {
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
-      return res.send(normalizeBloomiePageHtml(file.content_text));
+      return res.send(normalizeBloomiePageHtml(file.content_text, req.params.slug));
     }
     if (file.file_type === 'markdown' && file.content_text) {
       const md = file.content_text

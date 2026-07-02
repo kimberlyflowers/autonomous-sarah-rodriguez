@@ -90,6 +90,7 @@ Required page rules:
 - Include `<!-- Bloomie Blog Master v2026-06-19 -->` in the HTML.
 - Use `header.blog-master-header` followed by one direct `img.hero-image`, then `div.content`.
 - The hero image must use the public URL from Step 1 and display as 16:9 landscape. CSS must include `max-width: 980px` and `aspect-ratio: 16 / 9`.
+- Match the locked hero overlap treatment: the hero image should pull upward into the colored header area with a negative top margin, rounded corners, a soft shadow, a subtle light border, `position: relative`, and `z-index: 2`. The reference pattern is `margin: -28px auto 0; border-radius: 18px; box-shadow: 0 22px 55px rgba(45,52,54,.24); border: 1px solid rgba(255,255,255,.7);`.
 - If the reference post includes a podcast companion, match the visual format. When you have a real public `bloom-audio` URL, use a real audio control. While audio tooling is being tested, you may use a clearly styled pending/placeholder podcast companion so the layout can be reviewed, but do not publish an empty or broken browser audio player.
 - Inside `div.content`, the first visible block must be the standard author row:
   - `<div class="author-row">`
