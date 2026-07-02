@@ -58,18 +58,23 @@ Follow this exact sequence for every blog post:
 ### Step 1: Generate Hero Image
 Before writing, call `image_generate` to create a professional hero image.
 - **STYLE: PHOTOREALISTIC ONLY. NEVER cartoon, illustration, clip art, or animated style.**
-- Use the 6-Element Framework below. Adapt the SUBJECT and ACTION to match the blog topic.
+- The image must feel like an editorial thumbnail someone would click, not a polished stock photo.
+- Use the Click-Worthy Hero Framework below. Adapt the SUBJECT, MOMENT, and TENSION to match the blog topic.
 
-**6-Element Image Prompt Template:**
+**Click-Worthy Hero Framework:**
 Use the brand kit colors from the system prompt (injected as `BRAND KIT` — primary color = first listed, accent color = second listed). If no brand kit is configured, fall back to orange (#F4A261) and pink (#E76F8B).
 ```
-SUBJECT: [1-2 real professional people, diverse, age 30-50, wearing business attire with the brand's PRIMARY COLOR as an accent — a blouse, tie, pocket square, lanyard, or blazer lining. Specific to blog topic: e.g., "a confident Black woman in a charcoal blazer with [primary color] blouse" or "two colleagues reviewing data together".]
-COMPOSITION: Wide-angle landscape shot (1536x1024). Shallow depth of field with subject sharp and background softly blurred. Rule of thirds framing.
-ACTION: [Working on laptop/tablet showing dashboard with charts and data, gesturing toward screen, collaborating at desk, reviewing analytics — always engaged with technology relevant to the blog topic.]
-LOCATION: Spacious modern office with floor-to-ceiling windows and city skyline view. Clean desk with laptop, coffee mug, notebook. Brand color accents throughout the environment — [primary color] notebook, [accent color] desk accessories, [primary color] wall art or signage, warm-toned cushions or decor. Plants, natural wood, open plan.
-STYLE: Professional editorial photography. Corporate yet approachable. Warm, optimistic, aspirational mood. Shot on Sony A7IV with 35mm lens.
-TECHNICAL: Natural window light from the side creating gentle shadows and warm golden glow. Soft bokeh background. Sharp focus on subject. High quality, 8K detail. NOT an illustration, NOT a cartoon, NOT digital art, NOT 3D render — must look like a real photograph by a professional photographer.
+SUBJECT: [1-2 specific real people from the audience world, diverse, age 30-55, with one brand-color accent in clothing or workspace. Name the role visually, e.g. "solo RIA principal", "operations manager", "overloaded advisor assistant", not generic "business professional".]
+MOMENT: [A concrete moment with stakes from the article: the missed follow-up, the messy onboarding packet, the lead spreadsheet nobody trusts, the client review pile, the advisor staring at a silent phone after a seminar. The viewer should understand the problem in one glance.]
+TENSION: [Add one visual contradiction or curiosity gap: polished advisor office vs chaotic sticky notes, expensive lead list with red flags circled, empty second-meeting chair, client file stack next to a glowing automated checklist, calendar full of follow-ups with one overdue item highlighted.]
+COMPOSITION: Wide 16:9 landscape editorial shot (1536x1024). Human face or hands visible. Strong foreground object tied to the problem. Rule of thirds. Leave clean negative space for possible crop, but do not put text in the image.
+LOCATION: Specific real-world setting from the article, not a generic glass office. Examples: small RIA conference room, home-office advisory desk, seminar follow-up table, onboarding paperwork station, client-review prep desk, CRM cleanup war room.
+STYLE: Photorealistic editorial magazine photography with documentary tension. Premium but not sterile. Looks like a captured real business moment, not a stock photo.
+TECHNICAL: Natural light, realistic shadows, sharp subject, believable workspace details, 8K detail. No fake UI text, no readable brand names, no hands with errors, no plastic smiles, no cartoon/illustration/3D render.
 ```
+- The prompt must include a one-sentence **click reason** internally before generation: "Someone would click this because..." Then convert that reason into visual details in the image prompt.
+- Avoid generic laptop-and-dashboard scenes unless the article is specifically about dashboard reporting. A laptop alone is not a story.
+- For financial-advisor topics, show the advisor's real operational pain: lead quality doubts, follow-up gaps, onboarding friction, CRM mess, review prep, fee/trust tension, or first-meeting uncertainty.
 - Size: `1536x1024` (landscape)
 - Engine: `auto` — The system automatically selects the best engine based on the admin's dashboard configuration (Settings > Image Engine). Default for blogs is Gemini (Nano Banana) for photorealistic people shots. The admin can change this at any time.
 - Quality: `high`

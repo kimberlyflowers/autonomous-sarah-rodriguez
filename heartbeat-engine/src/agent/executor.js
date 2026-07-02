@@ -735,6 +735,17 @@ Use the available tools to complete this task. Work step by step and explain you
    */
   async executeTool(toolName, parameters, options = {}) {
     try {
+      const scheduledBlogNextTools = this.getScheduledBlogNextToolSet();
+      if (scheduledBlogNextTools && !scheduledBlogNextTools.has(toolName)) {
+        const requiredTools = Array.from(scheduledBlogNextTools);
+        return {
+          success: false,
+          error: `Scheduled blog workflow requires ${requiredTools.join(' or ')} next. ${toolName} is disabled for this step.`,
+          disallowedTool: true,
+          requiredTools
+        };
+      }
+
       if ((toolName === 'image_generate' || toolName === 'image_edit') && process.env.IMAGE_GENERATION_DISABLED === 'true') {
         return {
           success: false,
