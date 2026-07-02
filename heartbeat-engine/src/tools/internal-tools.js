@@ -1817,6 +1817,7 @@ export const internalToolExecutors = {
         url: data.url,
         publicUrl: `https://bloomiestaffing.com${data.url}`,
         artifact: data.artifact,
+        blogIndex: data.blogIndex || null,
         message: `Published to https://bloomiestaffing.com${data.url}`
       };
     } catch (e) {

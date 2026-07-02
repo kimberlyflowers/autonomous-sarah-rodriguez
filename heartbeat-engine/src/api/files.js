@@ -259,6 +259,126 @@ function csvRows(content = '', maxRows = 20, maxCols = 12) {
     });
 }
 
+function escapeHtml(value = '') {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function stripHtml(value = '') {
+  return String(value)
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function firstMatch(value = '', patterns = []) {
+  for (const pattern of patterns) {
+    const match = String(value || '').match(pattern);
+    if (match?.[1]) return match[1].trim();
+  }
+  return '';
+}
+
+function blogCategoryFor(content = '') {
+  const lower = String(content || '').toLowerCase();
+  if (/\b(advisor|financial|ria|aum|fiduciary|client review|custodian)\b/.test(lower)) {
+    return { label: 'Financial Advisors', tag: 'FINANCIAL ADVISORS', author: 'Marcus Chen' };
+  }
+  if (/\b(real estate|realtor|listing|buyer lead|seller lead|brokerage)\b/.test(lower)) {
+    return { label: 'Real Estate', tag: 'REAL ESTATE', author: 'Sarah Rodriguez' };
+  }
+  if (/\b(e-commerce|ecommerce|shopify|online store|cart|inventory)\b/.test(lower)) {
+    return { label: 'E-commerce', tag: 'E-COMMERCE', author: 'Sarah Rodriguez' };
+  }
+  return { label: 'AI Staffing', tag: 'AI STAFFING', author: 'Sarah Rodriguez' };
+}
+
+function buildBlogIndexCard(artifact) {
+  const html = String(artifact.content || '');
+  const title = stripHtml(firstMatch(html, [
+    /<h1[^>]*>([\s\S]*?)<\/h1>/i,
+    /<title[^>]*>([\s\S]*?)<\/title>/i
+  ])) || String(artifact.name || '').replace(/\.html?$/i, '');
+  const description = stripHtml(firstMatch(html, [
+    /<meta\s+name=["']description["']\s+content=["']([^"']+)["']/i,
+    /<meta\s+content=["']([^"']+)["']\s+name=["']description["']/i,
+    /<p[^>]*>([\s\S]*?)<\/p>/i
+  ])).slice(0, 180) || 'See how Bloomie Staffing turns repetitive operational work into a reliable AI employee workflow.';
+  const image = firstMatch(html, [
+    /<img[^>]+class=["'][^"']*hero-image[^"']*["'][^>]+src=["']([^"']+)["']/i,
+    /<img[^>]+src=["']([^"']+)["'][^>]+class=["'][^"']*hero-image[^"']*["']/i,
+    /<meta\s+property=["']og:image["']\s+content=["']([^"']+)["']/i,
+    /<img[^>]+src=["']([^"']+)["']/i
+  ]);
+  const category = blogCategoryFor(`${title}\n${description}\n${html}`);
+  const date = new Date(artifact.created_at || Date.now()).toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: 'America/Chicago'
+  });
+
+  return `
+    <a href="/p/${escapeHtml(artifact.slug)}" class="blog-card">
+      <img src="${escapeHtml(image)}" alt="${escapeHtml(title)} preview">
+      <div class="blog-card-content blog-card-body">
+        <div class="meta">${escapeHtml(category.author)} · ${escapeHtml(category.label)} · ${escapeHtml(date)}</div>
+        <span class="blog-tag">${escapeHtml(category.tag)}</span>
+        <h2>${escapeHtml(title)}</h2>
+        <p>${escapeHtml(description)}</p>
+        <span class="read-more">Read Article &rarr;</span>
+      </div>
+    </a>
+`;
+}
+
+async function refreshBlogIndexAfterPublish(supabase, artifact) {
+  if (!artifact?.slug || artifact.slug === 'blog' || !artifact.slug.startsWith('blog-')) {
+    return { updated: false, skipped: true, reason: 'not_blog_post' };
+  }
+  if (!String(artifact.file_type || '').toLowerCase().includes('html')) {
+    return { updated: false, skipped: true, reason: 'not_html' };
+  }
+
+  const { data: index, error: indexError } = await supabase
+    .from('artifacts')
+    .select('id, content')
+    .eq('slug', 'blog')
+    .maybeSingle();
+  if (indexError) throw indexError;
+  if (!index?.id || !index.content) throw new Error('Blog index artifact slug=blog was not found');
+
+  const href = `/p/${artifact.slug}`;
+  if (index.content.includes(`href="${href}"`) || index.content.includes(`href='${href}'`)) {
+    return { updated: false, skipped: true, reason: 'already_present', artifactId: index.id };
+  }
+  if (!index.content.includes('<div class="blog-grid">')) {
+    throw new Error('Blog index is missing <div class="blog-grid"> marker');
+  }
+
+  const nextContent = index.content.replace(
+    '<div class="blog-grid">',
+    `<div class="blog-grid">\n${buildBlogIndexCard(artifact)}`
+  );
+  const { error: updateError } = await supabase
+    .from('artifacts')
+    .update({
+      content: nextContent,
+      file_size: Buffer.byteLength(nextContent, 'utf8'),
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', index.id);
+  if (updateError) throw updateError;
+  return { updated: true, artifactId: index.id };
+}
+
 // ── CREATE ARTIFACT ──────────────────────────────────────────────────────────
 router.post('/artifacts', async (req, res) => {
   try {
@@ -862,10 +982,22 @@ router.post('/artifacts/:fileId/publish', async (req, res) => {
     // Check uniqueness
     const { data: existing } = await supabase.from('artifacts').select('id').eq('slug', slug).neq('id', fileId).maybeSingle();
     if (existing) return res.status(409).json({ error: `Slug "${slug}" is already taken`, taken: true });
-    const { data, error } = await supabase.from('artifacts').update({ slug, published: true }).eq('id', fileId).select('id, name, slug').single();
+    const { data, error } = await supabase
+      .from('artifacts')
+      .update({ slug, published: true })
+      .eq('id', fileId)
+      .select('id, name, slug, file_type, content, description, created_at')
+      .single();
     if (error || !data) return res.status(404).json({ error: 'Artifact not found' });
+    let blogIndex = { updated: false, skipped: true, reason: 'not_attempted' };
+    try {
+      blogIndex = await refreshBlogIndexAfterPublish(supabase, data);
+    } catch (indexError) {
+      blogIndex = { updated: false, error: indexError.message };
+      logger.warn('Blog index refresh failed after artifact publish', { fileId, slug, error: indexError.message });
+    }
     logger.info('Artifact published', { fileId, slug });
-    return res.json({ success: true, slug, url: `/p/${slug}`, artifact: data });
+    return res.json({ success: true, slug, url: `/p/${slug}`, artifact: data, blogIndex });
   } catch (error) {
     return res.status(500).json({ error: 'Publish failed: ' + error.message });
   }
