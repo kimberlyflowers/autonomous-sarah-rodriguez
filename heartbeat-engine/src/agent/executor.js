@@ -469,17 +469,23 @@ Use the available tools to complete this task. Work step by step and explain you
     // Gemini 2.5 Flash with mode:'AUTO' responds text-only instead of calling tools.
     // Setting mode:'ANY' forces it to call at least one tool. Keep forcing after
     // the plan is written until a non-planning tool has actually been attempted.
+    const scheduledBlogNextTools = this.getScheduledBlogNextToolSet();
     const forceToolUse = this._isScheduledTask &&
       !this.isTextOnlyScheduledTask() &&
-      (!this.hasSubstantiveToolUse() || this.needsScheduledOwnerNotification()) &&
+      (
+        !this.hasSubstantiveToolUse() ||
+        this.needsScheduledOwnerNotification() ||
+        !!scheduledBlogNextTools
+      ) &&
       toolDefs.length > 0;
+    const maxTokens = this._isScheduledTask && this._currentTaskType === 'blog' ? 8000 : 4000;
 
     // Use unified callModel — handles all providers + automatic failover
     const result = await callModel(model, {
       system: systemPrompt,
       messages: messages,
       tools: toolDefs,
-      maxTokens: 4000,
+      maxTokens,
       temperature: 0.1,
       forceToolUse: forceToolUse
     });
