@@ -946,6 +946,7 @@ Use the available tools to complete this task. Work step by step and explain you
     const allowedTools = effectiveTaskType && TASK_TOOL_MAP[effectiveTaskType]
       ? new Set(TASK_TOOL_MAP[effectiveTaskType])
       : null;
+    const scheduledBlogNextTools = this.getScheduledBlogNextToolSet();
 
     const claudeTools = [];
     const allToolSources = [
@@ -968,6 +969,7 @@ Use the available tools to complete this task. Work step by step and explain you
         // tools until at least one real external/action tool is attempted.
         if (this.shouldSuppressPlanningToolsForScheduledTask(toolName)) continue;
         if (this.shouldSuppressRepeatedBlogImageTool(toolName)) continue;
+        if (scheduledBlogNextTools && !scheduledBlogNextTools.has(toolName)) continue;
 
         // If filtering is active, only include allowed tools
         if (allowedTools && !allowedTools.has(toolName)) continue;
@@ -1398,6 +1400,17 @@ Remember: Plan first. Execute one step. Verify it worked. Then move on.`;
       this._currentTaskType === 'blog' &&
       toolName === 'image_generate' &&
       this.hasSuccessfulToolAttempt('image_generate');
+  }
+
+  getScheduledBlogNextToolSet() {
+    if (!this._isScheduledTask || this._currentTaskType !== 'blog') return null;
+    if (this.hasSuccessfulToolAttempt('publish_artifact')) {
+      if (!this.hasSuccessfulToolAttempt('web_fetch')) return new Set(['web_fetch']);
+      return null;
+    }
+    if (this.hasSuccessfulToolAttempt('create_artifact')) return new Set(['publish_artifact']);
+    if (this.hasSuccessfulToolAttempt('image_generate')) return new Set(['create_artifact']);
+    return null;
   }
 
   shouldContinueScheduledTaskAfterPlanningOnly(currentTurn) {
