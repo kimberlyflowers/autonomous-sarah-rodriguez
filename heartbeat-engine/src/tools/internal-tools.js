@@ -6,6 +6,46 @@ import { logAction, logRejection, logHandoff } from '../logging/index.js';
 
 const logger = createLogger('internal-tools');
 
+function validateBloomieBlogHtml(content) {
+  const html = String(content || '');
+  const isBloomieBlog = html.includes('Bloomie Blog Master') ||
+    /class=["'][^"']*blog-master-header/i.test(html) ||
+    /class=["'][^"']*hero-image/i.test(html);
+  if (!isBloomieBlog) return null;
+
+  const errors = [];
+  const heroSrc = html.match(/<img[^>]+class=["'][^"']*hero-image[^"']*["'][^>]+src=["']([^"']+)["']/i)?.[1] ||
+    html.match(/<img[^>]+src=["']([^"']+)["'][^>]+class=["'][^"']*hero-image[^"']*["']/i)?.[1];
+  const hasAuthorRow = /class=["'][^"']*author-row[^"']*["']/i.test(html);
+  const hasAuthorName = /class=["'][^"']*author-name[^"']*["'][^>]*>\s*(Sarah Rodriguez|Marcus Chen)\s*</i.test(html);
+  const hasVisibleDate = /\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+20\d{2}\b/.test(html);
+  const hasAuthorAvatar = /<div[^>]+class=["'][^"']*author-row[^"']*["'][\s\S]*?<img[^>]+src=["']https:\/\/njfhzabmaxhfzekbzpzz\.supabase\.co\/storage\/v1\/object\/public\/bloom-images\//i.test(html);
+  const hasCtaCard = /class=["'][^"']*cta-card[^"']*["']/i.test(html);
+  const hasCtaButtons = ['Call Us Now', 'Schedule a Demo', 'Interview an AI Employee'].every(label => html.includes(label));
+  const hasNavSafety = /bloomie-nav-safety|body>nav\.site-nav|\.site-nav/i.test(html);
+  const hasMasterStructure = /<!--\s*Bloomie Blog Master v2026-06-19\s*-->/i.test(html) &&
+    /<header[^>]+class=["']blog-master-header["'][\s\S]*?<\/header>\s*<img[^>]+class=["'][^"']*hero-image/i.test(html) &&
+    /<div[^>]+class=["']content["']/i.test(html);
+
+  if (!hasMasterStructure) errors.push('Use the locked Bloomie Blog Master v2026-06-19 structure: marker comment, header.blog-master-header, one direct img.hero-image, then div.content.');
+  if (!heroSrc) errors.push('Add one direct img.hero-image immediately below the header.');
+  if (heroSrc && !/^https:\/\/njfhzabmaxhfzekbzpzz\.supabase\.co\/storage\/v1\/object\/public\/bloom-images\//i.test(heroSrc)) {
+    errors.push(`Hero image must use the public Bloomie generated image URL from image_generate. Invalid hero image URL: ${heroSrc}`);
+  }
+  if (!hasAuthorRow || !hasAuthorName || !hasVisibleDate || !hasAuthorAvatar) {
+    errors.push('Add the standard author row inside div.content before the intro: author avatar from bloom-images, author name, role line, and visible publication date like "July 2, 2026".');
+  }
+  if (!hasCtaCard || !hasCtaButtons) {
+    errors.push('Add the standard dark cta-card with exactly these buttons: Call Us Now, Schedule a Demo, Interview an AI Employee.');
+  }
+  if (!hasNavSafety) errors.push('Add the Bloomie nav safety CSS for .site-nav, .site-logo, .nav-cta, plain nav, a.logo, and a.cta-button.');
+  if (/https:\/\/gijf2024\.supabase\.co|file:\/\/|\.\/hero\.png|\.\/author-sarah\.png|\.\/author-marcus\.png|\/assets\/.*\.(png|jpe?g|webp|gif)/i.test(html)) {
+    errors.push('Remove broken, local, or non-Bloomie image paths. All blog images must be public bloom-images URLs.');
+  }
+
+  return errors.length ? errors : null;
+}
+
 // Supabase-backed query shim — maintains pool.query() interface for all tool handlers
 async function getPool() {
   const { createClient } = await import('@supabase/supabase-js');
@@ -1728,15 +1768,12 @@ export const internalToolExecutors = {
           error: 'Blog HTML contains a private or expiring image URL. Use the public uploaded image URL returned by image_generate before calling create_artifact.'
         };
       }
-      if (content.includes('Bloomie Blog Master')) {
-        const heroSrc = content.match(/<img[^>]+class=["'][^"']*hero-image[^"']*["'][^>]+src=["']([^"']+)["']/i)?.[1] ||
-          content.match(/<img[^>]+src=["']([^"']+)["'][^>]+class=["'][^"']*hero-image[^"']*["']/i)?.[1];
-        if (heroSrc && !/^https:\/\/njfhzabmaxhfzekbzpzz\.supabase\.co\/storage\/v1\/object\/public\/bloom-images\//i.test(heroSrc)) {
-          return {
-            success: false,
-            error: `Bloomie blog hero image must use the public Bloomie generated image URL from image_generate. Invalid hero image URL: ${heroSrc}`
-          };
-        }
+      const blogErrors = validateBloomieBlogHtml(content);
+      if (blogErrors) {
+        return {
+          success: false,
+          error: `Bloomie blog failed the locked template gate:\n- ${blogErrors.join('\n- ')}`
+        };
       }
 
       const port = process.env.PORT || 3000;

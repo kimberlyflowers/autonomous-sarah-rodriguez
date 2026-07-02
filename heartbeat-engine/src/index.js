@@ -1772,7 +1772,7 @@ function isScheduledTaskSubstantiveResult(result, task = null) {
       const name = entry?.tool || entry?.name || entry?.toolName;
       return name === toolName && entry?.result?.success === true;
     });
-    return hasSuccessful('create_artifact') && hasSuccessful('publish_artifact');
+    return hasSuccessful('create_artifact') && hasSuccessful('publish_artifact') && hasSuccessful('web_fetch');
   }
 
   const verification = result.verification || {};
@@ -1805,6 +1805,7 @@ function getScheduledTaskFailureReason(result) {
     });
     if (!hasSuccessful('create_artifact')) return 'Blog task did not create an HTML artifact.';
     if (!hasSuccessful('publish_artifact')) return 'Blog task created an artifact but did not publish it to a live /p URL.';
+    if (!hasSuccessful('web_fetch')) return 'Blog task published a /p URL but did not verify the live post and /p/blog index with web_fetch.';
   }
 
   const nonPlanningTools = toolHistory.filter((entry) => {

@@ -139,6 +139,7 @@ export class AgentExecutor {
     this.lastVerificationResult = null;
     this.scheduledTerminalFailure = null;
     this.scheduledImageGenerations = 0;
+    this.scheduledBlogRepairAttempts = 0;
     this.unfinishedPlanNudges = 0;
     this._currentTaskText = task || '';
     this._currentTaskName = context.taskName || '';
@@ -610,10 +611,20 @@ Use the available tools to complete this task. Work step by step and explain you
         logger.info('Tool executed', { tool: block.name, success: toolResult.success });
 
         if (this._isScheduledTask && !NON_SUBSTANTIVE_TOOLS.has(block.name) && toolResult.success === false) {
-          this.scheduledTerminalFailure = {
-            tool: block.name,
-            error: toolResult.error || toolResult.message || 'Tool failed'
-          };
+          if (this.shouldRepairScheduledBlogTemplateFailure(block.name, toolResult)) {
+            this.scheduledBlogRepairAttempts += 1;
+            await this.injectScheduledBlogRepairReminder(toolResult);
+            logger.warn('Scheduled blog template gate failed; giving Sarah a self-repair turn', {
+              attempt: this.scheduledBlogRepairAttempts,
+              tool: block.name,
+              error: toolResult.error || toolResult.message || 'Tool failed'
+            });
+          } else {
+            this.scheduledTerminalFailure = {
+              tool: block.name,
+              error: toolResult.error || toolResult.message || 'Tool failed'
+            };
+          }
         }
 
         // Queue verification (don't add to conversation yet)
@@ -1383,7 +1394,9 @@ Remember: Plan first. Execute one step. Verify it worked. Then move on.`;
 
   isScheduledEmailCheckInComplete() {
     if (this._isScheduledTask && this._currentTaskType === 'blog') {
-      return this.hasSuccessfulToolAttempt('create_artifact') && this.hasSuccessfulToolAttempt('publish_artifact');
+      return this.hasSuccessfulToolAttempt('create_artifact') &&
+        this.hasSuccessfulToolAttempt('publish_artifact') &&
+        this.hasSuccessfulToolAttempt('web_fetch');
     }
     return this._isScheduledTask &&
       this._currentTaskType === 'email' &&
@@ -1430,6 +1443,14 @@ Remember: Plan first. Execute one step. Verify it worked. Then move on.`;
     return null;
   }
 
+  shouldRepairScheduledBlogTemplateFailure(toolName, toolResult = {}) {
+    if (!this._isScheduledTask || this._currentTaskType !== 'blog') return false;
+    if (toolName !== 'create_artifact') return false;
+    if (this.scheduledBlogRepairAttempts >= 2) return false;
+    const error = String(toolResult.error || toolResult.message || '');
+    return /Bloomie blog failed the locked template gate/i.test(error);
+  }
+
   shouldContinueScheduledTaskAfterPlanningOnly(currentTurn) {
     if (this.isTextOnlyScheduledTask()) return false;
     if (!this._isScheduledTask || this.hasSubstantiveToolUse()) return false;
@@ -1471,6 +1492,9 @@ Remember: Plan first. Execute one step. Verify it worked. Then move on.`;
         if (this.hasSuccessfulToolAttempt('create_artifact') && !this.hasSuccessfulToolAttempt('publish_artifact')) {
           return 'Call publish_artifact now using the artifact ID returned by create_artifact.';
         }
+        if (this.hasSuccessfulToolAttempt('publish_artifact') && !this.hasSuccessfulToolAttempt('web_fetch')) {
+          return 'Call web_fetch now on the published public URL and the live /p/blog index. Confirm the live post has the title, master marker, Bloomie-hosted hero image, author row/date, and that /p/blog includes the new card.';
+        }
         return 'Call web_search, web_fetch, image_generate, create_artifact, or publish_artifact now, depending on the current plan step. Do not call ghl_create_blog_post for Bloomie blog publishing.';
       case 'social':
         return 'Call web_search, image_generate, or ghl_create_social_post now, depending on the current plan step.';
@@ -1490,6 +1514,33 @@ If the action tool fails, report or escalate the exact error. Do not respond wit
     await this.contextManager.addConversationTurn('system', reminder, {
       type: 'system_critical',
       source: 'scheduled_substantive_tool_guardrail',
+      priority: 10
+    });
+  }
+
+  async injectScheduledBlogRepairReminder(toolResult = {}) {
+    const error = String(toolResult.error || toolResult.message || 'Unknown template error');
+    const reminder = `## Bloomie Blog Self-Repair Required
+Your create_artifact call was rejected by the locked Bloomie blog template gate. This is a repairable quality failure, not a reason to stop.
+
+Fix the HTML you just attempted to save, then call create_artifact again with the corrected full HTML. Do not generate another hero image unless the existing image URL itself is invalid.
+
+Required fixes from the gate:
+${error}
+
+Before retrying create_artifact, confirm in the HTML:
+- It contains the marker comment: <!-- Bloomie Blog Master v2026-06-19 -->
+- The structure is header.blog-master-header, then one direct img.hero-image, then div.content.
+- The hero image URL and author avatar URL both use https://njfhzabmaxhfzekbzpzz.supabase.co/storage/v1/object/public/bloom-images/
+- The first visible block inside div.content is div.author-row with avatar, author-name, role line, and visible publication date.
+- The final CTA is a dark cta-card near the end of the article and includes exactly: Call Us Now, Schedule a Demo, Interview an AI Employee.
+- The page includes the Bloomie nav safety CSS for .site-nav, .site-logo, .nav-cta, plain nav, a.logo, and a.cta-button.
+
+After create_artifact succeeds, continue normally with publish_artifact and web_fetch verification.`;
+
+    await this.contextManager.addConversationTurn('system', reminder, {
+      type: 'system_critical',
+      source: 'scheduled_blog_self_repair',
       priority: 10
     });
   }

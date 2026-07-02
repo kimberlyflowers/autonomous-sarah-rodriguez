@@ -87,6 +87,12 @@ Required page rules:
 - Include `<!-- Bloomie Blog Master v2026-06-19 -->` in the HTML.
 - Use `header.blog-master-header` followed by one direct `img.hero-image`, then `div.content`.
 - The hero image must use the public URL from Step 1 and display as 16:9 landscape. CSS must include `max-width: 980px` and `aspect-ratio: 16 / 9`.
+- Inside `div.content`, the first visible block must be the standard author row:
+  - `<div class="author-row">`
+  - author avatar image from the public `bloom-images` Supabase bucket
+  - `<div class="author-name">Sarah Rodriguez</div>` or `<div class="author-name">Marcus Chen</div>`
+  - role line plus visible publication date, e.g. `Bloomie Staffing contributor focused on AI employee workflows for e-commerce teams · July 2, 2026`
+- Do not put the final CTA before the practical article body. The dark `cta-card` belongs near the end of the article, before the footer, after the useful sections and any natural FAQ/Q&A material.
 - Public copy must say `Bloomie Staffing`, not `BLOOM Ecosystem`.
 - Include the standard Bloomie CTA labels and a professional blog layout, not markdown.
 
@@ -121,6 +127,7 @@ The handler auto-assembles this design using the org's brand kit colors (primary
 - **Full-width gradient header** (primary → accent) with white title + subtitle
 - **16:9 hero image** below the header, constrained to the master template width
 - **800px content area** on white background (#FFFFFF)
+- **Author row with avatar + author name + role/date** as the first block inside the content area
 - **Italic intro blockquote** with primary color left border
 - **Primary color H2 headings** with accent color top border
 - **Light-tinted highlight callout boxes** (tinted primary background, primary left border)
@@ -171,7 +178,8 @@ When the blog is for Bloomie Staffing and will be served at `bloomiestaffing.com
 - Public copy must say `Bloomie Staffing`; never use `BLOOM Ecosystem`.
 - CTA labels must be exactly: `Call Us Now`, `Schedule a Demo`, `Interview an AI Employee`.
 - Avoid the words `closing` and `closes` in public blog copy.
-- Uploaded images must use one clean public Supabase Storage URL. Never publish `file://`, `./hero.png`, `./email-hero.png`, `./author-sarah.png`, `./author-marcus.png`, `/assets/...`, or a doubled URL where a Supabase URL is appended to another Supabase URL.
+- Uploaded images must use one clean public Supabase Storage URL in the `bloom-images` bucket. Never publish `file://`, `./hero.png`, `./email-hero.png`, `./author-sarah.png`, `./author-marcus.png`, `/assets/...`, non-Bloomie Supabase hosts, or a doubled URL where a Supabase URL is appended to another Supabase URL.
+- The author avatar must be different from the hero image and must also use the public `bloom-images` bucket.
 - Add a `bloomie-nav-safety` CSS guard before publishing. Supabase may rewrite the visible nav to `nav.site-nav`, `a.site-logo`, and `a.nav-cta`, so the guard must style `.site-nav`, `.site-logo`, `.nav-cta`, plain `nav`, `a.logo`, and `a.cta-button`. This prevents blog pages from showing odd menu spacing, default blue links, broken CTA styling, or bullet navigation.
 - Include Google Analytics `G-2M5C356N0N` only; never include `G-FDZ0ZJ8B0W`.
 
