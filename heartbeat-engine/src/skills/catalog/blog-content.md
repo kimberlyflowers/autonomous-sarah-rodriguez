@@ -55,6 +55,9 @@ Ask: "Any specific points, stats, stories, or examples you want included? Also, 
 
 Follow this exact sequence for every blog post:
 
+### Source-of-Truth Format References
+When the owner gives a live post as the source of truth, use it as a **format reference only** unless they explicitly say to reuse the copy. Match the visible structure, spacing, media order, author/date treatment, section rhythm, CTA placement, and CSS classes. Do not copy the topic, wording, examples, claims, or source-post argument into the new article.
+
 ### Step 1: Generate Hero Image
 Before writing, call `image_generate` to create a professional hero image.
 - **STYLE: PHOTOREALISTIC ONLY. NEVER cartoon, illustration, clip art, or animated style.**
@@ -87,12 +90,14 @@ Required page rules:
 - Include `<!-- Bloomie Blog Master v2026-06-19 -->` in the HTML.
 - Use `header.blog-master-header` followed by one direct `img.hero-image`, then `div.content`.
 - The hero image must use the public URL from Step 1 and display as 16:9 landscape. CSS must include `max-width: 980px` and `aspect-ratio: 16 / 9`.
+- If the reference post includes a podcast companion, match the visual format. When you have a real public `bloom-audio` URL, use a real audio control. While audio tooling is being tested, you may use a clearly styled pending/placeholder podcast companion so the layout can be reviewed, but do not publish an empty or broken browser audio player.
 - Inside `div.content`, the first visible block must be the standard author row:
   - `<div class="author-row">`
   - author avatar image from the public `bloom-images` Supabase bucket
   - `<div class="author-name">Sarah Rodriguez</div>` or `<div class="author-name">Marcus Chen</div>`
   - role line plus visible publication date, e.g. `Bloomie Staffing contributor focused on AI employee workflows for e-commerce teams · July 2, 2026`
 - Do not put the final CTA before the practical article body. The dark `cta-card` belongs near the end of the article, before the footer, after the useful sections and any natural FAQ/Q&A material.
+- The final CTA must use the locked `.cta-card` class, include a topic-specific headline and useful body copy, and contain the exact three buttons below.
 - Public copy must say `Bloomie Staffing`, not `BLOOM Ecosystem`.
 - Include the standard Bloomie CTA labels and a professional blog layout, not markdown.
 

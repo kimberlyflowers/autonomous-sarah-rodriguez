@@ -14,6 +14,19 @@ function validateBloomieBlogHtml(content) {
   if (!isBloomieBlog) return null;
 
   const errors = [];
+  const textOnly = html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&(?:nbsp|amp|lt|gt|quot|#39);/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const wordCount = textOnly ? textOnly.split(/\s+/).filter(Boolean).length : 0;
+  const contentIndex = html.search(/<div[^>]+class=["']content["']/i);
+  const authorIndex = html.search(/class=["'][^"']*author-row[^"']*["']/i);
+  const ctaIndex = html.search(/class=["'][^"']*cta-card[^"']*["']/i);
+  const qaIndex = html.search(/(?:Frequently Asked|Questions .* Ask|FAQ|<h2[^>]*>[^<]*\?)/i);
+  const ctaMatch = html.match(/<(?:section|div)[^>]+class=["'][^"']*cta-card[^"']*["'][\s\S]*?<\/(?:section|div)>/i);
   const heroSrc = html.match(/<img[^>]+class=["'][^"']*hero-image[^"']*["'][^>]+src=["']([^"']+)["']/i)?.[1] ||
     html.match(/<img[^>]+src=["']([^"']+)["'][^>]+class=["'][^"']*hero-image[^"']*["']/i)?.[1];
   const hasAuthorRow = /class=["'][^"']*author-row[^"']*["']/i.test(html);
@@ -32,13 +45,44 @@ function validateBloomieBlogHtml(content) {
   if (heroSrc && !/^https:\/\/njfhzabmaxhfzekbzpzz\.supabase\.co\/storage\/v1\/object\/public\/bloom-images\//i.test(heroSrc)) {
     errors.push(`Hero image must use the public Bloomie generated image URL from image_generate. Invalid hero image URL: ${heroSrc}`);
   }
+  if (wordCount < 1000) {
+    errors.push(`Bloomie authority blog posts must be at least 1,000 visible words unless the owner explicitly requested a short announcement. Current visible word count: ${wordCount}.`);
+  }
   if (!hasAuthorRow || !hasAuthorName || !hasVisibleDate || !hasAuthorAvatar) {
     errors.push('Add the standard author row inside div.content before the intro: author avatar from bloom-images, author name, role line, and visible publication date like "July 2, 2026".');
+  }
+  if (contentIndex !== -1 && authorIndex !== -1 && authorIndex < contentIndex) {
+    errors.push('Place the author row inside div.content, before the intro/body copy.');
   }
   if (!hasCtaCard || !hasCtaButtons) {
     errors.push('Add the standard dark cta-card with exactly these buttons: Call Us Now, Schedule a Demo, Interview an AI Employee.');
   }
+  if (hasCtaCard) {
+    const ctaText = (ctaMatch?.[0] || '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (qaIndex !== -1 && ctaIndex !== -1 && ctaIndex < qaIndex) {
+      errors.push('Move the final cta-card after the useful sections and natural FAQ/Q&A material, before the footer.');
+    }
+    if (ctaText.length < 160) {
+      errors.push('Make the cta-card a complete, topic-specific closing CTA with a headline, useful body copy, and the three standard buttons.');
+    }
+  }
   if (!hasNavSafety) errors.push('Add the Bloomie nav safety CSS for .site-nav, .site-logo, .nav-cta, plain nav, a.logo, and a.cta-button.');
+  if (/\bBLOOM Ecosystem\b/i.test(textOnly)) {
+    errors.push('Public blog copy must say Bloomie Staffing, not BLOOM Ecosystem.');
+  }
+  if (/<audio\b/i.test(html)) {
+    const audioSources = [...html.matchAll(/<(?:audio|source)[^>]+src=["']([^"']*)["']/gi)]
+      .map(match => String(match[1] || '').trim());
+    if (!audioSources.length || audioSources.some(src => !src)) {
+      errors.push('Do not publish an empty or broken browser audio control. Use a real public bloom-audio URL, or make the podcast companion a styled pending/placeholder block without an audio element while audio tooling is being tested.');
+    }
+    if (audioSources.length && !audioSources.some(src => /^https:\/\/njfhzabmaxhfzekbzpzz\.supabase\.co\/storage\/v1\/object\/public\/bloom-audio\//i.test(src))) {
+      errors.push('Podcast audio controls must use a real public Supabase bloom-audio URL. For temporary format tests, use a styled pending/placeholder podcast block without an audio element.');
+    }
+  }
   if (/https:\/\/gijf2024\.supabase\.co|file:\/\/|\.\/hero\.png|\.\/author-sarah\.png|\.\/author-marcus\.png|\/assets\/.*\.(png|jpe?g|webp|gif)/i.test(html)) {
     errors.push('Remove broken, local, or non-Bloomie image paths. All blog images must be public bloom-images URLs.');
   }

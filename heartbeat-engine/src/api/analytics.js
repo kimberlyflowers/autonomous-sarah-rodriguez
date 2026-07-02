@@ -211,4 +211,56 @@ router.get('/summary', async (req, res) => {
   }
 });
 
+router.get('/page-views', async (req, res) => {
+  try {
+    await ensureAnalyticsSchema();
+    const days = Math.min(365, Math.max(1, Number(req.query.days || 90)));
+    const site = cleanString(req.query.site, 120) || 'bloomiestaffing.com';
+    const prefix = cleanString(req.query.prefix, 220);
+    const pagePath = cleanString(req.query.path, 220);
+    const pool = getSharedPool();
+    const params = [site, days];
+    const where = [
+      'site = $1',
+      "event_type = 'page_view'",
+      "created_at > NOW() - ($2::int * INTERVAL '1 day')"
+    ];
+
+    if (pagePath) {
+      params.push(pagePath);
+      where.push(`page_path = $${params.length}`);
+    } else if (prefix) {
+      params.push(`${prefix}%`);
+      where.push(`page_path LIKE $${params.length}`);
+    }
+
+    const pages = await pool.query(`
+      SELECT
+        page_path,
+        MAX(page_title) AS page_title,
+        COUNT(*)::int AS views,
+        COUNT(DISTINCT visitor_id)::int AS visitors,
+        COALESCE(ROUND(AVG(duration_seconds) FILTER (WHERE duration_seconds BETWEEN 1 AND 7200)), 0)::int AS avg_time_seconds
+      FROM website_analytics_events
+      WHERE ${where.join(' AND ')}
+      GROUP BY page_path
+      ORDER BY views DESC, visitors DESC, page_path ASC
+      LIMIT 500
+    `, params);
+
+    res.json({
+      ok: true,
+      site,
+      days,
+      prefix: prefix || null,
+      path: pagePath || null,
+      generatedAt: new Date().toISOString(),
+      pages: pages.rows
+    });
+  } catch (error) {
+    logger.error('analytics page views failed', { error: error.message });
+    res.status(500).json({ ok: false, error: 'Analytics page views failed' });
+  }
+});
+
 export default router;

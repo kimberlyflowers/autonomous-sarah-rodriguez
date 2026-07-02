@@ -325,14 +325,17 @@ function buildBlogIndexCard(artifact) {
     timeZone: 'America/Chicago'
   });
 
+  const blogPath = `/p/${artifact.slug}`;
+
   return `
-    <a href="/p/${escapeHtml(artifact.slug)}" class="blog-card">
+    <a href="${escapeHtml(blogPath)}" class="blog-card" data-blog-path="${escapeHtml(blogPath)}">
       <img src="${escapeHtml(image)}" alt="${escapeHtml(title)} preview">
       <div class="blog-card-content blog-card-body">
         <div class="meta">${escapeHtml(category.author)} · ${escapeHtml(category.label)} · ${escapeHtml(date)}</div>
         <span class="blog-tag">${escapeHtml(category.tag)}</span>
         <h2>${escapeHtml(title)}</h2>
         <p>${escapeHtml(description)}</p>
+        <span class="blog-view-count" hidden></span>
         <span class="read-more">Read Article &rarr;</span>
       </div>
     </a>
