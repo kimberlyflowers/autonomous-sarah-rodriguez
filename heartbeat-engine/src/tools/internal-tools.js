@@ -1777,7 +1777,11 @@ export const internalToolExecutors = {
       });
       let data = await resp.json();
       if ((!resp.ok || data.error || data.success === false) && /artifact not found/i.test(data.error || '')) {
-        const fallback = await supabase
+        const { createClient } = await import('@supabase/supabase-js');
+        const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
+          auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+        });
+        const fallback = await sb
           .from('artifacts')
           .select('id, name, created_at')
           .eq('file_type', 'html')
