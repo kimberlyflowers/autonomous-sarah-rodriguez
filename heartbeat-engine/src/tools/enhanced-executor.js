@@ -270,7 +270,7 @@ export class EnhancedToolExecutor {
     let result;
     if (execution.toolName.startsWith('ghl_') || execution.toolName === 'notify_owner') {
       result = await executeGHLTool(execution.toolName, execution.parameters);
-    } else if (execution.toolName.startsWith('bloom_')) {
+    } else if (execution.toolName.startsWith('bloom_') || execution.toolName === 'create_artifact' || execution.toolName === 'publish_artifact') {
       result = await executeInternalTool(execution.toolName, execution.parameters);
     } else if (execution.toolName.startsWith('browser_')) {
       result = await executeBrowserTool(execution.toolName, execution.parameters, {
@@ -531,7 +531,7 @@ export class EnhancedToolExecutor {
    */
   getToolCategory(toolName) {
     if (toolName.startsWith('ghl_') || toolName === 'notify_owner') return 'ghl_api';
-    if (toolName.startsWith('bloom_')) return 'internal_tools';
+    if (toolName.startsWith('bloom_') || toolName === 'create_artifact' || toolName === 'publish_artifact') return 'internal_tools';
     if (toolName.startsWith('browser_')) return 'external_api';
     if (toolName.startsWith('web_')) return 'external_api';
     if (toolName.startsWith('image_')) return 'external_api';
