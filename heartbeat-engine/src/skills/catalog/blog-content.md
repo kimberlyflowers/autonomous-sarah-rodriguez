@@ -88,7 +88,7 @@ Build the full blog post as a complete HTML document. Do NOT use GHL for Bloomie
 
 Required page rules:
 - Include `<!-- Bloomie Blog Master v2026-06-19 -->` in the HTML.
-- Include the standard top navigation before `header.blog-master-header`: `<nav class="site-nav">` with the Bloomie Staffing logo linking to `/`, a visible Blog link to `/p/blog`, and the Book a Demo CTA. Do not write custom CSS that resets or recreates the navigation; the app applies the master nav styling at publish/serve time.
+- Do not recreate the top site navigation inside the article. The app injects the master `nav.site-nav` at publish/serve time. If you include navigation markup anyway, it must be the standard Bloomie nav only; never write custom nav CSS or `all: unset` resets.
 - Use `header.blog-master-header` followed by one direct `img.hero-image`, then `div.content`.
 - The hero image must use the public URL from Step 1 and display as 16:9 landscape. CSS must include `max-width: 980px` and `aspect-ratio: 16 / 9`.
 - Match the locked hero overlap treatment: the hero image should pull upward into the colored header area with a negative top margin, rounded corners, a soft shadow, a subtle light border, `position: relative`, and `z-index: 2`. The reference pattern is `margin: -28px auto 0; border-radius: 18px; box-shadow: 0 22px 55px rgba(45,52,54,.24); border: 1px solid rgba(255,255,255,.7);`.
@@ -188,7 +188,7 @@ When the blog is for Bloomie Staffing and will be served at `bloomiestaffing.com
 - Avoid the words `closing` and `closes` in public blog copy.
 - Uploaded images must use one clean public Supabase Storage URL in the `bloom-images` bucket. Never publish `file://`, `./hero.png`, `./email-hero.png`, `./author-sarah.png`, `./author-marcus.png`, `/assets/...`, non-Bloomie Supabase hosts, or a doubled URL where a Supabase URL is appended to another Supabase URL.
 - The author avatar must be different from the hero image and must also use the public `bloom-images` bucket.
-- Use the standard Bloomie `nav.site-nav` markup and let the app apply the master navigation CSS. Never publish CSS that uses `all: unset` on `.bloomie-nav-safety`, `nav.site-nav`, `.site-logo`, or `.nav-cta`; that can break the master nav. This prevents blog pages from showing odd menu spacing, default blue links, broken CTA styling, or bullet navigation.
+- Omit the top site navigation unless you are using the exact standard Bloomie `nav.site-nav` markup. The app applies the master navigation CSS. Never publish CSS that uses `all: unset` on `.bloomie-nav-safety`, `nav.site-nav`, `.site-logo`, or `.nav-cta`; that can break the master nav.
 - Include Google Analytics `G-2M5C356N0N` only; never include `G-FDZ0ZJ8B0W`.
 
 ### Financial Advisor Audience Voice

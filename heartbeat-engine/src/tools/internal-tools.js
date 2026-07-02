@@ -47,7 +47,7 @@ function validateBloomieBlogHtml(content) {
     /<div[^>]+class=["']content["']/i.test(html);
 
   if (!hasMasterStructure) errors.push('Use the locked Bloomie Blog Master v2026-06-19 structure: marker comment, header.blog-master-header, one direct img.hero-image, then div.content.');
-  if (!hasTopNav) errors.push('Add the standard top nav before the header: nav.site-nav.bloomie-nav-safety with Bloomie Staffing logo linking to /, Blog link to /p/blog, and Book a Demo link to /book-demo so readers can navigate out.');
+  if (/<nav\b/i.test(html) && !hasTopNav) errors.push('If you include navigation markup, use only the standard nav.site-nav with Bloomie Staffing logo linking to /, Blog link to /p/blog, and Book a Demo link to /book-demo. Otherwise omit top navigation and let the app inject the master nav.');
   if (hasUnsafeNavReset) errors.push('Remove nav CSS that uses all: unset around .bloomie-nav-safety or nav.site-nav. The app applies the master nav styling; blog posts must not reset or recreate it.');
   if (!hasBackToBlog) errors.push('Add a visible in-article back link to /p/blog near the top of div.content, before or directly after the author row, so readers have a clear way back to the blog index.');
   if (!heroSrc) errors.push('Add one direct img.hero-image immediately below the header.');
@@ -81,7 +81,7 @@ function validateBloomieBlogHtml(content) {
       errors.push('Make the cta-card a complete, topic-specific closing CTA with a headline, useful body copy, and the three standard buttons.');
     }
   }
-  if (!hasNavSafety) errors.push('Use the standard Bloomie site-nav markup and let the app apply master nav styling; do not invent custom navigation CSS.');
+  if (!hasNavSafety && /<nav\b/i.test(html)) errors.push('Use the standard Bloomie site-nav markup and let the app apply master nav styling; do not invent custom navigation CSS.');
   if (/\bBLOOM Ecosystem\b/i.test(textOnly)) {
     errors.push('Public blog copy must say Bloomie Staffing, not BLOOM Ecosystem.');
   }
