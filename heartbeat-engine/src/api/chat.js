@@ -1224,7 +1224,19 @@ const _ALL_TOOLS = [
       properties: {
         contactId: { type: "string" }, title: { type: "string" },
         dueDate: { type: "string" },
-        items: { type: "array", description: "Line items array" }
+        items: {
+          type: "array",
+          description: "Line items array",
+          items: {
+            type: "object",
+            properties: {
+              name: { type: "string", description: "Line item name" },
+              description: { type: "string", description: "Line item description" },
+              quantity: { type: "number", description: "Quantity" },
+              price: { type: "number", description: "Unit price" }
+            }
+          }
+        }
       },
       required: ["contactId", "title", "items"]
     }

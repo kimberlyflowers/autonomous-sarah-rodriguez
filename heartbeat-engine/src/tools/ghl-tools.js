@@ -1405,7 +1405,19 @@ export const ghlToolDefinitions = {
         contactId: { type: "string", description: "Contact ID" },
         title: { type: "string", description: "Invoice title" },
         dueDate: { type: "string", description: "Due date (YYYY-MM-DD)" },
-        items: { type: "array", description: "Invoice line items" }
+        items: {
+          type: "array",
+          description: "Invoice line items",
+          items: {
+            type: "object",
+            properties: {
+              name: { type: "string", description: "Line item name" },
+              description: { type: "string", description: "Line item description" },
+              quantity: { type: "number", description: "Quantity" },
+              price: { type: "number", description: "Unit price" }
+            }
+          }
+        }
       },
       required: ["contactId", "title", "items"]
     },
