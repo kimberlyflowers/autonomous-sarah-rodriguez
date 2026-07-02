@@ -1417,6 +1417,17 @@ app.get('/blog', async (req, res) => {
   } catch (err) { res.redirect('/p/blog'); }
 });
 
+app.get('/dashboard-config.js', (req, res) => {
+  const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
+  const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '';
+
+  res.type('application/javascript');
+  res.setHeader('Cache-Control', 'no-store');
+  res.send(
+    `window.__BLOOMIE_DASHBOARD_CONFIG__=${JSON.stringify({ supabaseUrl, supabaseAnonKey })};`
+  );
+});
+
 // ── /app path — backward compat: always serves React dashboard ──────────────
 app.use('/app', express.static(path.join(__dirname, '../dashboard/dist')));
 app.get('/app/*', (req, res) => {
