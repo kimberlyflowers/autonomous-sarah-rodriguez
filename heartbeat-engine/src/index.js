@@ -1142,6 +1142,7 @@ function normalizeBloomiePageHtml(html, slug = '') {
         </ul>
     </nav>`;
   let normalized = html
+    .replace(/\.bloomie-nav-safety\s+nav\.site-nav,\s*\.bloomie-nav-safety\s+a\.site-logo,\s*\.bloomie-nav-safety\s+a\.nav-cta,\s*\.bloomie-nav-safety\s+nav,\s*\.bloomie-nav-safety\s+a\.logo,\s*\.bloomie-nav-safety\s+a\.cta-button\s*\{\s*all\s*:\s*unset\s*;\s*\}/gi, '')
     .replaceAll('href="/p/bloomie-staffing-demo"', 'href="/"')
     .replaceAll("href='/p/bloomie-staffing-demo'", "href='/'")
     .replaceAll('href="/p/bloomie-staffing-meet-the-team"', 'href="/#roles"')
@@ -1164,10 +1165,114 @@ function normalizeBloomiePageHtml(html, slug = '') {
   if (shouldUseCurrentBloomieNav) {
     normalized = normalized.replace(/<nav[\s\S]*?<\/nav>/, currentNav);
   }
+  normalized = injectBloomieMasterNavStyles(normalized);
+  normalized = injectBloomieBlogBackLink(normalized, slug);
   normalized = injectBloomieGoogleAnalytics(normalized);
   normalized = injectBloomieFirstPartyAnalytics(normalized);
   normalized = injectBloomiePostViews(normalized, slug);
   return normalized;
+}
+
+function injectBloomieMasterNavStyles(html) {
+  if (!html || typeof html !== 'string' || !/<nav[^>]+class=["'][^"']*site-nav/i.test(html)) return html;
+  if (html.includes('id="bloomie-master-nav-css"')) return html;
+  const css = `<style id="bloomie-master-nav-css">
+  nav.site-nav, nav.site-nav * { box-sizing: border-box !important; }
+  nav.site-nav {
+    width: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 1rem !important;
+    padding: 1rem clamp(1rem, 3vw, 2.5rem) !important;
+    background: #ffffff !important;
+    border-bottom: 1px solid rgba(45, 52, 54, 0.1) !important;
+    font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+    color: #2D3436 !important;
+  }
+  nav.site-nav a { color: #2D3436 !important; text-decoration: none !important; font: inherit !important; }
+  nav.site-nav .site-logo, nav.site-nav a.logo {
+    display: inline-flex !important;
+    align-items: baseline !important;
+    gap: .28rem !important;
+    flex: 0 0 auto !important;
+    font-size: 1.15rem !important;
+    font-weight: 900 !important;
+    letter-spacing: 0 !important;
+    white-space: nowrap !important;
+  }
+  nav.site-nav .site-logo span, nav.site-nav a.logo span { color: #E76F8B !important; }
+  nav.site-nav ul {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    flex-wrap: wrap !important;
+    gap: .85rem !important;
+    list-style: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  nav.site-nav li { display: inline-flex !important; margin: 0 !important; padding: 0 !important; }
+  nav.site-nav li::marker { content: "" !important; }
+  nav.site-nav ul a:not(.nav-cta) {
+    display: inline-flex !important;
+    align-items: center !important;
+    min-height: 2.25rem !important;
+    font-size: .92rem !important;
+    font-weight: 700 !important;
+    color: rgba(45, 52, 54, .82) !important;
+  }
+  nav.site-nav .nav-cta, nav.site-nav a.cta-button {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: .42rem !important;
+    min-height: 2.5rem !important;
+    padding: .65rem 1rem !important;
+    border-radius: 999px !important;
+    background: #2D3436 !important;
+    color: #ffffff !important;
+    font-size: .9rem !important;
+    font-weight: 800 !important;
+    line-height: 1 !important;
+    box-shadow: 0 10px 24px rgba(45, 52, 54, .16) !important;
+  }
+  nav.site-nav .play-icon { flex: 0 0 auto !important; width: .95em !important; height: .95em !important; }
+  @media (max-width: 760px) {
+    nav.site-nav { align-items: flex-start !important; flex-direction: column !important; padding: .9rem 1rem !important; }
+    nav.site-nav ul { justify-content: flex-start !important; gap: .35rem .75rem !important; }
+    nav.site-nav ul a:not(.nav-cta) { min-height: 1.85rem !important; font-size: .84rem !important; }
+    nav.site-nav .nav-cta, nav.site-nav a.cta-button { min-height: 2.25rem !important; padding: .58rem .86rem !important; font-size: .84rem !important; }
+  }
+</style>`;
+  if (/<\/head>/i.test(html)) return html.replace(/<\/head>/i, `${css}\n</head>`);
+  return `${css}\n${html}`;
+}
+
+function injectBloomieBlogBackLink(html, slug = '') {
+  if (!html || typeof html !== 'string' || !/^blog-/.test(String(slug || ''))) return html;
+  if (/href=["']\/p\/blog["'][^>]*>\s*(?:←|&larr;|Back to Blog|Back to blog|All Posts|All posts)/i.test(html)) return html;
+
+  let normalized = html;
+  const css = `<style id="bloomie-blog-back-link-css">
+  .blog-back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    margin: 0 0 1.25rem;
+    color: rgba(45, 52, 54, .68);
+    font-size: .9rem;
+    font-weight: 750;
+    text-decoration: none;
+  }
+  .blog-back-link:hover { color: #2D3436; text-decoration: underline; }
+</style>`;
+  if (!normalized.includes('id="bloomie-blog-back-link-css"')) {
+    normalized = /<\/head>/i.test(normalized)
+      ? normalized.replace(/<\/head>/i, `${css}\n</head>`)
+      : `${css}\n${normalized}`;
+  }
+  return normalized.replace(/<div([^>]+class=["'][^"']*\bcontent\b[^"']*["'][^>]*)>/i, `<div$1>\n<a class="blog-back-link" href="/p/blog">&larr; Back to Blog</a>`);
 }
 
 // Custom domain middleware — must be registered before /p/ routes
@@ -1900,6 +2005,95 @@ function summarizeScheduledTaskOutput(output, maxLength = 4000) {
   return text.length > maxLength ? `${text.slice(0, maxLength)}…` : text;
 }
 
+function getTimeZoneOffsetMsForSchedule(date, timeZone) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  }).formatToParts(date).reduce((acc, part) => {
+    if (part.type !== 'literal') acc[part.type] = part.value;
+    return acc;
+  }, {});
+
+  const asUtc = Date.UTC(
+    Number(parts.year),
+    Number(parts.month) - 1,
+    Number(parts.day),
+    Number(parts.hour),
+    Number(parts.minute),
+    Number(parts.second)
+  );
+  return asUtc - date.getTime();
+}
+
+function zonedScheduleTimeToUtc(year, monthIndex, day, hour, minute, timeZone) {
+  let utc = new Date(Date.UTC(year, monthIndex, day, hour, minute, 0, 0));
+  for (let i = 0; i < 2; i += 1) {
+    utc = new Date(Date.UTC(year, monthIndex, day, hour, minute, 0, 0) - getTimeZoneOffsetMsForSchedule(utc, timeZone));
+  }
+  return utc;
+}
+
+function getScheduledTaskWeekday(date, timeZone) {
+  return new Intl.DateTimeFormat('en-US', { timeZone, weekday: 'short' }).format(date);
+}
+
+function calculateScheduledTaskNextRunAt(task, now = new Date()) {
+  const frequency = task?.frequency || 'daily';
+  const [hour, minute] = (task?.run_time || '09:00').split(':').map(Number);
+  const timeZone = task?.timezone || task?.time_zone || 'America/Chicago';
+
+  if (frequency === 'every_10_min') return new Date(now.getTime() + 10 * 60 * 1000).toISOString();
+  if (frequency === 'every_30_min') return new Date(now.getTime() + 30 * 60 * 1000).toISOString();
+  if (frequency === 'hourly') {
+    const next = new Date(now);
+    next.setMinutes(Number.isFinite(minute) ? minute : 0, 0, 0);
+    if (next <= now) next.setHours(next.getHours() + 1);
+    return next.toISOString();
+  }
+
+  const localParts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric'
+  }).formatToParts(now).reduce((acc, part) => {
+    if (part.type !== 'literal') acc[part.type] = Number(part.value);
+    return acc;
+  }, {});
+
+  const safeHour = Number.isFinite(hour) ? hour : 9;
+  const safeMinute = Number.isFinite(minute) ? minute : 0;
+  let next = zonedScheduleTimeToUtc(localParts.year, localParts.month - 1, localParts.day, safeHour, safeMinute, timeZone);
+  if (next <= now) next = new Date(next.getTime() + 24 * 60 * 60 * 1000);
+
+  if (frequency === 'weekdays') {
+    while (['Sat', 'Sun'].includes(getScheduledTaskWeekday(next, timeZone))) {
+      next = new Date(next.getTime() + 24 * 60 * 60 * 1000);
+    }
+  } else if (frequency === 'weekly') {
+    next = new Date(next.getTime() + 7 * 24 * 60 * 60 * 1000);
+  } else if (frequency === 'monthly') {
+    const local = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric'
+    }).formatToParts(next).reduce((acc, part) => {
+      if (part.type !== 'literal') acc[part.type] = Number(part.value);
+      return acc;
+    }, {});
+    next = zonedScheduleTimeToUtc(local.year, local.month - 1, local.day, safeHour, safeMinute, timeZone);
+  }
+
+  return next.toISOString();
+}
+
 // ── Scheduled Task Runner ──────────────────────────────────────────────────
 async function runScheduledTasks(agentConfig) {
   const { createClient } = await import('@supabase/supabase-js');
@@ -1933,9 +2127,9 @@ async function runScheduledTasks(agentConfig) {
   for (const task of dueTasks) {
     const startedAt = new Date().toISOString();
 
-    // Calculate next_run_at based on frequency
-    const nextRunOffsets = { every_10_min: 600000, every_30_min: 1800000, hourly: 3600000, daily: 86400000, weekdays: 86400000, weekly: 604800000, monthly: 2592000000 };
-    const nextRunAt = new Date(Date.now() + (nextRunOffsets[task.frequency] || 86400000)).toISOString();
+    // Calculate the next run from the task's intended wall-clock time, not
+    // from the accidental time this worker happened to claim it.
+    const nextRunAt = calculateScheduledTaskNextRunAt(task);
 
     // Atomically claim the due task before running it. Multiple app instances can
     // see the same due row during deploy/restart windows; matching the previous

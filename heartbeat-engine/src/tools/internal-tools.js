@@ -37,6 +37,9 @@ function validateBloomieBlogHtml(content) {
   const hasCtaButtons = ['Call Us Now', 'Schedule a Demo', 'Interview an AI Employee'].every(label => html.includes(label));
   const hasTopNav = /<nav[^>]+class=["'][^"']*site-nav[^"']*["'][\s\S]*?href=["']\/["'][\s\S]*?href=["']\/p\/blog["'][\s\S]*?href=["']\/book-demo["']/i.test(html);
   const hasNavSafety = /bloomie-nav-safety|body>nav\.site-nav|\.site-nav/i.test(html);
+  const hasUnsafeNavReset = /\.bloomie-nav-safety\s+nav\.site-nav[\s\S]{0,400}all\s*:\s*unset/i.test(html);
+  const hasBackToBlog = /href=["']\/p\/blog["'][^>]*>\s*(?:←|&larr;|Back to Blog|Back to blog|All Posts|All posts)/i.test(html) ||
+    /class=["'][^"']*(?:back-link|blog-back-link|back-to-blog)[^"']*["'][\s\S]{0,220}href=["']\/p\/blog["']/i.test(html);
   const hasHeroOverlap = /\.hero-image[^}]*margin\s*:\s*-\d+px\s+auto\s+0/i.test(html) ||
     /img\.hero-image[^}]*margin\s*:\s*-\d+px\s+auto\s+0/i.test(html);
   const hasMasterStructure = /<!--\s*Bloomie Blog Master v2026-06-19\s*-->/i.test(html) &&
@@ -45,6 +48,8 @@ function validateBloomieBlogHtml(content) {
 
   if (!hasMasterStructure) errors.push('Use the locked Bloomie Blog Master v2026-06-19 structure: marker comment, header.blog-master-header, one direct img.hero-image, then div.content.');
   if (!hasTopNav) errors.push('Add the standard top nav before the header: nav.site-nav.bloomie-nav-safety with Bloomie Staffing logo linking to /, Blog link to /p/blog, and Book a Demo link to /book-demo so readers can navigate out.');
+  if (hasUnsafeNavReset) errors.push('Remove nav CSS that uses all: unset around .bloomie-nav-safety or nav.site-nav. The app applies the master nav styling; blog posts must not reset or recreate it.');
+  if (!hasBackToBlog) errors.push('Add a visible in-article back link to /p/blog near the top of div.content, before or directly after the author row, so readers have a clear way back to the blog index.');
   if (!heroSrc) errors.push('Add one direct img.hero-image immediately below the header.');
   if (heroSrc && !/^https:\/\/njfhzabmaxhfzekbzpzz\.supabase\.co\/storage\/v1\/object\/public\/bloom-images\//i.test(heroSrc)) {
     errors.push(`Hero image must use the public Bloomie generated image URL from image_generate. Invalid hero image URL: ${heroSrc}`);
@@ -76,7 +81,7 @@ function validateBloomieBlogHtml(content) {
       errors.push('Make the cta-card a complete, topic-specific closing CTA with a headline, useful body copy, and the three standard buttons.');
     }
   }
-  if (!hasNavSafety) errors.push('Add the Bloomie nav safety CSS for .site-nav, .site-logo, .nav-cta, plain nav, a.logo, and a.cta-button.');
+  if (!hasNavSafety) errors.push('Use the standard Bloomie site-nav markup and let the app apply master nav styling; do not invent custom navigation CSS.');
   if (/\bBLOOM Ecosystem\b/i.test(textOnly)) {
     errors.push('Public blog copy must say Bloomie Staffing, not BLOOM Ecosystem.');
   }
