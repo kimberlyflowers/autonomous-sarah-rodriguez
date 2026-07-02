@@ -1126,10 +1126,11 @@ function injectBloomiePostViews(html, slug = '') {
 
 function normalizeBloomiePageHtml(html, slug = '') {
   if (!html || typeof html !== 'string') return html;
-  const playIcon = '<svg class="play-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" style="width:.95em;height:.95em;vertical-align:-.12em;margin-right:.42rem"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>';
-  const currentNav = `<nav class="site-nav">
-        <a href="/" class="site-logo">Bloomie <span>Staffing</span></a>
-        <ul>
+  const playIcon = '<svg class="play-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>';
+  const currentNav = `<nav class="bloomie-master-nav" aria-label="Bloomie Staffing">
+        <div class="nav-inner">
+          <a href="/" class="logo">Bloomie <span>Staffing</span></a>
+          <ul class="nav-links">
             <li><a href="/#roles">Meet the Team</a></li>
             <li><a href="/#live-demo">Testimonials</a></li>
             <li><a href="/ai-employee-vs-chatbot">AI vs Chatbots</a></li>
@@ -1138,8 +1139,9 @@ function normalizeBloomiePageHtml(html, slug = '') {
             <li><a href="/p/blog">Blog</a></li>
             <li><a href="/p/faq">FAQ</a></li>
             <li><a href="/pricing">Pricing</a></li>
-            <li><a class="nav-cta" href="/book-demo">${playIcon}<span>Book a Demo</span></a></li>
-        </ul>
+            <li><a class="cta-button" href="/book-demo">${playIcon}<span>Book a Demo</span></a></li>
+          </ul>
+        </div>
     </nav>`;
   let normalized = html
     .replace(/\.bloomie-nav-safety\s+nav\.site-nav,\s*\.bloomie-nav-safety\s+a\.site-logo,\s*\.bloomie-nav-safety\s+a\.nav-cta,\s*\.bloomie-nav-safety\s+nav,\s*\.bloomie-nav-safety\s+a\.logo,\s*\.bloomie-nav-safety\s+a\.cta-button\s*\{\s*all\s*:\s*unset\s*;\s*\}/gi, '')
@@ -1166,6 +1168,7 @@ function normalizeBloomiePageHtml(html, slug = '') {
     normalized = normalized.replace(/<nav[\s\S]*?<\/nav>/, currentNav);
   }
   normalized = injectBloomieMasterNavStyles(normalized);
+  normalized = injectBloomieBlogHeaderSubtitle(normalized, slug);
   normalized = injectBloomieBlogBackLink(normalized, slug);
   normalized = injectBloomieGoogleAnalytics(normalized);
   normalized = injectBloomieFirstPartyAnalytics(normalized);
@@ -1174,92 +1177,148 @@ function normalizeBloomiePageHtml(html, slug = '') {
 }
 
 function injectBloomieMasterNavStyles(html) {
-  if (!html || typeof html !== 'string' || !/<nav[^>]+class=["'][^"']*site-nav/i.test(html)) return html;
+  if (!html || typeof html !== 'string' || !/<nav\b/i.test(html)) return html;
   if (html.includes('id="bloomie-master-nav-css"')) return html;
   const css = `<style id="bloomie-master-nav-css">
-  nav.site-nav, nav.site-nav * { box-sizing: border-box !important; }
-  nav.site-nav {
+  nav.bloomie-master-nav, nav.bloomie-master-nav * { box-sizing: border-box !important; }
+  nav.bloomie-master-nav {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 100 !important;
     width: 100% !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: space-between !important;
-    gap: 1rem !important;
-    padding: 1rem clamp(1rem, 3vw, 2.5rem) !important;
-    background: #ffffff !important;
-    border-bottom: 1px solid rgba(45, 52, 54, 0.1) !important;
+    background: rgba(255, 255, 255, .94) !important;
+    backdrop-filter: blur(14px) !important;
+    border-bottom: 1px solid rgba(45, 52, 54, .08) !important;
     font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
     color: #2D3436 !important;
   }
-  nav.site-nav a { color: #2D3436 !important; text-decoration: none !important; font: inherit !important; }
-  nav.site-nav .site-logo, nav.site-nav a.logo {
-    display: inline-flex !important;
+  nav.bloomie-master-nav .nav-inner {
+    max-width: 1180px !important;
+    margin: 0 auto !important;
+    padding: 1rem 1.5rem !important;
+    display: flex !important;
     align-items: baseline !important;
-    gap: .28rem !important;
-    flex: 0 0 auto !important;
-    font-size: 1.15rem !important;
+    justify-content: space-between !important;
+    gap: 1rem !important;
+  }
+  nav.bloomie-master-nav a { color: #2D3436 !important; text-decoration: none !important; font: inherit !important; }
+  nav.bloomie-master-nav .logo {
+    font-size: 1.18rem !important;
     font-weight: 900 !important;
-    letter-spacing: 0 !important;
+    color: #2D3436 !important;
     white-space: nowrap !important;
   }
-  nav.site-nav .site-logo span, nav.site-nav a.logo span { color: #E76F8B !important; }
-  nav.site-nav ul {
+  nav.bloomie-master-nav .logo span { color: #F4A261 !important; }
+  nav.bloomie-master-nav .nav-links {
     display: flex !important;
     align-items: center !important;
-    justify-content: flex-end !important;
-    flex-wrap: wrap !important;
-    gap: .85rem !important;
+    gap: 1.25rem !important;
     list-style: none !important;
     padding: 0 !important;
     margin: 0 !important;
   }
-  nav.site-nav li { display: inline-flex !important; margin: 0 !important; padding: 0 !important; }
-  nav.site-nav li::marker { content: "" !important; }
-  nav.site-nav ul a:not(.nav-cta) {
-    display: inline-flex !important;
-    align-items: center !important;
-    min-height: 2.25rem !important;
+  nav.bloomie-master-nav li { display: inline-flex !important; margin: 0 !important; padding: 0 !important; position: static !important; border: 0 !important; }
+  nav.bloomie-master-nav li::before, nav.bloomie-master-nav li::after, nav.bloomie-master-nav li::marker {
+    content: none !important;
+    display: none !important;
+    background: none !important;
+  }
+  nav.bloomie-master-nav .nav-links a:not(.cta-button) {
+    text-decoration: none !important;
     font-size: .92rem !important;
     font-weight: 700 !important;
-    color: rgba(45, 52, 54, .82) !important;
+    color: #2D3436 !important;
+    white-space: nowrap !important;
   }
-  nav.site-nav .nav-cta, nav.site-nav a.cta-button {
+  nav.bloomie-master-nav .nav-links a:not(.cta-button):hover { color: #F4A261 !important; }
+  nav.bloomie-master-nav .cta-button {
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
     gap: .42rem !important;
-    min-height: 2.5rem !important;
-    padding: .65rem 1rem !important;
-    border-radius: 999px !important;
-    background: #2D3436 !important;
+    text-decoration: none !important;
+    border: 0 !important;
+    border-radius: 8px !important;
+    padding: .78rem 1.15rem !important;
     color: #ffffff !important;
-    font-size: .9rem !important;
     font-weight: 800 !important;
-    line-height: 1 !important;
-    box-shadow: 0 10px 24px rgba(45, 52, 54, .16) !important;
+    background: linear-gradient(135deg, #F4A261, #E76F8B) !important;
+    box-shadow: 0 9px 22px rgba(231, 111, 139, .18) !important;
+    white-space: nowrap !important;
   }
-  nav.site-nav .play-icon { flex: 0 0 auto !important; width: .95em !important; height: .95em !important; }
-  @media (max-width: 760px) {
-    nav.site-nav { align-items: flex-start !important; flex-direction: column !important; padding: .9rem 1rem !important; }
-    nav.site-nav ul { justify-content: flex-start !important; gap: .35rem .75rem !important; }
-    nav.site-nav ul a:not(.nav-cta) { min-height: 1.85rem !important; font-size: .84rem !important; }
-    nav.site-nav .nav-cta, nav.site-nav a.cta-button { min-height: 2.25rem !important; padding: .58rem .86rem !important; font-size: .84rem !important; }
+  nav.bloomie-master-nav .play-icon { width: .95em !important; height: .95em !important; flex: 0 0 auto !important; position: static !important; margin: 0 !important; }
+  @media (max-width: 900px) {
+    nav.bloomie-master-nav .nav-inner { align-items: center !important; }
+    nav.bloomie-master-nav .nav-links li:not(:last-child) { display: none !important; }
+  }
+  @media (max-width: 520px) {
+    nav.bloomie-master-nav .nav-inner { padding: .85rem 1rem !important; }
+    nav.bloomie-master-nav .logo { font-size: 1.05rem !important; }
+    nav.bloomie-master-nav .cta-button { padding: .68rem .82rem !important; font-size: .86rem !important; }
   }
 </style>`;
   if (/<\/head>/i.test(html)) return html.replace(/<\/head>/i, `${css}\n</head>`);
   return `${css}\n${html}`;
 }
 
+function injectBloomieBlogHeaderSubtitle(html, slug = '') {
+  if (!html || typeof html !== 'string' || !/^blog-/.test(String(slug || ''))) return html;
+  let normalized = html;
+  const css = `<style id="bloomie-blog-header-css">
+  header.blog-master-header h1 {
+    max-width: 960px;
+    margin: 0 auto;
+    font-size: clamp(2.55rem, 4.4vw, 3.55rem);
+    line-height: 1.05;
+    font-weight: 900;
+    letter-spacing: 0;
+  }
+  header.blog-master-header p {
+    max-width: 780px;
+    margin: 1rem auto 0;
+    font-size: clamp(1.02rem, 1.6vw, 1.16rem);
+    line-height: 1.7;
+    color: rgba(255,255,255,.92);
+  }
+</style>`;
+  if (!normalized.includes('id="bloomie-blog-header-css"')) {
+    normalized = /<\/head>/i.test(normalized)
+      ? normalized.replace(/<\/head>/i, `${css}\n</head>`)
+      : `${css}\n${normalized}`;
+  }
+
+  const description = normalized.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i)?.[1] ||
+      normalized.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i)?.[1] ||
+      '';
+  const clean = description
+      .replace(/&quot;/g, '"')
+      .replace(/&amp;/g, '&')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .trim();
+  normalized = normalized.replace(/<header([^>]+class=["'][^"']*\bblog-master-header\b[^"']*["'][^>]*)>([\s\S]*?)<\/header>/i, (match, attrs, inner) => {
+    if (/<p\b/i.test(inner)) {
+      if (!clean) return match;
+      const filled = inner.replace(/<p([^>]*)>\s*<\/p>/i, `<p$1>${clean}</p>`);
+      return `<header${attrs}>${filled}</header>`;
+    }
+    if (!clean) return match;
+    return `<header${attrs}>${inner}\n<p>${clean}</p></header>`;
+  });
+  return normalized;
+}
+
 function injectBloomieBlogBackLink(html, slug = '') {
   if (!html || typeof html !== 'string' || !/^blog-/.test(String(slug || ''))) return html;
-  if (/href=["']\/p\/blog["'][^>]*>\s*(?:←|&larr;|Back to Blog|Back to blog|All Posts|All posts)/i.test(html)) return html;
-
-  let normalized = html;
+  let normalized = html.replace(/<a[^>]+class=["'][^"']*\bblog-back-link\b[^"']*["'][^>]*>[\s\S]*?<\/a>\s*/gi, '');
   const css = `<style id="bloomie-blog-back-link-css">
   .blog-back-link {
     display: inline-flex;
     align-items: center;
     gap: .35rem;
-    margin: 0 0 1.25rem;
+    max-width: 1180px;
+    margin: .95rem auto;
+    padding: 0 1.5rem;
     color: rgba(45, 52, 54, .68);
     font-size: .9rem;
     font-weight: 750;
@@ -1272,7 +1331,7 @@ function injectBloomieBlogBackLink(html, slug = '') {
       ? normalized.replace(/<\/head>/i, `${css}\n</head>`)
       : `${css}\n${normalized}`;
   }
-  return normalized.replace(/<div([^>]+class=["'][^"']*\bcontent\b[^"']*["'][^>]*)>/i, `<div$1>\n<a class="blog-back-link" href="/p/blog">&larr; Back to Blog</a>`);
+  return normalized.replace(/(<nav[\s\S]*?<\/nav>)/i, `$1\n<a class="blog-back-link" href="/p/blog">&larr; Back to Blog</a>`);
 }
 
 // Custom domain middleware — must be registered before /p/ routes

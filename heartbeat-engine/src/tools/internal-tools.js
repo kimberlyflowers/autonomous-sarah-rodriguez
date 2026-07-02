@@ -35,8 +35,8 @@ function validateBloomieBlogHtml(content) {
   const hasAuthorAvatar = /<div[^>]+class=["'][^"']*author-row[^"']*["'][\s\S]*?<img[^>]+src=["']https:\/\/njfhzabmaxhfzekbzpzz\.supabase\.co\/storage\/v1\/object\/public\/bloom-images\//i.test(html);
   const hasCtaCard = /class=["'][^"']*cta-card[^"']*["']/i.test(html);
   const hasCtaButtons = ['Call Us Now', 'Schedule a Demo', 'Interview an AI Employee'].every(label => html.includes(label));
-  const hasTopNav = /<nav[^>]+class=["'][^"']*site-nav[^"']*["'][\s\S]*?href=["']\/["'][\s\S]*?href=["']\/p\/blog["'][\s\S]*?href=["']\/book-demo["']/i.test(html);
-  const hasNavSafety = /bloomie-nav-safety|body>nav\.site-nav|\.site-nav/i.test(html);
+  const hasTopNav = /<nav[^>]+class=["'][^"']*(?:site-nav|bloomie-master-nav)[^"']*["'][\s\S]*?href=["']\/["'][\s\S]*?href=["']\/p\/blog["'][\s\S]*?href=["']\/book-demo["']/i.test(html);
+  const hasNavSafety = /bloomie-nav-safety|body>nav\.site-nav|\.site-nav|bloomie-master-nav/i.test(html);
   const hasUnsafeNavReset = /\.bloomie-nav-safety\s+nav\.site-nav[\s\S]{0,400}all\s*:\s*unset/i.test(html);
   const hasBackToBlog = /href=["']\/p\/blog["'][^>]*>\s*(?:←|&larr;|Back to Blog|Back to blog|All Posts|All posts)/i.test(html) ||
     /class=["'][^"']*(?:back-link|blog-back-link|back-to-blog)[^"']*["'][\s\S]{0,220}href=["']\/p\/blog["']/i.test(html);
@@ -47,7 +47,7 @@ function validateBloomieBlogHtml(content) {
     /<div[^>]+class=["']content["']/i.test(html);
 
   if (!hasMasterStructure) errors.push('Use the locked Bloomie Blog Master v2026-06-19 structure: marker comment, header.blog-master-header, one direct img.hero-image, then div.content.');
-  if (/<nav\b/i.test(html) && !hasTopNav) errors.push('If you include navigation markup, use only the standard nav.site-nav with Bloomie Staffing logo linking to /, Blog link to /p/blog, and Book a Demo link to /book-demo. Otherwise omit top navigation and let the app inject the master nav.');
+  if (/<nav\b/i.test(html) && !hasTopNav) errors.push('If you include navigation markup, use only the standard Bloomie master nav with Bloomie Staffing logo linking to /, Blog link to /p/blog, and Book a Demo link to /book-demo. Otherwise omit top navigation and let the app inject the master nav.');
   if (hasUnsafeNavReset) errors.push('Remove nav CSS that uses all: unset around .bloomie-nav-safety or nav.site-nav. The app applies the master nav styling; blog posts must not reset or recreate it.');
   if (!hasBackToBlog) errors.push('Add a visible in-article back link to /p/blog near the top of div.content, before or directly after the author row, so readers have a clear way back to the blog index.');
   if (!heroSrc) errors.push('Add one direct img.hero-image immediately below the header.');
