@@ -722,6 +722,22 @@ WHEN TO USE:
     operation: "write"
   },
 
+  update_artifact: {
+    name: "update_artifact",
+    description: "Update an existing HTML artifact in place. Use this to repair a live Bloomie blog page after verification finds broken images, missing author/date/template elements, or other fixable HTML problems. Do not create a duplicate when the same artifact can be corrected.",
+    parameters: {
+      type: "object",
+      properties: {
+        artifactId: { type: "string", description: "Artifact UUID to update" },
+        content: { type: "string", description: "Corrected full artifact HTML content" },
+        name: { type: "string", description: "Optional updated artifact name" }
+      },
+      required: ["artifactId", "content"]
+    },
+    category: "artifacts",
+    operation: "write"
+  },
+
   publish_artifact: {
     name: "publish_artifact",
     description: "Publish an existing HTML artifact to a clean /p/{slug} URL. Use after create_artifact for Bloomie blog posts, then verify the returned publicUrl with web_fetch.",
@@ -1805,6 +1821,51 @@ export const internalToolExecutors = {
       };
     } catch (e) {
       logger.error('create_artifact failed:', e.message);
+      return { success: false, error: e.message };
+    }
+  },
+
+  update_artifact: async (params) => {
+    try {
+      const artifactId = params.artifactId || params.fileId || params.id;
+      const content = String(params.content || '');
+      if (!artifactId) return { success: false, error: 'update_artifact requires artifactId' };
+      if (!content) return { success: false, error: 'update_artifact requires corrected full HTML content' };
+
+      if (/oaidalleapiprod[a-z]*\.blob\.core\.windows\.net\/private|[?&]se=\d{4}-\d{2}-\d{2}T/i.test(content)) {
+        return {
+          success: false,
+          error: 'Blog HTML contains a private or expiring image URL. Use a permanent public Supabase Storage URL before calling update_artifact.'
+        };
+      }
+      const blogErrors = validateBloomieBlogHtml(content);
+      if (blogErrors) {
+        return {
+          success: false,
+          error: `Bloomie blog failed the locked template gate:\n- ${blogErrors.join('\n- ')}`
+        };
+      }
+
+      const port = process.env.PORT || 3000;
+      const BASE_URL = process.env.BASE_URL || `http://localhost:${port}`;
+      const resp = await fetch(`${BASE_URL}/api/files/artifacts/${artifactId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content,
+          ...(params.name ? { name: params.name } : {})
+        })
+      });
+      const data = await resp.json();
+      if (!resp.ok || data.error || data.success === false) throw new Error(data.error || 'Failed to update artifact');
+      return {
+        success: true,
+        artifactId,
+        artifact: data.artifact,
+        message: `Artifact ${artifactId} updated in place. Verify the live URL again with web_fetch.`
+      };
+    } catch (e) {
+      logger.error('update_artifact failed:', e.message);
       return { success: false, error: e.message };
     }
   },

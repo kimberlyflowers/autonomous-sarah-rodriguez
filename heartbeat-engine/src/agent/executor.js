@@ -905,7 +905,7 @@ Use the available tools to complete this task. Work step by step and explain you
     const TASK_TOOL_MAP = {
       blog: [
         // Core blog creation
-        'create_artifact', 'publish_artifact',
+        'create_artifact', 'update_artifact', 'publish_artifact',
         // Content research
         'web_search', 'web_fetch',
         // Image for blog hero
@@ -1493,9 +1493,9 @@ Remember: Plan first. Execute one step. Verify it worked. Then move on.`;
           return 'Call publish_artifact now using the artifact ID returned by create_artifact.';
         }
         if (this.hasSuccessfulToolAttempt('publish_artifact') && !this.hasSuccessfulToolAttempt('web_fetch')) {
-          return 'Call web_fetch now on the published public URL and the live /p/blog index. Confirm the live post has the title, master marker, Bloomie-hosted hero image, author row/date, and that /p/blog includes the new card.';
+          return 'Call web_fetch now on the published public URL and the live /p/blog index. Confirm the live post has the title, master marker, Bloomie-hosted hero image, author row/date, and that /p/blog includes the new card. If verification finds a fixable HTML issue, call update_artifact on the existing artifact and then web_fetch again.';
         }
-        return 'Call web_search, web_fetch, image_generate, create_artifact, or publish_artifact now, depending on the current plan step. Do not call ghl_create_blog_post for Bloomie blog publishing.';
+        return 'Call web_search, web_fetch, image_generate, create_artifact, update_artifact, or publish_artifact now, depending on the current plan step. Do not call ghl_create_blog_post for Bloomie blog publishing.';
       case 'social':
         return 'Call web_search, image_generate, or ghl_create_social_post now, depending on the current plan step.';
       default:
@@ -1536,7 +1536,9 @@ Before retrying create_artifact, confirm in the HTML:
 - The final CTA is a dark cta-card near the end of the article and includes exactly: Call Us Now, Schedule a Demo, Interview an AI Employee.
 - The page includes the Bloomie nav safety CSS for .site-nav, .site-logo, .nav-cta, plain nav, a.logo, and a.cta-button.
 
-After create_artifact succeeds, continue normally with publish_artifact and web_fetch verification.`;
+If the bad HTML was already saved or published, call update_artifact on the existing artifact ID with the corrected full HTML instead of creating a duplicate.
+
+After create_artifact or update_artifact succeeds, continue normally with publish_artifact when needed and web_fetch verification.`;
 
     await this.contextManager.addConversationTurn('system', reminder, {
       type: 'system_critical',
