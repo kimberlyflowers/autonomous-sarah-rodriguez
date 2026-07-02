@@ -1750,7 +1750,19 @@ async function escalateToBloomieTicket(supabase, taskRunId, taskName, agentId, o
   }
 }
 
-function isScheduledTaskSubstantiveResult(result) {
+function isTextOnlyScheduledTask(task) {
+  const text = `${task?.name || ''} ${task?.task_type || ''} ${task?.instruction || ''}`.toLowerCase();
+  return /(?:smoke test|reply with exactly|respond with exactly|say exactly)/.test(text);
+}
+
+function isScheduledTaskSubstantiveResult(result, task = null) {
+  if (isTextOnlyScheduledTask(task)) {
+    const text = typeof result === 'string'
+      ? result
+      : String(result?.response || result?.result || result?.textResponse || '');
+    return Boolean(text.trim());
+  }
+
   if (typeof result !== 'object' || !result) return Boolean(String(result || '').trim());
 
   const verification = result.verification || {};
@@ -1899,7 +1911,7 @@ async function runScheduledTasks(agentConfig) {
       if (innerStatus === 'failed' || (result?.error && !result?.response)) {
         success = false;
         logger.error(`❌ Task inner failure: ${task.name}`, { innerStatus, error: result?.error });
-      } else if (!isScheduledTaskSubstantiveResult(result)) {
+      } else if (!isScheduledTaskSubstantiveResult(result, task)) {
         success = false;
         output = `Task finished without verified output. The executor returned ${innerStatus || 'no status'}, but it did not verify a plan or use any substantive non-planning tools.`;
         logger.warn(`⚠️ Task unverified: ${task.name}`, { innerStatus, toolsUsed: result?.toolsUsed, verification: result?.verification });

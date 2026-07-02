@@ -140,6 +140,9 @@ export class AgentExecutor {
     this.scheduledTerminalFailure = null;
     this.scheduledImageGenerations = 0;
     this.unfinishedPlanNudges = 0;
+    this._currentTaskText = task || '';
+    this._currentTaskName = context.taskName || '';
+    this._currentRawTaskType = context.taskType || '';
     logger.info('Context manager reset for fresh task execution');
 
     // Load AGENTS.md / steering context after reset so every task starts with
@@ -467,6 +470,7 @@ Use the available tools to complete this task. Work step by step and explain you
     // Setting mode:'ANY' forces it to call at least one tool. Keep forcing after
     // the plan is written until a non-planning tool has actually been attempted.
     const forceToolUse = this._isScheduledTask &&
+      !this.isTextOnlyScheduledTask() &&
       (!this.hasSubstantiveToolUse() || this.needsScheduledOwnerNotification()) &&
       toolDefs.length > 0;
 
@@ -858,6 +862,15 @@ Use the available tools to complete this task. Work step by step and explain you
    * to avoid overwhelming the model with 99 tools (Gemini stops calling tools when overloaded)
    */
   formatToolsForClaude(taskType = null) {
+    if (this.isTextOnlyScheduledTask()) {
+      logger.info('Formatted tools for text-only scheduled task', {
+        taskType: this._currentRawTaskType || this._currentTaskType || 'custom',
+        toolCount: 0,
+        filtered: true
+      });
+      return [];
+    }
+
     // ═══ TASK-TYPE TOOL FILTERING ═══
     // Gemini 2.5 Flash with 99 tools responds text-only instead of calling tools.
     // Filtering to 10-20 relevant tools per task type fixes this.
@@ -1364,6 +1377,12 @@ Remember: Plan first. Execute one step. Verify it worked. Then move on.`;
       !this.hasToolAttempt('notify_owner');
   }
 
+  isTextOnlyScheduledTask() {
+    if (!this._isScheduledTask) return false;
+    const text = `${this._currentTaskName || ''} ${this._currentRawTaskType || ''} ${this._currentTaskText || ''}`.toLowerCase();
+    return /(?:smoke test|reply with exactly|respond with exactly|say exactly)/.test(text);
+  }
+
   shouldSuppressPlanningToolsForScheduledTask(toolName) {
     if (this.needsScheduledOwnerNotification()) {
       return PRE_ACTION_SUPPRESSED_TOOLS.has(toolName);
@@ -1373,6 +1392,7 @@ Remember: Plan first. Execute one step. Verify it worked. Then move on.`;
   }
 
   shouldContinueScheduledTaskAfterPlanningOnly(currentTurn) {
+    if (this.isTextOnlyScheduledTask()) return false;
     if (!this._isScheduledTask || this.hasSubstantiveToolUse()) return false;
     return currentTurn < 5;
   }
