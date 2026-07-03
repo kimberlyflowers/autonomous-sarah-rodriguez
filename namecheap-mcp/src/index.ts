@@ -17,6 +17,18 @@ app.get("/health", (_req, res) => {
   });
 });
 
+app.get("/egress-ip", async (_req, res) => {
+  try {
+    const response = await fetch("https://api.ipify.org?format=json", {
+      signal: AbortSignal.timeout(10000),
+    });
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
 app.all("/mcp", async (req, res) => {
   const server = new McpServer({
     name: "namecheap-mcp-server",
