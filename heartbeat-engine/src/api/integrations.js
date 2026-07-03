@@ -76,7 +76,7 @@ const PLATFORMS = {
     name: 'Shopify',
     authUrl: 'https://{shop}.myshopify.com/admin/oauth/authorize',
     tokenUrl: 'https://{shop}.myshopify.com/admin/oauth/access_token',
-    scopes: ['read_products', 'write_products', 'read_orders', 'write_orders', 'read_customers', 'write_customers'],
+    scopes: ['read_products', 'read_orders', 'read_customers'],
     scopeSeparator: ',',
     extraParams: {},
     envClientId: 'SHOPIFY_CLIENT_ID',

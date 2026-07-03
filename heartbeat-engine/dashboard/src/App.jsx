@@ -5140,7 +5140,7 @@ function App({ authUser }) {
 
     const body={};
     if(platform==="shopify"){
-      const shopDomain=window.prompt("Enter your Shopify shop domain, like mystore.myshopify.com");
+      const shopDomain=window.prompt("Enter your Shopify shop domain", "petalcorebeauty.com");
       if(!shopDomain?.trim()) return;
       body.shopDomain=shopDomain.trim();
     }

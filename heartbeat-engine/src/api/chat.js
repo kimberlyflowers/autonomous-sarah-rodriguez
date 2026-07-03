@@ -18,6 +18,7 @@ import { loadAgentConfig } from '../config/agent-profile.js';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
+import { shopifyToolDefinitions } from '../tools/shopify-tools.js';
 
 // ── Managed Website Agent (lazy import — only used when sessionType=website_build) ─────
 let runWebsiteBuild = null;
@@ -1702,6 +1703,8 @@ const _ALL_TOOLS = [
       required: ["to", "subject", "body"]
     }
   },
+  // ── SHOPIFY ──────────────────────────────────────────────────────────────
+  ...shopifyToolDefinitions,
   // ── DOCUMENTS ────────────────────────────────────────────────────────────
   {
     name: "bloom_create_document",
@@ -4770,6 +4773,12 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
     if (toolName.startsWith('gmail_')) {
       const { executeGmailTool } = await import('../tools/gmail-tools.js');
       return await executeGmailTool(toolName, toolInput);
+    }
+
+    // Shopify tools
+    if (toolName.startsWith('shopify_')) {
+      const { executeShopifyTool } = await import('../tools/shopify-tools.js');
+      return await executeShopifyTool(toolName, toolInput, orgId);
     }
 
     // Document tools

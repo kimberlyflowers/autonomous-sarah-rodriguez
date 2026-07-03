@@ -9,6 +9,7 @@ import { executeWebSearchTool } from './web-search-tools.js';
 import { executeImageTool } from './image-tools.js';
 import { executeScrapeTools } from './scrape-tools.js';
 import { executeGmailTool } from './gmail-tools.js';
+import { executeShopifyTool } from './shopify-tools.js';
 // trustGate disabled — removed to allow unrestricted tool execution
 
 const logger = createLogger('enhanced-executor');
@@ -285,6 +286,8 @@ export class EnhancedToolExecutor {
       result = await executeScrapeTools(execution.toolName, execution.parameters);
     } else if (execution.toolName.startsWith('gmail_')) {
       result = await executeGmailTool(execution.toolName, execution.parameters);
+    } else if (execution.toolName.startsWith('shopify_')) {
+      result = await executeShopifyTool(execution.toolName, execution.parameters, execution.options?.orgId || execution.options?.organizationId || null);
     } else {
       throw new Error(`Unknown tool category: ${execution.toolName}`);
     }

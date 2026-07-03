@@ -576,11 +576,8 @@ const CONNECTORS = {
     tokenUrl: 'https://{shop}.myshopify.com/admin/oauth/access_token',
     scopes: [
       'read_products',
-      'write_products',
       'read_orders',
-      'write_orders',
       'read_customers',
-      'write_customers',
     ],
     extraParams: {},
     requiresShopDomain: true,
