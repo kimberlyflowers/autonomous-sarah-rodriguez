@@ -4994,6 +4994,7 @@ function App({ authUser }) {
   const plusMenuRef=useRef(null);
   const [oauthToast,setOauthToast]=useState(null);
   const [activeConnectors,setActiveConnectors]=useState({ghl:true});
+  const [connectorCatalog,setConnectorCatalog]=useState({});
   const [ghlConnected,setGhlConnected]=useState(null); // null=checking, true=ok, false=not connected
   const [showGhlBanner,setShowGhlBanner]=useState(false);
   const [ghlPit,setGhlPit]=useState('');
@@ -5053,16 +5054,32 @@ function App({ authUser }) {
   // Extracted so it can be called both on mount and after OAuth success
   const loadActiveConnectors = () => {
     // Backend resolves org from JWT — no need to send orgId from frontend
-    fetch('/api/connectors/active')
+    fetch('/api/integrations/list')
       .then(r=>r.ok?r.json():null)
       .then(data=>{
         if(data?.connectors){
           const map={ghl:true};
-          data.connectors.forEach(c=>{ map[c.slug]=true; });
+          const catalog={};
+          data.connectors.forEach(c=>{
+            catalog[c.slug]=c;
+            if(c.connected) map[c.slug]=true;
+          });
+          setConnectorCatalog(catalog);
           setActiveConnectors(map);
         }
       })
-      .catch(()=>{});
+      .catch(()=>{
+        fetch('/api/connectors/active')
+          .then(r=>r.ok?r.json():null)
+          .then(data=>{
+            if(data?.connectors){
+              const map={ghl:true};
+              data.connectors.forEach(c=>{ map[c.slug]=true; });
+              setActiveConnectors(map);
+            }
+          })
+          .catch(()=>{});
+      });
   };
 
   useEffect(()=>{ loadActiveConnectors(); },[]);
@@ -5096,6 +5113,73 @@ function App({ authUser }) {
       }
     }catch(e){ /* keep banner open on error */ }
     setGhlSaving(false);
+  };
+
+  const connectorPlatform = slug => ({
+    gmail:'google',
+    'google-calendar':'google',
+    'google-drive':'google',
+    zoom:'zoom',
+    shopify:'shopify',
+  }[slug]);
+
+  const connectConnector=async item=>{
+    if(item.slug==="ghl"){
+      setShowGhlBanner(true);
+      setOauthToast({type:'success',msg:'Add your GoHighLevel token in the banner above.'});
+      setTimeout(()=>setOauthToast(null),3500);
+      return;
+    }
+
+    const platform=connectorPlatform(item.slug);
+    if(!platform){
+      setOauthToast({type:'error',msg:`${item.name} connector is not live yet.`});
+      setTimeout(()=>setOauthToast(null),4000);
+      return;
+    }
+
+    const body={};
+    if(platform==="shopify"){
+      const shopDomain=window.prompt("Enter your Shopify shop domain, like mystore.myshopify.com");
+      if(!shopDomain?.trim()) return;
+      body.shopDomain=shopDomain.trim();
+    }
+
+    try{
+      const h=await getAuthHeaders();
+      const r=await fetch(`/api/integrations/${platform}/start`,{
+        method:'POST',
+        headers:{...h,'Content-Type':'application/json'},
+        body:JSON.stringify(body)
+      });
+      const d=await r.json();
+      if(!r.ok||!d.authUrl) throw new Error(d.error||'Could not start connector.');
+      window.location.href=d.authUrl;
+    }catch(err){
+      setOauthToast({type:'error',msg:err.message||'Connector failed to start.'});
+      setTimeout(()=>setOauthToast(null),5000);
+    }
+  };
+
+  const disconnectConnector=async item=>{
+    try{
+      const platform=connectorPlatform(item.slug)||item.slug;
+      await fetch(`/api/integrations/${platform}/disconnect`,{method:'POST'});
+      setActiveConnectors(p=>{
+        const next={...p};
+        if(platform==="google"){
+          delete next.gmail; delete next['google-calendar']; delete next['google-drive'];
+        } else {
+          delete next[item.slug];
+        }
+        return next;
+      });
+      setOauthToast({type:'success',msg:`Disconnected ${item.name}`});
+      setTimeout(()=>setOauthToast(null),3500);
+    }catch(err){
+      setOauthToast({type:'error',msg:'Disconnect failed'});
+      setTimeout(()=>setOauthToast(null),3500);
+    }
   };
 
   useEffect(()=>{
@@ -7907,7 +7991,7 @@ function App({ authUser }) {
                   <div key={cat} style={{marginBottom:28}}>
                     <div style={{fontSize:11,fontWeight:700,color:c.fa,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:10}}>{cat}</div>
                     <div style={{display:"grid",gridTemplateColumns:mob?"1fr":"repeat(auto-fill,minmax(280px,1fr))",gap:10}}>
-                      {items.map(item=>{ const isConn=!!(activeConnectors[item.slug]); return (
+                      {items.map(item=>{ const isConn=!!(activeConnectors[item.slug]); const catalog=connectorCatalog[item.slug]||{}; const isSupported=item.slug==="ghl"||!!connectorPlatform(item.slug)||catalog.supported; return (
                         <div key={item.slug} style={{display:"flex",alignItems:"center",gap:14,padding:"14px 16px",borderRadius:12,border:"1.5px solid "+(isConn?c.ac+"55":c.ln),background:isConn?c.ac+"08":c.cd,transition:"all .2s"}} onMouseEnter={e=>{if(!isConn)e.currentTarget.style.borderColor=c.ac+"44";}} onMouseLeave={e=>{if(!isConn)e.currentTarget.style.borderColor=isConn?c.ac+"55":c.ln;}}>
                           <div style={{width:40,height:40,borderRadius:10,background:isConn?"linear-gradient(135deg,#F4A261,#E76F8B)":c.sf,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,color:isConn?"#fff":c.so,overflow:"hidden"}}>{item.icon}</div>
                           <div style={{flex:1,minWidth:0}}>
@@ -7917,14 +8001,14 @@ function App({ authUser }) {
                           {isConn?(
                             <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4,flexShrink:0}}>
                               <div style={{fontSize:10,fontWeight:700,color:c.ac,background:c.ac+"18",padding:"2px 8px",borderRadius:20}}>Connected</div>
-                              <button onClick={async e=>{e.stopPropagation();try{await fetch(`/api/integrations/${item.slug}/disconnect`,{method:'POST'});setActiveConnectors(p=>({...p,[item.slug]:false}));setOauthToast({type:'success',msg:`Disconnected ${item.name}`});setTimeout(()=>setOauthToast(null),3500);}catch(err){setOauthToast({type:'error',msg:'Disconnect failed'});setTimeout(()=>setOauthToast(null),3500);}}} style={{fontSize:10,color:c.fa,background:"none",border:"none",cursor:"pointer",padding:"2px 4px"}}>Disconnect</button>
+                              <button onClick={e=>{e.stopPropagation();disconnectConnector(item);}} style={{fontSize:10,color:c.fa,background:"none",border:"none",cursor:"pointer",padding:"2px 4px"}}>Disconnect</button>
                             </div>
                           ):(
-                            <button onClick={e=>{e.stopPropagation();const orgId=meProfile?.orgId||"a1000000-0000-0000-0000-000000000001";window.location.href=`/oauth/connect/${item.slug}?orgId=${orgId}`;}}
-                              style={{padding:"7px 14px",borderRadius:8,border:"1.5px solid #F4A261",background:"transparent",cursor:"pointer",flexShrink:0,whiteSpace:"nowrap",transition:"all .15s",fontSize:12,fontWeight:700}}
-                              onMouseEnter={e=>{e.currentTarget.style.background="linear-gradient(135deg,#F4A261,#E76F8B)";e.currentTarget.style.borderColor="transparent";e.currentTarget.querySelector("span").style.WebkitTextFillColor="#fff";e.currentTarget.querySelector("span").style.backgroundImage="none";}}
-                              onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.borderColor="#F4A261";e.currentTarget.querySelector("span").style.WebkitTextFillColor="transparent";e.currentTarget.querySelector("span").style.backgroundImage="linear-gradient(135deg,#F4A261,#E76F8B)";}}>
-                              <span style={{background:"linear-gradient(135deg,#F4A261,#E76F8B)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",backgroundClip:"text",fontWeight:700,fontSize:12}}>Connect</span>
+                            <button onClick={e=>{e.stopPropagation();connectConnector(item);}}
+                              style={{padding:"7px 14px",borderRadius:8,border:"1.5px solid "+(isSupported?"#F4A261":c.ln),background:"transparent",cursor:isSupported?"pointer":"not-allowed",opacity:isSupported?1:.72,flexShrink:0,whiteSpace:"nowrap",transition:"all .15s",fontSize:12,fontWeight:700}}
+                              onMouseEnter={e=>{if(!isSupported)return;e.currentTarget.style.background="linear-gradient(135deg,#F4A261,#E76F8B)";e.currentTarget.style.borderColor="transparent";e.currentTarget.querySelector("span").style.WebkitTextFillColor="#fff";e.currentTarget.querySelector("span").style.backgroundImage="none";}}
+                              onMouseLeave={e=>{if(!isSupported)return;e.currentTarget.style.background="transparent";e.currentTarget.style.borderColor="#F4A261";e.currentTarget.querySelector("span").style.WebkitTextFillColor="transparent";e.currentTarget.querySelector("span").style.backgroundImage="linear-gradient(135deg,#F4A261,#E76F8B)";}}>
+                              <span style={{background:isSupported?"linear-gradient(135deg,#F4A261,#E76F8B)":"none",WebkitBackgroundClip:isSupported?"text":"initial",WebkitTextFillColor:isSupported?"transparent":c.so,backgroundClip:isSupported?"text":"initial",fontWeight:700,fontSize:12}}>{isSupported?"Connect":"Soon"}</span>
                             </button>
                           )}
                         </div>

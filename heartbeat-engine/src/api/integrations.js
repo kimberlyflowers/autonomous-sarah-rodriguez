@@ -72,7 +72,63 @@ const PLATFORMS = {
     envClientSecret: 'GOOGLE_OAUTH_CLIENT_SECRET',
     connectorSlugs: ['gmail', 'google-calendar', 'google-drive'],
   },
+  shopify: {
+    name: 'Shopify',
+    authUrl: 'https://{shop}.myshopify.com/admin/oauth/authorize',
+    tokenUrl: 'https://{shop}.myshopify.com/admin/oauth/access_token',
+    scopes: ['read_products', 'write_products', 'read_orders', 'write_orders', 'read_customers', 'write_customers'],
+    scopeSeparator: ',',
+    extraParams: {},
+    envClientId: 'SHOPIFY_CLIENT_ID',
+    envClientSecret: 'SHOPIFY_CLIENT_SECRET',
+    connectorSlugs: ['shopify'],
+    requiresShopDomain: true,
+  },
 };
+
+const PLATFORM_ALIASES = {
+  gmail: 'google',
+  'google-calendar': 'google',
+  'google-drive': 'google',
+};
+
+function platformKey(input) {
+  return PLATFORM_ALIASES[input] || input;
+}
+
+function normalizeShopDomain(value) {
+  const raw = String(value || '')
+    .trim()
+    .replace(/^https?:\/\//i, '')
+    .replace(/\/.*$/, '')
+    .toLowerCase();
+
+  if (!raw) return null;
+  if (raw.includes('.')) return raw;
+  return `${raw}.myshopify.com`;
+}
+
+function getPlatformConfig(platform, options = {}) {
+  const normalizedPlatform = platformKey(platform);
+  const base = PLATFORMS[normalizedPlatform];
+  if (!base) return { platform: normalizedPlatform, cfg: null };
+
+  const cfg = { ...base };
+  if (cfg.requiresShopDomain) {
+    const shopDomain = normalizeShopDomain(options.shopDomain);
+    if (!shopDomain && options.requireShopDomain !== false) {
+      throw new Error(`${cfg.name} needs a shop domain before connecting.`);
+    }
+    if (shopDomain) {
+      const shopSubdomain = shopDomain.replace(/\.myshopify\.com$/i, '');
+      cfg.shopDomain = shopDomain;
+      cfg.authUrl = cfg.authUrl.replace('{shop}', shopSubdomain);
+      cfg.tokenUrl = cfg.tokenUrl.replace('{shop}', shopSubdomain);
+    }
+  }
+
+  return { platform: normalizedPlatform, cfg };
+}
 
 // Social connectors blocked until GHL $297 upgrade
 const COMING_SOON_SLUGS = new Set(['facebook', 'instagram', 'linkedin', 'tiktok']);
@@ -92,8 +148,8 @@ async function withAuth(req, res, next) {
 }
 
 // ── Exchange authorization code for access token ──
-async function exchangeCodeForToken(platform, code, redirectUri) {
-  const cfg = PLATFORMS[platform];
+async function exchangeCodeForToken(platform, code, redirectUri, options = {}) {
+  const { cfg } = getPlatformConfig(platform, options);
   const clientId = process.env[cfg.envClientId];
   const clientSecret = process.env[cfg.envClientSecret];
 
@@ -134,7 +190,7 @@ async function exchangeCodeForToken(platform, code, redirectUri) {
 
 // ── Refresh an expired access token using the stored refresh token ──
 async function refreshAccessToken(platform, refreshToken) {
-  const cfg = PLATFORMS[platform];
+  const { cfg } = getPlatformConfig(platform);
   const clientId = process.env[cfg.envClientId];
   const clientSecret = process.env[cfg.envClientSecret];
 
@@ -174,7 +230,7 @@ async function refreshAccessToken(platform, refreshToken) {
 // ── Upsert token rows in user_connectors for each connector slug ──
 async function storeTokens(platform, tokenData, orgId, userId) {
   const supabase = await getSupabase();
-  const cfg = PLATFORMS[platform];
+  const { cfg } = getPlatformConfig(platform, { shopDomain: tokenData.shopDomain });
 
   const expiresAt = tokenData.expires_in
     ? new Date(Date.now() + tokenData.expires_in * 1000).toISOString()
@@ -213,6 +269,8 @@ async function storeTokens(platform, tokenData, orgId, userId) {
         refresh_token: refreshToken,
         token_expires_at: expiresAt,
         granted_scopes: cfg.scopes,
+        external_account_id: tokenData.shopDomain || null,
+        external_account_name: tokenData.shopDomain || null,
         status: 'active',
         last_error: null,
         connected_at: new Date().toISOString(),
@@ -244,6 +302,41 @@ async function refreshIfExpired(platform, userConnRow, orgId) {
     logger.warn(`Token refresh failed for ${platform}: ${err.message}`);
     return userConnRow; // Return stale token — let caller handle error
   }
+}
+
+function buildProviderAuthUrl(platform, orgId, userId, options = {}) {
+  const { platform: normalizedPlatform, cfg } = getPlatformConfig(platform, options);
+  if (!cfg) throw new Error(`Unknown platform: ${platform}`);
+
+  const clientId = process.env[cfg.envClientId];
+  if (!clientId) {
+    throw new Error(`${cfg.name} client ID not configured. Set ${cfg.envClientId} in Railway env vars.`);
+  }
+
+  const redirectUri = `${API_BASE}/${normalizedPlatform}/callback`;
+  const state = Buffer.from(
+    JSON.stringify({
+      orgId,
+      userId,
+      platform: normalizedPlatform,
+      shopDomain: cfg.shopDomain || null,
+      ts: Date.now(),
+    })
+  ).toString('base64url');
+
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    response_type: 'code',
+    state,
+    ...(cfg.extraParams || {}),
+  });
+
+  if (cfg.scopes?.length) {
+    params.set('scope', cfg.scopes.join(cfg.scopeSeparator || ' '));
+  }
+
+  return { authUrl: `${cfg.authUrl}?${params.toString()}`, platform: normalizedPlatform, cfg };
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -282,6 +375,9 @@ router.get('/list', withAuth, async (req, res) => {
       docsUrl: c.docs_url,
       connected: !!connectedMap[c.id],
       comingSoon: COMING_SOON_SLUGS.has(c.slug),
+      supported: !!PLATFORMS[platformKey(c.slug)] || c.slug === 'ghl',
+      platform: platformKey(c.slug),
+      requiresShopDomain: !!PLATFORMS[platformKey(c.slug)]?.requiresShopDomain,
       connectedAt: connectedMap[c.id]?.connected_at || null,
       externalAccount: connectedMap[c.id]?.external_account_name || null,
     }));
@@ -399,8 +495,7 @@ router.post('/ghl/disconnect', withAuth, async (req, res) => {
 // ════════════════════════════════════════════════════════════════
 router.get('/:platform/status', withAuth, async (req, res) => {
   try {
-    const { platform } = req.params;
-    const cfg = PLATFORMS[platform];
+    const { platform, cfg } = getPlatformConfig(req.params.platform, { ...req.query, requireShopDomain: false });
     if (!cfg) return res.status(404).json({ error: `Unknown platform: ${platform}` });
 
     const supabase = await getSupabase();
@@ -439,39 +534,39 @@ router.get('/:platform/status', withAuth, async (req, res) => {
 });
 
 // ════════════════════════════════════════════════════════════════
+// POST /api/integrations/:platform/start
+// Returns a provider OAuth URL for the authenticated user's tenant.
+// Dashboard calls this with JWT headers, then navigates to authUrl.
+// ════════════════════════════════════════════════════════════════
+router.post('/:platform/start', withAuth, async (req, res) => {
+  try {
+    const { orgId, userId } = req;
+    const { authUrl, platform, cfg } = buildProviderAuthUrl(req.params.platform, orgId, userId, {
+      shopDomain: req.body?.shopDomain,
+    });
+
+    logger.info(`OAuth start URL generated → ${platform}`, { org: orgId.slice(0, 8) });
+    res.json({
+      success: true,
+      platform,
+      name: cfg.name,
+      authUrl,
+    });
+  } catch (error) {
+    logger.error('OAuth start failed', { error: error.message });
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// ════════════════════════════════════════════════════════════════
 // GET /api/integrations/:platform/authorize
 // Redirects user to the OAuth provider's consent screen.
 // Encodes orgId + userId in the state parameter for callback recovery.
 // ════════════════════════════════════════════════════════════════
 router.get('/:platform/authorize', withAuth, async (req, res) => {
   try {
-    const { platform } = req.params;
-    const cfg = PLATFORMS[platform];
-    if (!cfg) return res.status(404).json({ error: `Unknown platform: ${platform}` });
-
-    const clientId = process.env[cfg.envClientId];
-    if (!clientId) {
-      return res.status(500).json({
-        error: `${cfg.name} client ID not configured. Set ${cfg.envClientId} in Railway env vars.`
-      });
-    }
-
     const { orgId, userId } = req;
-    const redirectUri = `${API_BASE}/${platform}/callback`;
-    const state = Buffer.from(
-      JSON.stringify({ orgId, userId, platform, ts: Date.now() })
-    ).toString('base64url');
-
-    const params = new URLSearchParams({
-      client_id: clientId,
-      redirect_uri: redirectUri,
-      response_type: 'code',
-      scope: cfg.scopes.join(' '),
-      state,
-      ...(cfg.extraParams || {}),
-    });
-
-    const authUrl = `${cfg.authUrl}?${params.toString()}`;
+    const { authUrl, platform } = buildProviderAuthUrl(req.params.platform, orgId, userId, req.query);
     logger.info(`OAuth authorize → ${platform}`, { org: orgId.slice(0, 8) });
     res.redirect(authUrl);
   } catch (error) {
@@ -488,12 +583,27 @@ router.get('/:platform/authorize', withAuth, async (req, res) => {
 // orgId is recovered from the state parameter.
 // ════════════════════════════════════════════════════════════════
 router.get('/:platform/callback', async (req, res) => {
-  const { platform } = req.params;
+  const requestedPlatform = req.params.platform;
   try {
-    const cfg = PLATFORMS[platform];
-    if (!cfg) return res.redirect(`${APP_URL}?oauth_error=unknown_platform`);
-
     const { code, state, error } = req.query;
+
+    let orgId, userId, shopDomain, platform;
+    if (state) {
+      try {
+        const decoded = JSON.parse(Buffer.from(state, 'base64url').toString('utf8'));
+        orgId = decoded.orgId;
+        userId = decoded.userId;
+        shopDomain = decoded.shopDomain || null;
+        platform = platformKey(decoded.platform || requestedPlatform);
+      } catch {
+        return res.redirect(`${APP_URL}?oauth_error=invalid_state&platform=${requestedPlatform}`);
+      }
+    } else {
+      platform = platformKey(requestedPlatform);
+    }
+
+    const { cfg } = getPlatformConfig(platform, { shopDomain });
+    if (!cfg) return res.redirect(`${APP_URL}?oauth_error=unknown_platform`);
 
     if (error) {
       logger.warn(`OAuth callback error for ${platform}`, { error });
@@ -504,20 +614,11 @@ router.get('/:platform/callback', async (req, res) => {
       return res.redirect(`${APP_URL}?oauth_error=missing_code&platform=${platform}`);
     }
 
-    // Decode state to recover orgId and userId
-    let orgId, userId;
-    try {
-      const decoded = JSON.parse(Buffer.from(state, 'base64url').toString('utf8'));
-      orgId = decoded.orgId;
-      userId = decoded.userId;
-    } catch {
-      return res.redirect(`${APP_URL}?oauth_error=invalid_state&platform=${platform}`);
-    }
-
     if (!orgId) return res.redirect(`${APP_URL}?oauth_error=missing_org&platform=${platform}`);
 
     const redirectUri = `${API_BASE}/${platform}/callback`;
-    const tokenData = await exchangeCodeForToken(platform, code, redirectUri);
+    const tokenData = await exchangeCodeForToken(platform, code, redirectUri, { shopDomain });
+    if (shopDomain) tokenData.shopDomain = shopDomain;
     await storeTokens(platform, tokenData, orgId, userId);
 
     logger.info(`✅ OAuth connected: ${platform}`, {
@@ -538,8 +639,7 @@ router.get('/:platform/callback', async (req, res) => {
 // ════════════════════════════════════════════════════════════════
 router.post('/:platform/disconnect', withAuth, async (req, res) => {
   try {
-    const { platform } = req.params;
-    const cfg = PLATFORMS[platform];
+    const { platform, cfg } = getPlatformConfig(req.params.platform, { ...(req.body || {}), requireShopDomain: false });
     if (!cfg) return res.status(404).json({ error: `Unknown platform: ${platform}` });
 
     const supabase = await getSupabase();
