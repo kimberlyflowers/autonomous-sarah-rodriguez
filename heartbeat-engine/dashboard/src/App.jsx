@@ -4154,10 +4154,10 @@ const FINISHED_BOOK_LIBRARY=[{
   coverUrl:'/assets/book-library/conquer-your-doubts-cover.png',
 }];
 const BOOK_BONUS_LIBRARY=[
-  {id:'kindle-cash-multiplier',title:'The Kindle Cash Multiplier Training',type:'Training',url:'/assets/book-library/kindle-cash-multiplier-complete.pdf',coverUrl:'/assets/book-library/kindle-cash-multiplier-cover.png'},
-  {id:'kdp-optimization-checklist',title:'Amazon KDP Optimization Checklist',type:'Checklist',url:'/assets/book-library/amazon-kdp-checklist-complete.pdf',coverUrl:'/assets/book-library/amazon-kdp-optimization-checklist-cover.png'},
-  {id:'book-description-templates',title:'Done-For-You Book Description Templates',type:'Templates',url:'/assets/book-library/book-description-templates-complete.pdf',coverUrl:'/assets/book-library/book-description-templates-cover.png'},
-  {id:'30-books-fast-start',title:'30 Books in 30 Days Fast-Start Blueprint',type:'Blueprint',url:'/assets/book-library/30-books-blueprint-complete.pdf',coverUrl:'/assets/book-library/30-books-in-30-days-cover.png'},
+  {id:'kindle-cash-multiplier',title:'The Kindle Cash Multiplier Training',type:'Training',url:'/assets/book-library/kindle-cash-multiplier-complete.pdf',coverUrl:'/assets/book-library/kindle-cash-multiplier-cover.png',pageBase:'/assets/book-library/pages/kindle-cash-multiplier',pageCount:62},
+  {id:'kdp-optimization-checklist',title:'Amazon KDP Optimization Checklist',type:'Checklist',url:'/assets/book-library/amazon-kdp-checklist-complete.pdf',coverUrl:'/assets/book-library/amazon-kdp-optimization-checklist-cover.png',pageBase:'/assets/book-library/pages/amazon-kdp-checklist',pageCount:35},
+  {id:'book-description-templates',title:'Done-For-You Book Description Templates',type:'Templates',url:'/assets/book-library/book-description-templates-complete.pdf',coverUrl:'/assets/book-library/book-description-templates-cover.png',pageBase:'/assets/book-library/pages/book-description-templates',pageCount:28},
+  {id:'30-books-fast-start',title:'30 Books in 30 Days Fast-Start Blueprint',type:'Blueprint',url:'/assets/book-library/30-books-blueprint-complete.pdf',coverUrl:'/assets/book-library/30-books-in-30-days-cover.png',pageBase:'/assets/book-library/pages/30-books-blueprint',pageCount:20},
 ];
 
 const PdfFlipPage=forwardRef(function PdfFlipPage({pdf,pageNumber,pageWidth,activePage},ref){
@@ -4190,6 +4190,14 @@ const PdfFlipPage=forwardRef(function PdfFlipPage({pdf,pageNumber,pageWidth,acti
   </div>;
 });
 
+const StaticBookPage=forwardRef(function StaticBookPage({resource,pageNumber,activePage},ref){
+  const nearby=pageNumber<=2||Math.abs(pageNumber-activePage)<=3;
+  const pageSrc=nearby?`${resource.pageBase}/page-${String(pageNumber).padStart(2,'0')}.jpg`:'';
+  return <div ref={ref} data-density={pageNumber===1?'hard':'soft'} className={`bloom-flip-page ${pageNumber===1?'bloom-flip-cover':''}`} style={{padding:0,background:'#fff',display:'grid',placeItems:'center',overflow:'hidden',boxShadow:'inset 0 0 0 1px rgba(20,20,24,.1)'}}>
+    {pageSrc?<img src={pageSrc} alt={`Page ${pageNumber}`} draggable="false" loading={pageNumber<=2?'eager':'lazy'} style={{display:'block',width:'100%',height:'100%',objectFit:'contain'}}/>:<div style={{color:'#7b7b82',fontSize:11}}>Page {pageNumber}</div>}
+  </div>;
+});
+
 function LibraryBookReader({resource,onClose,onEdit,mob,c}){
   const [pdf,setPdf]=useState(null);
   const [page,setPage]=useState(1);
@@ -4198,6 +4206,20 @@ function LibraryBookReader({resource,onClose,onEdit,mob,c}){
   const flipRef=useRef(null);
   useEffect(()=>{
     let disposed=false;
+    if(resource.pageBase&&resource.pageCount){
+      const image=new Image();
+      image.onload=()=>{
+        if(disposed)return;
+        const maxWidth=mob?320:500;
+        const maxHeight=mob?480:640;
+        const scale=Math.min(maxWidth/image.naturalWidth,maxHeight/image.naturalHeight);
+        setReaderSize({width:Math.round(image.naturalWidth*scale),height:Math.round(image.naturalHeight*scale)});
+        setPdf({numPages:resource.pageCount,staticPages:true});
+      };
+      image.onerror=()=>{if(!disposed)setError('This book could not be opened.');};
+      image.src=`${resource.pageBase}/page-01.jpg`;
+      return()=>{disposed=true;image.onload=null;image.onerror=null;};
+    }
     const task=pdfjsLib.getDocument(resource.url);
     task.promise.then(async doc=>{
       if(disposed)return;
@@ -4210,7 +4232,7 @@ function LibraryBookReader({resource,onClose,onEdit,mob,c}){
       setPdf(doc);
     }).catch(()=>{if(!disposed)setError('This book could not be opened.');});
     return()=>{disposed=true;task.destroy();};
-  },[resource.url]);
+  },[resource.url,resource.pageBase,resource.pageCount,mob]);
   return <div data-testid="library-book-reader" role="dialog" aria-modal="true" style={{position:'fixed',inset:0,zIndex:1300,background:'rgba(7,8,12,.88)',backdropFilter:'blur(10px)',display:'grid',placeItems:'center',padding:mob?10:24}}>
     <div style={{width:'min(1180px,100%)',height:mob?'calc(100dvh - 20px)':'min(880px,calc(100vh - 48px))',borderRadius:18,background:c.cd,border:'1px solid '+c.ln,display:'flex',flexDirection:'column',overflow:'hidden',boxShadow:'0 28px 90px rgba(0,0,0,.5)'}}>
       <div style={{padding:'12px 15px',borderBottom:'1px solid '+c.ln,display:'flex',alignItems:'center',justifyContent:'space-between',gap:12}}>
@@ -4227,7 +4249,7 @@ function LibraryBookReader({resource,onClose,onEdit,mob,c}){
           .stf__block{background:transparent!important}
         `}</style>
         {error?<div style={{color:'#ef6464'}}>{error}</div>:!pdf?<div style={{display:'grid',placeItems:'center',gap:12,color:c.so}}><img src={resource.coverUrl} alt={`${resource.title} cover`} style={{display:'block',width:mob?190:240,aspectRatio:'2 / 3',objectFit:'cover',borderRadius:8,boxShadow:'0 20px 48px rgba(0,0,0,.4)'}}/><span style={{fontSize:11}}>Preparing page-turn preview…</span></div>:<HTMLFlipBook ref={flipRef} className="bloom-real-book" width={readerSize.width} height={readerSize.height} size="fixed" drawShadow autoSize={false} maxShadowOpacity={0.65} startZIndex={10} showCover mobileScrollSupport usePortrait={mob} swipeDistance={20} clickEventForward useMouseEvents flippingTime={1050} onFlip={event=>setPage(event.data+1)} style={{}}>
-          {Array.from({length:pdf.numPages},(_,index)=><PdfFlipPage key={index+1} pdf={pdf} pageNumber={index+1} pageWidth={readerSize.width} activePage={page}/>)}
+          {Array.from({length:pdf.numPages},(_,index)=>pdf.staticPages?<StaticBookPage key={index+1} resource={resource} pageNumber={index+1} activePage={page}/>:<PdfFlipPage key={index+1} pdf={pdf} pageNumber={index+1} pageWidth={readerSize.width} activePage={page}/>)}
         </HTMLFlipBook>}
       </div>
       <div style={{padding:'11px 14px',borderTop:'1px solid '+c.ln,display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,flexWrap:'wrap'}}>
@@ -4896,7 +4918,7 @@ Import the attached manuscript into this Book Studio project. Preserve the autho
     if(key==='books'){setView('saved');loadProjects();}
     if(key==='booster'){setView('booster');loadBooster();}
   };
-  const visibleBonusResources=boosterResources.length?boosterResources:BOOK_BONUS_LIBRARY;
+  const visibleBonusResources=(boosterResources.length?boosterResources:BOOK_BONUS_LIBRARY).map(resource=>({...BOOK_BONUS_LIBRARY.find(item=>item.id===resource.id),...resource}));
   const bookSidebar=<aside data-testid="book-suite-sidebar" style={{width:mob?286:248,maxWidth:'86vw',height:'100%',background:c.cd,borderRight:'1px solid '+c.ln,display:'flex',flexDirection:'column',flexShrink:0,overflow:'hidden',...(mob?{position:'absolute',zIndex:80,left:0,top:0,bottom:0,transform:bookNavOpen?'translateX(0)':'translateX(-102%)',transition:'transform .2s ease',boxShadow:bookNavOpen?'16px 0 40px rgba(0,0,0,.3)':'none'}:{})}}>
     <div style={{padding:'18px 16px 13px',borderBottom:'1px solid '+c.ln}}>
       <div style={{display:'flex',alignItems:'center',gap:10}}>
@@ -5202,7 +5224,7 @@ Import the attached manuscript into this Book Studio project. Preserve the autho
           {boosterStatus==='loading'&&<div style={{padding:34,textAlign:'center',color:c.so}}>Checking your booster access…</div>}
           {boosterStatus==='locked'&&<div style={{padding:mob?18:24,borderRadius:14,background:c.sf,border:'1px solid '+c.ln,textAlign:'center'}}><h3 style={{color:c.tx,margin:'0 0 8px'}}>Unlock the Booster Library</h3><p style={{fontSize:12,lineHeight:1.6,color:c.so,margin:'0 auto 16px',maxWidth:530}}>Get the Kindle Cash Multiplier training, KDP checklist, book-description templates, and 30 Books in 30 Days blueprint.</p><button onClick={openBoosterCheckout} style={{padding:'12px 18px',border:0,borderRadius:10,background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',fontSize:13,fontWeight:800,cursor:'pointer'}}>Add Quick-Launch Booster — $9.95</button></div>}
           {boosterStatus==='error'&&<div style={{padding:18,borderRadius:12,background:'#ef444415',color:'#ef4444',fontSize:12}}>Booster access could not be verified. Please refresh and try again.</div>}
-          {boosterStatus==='active'&&<div style={{display:'grid',gridTemplateColumns:mob?'repeat(2,minmax(0,1fr))':'repeat(4,minmax(0,1fr))',gap:12}}>{boosterResources.map(resource=><div key={resource.id} data-testid={`library-card-${resource.id}`} style={{borderRadius:14,border:'1px solid '+c.ln,background:c.sf,overflow:'hidden'}}><img src={resource.coverUrl} alt={`${resource.title} cover`} style={{width:'100%',aspectRatio:'2 / 3',objectFit:'cover',display:'block'}}/><div style={{padding:11}}><div style={{fontSize:9,fontWeight:900,color:c.ac,textTransform:'uppercase'}}>{resource.type} · Bonus</div><div style={{fontSize:11,fontWeight:800,color:c.tx,lineHeight:1.35,minHeight:45,margin:'5px 0 9px'}}>{resource.title}</div><button onClick={()=>setLibraryReader(resource)} style={{width:'100%',padding:8,border:0,borderRadius:8,background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',fontSize:10,fontWeight:850,cursor:'pointer'}}>Read full book</button><div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:5,marginTop:5}}><button onClick={()=>editLibraryBook(resource)} style={{padding:7,borderRadius:7,border:'1px solid '+c.ln,background:c.cd,color:c.tx,fontSize:9,fontWeight:800,cursor:'pointer'}}>Edit</button><a href={resource.url} download style={{padding:7,borderRadius:7,border:'1px solid '+c.ln,background:c.cd,color:c.tx,fontSize:9,fontWeight:800,textDecoration:'none',textAlign:'center'}}>Download</a></div></div></div>)}</div>}
+          {boosterStatus==='active'&&<div style={{display:'grid',gridTemplateColumns:mob?'repeat(2,minmax(0,1fr))':'repeat(4,minmax(0,1fr))',gap:12}}>{visibleBonusResources.map(resource=><div key={resource.id} data-testid={`library-card-${resource.id}`} style={{borderRadius:14,border:'1px solid '+c.ln,background:c.sf,overflow:'hidden'}}><img src={resource.coverUrl} alt={`${resource.title} cover`} style={{width:'100%',aspectRatio:'2 / 3',objectFit:'cover',display:'block'}}/><div style={{padding:11}}><div style={{fontSize:9,fontWeight:900,color:c.ac,textTransform:'uppercase'}}>{resource.type} · Bonus</div><div style={{fontSize:11,fontWeight:800,color:c.tx,lineHeight:1.35,minHeight:45,margin:'5px 0 9px'}}>{resource.title}</div><button onClick={()=>setLibraryReader(resource)} style={{width:'100%',padding:8,border:0,borderRadius:8,background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',fontSize:10,fontWeight:850,cursor:'pointer'}}>Read full book</button><div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:5,marginTop:5}}><button onClick={()=>editLibraryBook(resource)} style={{padding:7,borderRadius:7,border:'1px solid '+c.ln,background:c.cd,color:c.tx,fontSize:9,fontWeight:800,cursor:'pointer'}}>Edit</button><a href={resource.url} download style={{padding:7,borderRadius:7,border:'1px solid '+c.ln,background:c.cd,color:c.tx,fontSize:9,fontWeight:800,textDecoration:'none',textAlign:'center'}}>Download</a></div></div></div>)}</div>}
           <div style={{fontSize:10,fontWeight:900,color:c.ac,textTransform:'uppercase',letterSpacing:'.09em',margin:'24px 0 9px'}}>Your books</div>
           <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'repeat(3,minmax(0,1fr))',gap:12}}>{FINISHED_BOOK_LIBRARY.map(resource=><div key={resource.id} data-testid={`library-card-${resource.id}`} style={{borderRadius:14,border:'1px solid '+c.ln,background:c.sf,overflow:'hidden'}}><img src={resource.coverUrl} alt={`${resource.title} cover`} style={{width:'100%',aspectRatio:'2 / 3',objectFit:'cover',display:'block'}}/><div style={{padding:13}}><div style={{fontSize:9,fontWeight:900,color:c.gr,textTransform:'uppercase'}}>Finished book</div><div style={{fontSize:13,fontWeight:800,color:c.tx,lineHeight:1.35,margin:'5px 0 11px'}}>{resource.title}</div><button onClick={()=>setLibraryReader(resource)} style={{width:'100%',padding:9,border:0,borderRadius:8,background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',fontWeight:850,cursor:'pointer'}}>Read full book</button><div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginTop:6}}><button onClick={()=>editLibraryBook(resource)} style={{padding:8,borderRadius:8,border:'1px solid '+c.ln,background:c.cd,color:c.tx,fontSize:10,fontWeight:800,cursor:'pointer'}}>Edit</button><a href={resource.url} download style={{padding:8,borderRadius:8,border:'1px solid '+c.ln,background:c.cd,color:c.tx,fontSize:10,fontWeight:800,textDecoration:'none',textAlign:'center'}}>Download</a></div></div></div>)}</div>
         </div>
