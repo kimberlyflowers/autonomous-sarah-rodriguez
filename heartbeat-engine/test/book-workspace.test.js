@@ -193,6 +193,7 @@ test('Quick-Launch Booster has distinct entitlement-gated resources in the book 
   assert.match(dashboard, /Your Library/);
   assert.match(dashboard, /data-testid="book-dashboard-bonuses"/);
   assert.match(dashboard, /data-placement="above-the-fold"/);
+  assert.match(dashboard, /\{content\}\s*\{libraryReader&&<LibraryBookReader/);
   assert.match(dashboard, /Your included bonuses/);
   assert.match(dashboard, /Your books/);
   assert.match(dashboard, /BOOK_BONUS_LIBRARY/);

@@ -4920,6 +4920,7 @@ Import the attached manuscript into this Book Studio project. Preserve the autho
     <section style={{flex:1,minWidth:0,minHeight:0,position:'relative',overflow:'hidden'}}>
       {mob&&<button aria-label="Open Book Studio menu" onClick={()=>setBookNavOpen(true)} style={{position:'absolute',zIndex:30,top:10,left:10,width:42,height:42,borderRadius:11,border:'1px solid '+c.ln,background:c.cd,color:c.tx,boxShadow:'0 5px 18px rgba(0,0,0,.18)',cursor:'pointer',display:'grid',placeItems:'center'}}><BookSuiteIcon name="menu" size={23}/></button>}
       {content}
+      {libraryReader&&<LibraryBookReader resource={libraryReader} onClose={()=>setLibraryReader(null)} onEdit={editLibraryBook} mob={mob} c={c}/>}
     </section>
   </div>;
   if(access!=='active')return bookShell(<div data-testid="book-access-gate" style={{height:'100%',overflowY:'auto',padding:mob?'62px 14px 90px':'52px 36px 70px'}}>
@@ -5203,8 +5204,6 @@ Import the attached manuscript into this Book Studio project. Preserve the autho
           <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'repeat(3,minmax(0,1fr))',gap:12}}>{FINISHED_BOOK_LIBRARY.map(resource=><div key={resource.id} data-testid={`library-card-${resource.id}`} style={{borderRadius:14,border:'1px solid '+c.ln,background:c.sf,overflow:'hidden'}}><img src={resource.coverUrl} alt={`${resource.title} cover`} style={{width:'100%',aspectRatio:'2 / 3',objectFit:'cover',display:'block'}}/><div style={{padding:13}}><div style={{fontSize:9,fontWeight:900,color:c.gr,textTransform:'uppercase'}}>Finished book</div><div style={{fontSize:13,fontWeight:800,color:c.tx,lineHeight:1.35,margin:'5px 0 11px'}}>{resource.title}</div><button onClick={()=>setLibraryReader(resource)} style={{width:'100%',padding:9,border:0,borderRadius:8,background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',fontWeight:850,cursor:'pointer'}}>Read full book</button><div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginTop:6}}><button onClick={()=>editLibraryBook(resource)} style={{padding:8,borderRadius:8,border:'1px solid '+c.ln,background:c.cd,color:c.tx,fontSize:10,fontWeight:800,cursor:'pointer'}}>Edit</button><a href={resource.url} download style={{padding:8,borderRadius:8,border:'1px solid '+c.ln,background:c.cd,color:c.tx,fontSize:10,fontWeight:800,textDecoration:'none',textAlign:'center'}}>Download</a></div></div></div>)}</div>
         </div>
       </div>}
-      {libraryReader&&<LibraryBookReader resource={libraryReader} onClose={()=>setLibraryReader(null)} onEdit={editLibraryBook} mob={mob} c={c}/>}
-
       {view==='project'&&active&&<div style={{width:'100%',maxWidth:1180,margin:'0 auto'}}>
         <button onClick={()=>setView('saved')} style={{border:0,background:'transparent',color:c.ac,fontWeight:700,cursor:'pointer',marginBottom:12}}>← Saved books</button>
         <div style={{padding:mob?18:24,borderRadius:18,background:c.cd,border:'1px solid '+c.ln}}>
