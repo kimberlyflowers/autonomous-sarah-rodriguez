@@ -197,6 +197,9 @@ test('Quick-Launch Booster has distinct entitlement-gated resources in the book 
   assert.match(dashboard, /data-testid="library-book-reader"/);
   assert.match(dashboard, /className="bloom-real-book"/);
   assert.match(dashboard, /pdfjsLib\.getDocument/);
+  const appEntry = fs.readFileSync(new URL('../dashboard/src/main.jsx', import.meta.url), 'utf8');
+  assert.match(appEntry, /typeof URL\.parse !== 'function'/);
+  assert.match(appEntry, /URL\.parse = \(input, base\)/);
   assert.match(dashboard, /canvas\.toDataURL\('image\/jpeg',0\.94\)/);
   assert.match(dashboard, /alt=\{`Page \$\{pageNumber\}`\}/);
   assert.match(dashboard, /const scale=Math\.min\(maxWidth\/viewport\.width,maxHeight\/viewport\.height\)/);

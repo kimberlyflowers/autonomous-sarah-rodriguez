@@ -6,6 +6,19 @@ import Login from './Login.jsx';
 import PasswordReset from './PasswordReset.jsx';
 import { supabase } from './supabase.js';
 
+// pdfjs-dist 5 uses the newer static URL.parse() API when resolving links.
+// Safari and older Chromium builds do not expose it yet, so keep PDF links
+// working there with the same null-on-invalid contract as URL.parse().
+if (typeof URL.parse !== 'function') {
+  URL.parse = (input, base) => {
+    try {
+      return base == null ? new URL(input) : new URL(input, base);
+    } catch {
+      return null;
+    }
+  };
+}
+
 function Root() {
   const [user, setUser] = useState(undefined); // undefined = loading
   const [passwordRecovery, setPasswordRecovery] = useState(
