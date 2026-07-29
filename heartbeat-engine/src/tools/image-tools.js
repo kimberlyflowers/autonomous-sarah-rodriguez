@@ -24,7 +24,7 @@ function getOpenRouterImageModel() {
   return (
     process.env.OPENROUTER_IMAGE_MODEL ||
     process.env.OPENROUTER_IMAGE_GENERATION_MODEL ||
-    'google/gemini-2.5-flash-image'
+    'google/gemini-3.1-flash-image'
   ).trim();
 }
 
@@ -196,7 +196,7 @@ async function upsamplePrompt(prompt, contentType = null) {
 export const imageToolDefinitions = {
   image_generate: {
     name: "image_generate",
-    description: "Generate an image from a text description. Perfect for creating flyers, social media posts, banners, book covers, logos, product mockups, brand assets, and any visual content. Be very specific and detailed in your prompt for the best results. Include exact text you want in the image, colors, layout details, and style preferences. For character consistency (same person across multiple images), set engine to gemini and pass reference_image_url or reference_image_base64 — Nano Banana will lock the character's identity from the reference photo. IMPORTANT: When creating platform-specific images (Facebook covers, Instagram posts, Eventbrite headers, etc.), ALWAYS set target_width and target_height to the exact pixel dimensions required by that platform. The AI generates at fixed base sizes, then the image is automatically resized/cropped to your target dimensions. Common sizes: Facebook cover 820x312, Instagram post 1080x1080, Instagram story 1080x1920, Eventbrite header 2160x1080, Twitter header 1500x500, LinkedIn banner 1128x191.",
+    description: "Generate an image natively at the requested aspect ratio. Be specific about composition, framing, text, colors, layout, and style. For character consistency, pass the saved reference image. Set aspect_ratio plus target_width and target_height for exact platform output. Generation never crops unless the user explicitly requests cropping and allow_crop is true.",
     parameters: {
       type: "object",
       properties: {
@@ -207,16 +207,31 @@ export const imageToolDefinitions = {
         size: {
           type: "string",
           enum: ["1024x1024", "1024x1536", "1536x1024"],
-          description: "Base generation size (closest aspect ratio to your target). 1024x1024 for square. 1024x1536 for portrait/tall. 1536x1024 for landscape/wide. The image will be resized to target_width x target_height after generation.",
+          description: "Base generation size used by providers that require a fixed size. Prefer aspect_ratio to make the provider compose natively at the requested shape.",
           default: "1024x1024"
+        },
+        aspect_ratio: {
+          type: "string",
+          enum: ["1:1", "2:3", "3:2", "4:3", "3:4", "4:5", "5:4", "9:16", "16:9", "21:9"],
+          description: "Native generation aspect ratio passed to the selected image provider. Use 16:9 for landscape portraits and video source frames."
         },
         target_width: {
           type: "integer",
-          description: "REQUIRED for platform-specific images. Exact output width in pixels (e.g. 820 for Facebook cover, 1080 for Instagram post). The generated image will be resized and cropped to exactly this width."
+          description: "Exact output width in pixels. Matching-ratio results are resized without cropping; mismatched results are fitted without cutting content."
         },
         target_height: {
           type: "integer",
-          description: "REQUIRED for platform-specific images. Exact output height in pixels (e.g. 312 for Facebook cover, 1080 for Instagram post). The generated image will be resized and cropped to exactly this height."
+          description: "Exact output height in pixels. Matching-ratio results are resized without cropping; mismatched results are fitted without cutting content."
+        },
+        allow_crop: {
+          type: "boolean",
+          description: "Set true only when the user explicitly asks to crop the generated image. Defaults to false.",
+          default: false
+        },
+        crop_anchor: {
+          type: "string",
+          enum: ["center", "top"],
+          description: "Crop alignment used only when allow_crop is true."
         },
         quality: {
           type: "string",
@@ -364,6 +379,15 @@ export const imageToolExecutors = {
       logger.info('Using upsampled prompt', { original: rawPrompt.slice(0, 80), upsampled: prompt.slice(0, 80) });
     }
     const size = params.size || '1024x1024';
+    const targetWidth = Number(params.target_width);
+    const targetHeight = Number(params.target_height);
+    const targetRatio = targetWidth > 0 && targetHeight > 0 ? targetWidth / targetHeight : null;
+    const nativeAspectRatio = params.aspect_ratio ||
+      (targetRatio && Math.abs(targetRatio - (16 / 9)) < 0.08 ? '16:9' :
+       targetRatio && Math.abs(targetRatio - (9 / 16)) < 0.05 ? '9:16' :
+       targetRatio && Math.abs(targetRatio - 1) < 0.03 ? '1:1' :
+       size === '1024x1536' ? '2:3' :
+       size === '1536x1024' ? '3:2' : '1:1');
     const quality = params.quality || 'high';
     const background = params.background || 'opaque';
 
@@ -420,20 +444,20 @@ export const imageToolExecutors = {
 
     if (useEngine === 'openrouter') {
       try {
-        const result = await generateWithOpenRouter(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
+        const result = await generateWithOpenRouter(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime, true, nativeAspectRatio);
         if (result.success) return result;
         logger.warn('OpenRouter image failed, trying fallback engines', { error: result.error });
-        if (hasReferenceImage && getGeminiKey()) return await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
+        if (hasReferenceImage && getGeminiKey()) return await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime, nativeAspectRatio);
         if (getRunPodMediaUrl()) return await generateWithRunPod(prompt, size);
         if (getOpenAIKey()) return await generateWithGPTImage(prompt, size, quality, background);
-        if (getGeminiKey()) return await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
+        if (getGeminiKey()) return await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime, nativeAspectRatio);
         return result;
       } catch(e) {
         logger.error('OpenRouter image threw error', { error: e.message });
-        if (hasReferenceImage && getGeminiKey()) return await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
+        if (hasReferenceImage && getGeminiKey()) return await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime, nativeAspectRatio);
         if (getRunPodMediaUrl()) return await generateWithRunPod(prompt, size);
         if (getOpenAIKey()) return await generateWithGPTImage(prompt, size, quality, background);
-        if (getGeminiKey()) return await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
+        if (getGeminiKey()) return await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime, nativeAspectRatio);
         return { success: false, error: e.message, engine: 'openrouter-image' };
       }
     } else if (useEngine === 'runpod') {
@@ -442,31 +466,31 @@ export const imageToolExecutors = {
         if (result.success) return result;
         // RunPod failed — fall back to OpenRouter, GPT, then Gemini
         logger.warn('RunPod image failed, trying fallback engines', { error: result.error });
-        if (getOpenRouterKey()) return await generateWithOpenRouter(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
+        if (getOpenRouterKey()) return await generateWithOpenRouter(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime, true, nativeAspectRatio);
         if (getOpenAIKey()) return await generateWithGPTImage(prompt, size, quality, background);
-        if (getGeminiKey()) return await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
+        if (getGeminiKey()) return await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime, nativeAspectRatio);
         return result;
       } catch(e) {
         logger.error('RunPod image threw error', { error: e.message });
-        if (getOpenRouterKey()) return await generateWithOpenRouter(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
+        if (getOpenRouterKey()) return await generateWithOpenRouter(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime, true, nativeAspectRatio);
         if (getOpenAIKey()) return await generateWithGPTImage(prompt, size, quality, background);
-        if (getGeminiKey()) return await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
+        if (getGeminiKey()) return await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime, nativeAspectRatio);
         throw e;
       }
     } else if (useEngine === 'gpt') {
       if (!getOpenAIKey() && getOpenRouterKey()) {
         logger.info('GPT image requested but OPENAI_API_KEY is missing — routing to OpenRouter image model');
-        return await generateWithOpenRouter(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
+        return await generateWithOpenRouter(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime, true, nativeAspectRatio);
       }
       // Circuit breaker: if OpenAI image is disabled, route to the next configured image provider.
       if (isOpenAIImageDisabled()) {
         if (getOpenRouterKey()) {
           logger.info('OpenAI image disabled — auto-routing gpt request to OpenRouter');
-          return await generateWithOpenRouter(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
+          return await generateWithOpenRouter(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime, true, nativeAspectRatio);
         }
         if (getGeminiKey()) {
           logger.info('OpenAI image disabled — auto-routing gpt request to Gemini');
-          return await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
+          return await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime, nativeAspectRatio);
         }
       }
       try {
@@ -480,34 +504,34 @@ export const imageToolExecutors = {
           if (result.success) return result;
           // GPT edit failed with reference — fall back to Gemini which handles this natively
           logger.warn('GPT edit with reference failed, trying Gemini', { error: result.error });
-          if (getGeminiKey()) return await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
+          if (getGeminiKey()) return await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime, nativeAspectRatio);
           return result;
         }
         const result = await generateWithGPTImage(prompt, size, quality, background);
         if (result.success) return result;
         // OpenAI failed — try OpenRouter/Gemini if available
         logger.warn('OpenAI image failed, trying fallback engines', { error: result.error });
-        if (getOpenRouterKey()) return await generateWithOpenRouter(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
-        if (getGeminiKey()) return await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
+        if (getOpenRouterKey()) return await generateWithOpenRouter(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime, true, nativeAspectRatio);
+        if (getGeminiKey()) return await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime, nativeAspectRatio);
         return result;
       } catch(e) {
         logger.error('OpenAI image threw error', { error: e.message });
-        if (getOpenRouterKey()) return await generateWithOpenRouter(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
-        if (getGeminiKey()) return await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
+        if (getOpenRouterKey()) return await generateWithOpenRouter(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime, true, nativeAspectRatio);
+        if (getGeminiKey()) return await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime, nativeAspectRatio);
         throw e;
       }
     } else if (useEngine === 'gemini') {
       try {
-        const result = await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
+        const result = await generateWithGemini(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime, nativeAspectRatio);
         if (result.success) return result;
         logger.warn('Gemini image failed, trying fallback engines', { error: result.error });
-        if (getOpenRouterKey()) return await generateWithOpenRouter(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
+        if (getOpenRouterKey()) return await generateWithOpenRouter(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime, true, nativeAspectRatio);
         if (getRunPodMediaUrl()) return await generateWithRunPod(prompt, size);
         if (getOpenAIKey()) return await generateWithGPTImage(prompt, size, quality, background);
         return result;
       } catch(e) {
         logger.error('Gemini image threw error', { error: e.message });
-        if (getOpenRouterKey()) return await generateWithOpenRouter(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime);
+        if (getOpenRouterKey()) return await generateWithOpenRouter(prompt, size, params.reference_image_url, params.reference_image_base64, params.reference_image_mime, true, nativeAspectRatio);
         if (getRunPodMediaUrl()) return await generateWithRunPod(prompt, size);
         if (getOpenAIKey()) return await generateWithGPTImage(prompt, size, quality, background);
         return { success: false, error: e.message, engine: 'gemini' };
@@ -644,7 +668,7 @@ function sanitizeImagePromptForSafety(prompt = '') {
   ].join(' ');
 }
 
-async function generateWithOpenRouter(prompt, size, referenceImageUrl, referenceImageBase64, referenceImageMime, allowSafetyRetry = true) {
+async function generateWithOpenRouter(prompt, size, referenceImageUrl, referenceImageBase64, referenceImageMime, allowSafetyRetry = true, requestedAspectRatio) {
   try {
     const apiKey = getOpenRouterKey();
     if (!apiKey) {
@@ -678,7 +702,7 @@ async function generateWithOpenRouter(prompt, size, referenceImageUrl, reference
         messages: [{ role: 'user', content }],
         modalities: model.startsWith('openai/') || model.startsWith('google/') ? ['image', 'text'] : ['image'],
         image_config: {
-          aspect_ratio: sizeToAspectRatio(size),
+          aspect_ratio: requestedAspectRatio || sizeToAspectRatio(size),
           size: '1k',
         },
       }),
@@ -748,7 +772,7 @@ async function generateWithOpenRouter(prompt, size, referenceImageUrl, reference
         originalLength: prompt.length,
         sanitizedLength: safePrompt.length
       });
-      return await generateWithOpenRouter(safePrompt, size, referenceImageUrl, referenceImageBase64, referenceImageMime, false);
+      return await generateWithOpenRouter(safePrompt, size, referenceImageUrl, referenceImageBase64, referenceImageMime, false, requestedAspectRatio);
     }
     return { success: false, error: error.message, engine: 'openrouter-image' };
   }
@@ -845,13 +869,13 @@ async function generateWithGPTImage(prompt, size, quality, background) {
     logger.info('Generating image with GPT Image 1.5', { size, quality });
 
     // Map our sizes to OpenAI supported sizes
-    // gpt-image-1.5 supports: 1024x1024, 1536x1024, 1024x1536, auto
+    // GPT Image 2 supports flexible image sizes and high-fidelity image inputs.
     const validSize = ['1024x1024','1536x1024','1024x1536'].includes(size) ? size : '1024x1024';
 
     const apiKey = getOpenAIKey().trim();
     if (!apiKey) {
       logger.error('OpenAI API key is empty after trim');
-      return { success: false, error: 'OPENAI_API_KEY is empty or not set', engine: 'gpt-image-1.5' };
+      return { success: false, error: 'OPENAI_API_KEY is empty or not set', engine: 'gpt-image-2' };
     }
 
     const response = await fetch('https://api.openai.com/v1/images/generations', {
@@ -861,7 +885,7 @@ async function generateWithGPTImage(prompt, size, quality, background) {
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'gpt-image-1.5',
+        model: 'gpt-image-2',
         prompt,
         n: 1,
         size: validSize,
@@ -901,7 +925,7 @@ async function generateWithGPTImage(prompt, size, quality, background) {
 
     const result = {
       success: true,
-      engine: 'gpt-image-1.5',
+      engine: 'gpt-image-2',
       image_base64: imageData.b64_json || null,
       image_url: imageData.url || null,
       filepath,
@@ -925,7 +949,7 @@ async function generateWithGPTImage(prompt, size, quality, background) {
       return await generateWithGemini(prompt, size);
     }
 
-    return { success: false, error: error.message, engine: 'gpt-image-1.5' };
+    return { success: false, error: error.message, engine: 'gpt-image-2' };
   }
 }
 
@@ -981,7 +1005,7 @@ async function editWithGPTImage(prompt, imageUrl, imageBase64, size, quality) {
 
     // Build form data for image edit
     const formData = new FormData();
-    formData.append('model', 'gpt-image-1.5');
+    formData.append('model', 'gpt-image-2');
     formData.append('prompt', prompt);
     formData.append('size', size);
     formData.append('quality', quality);
@@ -1025,7 +1049,7 @@ async function editWithGPTImage(prompt, imageUrl, imageBase64, size, quality) {
 
     return {
       success: true,
-      engine: 'gpt-image-1.5-edit',
+      engine: 'gpt-image-2-edit',
       image_base64: imageData?.b64_json || null,
       image_url: imageData?.url || null,
       filepath,
@@ -1037,20 +1061,20 @@ async function editWithGPTImage(prompt, imageUrl, imageBase64, size, quality) {
 
   } catch (error) {
     logger.error('GPT Image edit failed:', error.message);
-    return { success: false, error: error.message, engine: 'gpt-image-1.5-edit' };
+    return { success: false, error: error.message, engine: 'gpt-image-2-edit' };
   }
 }
 
 // ── NANO BANANA / IMAGEN (Google Gemini) ─────────────────────────────────
 
-async function generateWithGemini(prompt, size, referenceImageUrl, referenceImageBase64, referenceImageMime) {
+async function generateWithGemini(prompt, size, referenceImageUrl, referenceImageBase64, referenceImageMime, requestedAspectRatio) {
   try {
     logger.info('Generating image with Gemini');
 
     // Try Nano Banana FIRST (includes Nano Banana 2 with fallback to original)
     try {
       logger.info('Trying Nano Banana');
-      const result = await generateWithNanoBanana(prompt, size, referenceImageUrl, referenceImageBase64, referenceImageMime);
+      const result = await generateWithNanoBanana(prompt, size, referenceImageUrl, referenceImageBase64, referenceImageMime, requestedAspectRatio);
       if (result.success) return result;
     } catch(e) {
       logger.warn('Nano Banana failed, trying Imagen 4', { error: e.message });
@@ -1058,9 +1082,9 @@ async function generateWithGemini(prompt, size, referenceImageUrl, referenceImag
 
     // Fallback: Imagen 4 (may require paid tier)
     logger.info('Trying Imagen 4');
-    let aspectRatio = '1:1';
-    if (size === '1024x1536') aspectRatio = '2:3';
-    if (size === '1536x1024') aspectRatio = '3:2';
+    let aspectRatio = requestedAspectRatio || '1:1';
+    if (!requestedAspectRatio && size === '1024x1536') aspectRatio = '2:3';
+    if (!requestedAspectRatio && size === '1536x1024') aspectRatio = '3:2';
 
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=${getGeminiKey()}`,
@@ -1080,7 +1104,7 @@ async function generateWithGemini(prompt, size, referenceImageUrl, referenceImag
     if (!response.ok) {
       // Try Nano Banana (Gemini flash image model) as alternative
       logger.info('Imagen 4 failed, trying Nano Banana 2 (Gemini 3.1 Flash Image)');
-      return await generateWithNanoBanana(prompt, size, referenceImageUrl, referenceImageBase64);
+      return await generateWithNanoBanana(prompt, size, referenceImageUrl, referenceImageBase64, referenceImageMime, requestedAspectRatio);
     }
 
     const data = await response.json();
@@ -1110,18 +1134,18 @@ async function generateWithGemini(prompt, size, referenceImageUrl, referenceImag
   }
 }
 
-async function generateWithNanoBanana(prompt, size, referenceImageUrl, referenceImageBase64, referenceImageMime) {
+async function generateWithNanoBanana(prompt, size, referenceImageUrl, referenceImageBase64, referenceImageMime, requestedAspectRatio) {
   try {
-    // Try Nano Banana 2 (gemini-3.1-flash-image-preview) first — faster, 14 reference images,
+    // Try stable Nano Banana 2 first — fast, high-quality generation and editing,
     // 4K resolution, thinking mode. Falls back to gemini-2.5-flash-image if 3.1 fails.
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 45000); // 45 second timeout (thinking mode needs more time)
 
     // Map size to aspect ratio — Nano Banana 2 supports many more:
     // 1:1, 1:4, 1:8, 2:3, 3:2, 3:4, 4:1, 4:3, 4:5, 5:4, 8:1, 9:16, 16:9, 21:9
-    let aspectRatio = '1:1'; // default square
-    if (size === '1024x1536') aspectRatio = '2:3'; // portrait
-    if (size === '1536x1024') aspectRatio = '3:2'; // landscape
+    let aspectRatio = requestedAspectRatio || '1:1'; // default square
+    if (!requestedAspectRatio && size === '1024x1536') aspectRatio = '2:3'; // portrait
+    if (!requestedAspectRatio && size === '1536x1024') aspectRatio = '3:2'; // landscape
 
     const hasReference = !!(referenceImageBase64 || referenceImageUrl);
     const parts = [];
@@ -1159,7 +1183,7 @@ async function generateWithNanoBanana(prompt, size, referenceImageUrl, reference
     parts.push({ text: prompt });
 
     // Try Nano Banana 2 first, fall back to original if it fails
-    const models = ['gemini-3.1-flash-image-preview', 'gemini-2.5-flash-image'];
+    const models = ['gemini-3.1-flash-image', 'gemini-2.5-flash-image'];
     let lastError = null;
 
     for (const modelId of models) {
@@ -1267,7 +1291,7 @@ async function editWithGemini(prompt, imageUrl, imageBase64) {
     }
 
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key=${getGeminiKey()}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image:generateContent?key=${getGeminiKey()}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1332,9 +1356,9 @@ export async function executeImageTool(toolName, parameters) {
     const duration = Date.now() - startTime;
     logger.info(`Image tool completed: ${toolName} (${duration}ms)`, { engine: result.engine });
 
-    // ── POST-PROCESS RESIZE: Crop/resize to exact platform dimensions ──
-    // AI generators output fixed sizes (1024x1024, 1536x1024, etc.)
-    // This step resizes to the exact target_width x target_height the user needs
+    // ── POST-PROCESS RESIZE: preserve composition by default ────────────
+    // Providers should generate at the requested native aspect ratio. If a
+    // provider ignores it, fit the entire result rather than silently cropping.
     if (result.success && result.image_base64 && parameters.target_width && parameters.target_height) {
       try {
         const tw = parseInt(parameters.target_width);
@@ -1344,9 +1368,29 @@ export async function executeImageTool(toolName, parameters) {
           const imgBuffer = Buffer.from(result.image_base64, 'base64');
           const Jimp = (await import('jimp')).default;
           const image = await Jimp.read(imgBuffer);
+          const sourceWidth = image.getWidth();
+          const sourceHeight = image.getHeight();
+          const sourceRatio = sourceWidth / sourceHeight;
+          const requestedRatio = tw / th;
 
-          // Use cover (resize + center-crop) to fill exact dimensions without distortion
-          image.cover(tw, th);
+          const userExplicitlyRequestedCrop = parameters.allow_crop === true;
+          const preservePortraitHeadroom =
+            parameters.crop_anchor === 'top' ||
+            parameters.preserve_headroom === true ||
+            /\b(full head|entire head|hair visible|headroom|do not crop|don't crop|not cut off|hair (?:is )?cut off)\b/i.test(parameters.prompt || '');
+          if (Math.abs(sourceRatio - requestedRatio) < 0.01) {
+            // Native aspect ratio already matches: resize only, never crop.
+            image.resize(tw, th);
+          } else if (userExplicitlyRequestedCrop) {
+            const alignment = preservePortraitHeadroom
+              ? (Jimp.HORIZONTAL_ALIGN_CENTER | Jimp.VERTICAL_ALIGN_TOP)
+              : (Jimp.HORIZONTAL_ALIGN_CENTER | Jimp.VERTICAL_ALIGN_MIDDLE);
+            image.cover(tw, th, alignment);
+          } else {
+            // Non-destructive fallback: retain every generated pixel. Native
+            // aspect-ratio routing should make this branch exceptional.
+            image.contain(tw, th);
+          }
 
           const resizedBuffer = await image.getBufferAsync(Jimp.MIME_PNG);
           result.image_base64 = resizedBuffer.toString('base64');
@@ -1358,7 +1402,16 @@ export async function executeImageTool(toolName, parameters) {
 
           result.target_width = tw;
           result.target_height = th;
-          result.message = `Image generated and resized to exact ${tw}x${th} dimensions. ${result.message || ''}`;
+          result.crop_anchor = Math.abs(sourceRatio - requestedRatio) < 0.01
+            ? 'none'
+            : (userExplicitlyRequestedCrop ? (preservePortraitHeadroom ? 'top' : 'center') : 'none');
+          result.composition_preserved = !userExplicitlyRequestedCrop;
+          result.aspect_ratio_mismatch = Math.abs(sourceRatio - requestedRatio) >= 0.01;
+          result.message = !result.aspect_ratio_mismatch
+            ? `Image generated natively at the requested aspect ratio and resized without cropping to exact ${tw}x${th} dimensions. ${result.message || ''}`
+            : (userExplicitlyRequestedCrop
+              ? `Image cropped as explicitly requested and resized to exact ${tw}x${th} dimensions. ${result.message || ''}`
+              : `Provider returned a different aspect ratio; the full composition was fitted into ${tw}x${th} without cropping. ${result.message || ''}`);
           logger.info(`Image resized to ${tw}x${th} successfully`);
         }
       } catch (resizeErr) {

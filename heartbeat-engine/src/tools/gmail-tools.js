@@ -325,13 +325,14 @@ export const gmailToolDefinitions = {
   },
 };
 
-export async function executeGmailTool(toolName, input) {
+export async function executeGmailTool(toolName, input = {}, orgId = null) {
   const tool = gmailToolDefinitions[toolName];
   if (!tool) throw new Error(`Unknown Gmail tool: ${toolName}`);
 
-  logger.info('Executing Gmail tool', { tool: toolName });
+  const scopedInput = { ...input, orgId: orgId || input.orgId };
+  logger.info('Executing Gmail tool', { tool: toolName, orgId: scopedInput.orgId });
   try {
-    const result = await tool.handler(input);
+    const result = await tool.handler(scopedInput);
     return result;
   } catch (error) {
     logger.error('Gmail tool error', { tool: toolName, error: error.message });

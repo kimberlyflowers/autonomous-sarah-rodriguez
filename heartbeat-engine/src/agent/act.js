@@ -182,6 +182,10 @@ async function executeCreateTask(decision, agentConfig) {
       priority: decision.urgency || 'MEDIUM'
     });
 
+    if (!isCreatedGhlTaskResult(taskResult)) {
+      throw new Error(`GHL task was not created: ${taskResult?.reason || 'missing task confirmation'}`);
+    }
+
     return {
       success: true,
       taskId: taskResult.id,
@@ -192,6 +196,10 @@ async function executeCreateTask(decision, agentConfig) {
   } catch (error) {
     throw new Error(`Failed to create task: ${error.message}`);
   }
+}
+
+export function isCreatedGhlTaskResult(result) {
+  return Boolean(result?.created === true && result?.id && !result?.skipped);
 }
 
 // Execute contact update
@@ -528,6 +536,21 @@ If you need to reschedule, please let us know as soon as possible.
 - Sarah @ BLOOM Ecosystem`;
 }
 
+export function shouldSkipMissingSmsPhone(channelType, phone) {
+  return String(channelType || 'SMS').toUpperCase() === 'SMS' && !String(phone || '').trim();
+}
+
+export function normalizeEventTimestamp(value, fallback = new Date().toISOString()) {
+  if (value === null || value === undefined || value === '') return fallback;
+  const numeric = typeof value === 'number' || /^\d{10,16}$/.test(String(value))
+    ? Number(value)
+    : NaN;
+  const date = Number.isFinite(numeric)
+    ? new Date(numeric < 1e12 ? numeric * 1000 : numeric)
+    : new Date(value);
+  return Number.isNaN(date.getTime()) ? fallback : date.toISOString();
+}
+
 // Execute reply to a contact in an existing conversation thread
 async function executeReplyToContact(decision, agentConfig) {
   const { conversationId, contactId, phone, message, channelType, inboundMessageBody, inboundReceivedAt } = decision.input_data || {};
@@ -573,6 +596,43 @@ async function executeReplyToContact(decision, agentConfig) {
     return { success: true, skipped: true, reason: 'already_replied', conversationId: convIdForCheck };
   }
 
+  // GHL's SMS reply endpoint rejects conversation replies when the contact has
+  // no destination phone number. Persist the skip as handled before returning,
+  // so even a failed mark-read call cannot cause an endless heartbeat retry.
+  if (shouldSkipMissingSmsPhone(type, replyPhone)) {
+    try {
+      const { error: skipLogError } = await supabase.from('inbound_reply_log').insert({
+        conversation_id: convIdForCheck,
+        contact_id: contactId || null,
+        inbound_message: inboundForCheck,
+        channel_type: type,
+        received_at: normalizeEventTimestamp(inboundReceivedAt),
+        agent_id: agentConfig?.agentId || null,
+        reply_message: '[Skipped: SMS contact has no phone number]',
+        reply_message_id: 'skipped:missing_phone',
+        replied_at: new Date().toISOString(),
+      });
+      if (skipLogError) logger.warn('Could not persist missing-phone reply skip', { error: skipLogError.message });
+    } catch (error) {
+      logger.warn('Could not persist missing-phone reply skip', { error: error.message });
+    }
+    if (conversationId) {
+      await ghlClient.markConversationRead(conversationId).catch(() => {});
+    }
+    logger.warn('reply_to_contact skipped: SMS contact has no phone number', {
+      conversationId: conversationId || null,
+      contactId: contactId || null,
+      reason: 'missing_phone',
+    });
+    return {
+      success: true,
+      skipped: true,
+      reason: 'missing_phone',
+      conversationId: conversationId || null,
+      contactId: contactId || null,
+    };
+  }
+
   // ── LOG INTENT before sending — if send fails we still have the record ──
   const logEntry = {
     conversation_id: convIdForCheck,
@@ -610,11 +670,16 @@ async function executeReplyToContact(decision, agentConfig) {
 
   // ── UPDATE LOG with sent reply details ──
   if (logId) {
-    await supabase.from('inbound_reply_log').update({
-      reply_message: message,
-      reply_message_id: result.messageId,
-      replied_at: new Date().toISOString(),
-    }).eq('id', logId).catch(() => {});
+    try {
+      const { error: updateLogError } = await supabase.from('inbound_reply_log').update({
+        reply_message: message,
+        reply_message_id: result.messageId,
+        replied_at: new Date().toISOString(),
+      }).eq('id', logId);
+      if (updateLogError) logger.warn('Could not update inbound reply log', { error: updateLogError.message, logId });
+    } catch (error) {
+      logger.warn('Could not update inbound reply log', { error: error.message, logId });
+    }
   }
 
   return {

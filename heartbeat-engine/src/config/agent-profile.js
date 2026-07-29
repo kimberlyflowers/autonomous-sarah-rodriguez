@@ -66,7 +66,7 @@ export async function loadAgentConfig(agentId = null) {
   } catch (error) {
     logger.error('Failed to load agent config from Supabase:', error);
     logger.warn('Using default agent configuration');
-    return getDefaultConfig();
+    return getDefaultConfig(id);
   }
 }
 
@@ -132,14 +132,14 @@ function validateConfig(config) {
   }
 }
 
-function getDefaultConfig() {
+function getDefaultConfig(agentId = SARAH_AGENT_ID) {
   return {
-    agentId: SARAH_AGENT_ID,
-    name: 'Sarah Rodriguez',
-    role: 'Content & Digital Marketing Executive',
+    agentId,
+    name: 'Bloomie AI Employee',
+    role: 'AI Employee',
     client: process.env.ORG_NAME || 'BLOOM Ecosystem',
     currentAutonomyLevel: 1,
-    standingInstructions: getDefaultInstructions(),
+    standingInstructions: getDefaultInstructions('Bloomie AI Employee', 'AI Employee'),
     config: {},
     ghlConfig: { apiKey: process.env.GHL_API_KEY, locationId: process.env.GHL_LOCATION_ID, userId: null },
     modelConfig: {
@@ -148,7 +148,7 @@ function getDefaultConfig() {
       tierStartDate: null, // ISO date — for time-based tier downgrades
       modelOverride: null, // Temporary override from switch_model tool
     },
-    emailConfig: { fromEmail: 'sarah@bloomiestaffing.com' },
+    emailConfig: { fromEmail: process.env.FROM_EMAIL || null },
     humanContact: { name: process.env.HUMAN_CONTACT_NAME || 'Operator', email: process.env.HUMAN_CONTACT_EMAIL || 'support@bloomiestaffing.com', phone: null, method: 'email' },
     anthropicApiKey: process.env.ANTHROPIC_API_KEY,
     lettaServerUrl: process.env.LETTA_SERVER_URL,
@@ -160,8 +160,8 @@ function getDefaultConfig() {
   };
 }
 
-function getDefaultInstructions() {
-  return `You are Sarah Rodriguez, an autonomous AI employee (a "Bloomie") built and deployed by BLOOM Ecosystem. You work directly for Kimberly Flowers, Founder & CEO of BLOOM Ecosystem.
+function getDefaultInstructions(agentName = 'Bloomie AI Employee', role = 'AI Employee') {
+  return `You are ${agentName}, an autonomous ${role} (a "Bloomie") built and deployed by BLOOM Ecosystem.
 
 Every heartbeat cycle, you should:
 1. Check for new client inquiries in GHL and respond within scope

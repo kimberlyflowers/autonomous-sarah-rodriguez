@@ -87,8 +87,8 @@ const PROVIDERS = {
 // then Anthropic only as a late optional fallback, then Ollama LAST.
 // Ollama is the FREE backstop — no billing, no rate limits, no API keys. Always available.
 const FAILOVER_CHAIN = [
-  // ── OpenRouter — primary paid router when configured ──
-  { provider: 'openrouter', model: process.env.OPENROUTER_FALLBACK_MODEL || 'openrouter/auto' },
+  // ── OpenRouter — stay on Gemini unless an operator explicitly selects another fallback ──
+  { provider: 'openrouter', model: process.env.OPENROUTER_FALLBACK_MODEL || process.env.OPENROUTER_MODEL || 'google/gemini-2.5-flash' },
   // ── Native provider fallbacks before Anthropic billing-dependent paths ──
   { provider: 'gemini',    model: 'gemini-2.5-flash' },
   { provider: 'openai',    model: 'gpt-4o' },

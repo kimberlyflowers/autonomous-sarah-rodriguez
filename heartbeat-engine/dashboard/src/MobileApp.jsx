@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from './supabase.js';
+import ReferenceLibrary from './components/ReferenceLibrary.jsx';
 
 // ─── Theme tokens ─────────────────────────────────────────────────────────────
 const BRAND    = '#F4A261';
@@ -330,7 +331,9 @@ function PresenceArea({ agent, presenceState, c, idleImages, kenBurnsIdx, onSpea
 function ArtifactCard({ artifact, c, onView }) {
   return (
     <div style={{
-      maxWidth: '78%',
+      width: 'min(78%, 100%)',
+      maxWidth: '100%',
+      minWidth: 0,
       border: `1px solid ${c.border}`,
       borderRadius: 16,
       background: c.agentBubble,
@@ -464,6 +467,7 @@ function ArtifactPreview({ artifact, c, onClose }) {
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 1000,
+      width: '100vw', maxWidth: '100vw', overflow: 'hidden',
       background: 'rgba(0,0,0,0.88)',
       display: 'flex', flexDirection: 'column',
       paddingTop: 'env(safe-area-inset-top)',
@@ -474,6 +478,7 @@ function ArtifactPreview({ artifact, c, onClose }) {
       {/* Header */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 10,
+        flexWrap: 'wrap', maxWidth: '100%', overflow: 'hidden',
         padding: '10px 12px',
         background: c.sf, borderBottom: `1px solid ${c.border}`,
         flexShrink: 0,
@@ -516,7 +521,7 @@ function ArtifactPreview({ artifact, c, onClose }) {
       </div>
 
       {/* Content */}
-      <div style={{ flex: 1, overflow: 'hidden', background: c.bg }}>
+      <div style={{ flex: 1, minWidth: 0, maxWidth: '100vw', overflow: 'hidden', background: c.bg }}>
         {artifact.fileType === 'html' ? (
           <iframe
             src={artifact.previewUrl || artifact.downloadUrl}
@@ -564,7 +569,7 @@ function ArtifactPreview({ artifact, c, onClose }) {
 }
 
 // ─── Assets Tab ───────────────────────────────────────────────────────────────
-function AssetsTab({ c, agentName, artifacts, loading, onOpenArtifact }) {
+function AssetsTab({ c, agentName, artifacts, loading, onOpenArtifact, page, total, onPageChange }) {
   if (loading) {
     return (
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: c.bg }}>
@@ -590,7 +595,7 @@ function AssetsTab({ c, agentName, artifacts, loading, onOpenArtifact }) {
 
   return (
     <div style={{
-      flex: 1, overflowY: 'auto', background: c.bg,
+      flex: 1, minWidth: 0, maxWidth: '100%', overflowY: 'auto', overflowX: 'hidden', background: c.bg,
       padding: 12, display: 'flex', flexDirection: 'column', gap: 8,
     }}>
       {artifacts.map(artifact => (
@@ -598,7 +603,7 @@ function AssetsTab({ c, agentName, artifacts, loading, onOpenArtifact }) {
           key={artifact.id}
           onClick={() => onOpenArtifact(artifact)}
           style={{
-            width: '100%', border: `1px solid ${c.border}`, borderRadius: 12,
+            width: '100%', maxWidth: '100%', minWidth: 0, overflow: 'hidden', border: `1px solid ${c.border}`, borderRadius: 12,
             background: c.agentBubble, padding: '10px 12px',
             display: 'flex', alignItems: 'center', gap: 10,
             cursor: 'pointer', textAlign: 'left', transition: 'opacity 0.15s',
@@ -634,6 +639,13 @@ function AssetsTab({ c, agentName, artifacts, loading, onOpenArtifact }) {
           <ChevronRightIcon color={c.textMut} />
         </button>
       ))}
+      {total > 20 && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '10px 0 max(12px, env(safe-area-inset-bottom))' }}>
+          <button onClick={() => onPageChange(Math.max(1, page - 1))} disabled={page <= 1} style={{ padding: '8px 12px', borderRadius: 9, border: `1px solid ${c.border}`, background: c.agentBubble, color: page <= 1 ? c.textMut : c.textPri, fontWeight: 600 }}>Previous</button>
+          <span style={{ fontSize: 11, color: c.textSec, fontWeight: 600 }}>Page {page} of {Math.max(1, Math.ceil(total / 20))}</span>
+          <button onClick={() => onPageChange(Math.min(Math.ceil(total / 20), page + 1))} disabled={page >= Math.ceil(total / 20)} style={{ padding: '8px 12px', borderRadius: 9, border: `1px solid ${c.border}`, background: c.agentBubble, color: page >= Math.ceil(total / 20) ? c.textMut : c.textPri, fontWeight: 600 }}>Next</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -714,6 +726,13 @@ export default function MobileApp({ user: authUser }) {
   const [initError,     setInitError]     = useState(null);
   const [tab,           setTab]           = useState('chat');
   const [presenceState, setPresenceState] = useState('idle');
+  const [workSessions,  setWorkSessions]  = useState([]);
+  const [workActiveId,  setWorkActiveId]  = useState(null);
+  const [workDetail,    setWorkDetail]    = useState(null);
+  const [workInput,     setWorkInput]     = useState('');
+  const [workSending,   setWorkSending]   = useState(false);
+  const [workError,     setWorkError]     = useState('');
+  const workSelectionInitializedRef = useRef(false);
 
   // ── Phase 2: presence ─────────────────────────────────────────────────────
   const [idleImages,    setIdleImages]    = useState([null, null]);
@@ -722,6 +741,8 @@ export default function MobileApp({ user: authUser }) {
   // ── Phase 3: assets ───────────────────────────────────────────────────────
   const [artifacts,        setArtifacts]        = useState([]);
   const [artifactsLoading, setArtifactsLoading] = useState(false);
+  const [artifactsPage,    setArtifactsPage]    = useState(1);
+  const [artifactsTotal,   setArtifactsTotal]   = useState(0);
   const [previewArtifact,  setPreviewArtifact]  = useState(null);
 
   // ── Conference tab ────────────────────────────────────────────────────────
@@ -754,6 +775,23 @@ export default function MobileApp({ user: authUser }) {
     setDark(next);
     localStorage.setItem('bloom-mobile-theme', next ? 'dark' : 'light');
   };
+
+  useEffect(() => {
+    const syncMobileViewport = () => {
+      const height = window.visualViewport?.height || window.innerHeight;
+      document.documentElement.style.setProperty('--bloom-mobile-height', `${Math.round(height)}px`);
+    };
+    syncMobileViewport();
+    window.addEventListener('resize', syncMobileViewport);
+    window.visualViewport?.addEventListener('resize', syncMobileViewport);
+    window.visualViewport?.addEventListener('scroll', syncMobileViewport);
+    return () => {
+      window.removeEventListener('resize', syncMobileViewport);
+      window.visualViewport?.removeEventListener('resize', syncMobileViewport);
+      window.visualViewport?.removeEventListener('scroll', syncMobileViewport);
+      document.documentElement.style.removeProperty('--bloom-mobile-height');
+    };
+  }, []);
 
   // ── Speaking hooks (Phase 2 — wired; Phase 3 speech player would use these) ─
   const onSpeakingStart = useCallback(() => setPresenceState('speaking'), []);
@@ -939,19 +977,81 @@ export default function MobileApp({ user: authUser }) {
     setArtifactsLoading(true);
     try {
       const h = await authHeaders();
-      const r = await fetch(`${API}/api/files/artifacts?agentId=${agent.id}&limit=100`, { headers: h });
+      const r = await fetch(`${API}/api/files/artifacts?agentId=${agent.id}&limit=20&page=${artifactsPage}`, { headers: h });
       if (!r.ok) return;
       const d = await r.json();
       const list = d.artifacts || [];
       setArtifacts(list);
+      setArtifactsTotal(d.total || 0);
       list.forEach(a => knownArtifactIds.current.add(a.id));
     } catch { /* silent */ }
     setArtifactsLoading(false);
-  }, [agent?.id]);
+  }, [agent?.id, artifactsPage]);
 
   useEffect(() => {
     if (tab === 'assets' && agent?.id) fetchArtifacts();
-  }, [tab, agent?.id]);
+  }, [tab, agent?.id, artifactsPage]);
+
+  const loadMobileWork = useCallback(async () => {
+    try {
+      const h = await authHeaders();
+      const r = await fetch(`${API}/api/builds`, { headers: h });
+      if (!r.ok) return;
+      const d = await r.json();
+      setWorkSessions(d.builds || []);
+      if (!workSelectionInitializedRef.current) {
+        workSelectionInitializedRef.current = true;
+        if (!workActiveId && d.builds?.length) setWorkActiveId(d.builds[0].id);
+      }
+    } catch {}
+  }, [workActiveId]);
+
+  const loadMobileWorkDetail = useCallback(async (id) => {
+    if (!id) { setWorkDetail(null); return; }
+    try {
+      const h = await authHeaders();
+      const r = await fetch(`${API}/api/builds/${id}`, { headers: h });
+      if (r.ok) setWorkDetail(await r.json());
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (tab !== 'work') return;
+    loadMobileWork();
+    const timer = setInterval(() => {
+      loadMobileWork();
+      if (workActiveId) loadMobileWorkDetail(workActiveId);
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [tab, workActiveId]);
+
+  useEffect(() => {
+    if (tab === 'work') loadMobileWorkDetail(workActiveId);
+  }, [tab, workActiveId]);
+
+  const sendMobileWork = async () => {
+    const message = workInput.trim();
+    if (!message || workSending) return;
+    setWorkSending(true);
+    setWorkError('');
+    setWorkInput('');
+    try {
+      const h = await authHeaders();
+      const url = workActiveId ? `${API}/api/builds/${workActiveId}/message` : `${API}/api/builds`;
+      const body = workActiveId ? { message } : { brief: message, title: message.slice(0, 60), type: 'work' };
+      const r = await fetch(url, { method: 'POST', headers: { ...h, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || `Work request failed (${r.status})`);
+      const nextWorkId = d.build?.id || workActiveId;
+      if (d.build?.id) setWorkActiveId(d.build.id);
+      await loadMobileWork();
+      if (nextWorkId) await loadMobileWorkDetail(nextWorkId);
+    } catch (error) {
+      setWorkInput(message);
+      setWorkError(error?.message || 'Unable to start this Work session.');
+    }
+    setWorkSending(false);
+  };
 
   // ── Auto-scroll ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -1170,7 +1270,9 @@ export default function MobileApp({ user: authUser }) {
   // ── Main render ───────────────────────────────────────────────────────────
   return (
     <div style={{
-      position: 'fixed', inset: 0,
+      position: 'fixed', top: 0, left: 0,
+      width: '100%', height: 'var(--bloom-mobile-height, 100dvh)',
+      maxWidth: '100vw',
       background: c.bg,
       display: 'flex', flexDirection: 'column',
       fontFamily: "'DM Sans', system-ui, sans-serif",
@@ -1182,9 +1284,9 @@ export default function MobileApp({ user: authUser }) {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        html { padding: 0 !important; min-height: 100vh !important; background: ${c.bg} !important; overflow: hidden !important; }
-        body { margin: 0; padding: 0; overflow: hidden; height: 100vh; background: ${c.bg}; overscroll-behavior-y: contain; -webkit-overflow-scrolling: touch; }
-        #root { height: 100vh; overflow: hidden; }
+        html { padding: 0 !important; height: var(--bloom-mobile-height, 100dvh) !important; min-height: 0 !important; background: ${c.bg} !important; overflow: hidden !important; }
+        body { margin: 0; padding: 0; overflow: hidden; height: var(--bloom-mobile-height, 100dvh) !important; background: ${c.bg}; overscroll-behavior-y: contain; -webkit-overflow-scrolling: touch; }
+        #root { height: var(--bloom-mobile-height, 100dvh) !important; overflow: hidden; }
 
         @keyframes typingBounce {
           0%, 60%, 100% { transform: translateY(0); }
@@ -1288,8 +1390,9 @@ export default function MobileApp({ user: authUser }) {
       <div style={{ display: 'flex', background: c.sf, borderBottom: `1px solid ${c.border}`, flexShrink: 0 }}>
         {[
           { key: 'chat',       label: '💬 Chat'       },
+          { key: 'work',       label: '🛠 Work'       },
           { key: 'assets',     label: '📁 Assets'     },
-          { key: 'conference', label: '👥 Conference'  },
+          { key: 'references', label: '📚 Refs'       },
         ].map(({ key, label }) => {
           const active = tab === key;
           return (
@@ -1307,14 +1410,66 @@ export default function MobileApp({ user: authUser }) {
       </div>
 
       {/* ═══ TAB CONTENT ═════════════════════════════════════════════════════ */}
-      {tab === 'assets' ? (
+      {tab === 'work' ? (
+        <>
+          <div style={{padding:'10px 12px',borderBottom:`1px solid ${c.border}`,background:c.sf,display:'flex',gap:8}}>
+            <select value={workActiveId||''} onChange={e=>setWorkActiveId(e.target.value||null)} style={{flex:1,minWidth:0,padding:'9px 10px',borderRadius:10,border:`1px solid ${c.border}`,background:c.inputBg,color:c.textPri,fontSize:13}}>
+              <option value="">New Work session</option>
+              {workSessions.map(s=><option key={s.id} value={s.id}>{s.title} — {s.status}</option>)}
+            </select>
+            <button onClick={()=>{setWorkActiveId(null);setWorkDetail(null);setWorkError('');}} style={{border:'none',borderRadius:10,padding:'0 12px',background:GRADIENT,color:'#fff',fontWeight:700}}>+ New</button>
+          </div>
+          <div style={{flex:1,overflowY:'auto',padding:'14px 12px 90px',background:c.bg}}>
+            {!workActiveId ? (
+              <div style={{textAlign:'center',marginTop:48,color:c.textSec}}>
+                <div style={{fontSize:34,marginBottom:10}}>🛠</div>
+                <div style={{fontWeight:700,color:c.textPri,marginBottom:6}}>Start remote work</div>
+                <div style={{fontSize:13,lineHeight:1.5}}>The work runs on Sarah’s server in its own Git branch and worktree. You can leave this screen and return without stopping it.</div>
+              </div>
+            ) : (
+              <>
+                <div style={{padding:14,borderRadius:14,background:c.agentBubble,border:`1px solid ${c.border}`,marginBottom:10}}>
+                  <div style={{display:'flex',alignItems:'center',gap:8}}>
+                    <span style={{width:8,height:8,borderRadius:'50%',background:workDetail?.build?.status==='complete'?GREEN:BRAND}}/>
+                    <div style={{fontWeight:700,color:c.textPri,flex:1}}>{workDetail?.build?.title||'Loading session…'}</div>
+                    <div style={{fontSize:11,color:c.textSec}}>{workDetail?.build?.status||''}</div>
+                  </div>
+                  {workDetail?.build?.project_id&&<div style={{fontSize:11,color:c.textMut,marginTop:6}}>Project-linked · isolated workspace</div>}
+                </div>
+                {(workDetail?.progress||[]).length>0&&<div style={{padding:14,borderRadius:14,background:c.agentBubble,border:`1px solid ${c.border}`,marginBottom:10}}>
+                  <div style={{fontSize:11,fontWeight:700,color:c.textMut,marginBottom:8}}>CHECKLIST</div>
+                  {workDetail.progress.map((step,i)=><div key={i} style={{fontSize:13,color:c.textSec,padding:'4px 0'}}>{step.status==='complete'?'✓':'○'} {step.step_name}</div>)}
+                </div>}
+                {(workDetail?.messages||[]).map((m,i)=><div key={m.id||i} style={{padding:'10px 12px',borderRadius:12,background:m.role==='user'?c.userBubble:c.agentBubble,color:m.role==='user'?c.userText:c.textPri,border:m.role==='user'?'none':`1px solid ${c.border}`,margin:'7px 0 7px '+(m.role==='user'?'18%':'0'),fontSize:13,lineHeight:1.5,whiteSpace:'pre-wrap',wordBreak:'break-word'}}>{m.content}</div>)}
+              </>
+            )}
+          </div>
+          {workError&&<div role="alert" style={{padding:'8px 12px',background:'#ef444418',borderTop:'1px solid #ef444430',color:'#ef4444',fontSize:12}}>{workError}</div>}
+          <div style={{borderTop:`1px solid ${c.border}`,background:c.sf,padding:'8px 12px max(8px, env(safe-area-inset-bottom))',display:'flex',gap:8}}>
+            <textarea value={workInput} onChange={e=>setWorkInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMobileWork();}}} placeholder={workActiveId?'Guide this session…':'What should Sarah work on?'} rows={1} style={{flex:1,resize:'none',border:`1px solid ${c.border}`,borderRadius:16,background:c.inputBg,color:c.textPri,padding:'11px 13px',fontSize:14,fontFamily:'inherit'}}/>
+            <button onClick={sendMobileWork} disabled={!workInput.trim()||workSending} style={{width:42,border:'none',borderRadius:14,background:workInput.trim()?GRADIENT:c.inputBg,color:'#fff'}}>➤</button>
+          </div>
+        </>
+      ) : tab === 'assets' ? (
         <AssetsTab
           c={c}
           agentName={agentName}
           artifacts={artifacts}
           loading={artifactsLoading}
           onOpenArtifact={setPreviewArtifact}
+          page={artifactsPage}
+          total={artifactsTotal}
+          onPageChange={setArtifactsPage}
         />
+      ) : tab === 'references' ? (
+        <div style={{ flex: 1, overflowY: 'auto', background: c.bg }}>
+          <ReferenceLibrary
+            c={{ bg:c.bg, sf:c.sf, cd:c.agentBubble, inp:c.inputBg, tx:c.textPri, so:c.textSec, ln:c.border, ac:BRAND, gr:GREEN }}
+            mob
+            agentId={agent?.id}
+            agentName={agentName}
+          />
+        </div>
       ) : tab === 'conference' ? (
         <>
           {/* Conference thread */}

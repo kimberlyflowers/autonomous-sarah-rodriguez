@@ -15,10 +15,53 @@ try {
   console.warn('Skills failed to load (non-critical):', e.message);
 }
 import { loadAgentConfig } from '../config/agent-profile.js';
+import {
+  asksUserForDiscoverableTechnicalContent,
+  buildSharedExecutionContract,
+  ensureImageToolOutputsVisible,
+  getAgentDisplayName,
+  isSelfImageDisplayRequest,
+} from '../orchestrator/agent-experience.js';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import { shopifyToolDefinitions } from '../tools/shopify-tools.js';
+import { developerToolDefinitions, executeDeveloperTool } from '../tools/developer-tools.js';
+import { buildStateAwareHandoff, deriveExecutionState, loadExecutionCheckpoint, persistExecutionCheckpoint } from '../orchestrator/execution-state.js';
+import { classifyWorkOutputStatus } from '../orchestrator/work-result.js';
+import { appendProgressUpdate, buildCheckpointResumeContext, buildCodexStyleOpening, buildToolProgressUpdate, clearProgressUpdates, progressUpdates, setProgressSink } from '../orchestrator/progress-events.js';
+import { appendExecutionEvent, executionEventSnapshot, pairExecutionEvents, sanitizeExecutionValue } from '../orchestrator/execution-events.js';
+import { compactToolResultForContext, isEngineeringTask, selectExecutionModel, selectTaskTools } from '../orchestrator/execution-policy.js';
+import { classifyToolFailure, instructionExplicitlyAuthorizesConsequence, validateExactPurchaseAuthorization, validateMutationTarget } from '../orchestrator/autonomy-policy.js';
+import { buildCompletionNudge, evaluateCompletionContract } from '../orchestrator/completion-contract.js';
+import { reportFailureTicket } from '../support/ticket-reporter.js';
+import { authenticateBookAccess } from './book-auth.js';
+
+function appendUberEatsResultsMarker(text, toolsUsed = [], toolResults = []) {
+  const index = toolsUsed.findLastIndex(tool => tool?.name === 'uber_eats_search');
+  const result = index >= 0 ? toolResults[index] : null;
+  if (!result?.success || !Array.isArray(result.candidates) || result.candidates.length === 0) {
+    return text;
+  }
+  if (/<!--\s*uber_eats_results:/i.test(text || '')) return text;
+
+  const safeResults = {
+    query: String(result.query || '').slice(0, 120),
+    addressSummary: String(result.addressSummary || '').slice(0, 160),
+    preliminary: true,
+    browserHandoffUrl: String(result.browserHandoffUrl || 'https://www.ubereats.com/').slice(0, 500),
+    candidates: result.candidates.slice(0, 12).map(candidate => ({
+      rank: Number(candidate.rank) || 0,
+      name: String(candidate.name || 'Uber Eats option').slice(0, 180),
+      url: String(candidate.url || '').slice(0, 700),
+      summary: String(candidate.summary || '').slice(0, 420),
+    })).filter(candidate => /^https:\/\/([a-z0-9-]+\.)*ubereats\.com\//i.test(candidate.url)),
+  };
+  if (safeResults.candidates.length === 0) return text;
+
+  const payload = Buffer.from(JSON.stringify(safeResults), 'utf8').toString('base64url');
+  return `${text || ''}\n\n<!-- uber_eats_results:${payload} -->`;
+}
 
 // ── Managed Website Agent (lazy import — only used when sessionType=website_build) ─────
 let runWebsiteBuild = null;
@@ -121,7 +164,7 @@ function appendThinking(sessionId, event) {
 
 // ── AUTO-CLEANUP: Purge stale "Planning steps..." entries every 60 seconds ──
 // Prevents orphaned entries from piling up when API calls fail before cleanup
-setInterval(() => {
+const taskProgressCleanupTimer = setInterval(() => {
   const STALE_THRESHOLD_MS = 3 * 60 * 1000; // 3 minutes
   const now = Date.now();
   for (const [key, entry] of taskProgress) {
@@ -135,6 +178,7 @@ setInterval(() => {
     }
   }
 }, 60_000);
+taskProgressCleanupTimer.unref?.();
 
 // Extract user ID from Supabase JWT — falls back to env var during transition
 async function getUserId(req) {
@@ -160,12 +204,14 @@ function buildSystemPrompt(agentConfig) {
 
   const identityBlock = agentConfig?.standingInstructions
     ? agentConfig.standingInstructions
-    : `You are Sarah Rodriguez, Content & Digital Marketing Executive at BLOOM Ecosystem.`;
+    : `You are ${getAgentDisplayName(agentConfig)}, ${agentConfig?.role || 'AI Employee'} at ${agentConfig?.client || 'BLOOM Ecosystem'}.`;
+  const sharedIdentityAndExecution = buildSharedExecutionContract(agentConfig, 'chat');
 
   // BASE PROMPT — Slim, frozen, always cached (~3,000 tokens)
   // Dynamic injections (task-specific, investigation wrapper) are added
   // in chatWithAgent() via getTaskInjection() and INVESTIGATION_WRAPPER.
   return `${identityBlock}
+${sharedIdentityAndExecution}
 OPERATOR: ${operatorName} | BLOOMIE AGENT
 
 You are an AI employee who can chat naturally and execute work.
@@ -187,15 +233,32 @@ COMMUNICATION
 ════════════════════════════════════════
 EXECUTION — 4 NON-NEGOTIABLE RULES
 ════════════════════════════════════════
-1. CLARIFY FIRST: For any ambiguous task, call bloom_clarify before doing anything.
-   One focused question, 2–4 clickable options. Wait for answer before proceeding.
-   ALWAYS clarify: content type/tone/audience, which contact, which record, missing WHO/WHAT/HOW/WHERE.
-   SKIP clarification only: 100% unambiguous request, single trivial lookup, pure conversation.
+1. AUTONOMY BEFORE CLARIFICATION: Make reasonable, reversible assumptions and begin safe
+   in-scope work. Use saved context, connected tools, repository contents, records, and
+   external state before asking the user for information.
+   Call bloom_clarify only when the missing answer materially changes scope, selects an
+   external recipient/record that cannot be resolved safely, authorizes a destructive or
+   monetary action, or expands authority. State the exact reason the choice is required.
+   TECHNICAL DISCOVERY IS NOT USER AMBIGUITY: Never ask the user for a branch, file path,
+   framework, repository structure, deployment state, or other fact your connected tools can
+   discover. Inspect repository metadata, list branches and files, search code, read manifests,
+   and inspect deployment results first. Ask only after the available discovery tools are
+   exhausted, and include the exact checks and errors.
+   For asynchronous Vercel work, call vercel_wait_for_deployment once. Do not burn model
+   rounds by repeatedly calling vercel_list_deployments. A pending or timed-out deployment
+   is not a failure.
+   For repository code changes, use the coding_workspace tools: prepare the tenant workspace,
+   inspect files, apply controlled edits, run the relevant checks, review the diff, then commit.
+   Do not use github_put_file as a substitute for testing a non-trivial code change.
 
 2. PLAN BEFORE EXECUTING: Call task_progress with ALL steps before touching any tool.
    Every step needs: content (imperative), activeForm (present continuous),
    success_criteria (concrete), verification_method (api_check/result_check/llm_judgment).
    Skip only: pure conversation with zero tool calls, or single trivial one-shot action.
+   After the initial plan, update task_progress only at meaningful phase transitions or when
+   status actually changes. Do not spend a separate model round narrating every individual tool.
+   For substantial work, the user-facing progress stream will first state the outcome,
+   approach, and any material scope boundary. Continue immediately without waiting for approval.
 
 3. VERIFY EACH STEP: After every tool call, confirm it actually worked before moving on.
    - api_check: query the system to confirm the change exists
@@ -216,8 +279,14 @@ ERROR RECOVERY
 - Tool fails twice → try a different approach or alternative tool
 - Truly blocked → report the EXACT error message (never vague language)
 - Browser/login tools: never claim you are logged in, authenticated, or able to access a site if the tool result says blocked, unverified, CAPTCHA, Cloudflare, challenge, or verification. For logged-in work, prefer browser_task with siteName so login and work happen in one session. If BLOOM Desktop is connected and the site blocks cloud automation, use bloom_browser_* step tools in the user's real browser.
+- BLOOM Desktop browser actions must be snapshot-grounded: after every navigation or material page change, call bloom_browser_snapshot and use only the current refs and field labels/types it returns. Never infer that an unlabeled input is the requested field, never reuse stale refs, and never mark a browser step complete until the current URL or field values have been read back. If a requested field does not exist, report that exact mismatch instead of filling a different field.
+- MULTI-TENANT BROWSER APPS: Verify the currently selected account, workspace, location, or tenant before concluding that a requested resource is missing. If an exact resource URL redirects to a list or the resource is absent, inspect and use the visible account/workspace switcher, then retry under the matching tenant. Record the selected tenant and resulting URL as evidence.
+- MEDIA PICKERS: An upload is not applied merely because the file reached a media library. Finish the complete UI sequence: upload or import the source, select the resulting media tile, click Insert/Choose/Confirm, verify the parent editor now shows that asset, save the parent editor, read the save confirmation, and verify the live destination. When a chat upload is available only as a public URL and the picker offers "Upload from URL", use that URL rather than asking the user to upload again.
 - Internal errors (skill failures, tool errors) → NEVER expose to user. Fix silently.
 - Never brute-force the same failing approach. Consider alternatives first.
+- Before consequential mutations, resolve the exact tenant-scoped target. If the user did
+  not explicitly authorize a destructive, monetary, or external-communication action, ask
+  one focused question. Prefer reversible actions and preserve unrelated work.
 
 ════════════════════════════════════════
 SKILLS — LOAD BEFORE CONTENT WORK
@@ -242,7 +311,8 @@ function shouldInjectSelfImageSystemHint(messageText = '', agentConfig = {}) {
   const text = String(messageText || '').toLowerCase();
   const asksForImage = /\b(generate|create|make|design|produce|draw|render)\b[\s\S]{0,80}\b(image|photo|picture|portrait|headshot|profile|avatar|graphic|visual)\b/i.test(text) ||
     /\b(image|photo|picture|portrait|headshot|profile photo|avatar)\b[\s\S]{0,80}\b(of|for)\b/i.test(text);
-  return asksForImage && looksLikeSelfImageRequest({ prompt: text }, agentConfig);
+  return isSelfImageDisplayRequest(text, agentConfig) ||
+    (asksForImage && looksLikeSelfImageRequest({ prompt: text }, agentConfig));
 }
 
 function getAgentVisualIdentityName(agentConfig = {}) {
@@ -678,11 +748,11 @@ You are running on Anthropic Claude with full native tool support.
   // Gemini: flat prose, no XML. Gemini responds to imperative numbered lists.
   // XML tags are treated as literal text and confuse the response format.
   gemini: `OPERATIONAL NOTES (Gemini):
-1. Call tools directly when needed. Do not narrate what you are about to do.
+1. Call tools directly when needed. Use the progress stream for a concise outcome/approach opening and meaningful milestones; never narrate each tool call.
 2. Never write "I will now call X" — just call it.
 3. After every tool result, read the actual JSON fields returned. Do not assume success.
 4. If a tool returns an error field or success: false, treat it as a failure. Do not proceed.
-5. Keep responses concise. Do not explain your process — deliver results.
+5. Keep updates concise. Communicate material state changes, evidence, blockers, and the next completion condition without exposing private reasoning.
 6. For task_progress: always include the COMPLETE todos array, not just the changed item.`,
 
   // GPT-4o: direct, role-framed instructions. GPT responds to clear rules over XML.
@@ -692,7 +762,7 @@ You are running on Anthropic Claude with full native tool support.
 2. Call tools immediately when needed. No preamble like "I will now...".
 3. If a tool call fails, report the exact error text from the result. Do not soften it.
 4. For task_progress: send the COMPLETE todos array on every call. Never partial.
-5. Do not add commentary after completing steps. Wait until all steps are verified done.`,
+5. Use concise progress milestones for meaningful state changes. Do not narrate every tool call or expose private reasoning.`,
 
   // DeepSeek: terse prose directives. The `//` code-comment form made DeepSeek
   // treat these as code to explain, so it was quoting them back to users.
@@ -844,6 +914,11 @@ const WEBSITE_CHAT_TOOLS = [
 
 // TOOL DEFINITIONS — Full suite available to Sarah
 const _ALL_TOOLS = [
+  ...Object.values(developerToolDefinitions).map(tool => ({
+    name: tool.name,
+    description: tool.description,
+    input_schema: tool.parameters,
+  })),
   // ── CONTACTS ──────────────────────────────────────────────────────────────
   {
     name: "ghl_search_contacts",
@@ -1666,6 +1741,24 @@ const _ALL_TOOLS = [
       required: ["siteName"]
     }
   },
+  {
+    name: "uber_eats_finalize_purchase",
+    description: "FINAL PAYMENT TOOL for an Uber Eats consumer checkout. Use only after the cart is complete and bloom_clarify has shown the exact restaurant, items, delivery address summary, tip, fees, total, and ETA, and the user's CURRENT reply explicitly approves that exact total. This tool re-verifies the live checkout total before clicking Place order and stops on any mismatch, CAPTCHA, 2FA, or payment verification.",
+    input_schema: {
+      type: "object",
+      properties: {
+        checkoutId: { type: "string", description: "The visible cart/checkout identifier, or 'current-uber-eats-cart' when Uber shows no identifier." },
+        placeOrderRef: { type: "string", description: "Current DOM ref for Uber Eats' final Place order button from bloom_browser_snapshot after approval." },
+        restaurant: { type: "string" },
+        orderSummary: { type: "string", description: "Concise item and quantity summary." },
+        deliveryAddressSummary: { type: "string", description: "Non-sensitive confirmation such as street name and city; never include payment details." },
+        total: { type: "number", description: "Exact final total shown by Uber Eats, including fees, tax, and tip." },
+        currency: { type: "string", description: "ISO currency code such as USD." },
+        eta: { type: "string", description: "Delivery estimate shown at approval time." }
+      },
+      required: ["checkoutId", "placeOrderRef", "restaurant", "orderSummary", "deliveryAddressSummary", "total", "currency", "eta"]
+    }
+  },
   // ── GMAIL ────────────────────────────────────────────────────────────────
   {
     name: "gmail_check_inbox",
@@ -1998,7 +2091,7 @@ const _ALL_TOOLS = [
   },
   {
     name: "bloom_browser_snapshot",
-    description: "Get a DOM snapshot with numbered element refs. Use refs with bloom_browser_click/type.",
+    description: "Get the current DOM snapshot with numbered element refs, labels, field types, and selectors. Required after navigation or any material page change. Use only refs from the latest snapshot with bloom_browser_click/type; never guess or reuse stale refs.",
     input_schema: { type: "object", properties: {}, required: [] }
   },
   {
@@ -2012,7 +2105,7 @@ const _ALL_TOOLS = [
   },
   {
     name: "bloom_browser_type",
-    description: "Type text into a browser element by its ref number.",
+    description: "Replace the value of a browser form element using a ref from the latest bloom_browser_snapshot. Pass text:\"\" to clear the field. The ref must match the requested field's actual label/type in the latest snapshot.",
     input_schema: {
       type: "object",
       properties: {
@@ -2111,14 +2204,15 @@ const _ALL_TOOLS = [
   },
   {
     name: "bloom_browser_upload_file",
-    description: "Upload a file to a browser form input element.",
+    description: "Upload a file to one uniquely identified browser file input. Use either a file-input ref from the latest snapshot or a unique CSS selector copied from that snapshot. If the page opens a media library, upload the asset, select its tile, and click the library's Insert/Choose/Confirm action before saving the parent form.",
     input_schema: {
       type: "object",
       properties: {
-        ref: { type: "string" },
+        ref: { type: "string", description: "Current file-input ref from bloom_browser_snapshot." },
+        selector: { type: "string", description: "Unique CSS selector for the file input when a reliable ref is unavailable." },
         path: { type: "string" }
       },
-      required: ["ref", "path"]
+      required: ["path"]
     }
   },
   // ── NEW BROWSER BRIDGE TOOLS (added by Codex — matches desktop harness v2.0.0) ──
@@ -2180,7 +2274,7 @@ const _ALL_TOOLS = [
   },
   {
     name: "bloom_browser_form_fill",
-    description: "Fill multiple form fields at once by CSS selector. More reliable than typing field by field for complex forms.",
+    description: "Replace multiple form-field values at once using selectors copied from the latest bloom_browser_snapshot. More reliable than typing field by field. Every requested field must exist and every selector must match exactly one element; a partial fill is a failure. Use value:\"\" to clear a field.",
     input_schema: {
       type: "object",
       properties: {
@@ -2245,7 +2339,24 @@ const _ALL_TOOLS = [
     description: "Get audit statistics from the desktop app.",
     input_schema: { type: "object", properties: {}, required: [] }
   },
-    // ── WEB SEARCH & FETCH ───────────────────────────────────────────────────
+  // ── WEB SEARCH & FETCH ───────────────────────────────────────────────────
+  {
+    name: "uber_eats_search",
+    description: "Discover preliminary Uber Eats restaurant or dish candidates before opening checkout. Requires the user's delivery address and a specific restaurant, cuisine, or dish. This never creates a cart or places an order; verify availability, menu, fees, ETA, and total in the tenant's authenticated Uber Eats browser.",
+    input_schema: {
+      type: "object",
+      properties: {
+        address: { type: "string", description: "Delivery address explicitly provided by the user." },
+        query: { type: "string", description: "Specific restaurant, cuisine, or dish." },
+        count: { type: "integer", description: "Maximum candidates (default 8, max 12)." },
+        delivery_time: { type: "string", enum: ["<30"] },
+        has_offers: { type: "boolean" },
+        price_range: { type: "string", enum: ["$", "$$", "$$$", "$$$$"] },
+        rating: { type: "string", enum: ["3.5+", "4+", "4.5+"] }
+      },
+      required: ["address", "query"]
+    }
+  },
   {
     name: "web_search",
     description: "Search the web for current information. Returns relevant results with titles, URLs, and descriptions. Use this to research topics, find current news, look up facts, verify information, or find resources. Always use this when you need information that might have changed since your training data.",
@@ -2272,17 +2383,21 @@ const _ALL_TOOLS = [
   // ── IMAGE GENERATION & EDITING ───────────────────────────────────────────
   {
     name: "image_generate",
-    description: "Generate an image from a text description. Perfect for creating flyers, social media posts, banners, book covers, logos, product mockups, brand assets, and any visual content. Be very specific and detailed in your prompt — include exact text you want displayed, colors, layout, and style. Uses the configured image engine by default; OpenRouter can be primary when enabled. Set engine to 'gemini' for Nano Banana if text consistency needs fixing. If the user asks for an image of you/the current Bloomie/this employee, call image_generate directly; the platform will use the current agent's saved avatar_url as the reference image when available. IMPORTANT: When creating platform-specific images (Facebook covers, Instagram posts, Eventbrite headers, etc.), ALWAYS set target_width and target_height to the exact pixel dimensions required. Common sizes: Facebook cover 820x312, Instagram post 1080x1080, Instagram story 1080x1920, Eventbrite header 2160x1080, Twitter header 1500x500, LinkedIn banner 1128x191.",
+    description: "Generate an image natively at the requested aspect ratio and preserve its composition. Uses the configured image engine; OpenRouter may be primary. The current Bloomie's saved avatar is injected for self-images. Set aspect_ratio plus exact target dimensions for platform output. Never set allow_crop unless the user explicitly asks to crop.",
     input_schema: {
       type: "object",
       properties: {
         prompt: { type: "string", description: "Detailed description of the image to generate. Include exact text, colors, layout, style, and mood." },
-        size: { type: "string", enum: ["1024x1024", "1024x1536", "1536x1024"], description: "Base generation size (closest aspect ratio). 1024x1024=square, 1024x1536=portrait, 1536x1024=landscape. Image is resized to target_width x target_height after generation.", default: "1024x1024" },
+        size: { type: "string", enum: ["1024x1024", "1024x1536", "1536x1024"], description: "Base size for providers that require one. Prefer aspect_ratio for native composition.", default: "1024x1024" },
+        aspect_ratio: { type: "string", enum: ["1:1", "2:3", "3:2", "4:3", "3:4", "4:5", "5:4", "9:16", "16:9", "21:9"], description: "Native generation aspect ratio passed to the image provider." },
+        aspect_ratio: { type: "string", enum: ["1:1", "2:3", "3:2", "4:3", "3:4", "4:5", "5:4", "9:16", "16:9", "21:9"], description: "Native Gemini/Imagen composition ratio. Use 16:9 for landscape portraits and video source frames instead of generating 3:2 and cropping afterward." },
         target_width: { type: "integer", description: "REQUIRED for platform-specific images. Exact output width in pixels (e.g. 820 for Facebook cover, 1080 for Instagram post)." },
         target_height: { type: "integer", description: "REQUIRED for platform-specific images. Exact output height in pixels (e.g. 312 for Facebook cover, 1080 for Instagram post)." },
+        allow_crop: { type: "boolean", description: "Set true only when the user explicitly asks to crop. Defaults to false.", default: false },
+        crop_anchor: { type: "string", enum: ["center", "top"], description: "Crop alignment used only when allow_crop is true." },
         quality: { type: "string", enum: ["low", "medium", "high"], description: "Image quality level", default: "high" },
         background: { type: "string", enum: ["opaque", "transparent"], description: "Use 'transparent' for logos/overlays", default: "opaque" },
-        engine: { type: "string", enum: ["auto", "openrouter", "gpt", "gemini"], description: "'auto' picks best configured engine. 'openrouter' = OpenRouter image model. 'gpt' = GPT Image 1.5. 'gemini' = Nano Banana / Imagen for text-heavy fixes.", default: "auto" },
+        engine: { type: "string", enum: ["auto", "openrouter", "runpod", "gpt", "gemini"], description: "'auto' picks best configured engine. 'openrouter' = OpenRouter image model. 'runpod' = RunPod FLUX Dev. 'gpt' = GPT Image 1.5. 'gemini' = Nano Banana / Imagen for text-heavy fixes.", default: "auto" },
         reference_image_url: { type: "string", description: "URL of a reference image for character consistency. CRITICAL for multi-character projects — pass the SPECIFIC character's image URL to keep them looking the same. Get URLs from get_session_files or from previous image_generate results. If omitted, the most recent image is auto-injected." },
         no_reference: { type: "boolean", description: "Set to true to generate a BRAND NEW character/person without any reference image. Use this when creating a NEW character that should NOT look like any previous character. Prevents auto-injection of the last image.", default: false }
       },
@@ -2512,7 +2627,7 @@ const _ALL_TOOLS = [
   },
   {
     name: "task_progress",
-    description: "MANDATORY for real tasks involving tool calls — part of your Autonomous Work Protocol. Do NOT use for greetings, thanks, small talk, or simple conversational replies. The Active Tasks panel is visible to the user and should only appear when work is actually being done. Call at every phase transition: (1) PLAN: call with ALL steps 'pending' before starting work. (2) EXECUTE: mark each step 'in_progress' then 'completed' as you work — exactly ONE in_progress at a time. (3) VERIFY: mark verify step 'in_progress' while checking, then 'completed'. (4) DELIVER: include the returned inlineChecklist in your final response. RULES: Always include a final 'Verify all deliverables' step. Send the COMPLETE todo array every call. Mark complete IMMEDIATELY on success. NEVER mark complete if tool returned an error. Each item needs content (imperative: 'Generate flyer') and activeForm (continuous: 'Generating flyer').",
+    description: "Use for the initial plan and meaningful phase/status changes during real work. Do NOT use for greetings, small talk, or after every individual tool call. The engine narrates tool milestones automatically. Keep exactly one item in_progress, include the complete todo array, and never mark complete when verification failed. Always include a final verification outcome.",
     input_schema: {
       type: "object",
       properties: {
@@ -2524,8 +2639,10 @@ const _ALL_TOOLS = [
               content: { type: "string", description: "What needs to be done (imperative: 'Move files to Documents')" },
               status: { type: "string", enum: ["pending", "in_progress", "completed"], description: "Current state" },
               activeForm: { type: "string", description: "Present tense shown while running ('Moving files to Documents')" }
+              ,success_criteria: { type: "string", description: "Concrete observable condition that makes this step complete" }
+              ,verification_method: { type: "string", enum: ["api_check", "result_check", "llm_judgment"], description: "How completion will be verified" }
             },
-            required: ["content", "status", "activeForm"]
+            required: ["content", "status", "activeForm", "success_criteria", "verification_method"]
           },
           description: "The full todo list. Send the COMPLETE list every time (not just changes)."
         }
@@ -2535,7 +2652,7 @@ const _ALL_TOOLS = [
   },
   {
     name: "bloom_clarify",
-    description: "MANDATORY UI TOOL: Ask the user a clarifying question with clickable button options. You MUST call this tool instead of typing the question in plain text. Never write 'Clarification needed', 'Which option', numbered options, or multiple-choice questions in normal chat text. Call bloom_clarify and let the UI render the buttons. Use before starting any multi-step task from chat when details are missing. This pauses execution until the user responds.\n\nALWAYS use when the task involves creating content, contacting someone, updating data, or has multiple possible interpretations. ONLY skip when the request is 100% unambiguous with all details provided, or it's a single trivial action.",
+    description: "UI TOOL: Ask one focused clarifying question with clickable options only when the answer materially changes scope, identifies an unresolved external target, authorizes a destructive/monetary action, or grants new authority. First use saved context and connected tools to discover facts. Never ask for technical details or reversible creative choices you can safely determine. This pauses execution until the user responds.",
     input_schema: {
       type: "object",
       properties: {
@@ -2664,6 +2781,30 @@ Do NOT use this for simple questions, conversation, or tasks you can handle your
         }
       },
       required: ["taskType", "specialistPrompt"]
+    }
+  },
+  {
+    name: "dispatch_specialists_parallel",
+    description: "Run 2-4 independent research, writing, email, or coding specialist tasks concurrently, then return their ordered receipts for the current Bloomie to synthesize. Use only when the subtasks do not depend on one another. This speeds up broad audits and multi-part deliverables; it does not replace the current Bloomie's verification or tenant-scoped mutation tools.",
+    input_schema: {
+      type: "object",
+      properties: {
+        tasks: {
+          type: "array",
+          minItems: 2,
+          maxItems: 4,
+          items: {
+            type: "object",
+            properties: {
+              taskType: { type: "string", enum: ["writing", "email", "coding"] },
+              specialistPrompt: { type: "string" },
+              outputFormat: { type: "string", enum: ["markdown", "html", "code", "text"] }
+            },
+            required: ["taskType", "specialistPrompt"]
+          }
+        }
+      },
+      required: ["tasks"]
     }
   },
   {
@@ -2915,6 +3056,17 @@ After getting the page list, you can:
     }
   },
   {
+    name: "billing_prepare_upgrade",
+    description: "Prepare a secure Whop-hosted checkout when the authenticated owner explicitly asks to upgrade. This never charges automatically. Return the checkout link for the user to review and approve. If the requested plan is already active, explain that no payment is needed.",
+    input_schema: {
+      type: "object",
+      properties: {
+        plan: { type: "string", enum: ["part_time", "full_time"], description: "The Bloomie staffing plan the owner selected." }
+      },
+      required: ["plan"]
+    }
+  },
+  {
     name: "video_list_avatars",
     description: "Browse available AI avatars for video generation. Each avatar has a unique look, voice, and personality. Currently features Sarah Rodriguez — professional Latina business woman. FREE — no plan upgrade required.",
     input_schema: {
@@ -3014,6 +3166,10 @@ function getAvailableTools(options = {}) {
   const unavailable = [];
   
   for (const tool of _ALL_TOOLS) {
+    if (tool.name === 'video_generate' || tool.name === 'video_job_status') {
+      unavailable.push({ name: tool.name, reason: 'Legacy RunPod video route retired; use BLOOM Studio tools' });
+      continue;
+    }
     if (!desktopConnected && isDesktopOnlyTool(tool.name)) {
       unavailable.push({ name: tool.name, reason: 'BLOOM Desktop is not connected; use browser_task, browser_screenshot, web_search, or web_fetch instead' });
       continue;
@@ -3051,12 +3207,14 @@ function checkToolReadiness(toolName) {
   if (toolName === 'dispatch_to_specialist') {
     // Always available — falls back to Anthropic
   }
-  // GHL tools need API key
-  if (toolName.startsWith('ghl_')) {
-    if (!process.env.GHL_API_KEY) {
-      return { ready: false, reason: 'No GHL API key' };
+    // GHL tools read tenant credentials from user_connectors at runtime.
+    // A global GHL_API_KEY is only a legacy/operator fallback, not required
+    // for per-tenant connector usage.
+    if (toolName.startsWith('ghl_')) {
+      if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
+        return { ready: false, reason: 'Connector store is not configured' };
+      }
     }
-  }
   // Browser tools need chromium
   if (toolName === 'web_browse' || toolName === 'web_screenshot') {
     // These fail gracefully at runtime, keep available
@@ -3096,11 +3254,20 @@ function getCapabilityNotes(options = {}) {
   if (available.some(t => t.name.startsWith('ghl_'))) {
     capabilities.push('CRM tools are AVAILABLE — use ghl_ tools for contacts, emails, SMS, calendars, and pipelines.');
   }
+  if (available.some(t => t.name === 'github_list_files')) {
+    capabilities.push('GitHub repository discovery is AVAILABLE. Before editing or deploying code: call github_get_repository for the real default branch, github_list_files at the root, inspect package manifests, traverse source directories, and use github_search_code when a path is unknown. Never guess main/master or index.html, and never ask the user for discoverable repository details.');
+  }
+  if (available.some(t => t.name === 'coding_workspace_prepare')) {
+    capabilities.push('A tenant-scoped coding workspace is AVAILABLE. For non-trivial repository edits, use coding_workspace_prepare → inspect/read → coding_workspace_replace_text or coding_workspace_write_file → coding_workspace_run_checks (plus coding_workspace_run_command when a repository-specific command is needed) → coding_workspace_diff → coding_workspace_commit. Never commit before checks and diff review. Check subprocesses run without production secrets.');
+  }
   if (available.some(t => t.name === 'scraper_check_access')) {
     capabilities.push('Lead scraping tools are AVAILABLE — use scraper_ tools to build prospect lists. ALWAYS call scraper_check_access FIRST to see what the owner\'s plan allows. Free: scraper_scrape_url (any URL), scraper_search_businesses (Yellowpages/Yelp), scraper_search_facebook_groups. Paid: scraper_search_google_maps, scraper_search_apollo, scraper_search_linkedin. Paid tools will return upsell messages if the owner\'s plan doesn\'t include them.');
   }
-  if (available.some(t => t.name === 'video_check_access')) {
-    capabilities.push('AI Video generation tools are AVAILABLE — use video_ tools to create lip-synced AI videos with Sarah Rodriguez. ALWAYS call video_check_access FIRST to see what the owner\'s plan allows. Free: video_check_access (plan info), video_list_avatars (browse avatars). Paid (Video Creator $49/mo): video_generate (submit video job), video_job_status (check progress/download). Videos are 1080p, lip-synced, ~$0.03 each. Use video_generate with avatar_id "sarah" and a script, then poll video_job_status for the download URL.');
+  if (available.some(t => t.name === 'bloom_studio_generate_video')) {
+    capabilities.push('BLOOM Studio video generation is AVAILABLE. After the user approves the final script, call bloom_studio_generate_video; it automatically uses the active Bloomie employee’s own saved image and voice. Poll bloom_studio_check_job to completion. Never use the retired video_generate route and never switch providers unless the user asks.');
+  }
+  if (available.some(t => t.name === 'heygen_list_avatars')) {
+    capabilities.push('Tenant-connected HeyGen video generation is AVAILABLE. For a video of the active Bloomie employee, list ownership=private and use recommendedForActiveAgent. Never use a public substitute when that employee has a private avatar. Poll heygen_get_video to completion.');
   }
   
   if (capabilities.length > 0) {
@@ -3128,9 +3295,101 @@ function getCapabilityNotes(options = {}) {
 }
 
 // TOOL EXECUTION — routes all tool calls to the appropriate executor
-async function executeTool(toolName, toolInput, sessionId = null, agentConfig = null, orgId = null) {
+async function executeTool(toolName, toolInput, sessionId = null, agentConfig = null, orgId = null, lifecycleContext = null) {
   logger.info(`Executing tool: ${toolName}`, { input: toolInput });
   try {
+    if (toolName === 'uber_eats_finalize_purchase') {
+      const total = Number(toolInput.total).toFixed(2);
+      const baseUrl = process.env.SARAH_URL || `http://localhost:${process.env.PORT || 3000}`;
+      const desktopStatusQuery = orgId ? `?orgId=${encodeURIComponent(orgId)}` : '';
+      const statusResponse = await fetch(`${baseUrl}/api/desktop/status${desktopStatusQuery}`);
+      const status = await statusResponse.json();
+      const desktopSessionId = status.sessions?.[0]?.sessionId;
+      if (!desktopSessionId) {
+        return {
+          success: false,
+          blocked: true,
+          error: 'The exact payment was approved, but BLOOM Desktop is not connected to the user’s authenticated Uber Eats browser. Open BLOOM Desktop and retry from the same cart.',
+        };
+      }
+
+      const runDesktopCommand = async (desktopTool, args = {}) => {
+        const commandId = crypto.randomUUID();
+        const queued = await fetch(`${baseUrl}/api/desktop/command`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId: desktopSessionId, commandId, tool: desktopTool, args }),
+        });
+        if (!queued.ok) throw new Error(`Could not queue ${desktopTool} (${queued.status})`);
+        const deadline = Date.now() + 20000;
+        while (Date.now() < deadline) {
+          await new Promise(resolve => setTimeout(resolve, 400));
+          const response = await fetch(`${baseUrl}/api/desktop/result/${commandId}`);
+          const payload = await response.json();
+          if (payload.ready) return payload;
+        }
+        throw new Error(`${desktopTool} timed out`);
+      };
+
+      const before = await runDesktopCommand('bloom_browser_snapshot');
+      if (before.success === false || before.error) {
+        return { success: false, blocked: true, error: before.error || 'Could not inspect the live Uber Eats checkout.' };
+      }
+      const snapshot = JSON.stringify(before.result || before);
+      const normalizedSnapshot = snapshot.toLowerCase().replace(/,/g, '');
+      const expectedRestaurant = String(toolInput.restaurant).toLowerCase();
+      const hasRestaurant = normalizedSnapshot.includes(expectedRestaurant);
+      const hasTotal = normalizedSnapshot.includes(total);
+      const hasButtonRef = normalizedSnapshot.includes(String(toolInput.placeOrderRef).toLowerCase());
+      if (!hasRestaurant || !hasTotal || !hasButtonRef) {
+        return {
+          success: false,
+          blocked: true,
+          error: `Live Uber Eats checkout no longer matches the approved card. Expected ${toolInput.restaurant}, ${toolInput.currency} ${total}, and current Place order ref ${toolInput.placeOrderRef}. Nothing was purchased.`,
+        };
+      }
+      if (/\b(captcha|verification code|verify payment|two-factor|2fa|account approval)\b/i.test(snapshot)) {
+        return {
+          success: false,
+          blocked: true,
+          error: 'Uber requires user verification before payment. Complete the visible verification in BLOOM Desktop, then retry.',
+        };
+      }
+
+      const click = await runDesktopCommand('bloom_browser_click', { ref: toolInput.placeOrderRef });
+      if (click.success === false || click.error) {
+        return { success: false, error: click.error || 'Uber Eats rejected the final Place order click.' };
+      }
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      const after = await runDesktopCommand('bloom_browser_snapshot');
+      const confirmationSnapshot = JSON.stringify(after.result || after);
+      const confirmed = /\b(order confirmed|thanks for your order|preparing your order|order received|track(?:ing)? your order)\b/i.test(confirmationSnapshot);
+      if (!confirmed) {
+        return {
+          success: false,
+          pending: true,
+          error: 'The Place order button was clicked, but an Uber Eats receipt or confirmation is not visible yet. Do not click again; inspect the current page for payment verification or order status.',
+        };
+      }
+      return {
+        success: true,
+        purchased: true,
+        restaurant: toolInput.restaurant,
+        chargedTotal: `${toolInput.currency} ${total}`,
+        eta: toolInput.eta,
+        message: `Uber Eats order confirmed for ${toolInput.restaurant}. Charged total: ${toolInput.currency} ${total}. ETA: ${toolInput.eta}.`,
+      };
+    }
+    if (developerToolDefinitions[toolName]) {
+      const resolvedOrgId = orgId || agentConfig?.organizationId || agentConfig?.organization_id;
+      return await executeDeveloperTool(toolName, toolInput, resolvedOrgId, {
+        sessionId,
+        agentId: agentConfig?.agentId || agentConfig?.id || null,
+        agentName: agentConfig?.name || 'Bloomie AI Employee',
+        voiceId: agentConfig?.voiceId || null,
+        onOutput: lifecycleContext?.onOutput || null,
+      });
+    }
     // Multi-tenant website tools — available from normal Bloomie chat too.
     // The user never supplies the write key; this server attaches it internally.
     if (WEBSITE_TOOL_NAMES.has(toolName) || (toolName === 'get_site_pages' && (toolInput.org_id || toolInput.site_id || toolInput.site_slug))) {
@@ -3173,8 +3432,8 @@ async function executeTool(toolName, toolInput, sessionId = null, agentConfig = 
           action_type: toolInput.type || 'log',
           description: toolInput.message || '',
           input_data: toolInput,
-          agent_id: process.env.AGENT_UUID || 'c3000000-0000-0000-0000-000000000003',
-          organization_id: process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001'
+          agent_id: agentConfig?.agentId || agentConfig?.id || process.env.AGENT_UUID || 'c3000000-0000-0000-0000-000000000003',
+          organization_id: orgId || agentConfig?.organizationId || agentConfig?.organization_id || process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001'
         }).select().single();
         return { logged: data };
       } catch (err) {
@@ -3187,15 +3446,36 @@ async function executeTool(toolName, toolInput, sessionId = null, agentConfig = 
     if (toolName === 'task_progress') {
       const sessionKey = sessionId || 'default';
       const isDesktop = sessionKey.startsWith('desktop_');
+      const normalizedTodos = (toolInput.todos || []).map((todo, index) => ({
+        ...todo,
+        status: ['pending', 'in_progress', 'completed'].includes(todo?.status)
+          ? todo.status
+          : (index === 0 ? 'in_progress' : 'pending'),
+      }));
 
       // Always update the in-memory Map so SSE stream has latest state
       taskProgress.set(sessionKey, {
-        todos: toolInput.todos,
+        todos: normalizedTodos,
         updatedAt: Date.now()
       });
+      if (sessionId && process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY) {
+        try {
+          const { createClient } = await import('@supabase/supabase-js');
+          const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+          const { error } = await sb.from('managed_task_progress').upsert({
+            session_id: sessionId,
+            org_id: orgId || null,
+            todos: normalizedTodos,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'session_id' });
+          if (error) logger.warn('Could not persist task progress', { sessionId, error: error.message });
+        } catch (error) {
+          logger.warn('Could not persist task progress', { sessionId, error: error.message });
+        }
+      }
 
       // Build a formatted checklist for inline chat display
-      const checklist = toolInput.todos.map(t => {
+      const checklist = normalizedTodos.map(t => {
         const icon = t.status === 'completed' ? '✅' : t.status === 'in_progress' ? '🔄' : '⬜';
         const label = t.status === 'in_progress' ? t.activeForm : t.content;
         return `${icon} ${label}`;
@@ -3208,7 +3488,7 @@ async function executeTool(toolName, toolInput, sessionId = null, agentConfig = 
 
       return {
         success: true,
-        todoCount: toolInput.todos.length,
+        todoCount: normalizedTodos.length,
         context: isDesktop ? 'desktop_sse' : 'browser_chat',
         inlineChecklist: checklist,
         message: instruction
@@ -3303,6 +3583,7 @@ async function executeTool(toolName, toolInput, sessionId = null, agentConfig = 
         if (toolInput.instruction) body.instruction = toolInput.instruction;
         if (toolInput.frequency) body.frequency = toolInput.frequency;
         if (toolInput.runTime) body.runTime = toolInput.runTime;
+        body.agentId = agentConfig?.agentId || agentConfig?.id || undefined;
         const resp = await fetch(`${BASE_URL}/api/agent/tasks/${toolInput.taskId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
@@ -3325,7 +3606,9 @@ async function executeTool(toolName, toolInput, sessionId = null, agentConfig = 
     if (toolName === 'bloom_delete_scheduled_task') {
       try {
         const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3001}`;
-        const resp = await fetch(`${BASE_URL}/api/agent/tasks/${toolInput.taskId}`, { method: 'DELETE' });
+        const currentAgentId = agentConfig?.agentId || agentConfig?.id;
+        const query = currentAgentId ? `?agentId=${encodeURIComponent(currentAgentId)}` : '';
+        const resp = await fetch(`${BASE_URL}/api/agent/tasks/${toolInput.taskId}${query}`, { method: 'DELETE' });
         const data = await resp.json();
         if (!resp.ok || data.error) throw new Error(data.error || 'Failed to delete scheduled task');
         return { success: true, message: `Deleted scheduled task ${toolInput.taskId}` };
@@ -3338,11 +3621,14 @@ async function executeTool(toolName, toolInput, sessionId = null, agentConfig = 
     // All GHL tools + notify_owner route through the unified executor
     if (toolName.startsWith('ghl_') || toolName === 'notify_owner') {
       const { executeGHLTool } = await import('../tools/ghl-tools.js');
-      return await executeGHLTool(toolName, toolInput, orgId);
+      return await executeGHLTool(toolName, {
+        ...toolInput,
+        _agentName: agentConfig?.name || 'Bloomie AI Employee',
+      }, orgId);
     }
 
     // Web search & fetch tools — model-agnostic
-    if (toolName.startsWith('web_')) {
+    if (toolName.startsWith('web_') || toolName === 'uber_eats_search') {
       const { executeWebSearchTool } = await import('../tools/web-search-tools.js');
       return await executeWebSearchTool(toolName, toolInput);
     }
@@ -3356,7 +3642,17 @@ async function executeTool(toolName, toolInput, sessionId = null, agentConfig = 
     // Video MCP tools — AI video generation via Sarah Pipeline on RunPod Serverless
     if (toolName.startsWith('video_')) {
       const { executeVideoMCPTool } = await import('../tools/video-mcp-tools.js');
-      return await executeVideoMCPTool(toolName, toolInput);
+      const resolvedOrgId = orgId || agentConfig?.organizationId || agentConfig?.organization_id;
+      return await executeVideoMCPTool(toolName, {
+        ...toolInput,
+        org_id: resolvedOrgId,
+      });
+    }
+
+    if (toolName === 'billing_prepare_upgrade') {
+      const resolvedOrgId = orgId || agentConfig?.organizationId || agentConfig?.organization_id;
+      const { prepareHostedCheckout } = await import('./billing.js');
+      return await prepareHostedCheckout(resolvedOrgId, toolInput.plan);
     }
 
     // Image generation & editing tools — GPT Image + Nano Banana
@@ -4677,6 +4973,42 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
       }
     }
 
+    if (toolName === 'dispatch_specialists_parallel') {
+      const { callModel } = await import('../llm/unified-client.js');
+      const { runSpecialistsInParallel } = await import('../orchestrator/parallel-specialists.js');
+      const { getResolvedConfig } = await import('../config/admin-config.js');
+      const { getSkillContextForOrg } = await import('../skills/skill-loader.js');
+      const config = await getResolvedConfig(orgId || null).catch(() => null);
+      const defaultModel = config?.model || llmClient.model;
+      const models = {
+        writing: process.env.MODEL_WRITING || defaultModel,
+        email: process.env.MODEL_EMAIL || defaultModel,
+        coding: process.env.MODEL_CODING || defaultModel,
+      };
+      const systems = {
+        writing: 'Produce a polished, evidence-aware writing contribution. Return only the requested contribution.',
+        email: 'Produce concise, conversion-aware email or messaging copy. Return only the requested contribution.',
+        coding: 'Analyze or produce production-grade code for the bounded subtask. Return concrete evidence and exact paths when provided.',
+      };
+
+      return await runSpecialistsInParallel(toolInput.tasks || [], async task => {
+        const model = models[task.taskType] || defaultModel;
+        const skillContext = await getSkillContextForOrg(task.taskType, task.specialistPrompt, orgId || null);
+        const result = await callModel(model, {
+          system: `${systems[task.taskType] || systems.writing}\n${skillContext}`,
+          messages: [{ role: 'user', content: task.specialistPrompt }],
+          maxTokens: 4096,
+          temperature: 0.3,
+        });
+        return {
+          model,
+          provider: result.provider,
+          output: result.text,
+          tokensUsed: (result.usage?.inputTokens || 0) + (result.usage?.outputTokens || 0),
+        };
+      });
+    }
+
     // ── MODEL SWITCHING — on-the-fly per-org model changes (multi-tenant safe) ──
     if (toolName === 'switch_model') {
       const { setOrgModelPreference, getOrgModelPreference, getLLMClient: _getLLM } = await import('../llm/unified-client.js');
@@ -4772,7 +5104,7 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
     // Gmail tools
     if (toolName.startsWith('gmail_')) {
       const { executeGmailTool } = await import('../tools/gmail-tools.js');
-      return await executeGmailTool(toolName, toolInput);
+      return await executeGmailTool(toolName, toolInput, orgId);
     }
 
     // Shopify tools
@@ -4791,12 +5123,20 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
 
     // ── USER'S COMPUTER CONTROL (bloom_* tools) ───────────────────────────
     const DOCUMENT_TOOLS = ['bloom_create_document', 'bloom_list_documents', 'bloom_update_document', 'bloom_log', 'bloom_list_scheduled_tasks', 'bloom_create_scheduled_task', 'bloom_update_scheduled_task', 'bloom_delete_scheduled_task'];
+    // Some OpenAI-compatible providers normalize a navigation action to
+    // "goto" even though BLOOM Desktop's canonical tool is "navigate".
+    // Accept the semantic alias at the server boundary so an otherwise valid
+    // desktop browser run is not rejected as an unknown tool.
+    if (toolName === 'bloom_browser_goto') {
+      toolName = 'bloom_browser_navigate';
+    }
     if (toolName.startsWith('bloom_') && !DOCUMENT_TOOLS.includes(toolName)) {
       const SARAH_URL = process.env.SARAH_URL || `http://localhost:${process.env.PORT || 3000}`;
       const { v4: uuidv4 } = await import('uuid');
 
       // Find the active desktop session
-      const statusRes = await fetch(`${SARAH_URL}/api/desktop/status`);
+      const desktopStatusQuery = orgId ? `?orgId=${encodeURIComponent(orgId)}` : '';
+      const statusRes = await fetch(`${SARAH_URL}/api/desktop/status${desktopStatusQuery}`);
       const statusData = await statusRes.json();
       if (!statusData.sessions || statusData.sessions.length === 0) {
         return { error: 'No desktop connected. Ask the user to open the BLOOM Desktop app on their computer.' };
@@ -4814,14 +5154,43 @@ MULTI-PAGE SITE: This file is part of session "${sessionId}". If you're building
         return { error: `Failed to send command to desktop: ${cmdRes.status}` };
       }
 
-      // Poll for result (up to 15 seconds)
-      const deadline = Date.now() + 15000;
+      // Browser navigation, screenshots, downloads, and operating-system
+      // permission prompts can legitimately take longer than 15 seconds.
+      // Match the durable desktop bridge instead of falsely reporting that a
+      // still-running command disconnected.
+      const deadline = Date.now() + 90000;
       while (Date.now() < deadline) {
-        await new Promise(r => setTimeout(r, 500));
+        await new Promise(r => setTimeout(r, 400));
         const resultRes = await fetch(`${SARAH_URL}/api/desktop/result/${commandId}`);
         if (resultRes.ok) {
           const resultData = await resultRes.json();
-          if (resultData.ready) return resultData;
+          if (resultData.ready) {
+            const desktopPayload = resultData.result;
+            const nestedResult = desktopPayload?.result;
+            const exactError =
+              resultData.error ||
+              desktopPayload?.error ||
+              nestedResult?.error ||
+              nestedResult?.result?.error;
+
+            if (
+              resultData.success === false ||
+              desktopPayload?.success === false ||
+              nestedResult?.success === false ||
+              nestedResult?.result?.success === false
+            ) {
+              return {
+                success: false,
+                error: exactError || `${toolName} failed without an error message`,
+                result: desktopPayload,
+              };
+            }
+
+            return {
+              success: true,
+              result: desktopPayload,
+            };
+          }
         }
       }
       return { error: 'Desktop command timed out — the user may have minimized or closed BLOOM Desktop.' };
@@ -5017,12 +5386,60 @@ function buildInstantConversationReply(text, agentConfig = null) {
   return `Hi, ${firstName} here. What can I help you with?`;
 }
 
+async function inspectBookDeliverables(sessionId, orgId) {
+  if (!sessionId || !orgId) return null;
+  const { createClient } = await import('@supabase/supabase-js');
+  const client = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+  const { data, error } = await client
+    .from('artifacts')
+    .select('id,name,file_type,mime_type,content,storage_path')
+    .eq('organization_id', orgId)
+    .eq('session_id', sessionId);
+  if (error) throw error;
+  const files = data || [];
+  const countWords = value => String(value || '')
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/[#>*_`~[\](){}|\\-]/g, ' ')
+    .trim().split(/\s+/).filter(Boolean).length;
+  const textFiles = files.filter(file => typeof file.content === 'string' && file.content.trim());
+  const manuscripts = textFiles
+    .filter(file => /(?:complete[-_ ]?)?manuscript/i.test(file.name || '') && !/outline/i.test(file.name || ''))
+    .sort((a, b) => countWords(b.content) - countWords(a.content));
+  const chapters = textFiles.filter(file => /(?:^|[-_ ])(?:chapter|ch)[-_ ]?\d+/i.test(file.name || ''));
+  const wordCount = chapters.reduce((sum, file) => sum + countWords(file.content), 0);
+  const has = pattern => files.some(file => pattern.test(file.name || ''));
+  return {
+    wordCount,
+    chapterCount: chapters.length,
+    outline: has(/outline/i),
+    titlePage: has(/title[-_ ]?page/i),
+    copyright: has(/copyright/i),
+    toc: has(/table[-_ ]of[-_ ]contents|\btoc\b/i),
+    preface: has(/preface/i),
+    introduction: has(/introduction/i),
+    aboutAuthor: has(/about[-_ ]the[-_ ]author|author[-_ ]bio/i),
+    frontMatter: files.some(file => /front[-_ ]matter|preface|introduction|copyright|title[-_ ]page/i.test(file.name || '')),
+    backMatter: files.some(file => /back[-_ ]matter|about[-_ ]the[-_ ]author|acknowledg|bibliography|references/i.test(file.name || '')),
+    manuscript: Boolean(manuscripts[0]),
+    docx: files.some(file => /\.docx$/i.test(file.name || '') || /wordprocessingml/i.test(file.mime_type || '')),
+    printPdf: files.some(file => /kdp|print|interior/i.test(file.name || '') && /\.pdf$/i.test(file.name || '')),
+    kdpChecklist: files.some(file => /kdp[-_ ](?:package[-_ ])?checklist|upload[-_ ]checklist/i.test(file.name || '')),
+    cover: files.some(file => /cover/i.test(file.name || '') && /image|png|jpe?g|webp/i.test(`${file.file_type} ${file.mime_type} ${file.name}`)),
+  };
+}
+
 async function chatWithAgent(userMessage, history, agentConfig, sessionId = null, orgId = null) {
   // Get the right Anthropic client — per-agent key if configured, otherwise platform key
   const agentClient = getAnthropicClient(agentConfig);
   const messageText = getMessageText(userMessage);
+  const authorizationContext = [
+    ...history.filter(message => message?.role === 'user').map(message => getMessageText(message.content)),
+    messageText,
+  ].join('\n');
   const isConversationOnly = !hasNonTextContent(userMessage) && isConversationalMessage(messageText);
   const isPptxIntent = /\b(presentation|slide\s*deck|slides?|powerpoint|\.pptx\b|pptx\b|pitch\s*deck|keynote|slideshow|slide\s*show)\b/i.test(messageText);
+  const isDedicatedBookRequest = /DEDICATED BLOOMIE BOOK WORKSPACE REQUEST|BOOK (?:CHAPTER|SECTION) REVISION REQUEST/i.test(messageText);
+  let bookVerificationNudges = 0;
 
   if (isConversationOnly) {
     const trackingKey = sessionId || 'default';
@@ -5034,6 +5451,19 @@ async function chatWithAgent(userMessage, history, agentConfig, sessionId = null
 
   let systemPrompt = buildSystemPrompt(agentConfig);
   let desktopConnected = false;
+
+  clearProgressUpdates(sessionId);
+  appendProgressUpdate(sessionId, buildCodexStyleOpening(messageText), 'start');
+  try {
+    const checkpoint = await loadExecutionCheckpoint(sessionId);
+    const resumeContext = buildCheckpointResumeContext(checkpoint);
+    if (resumeContext) {
+      systemPrompt += `\n\n${resumeContext}\nIf the newest user request clearly replaces that work, follow the newest request instead.`;
+      appendProgressUpdate(sessionId, 'I found the prior task checkpoint and am continuing from the first unfinished step instead of starting over.', 'resume');
+    }
+  } catch (error) {
+    logger.warn('Could not load durable execution checkpoint (non-critical)', { sessionId, error: error.message });
+  }
 
   if (shouldInjectSelfImageSystemHint(messageText, agentConfig)) {
     const agentName = getAgentVisualIdentityName(agentConfig);
@@ -5053,7 +5483,7 @@ The platform will attach this loaded agent's saved avatar_url as the reference i
   try {
     const _desktopCheckUrl = process.env.SARAH_URL || `http://localhost:${process.env.PORT || 3000}`;
     const _desktopStatus = await Promise.race([
-      fetch(`${_desktopCheckUrl}/api/desktop/status`).then(r => r.json()),
+      fetch(`${_desktopCheckUrl}/api/desktop/status${orgId ? `?orgId=${encodeURIComponent(orgId)}` : ''}`).then(r => r.json()),
       new Promise((_, rej) => setTimeout(() => rej(new Error('desktop check timeout')), 3000))
     ]);
     desktopConnected = _desktopStatus?.sessions?.length > 0;
@@ -5162,6 +5592,95 @@ IMPORTANT: Since a brand kit is configured, DO NOT ask the user about colors, fo
     }
   } catch(e) { 
     logger.warn('Brand kit injection failed:', e.message);
+  }
+
+  // Inject durable, tenant-safe references selected for this Bloomie and task.
+  try {
+    const { createClient } = await import('@supabase/supabase-js');
+    const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const referenceOrgId = orgId || agentConfig?.organizationId || agentConfig?.organization_id || process.env.BLOOM_ORG_ID;
+    const referenceAgentId = agentConfig?.agentId || agentConfig?.id;
+    let projectId = null;
+    if (sessionId) {
+      const { data: sessionRow } = await sb.from('sessions').select('project_id').eq('id', sessionId).maybeSingle();
+      projectId = sessionRow?.project_id || null;
+    }
+    if (referenceOrgId && referenceAgentId) {
+      const taskText = String(messageText || '').toLowerCase();
+      const requestedCategories = new Set(['knowledge']);
+      if (/\b(write|writing|blog|article|email|script|document|tone|voice|style)\b/.test(taskText)) requestedCategories.add('writing_style');
+      if (/\b(image|photo|portrait|headshot|avatar|heygen|video|visual)\b/.test(taskText)) {
+        requestedCategories.add('identity');
+        requestedCategories.add('heygen');
+        requestedCategories.add('brand');
+      }
+      if (/\b(brand|logo|colors?|fonts?|design)\b/.test(taskText)) requestedCategories.add('brand');
+      if (projectId) requestedCategories.add('project');
+
+      const { data: referenceSetting, error: referenceError } = await sb
+        .from('user_settings')
+        .select('value')
+        .eq('organization_id', referenceOrgId)
+        .eq('key', 'reference_library')
+        .maybeSingle();
+      if (referenceError) throw referenceError;
+      const referenceRows = (Array.isArray(referenceSetting?.value) ? referenceSetting.value : [])
+        .filter(ref => ref.status === 'active')
+        .filter(ref => requestedCategories.has(ref.category))
+        .filter(ref =>
+          ref.scope === 'organization' ||
+          (ref.scope === 'agent' && ref.agent_id === referenceAgentId) ||
+          (projectId && ref.scope === 'project' && ref.project_id === projectId)
+        )
+        .slice(0, 12);
+      if (referenceRows?.length) {
+        const referenceLines = referenceRows.map((ref, index) => {
+          const text = ref.extracted_text ? `\nExcerpt:\n${ref.extracted_text.slice(0, 6000)}` : '';
+          const url = ref.storage_url ? `\nSource URL: ${ref.storage_url}` : '';
+          return `${index + 1}. [${ref.category}] ${ref.title}${ref.description ? ` — ${ref.description}` : ''}${url}${text}`;
+        }).join('\n\n');
+        systemPrompt += `\n\nAPPROVED REFERENCE LIBRARY — USE WHEN RELEVANT:
+These references belong to the current tenant and were selected for ${agentConfig.name}. Treat identity references as the visual source of truth for this Bloomie only. Treat writing samples as style guidance, not factual authority. Treat knowledge documents as source material and do not invent content beyond them.
+
+${referenceLines}`;
+        logger.info('Reference library injected', { agentId: referenceAgentId, count: referenceRows.length, categories: [...requestedCategories] });
+      }
+    }
+  } catch (e) {
+    // Backward-compatible while the migration is rolling out.
+    logger.warn('Reference library injection skipped', { error: e.message });
+  }
+
+  // Tenant-owned customer support answers are available to every Bloomie in
+  // Chat, Work, and scheduled execution. They are approved reply guidance,
+  // while GHL sync is handled separately by the admin UI.
+  try {
+    const { createClient } = await import('@supabase/supabase-js');
+    const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const supportOrgId = orgId || agentConfig?.organizationId || agentConfig?.organization_id || process.env.BLOOM_ORG_ID;
+    if (supportOrgId) {
+      const { data: supportSetting, error: supportError } = await sb
+        .from('user_settings')
+        .select('value')
+        .eq('organization_id', supportOrgId)
+        .eq('key', 'support_answers')
+        .maybeSingle();
+      if (supportError) throw supportError;
+      const supportAnswers = (Array.isArray(supportSetting?.value) ? supportSetting.value : [])
+        .filter(item => item.status !== 'archived' && item.question && item.answer)
+        .slice(0, 100);
+      if (supportAnswers.length) {
+        const replyGuide = supportAnswers.map((item, index) =>
+          `${index + 1}. Q: ${item.question}\nA: ${item.answer}${item.keywords?.length ? `\nKeywords: ${item.keywords.join(', ')}` : ''}`
+        ).join('\n\n');
+        systemPrompt += `\n\nAPPROVED TENANT SUPPORT ANSWERS:
+Use these as approved canned-response guidance whenever the user's question matches. Adapt the greeting and context naturally, but do not contradict the approved answer. These answers belong only to the current tenant.
+
+${replyGuide}`;
+      }
+    }
+  } catch (e) {
+    logger.warn('Tenant support answers injection skipped', { error: e.message });
   }
 
   // Inject session ID so Sarah can find/edit existing files
@@ -5326,6 +5845,20 @@ NEVER call ghl_create_blog_post for Bloomie blog publishing.
         'IMPORTANT: Every website must be mobile-first HTML, include brand kit colors, have a CRM-connected form, and be saved as a published artifact. Before choosing a layout, write and follow a creative brief based on the user\'s exact audience, offer, industry, requested style, and what should make this site visually distinct. Do not reuse the same generic hero/cards/sections across unrelated sites.\n\n## MANDATORY PARALLEL BUILD PROTOCOL — NO EXCEPTIONS\n\nYou MUST follow this exact build order for EVERY website. Deviating from this order causes inconsistency and broken multi-page navigation.\n\n### STEP 1 — GENERATE SHARED CONTEXT FIRST (one call, no tools)\nBefore touching any tool, decide and output your shared context as a JSON block:\n```json\n{\n  "site_name": "Business Name",\n  "nav_pages": ["Home", "About", "Services", "Contact"],\n  "nav_links": { "Home": "slug", "About": "slug-about", "Services": "slug-services", "Contact": "slug-contact" },\n  "primary_color": "#hex",\n  "accent_color": "#hex",\n  "font_heading": "Font Name",\n  "font_body": "Font Name",\n  "tone": "professional and warm",\n  "cta_text": "Book a Free Consultation",\n  "cta_anchor": "#contact"\n}\n```\nThis shared context MUST be embedded at the top of every page\'s HTML generation. This is what makes all pages consistent.\n\n### STEP 2 — GENERATE ALL IMAGES IN PARALLEL (one tool call)\nCall `generate_images_parallel` ONCE with ALL images needed across ALL pages. Do NOT call `image_generate` individually. Pass every hero, about, service, and feature image at once. Wait for the imageMap to return before writing ANY HTML.\n\n### STEP 3 — BUILD PAGES (using shared context + real image URLs from Step 2)\nNow create each page. Every page MUST:\n- Start with the shared context CSS variables (colors, fonts)\n- Use the identical nav linking to ALL pages (use the nav_links from shared context)\n- Use the identical footer\n- Use the real image URLs from the imageMap (never placeholders)\n- Include the CRM form on at least one page\n\nFor multi-page sites: create each page with `create_artifact`. Use `get_site_pages` to confirm slugs before writing nav links.\n\n### STEP 4 — VERIFY NAV LINKS\nAfter all pages are created, call `get_site_pages` to confirm all slugs. If any nav link is wrong, use `edit_artifact` to correct it across all pages.\n\n### WHY THIS MATTERS\n- Step 1 (shared context) → fixes tone/color/font inconsistency between pages\n- Step 2 (parallel images) → fixes slow sequential generation, fixes partial failures\n- Step 3 (pages use shared context) → fixes broken navigation and mismatched styling\n- Step 4 (verify slugs) → fixes dead nav links\n\nNEVER call image_generate individually during website builds. ALWAYS use generate_images_parallel.');
     }
 
+    // HYPERFRAMES — server-side HTML motion/video compositions
+    if (/\b(hyperframes|motion graphic|html animation|seekable animation|animated composition|render.*video)\b/i.test(_skillMsgText)) {
+      await _injectSkillByName('hyperframes',
+        'IMPORTANT: Use the tenant-isolated hyperframes_write_project and hyperframes_run tools. Validate with check before render. Never require BLOOM Desktop for Hyperframes.');
+    }
+    if (/\b(bloom studio|bloomstudio|boom studio)\b/i.test(_skillMsgText)) {
+      await _injectSkillByName('bloom-studio-video',
+        'IMPORTANT: Use BLOOM Studio tools only. After script approval, call bloom_studio_generate_video and poll bloom_studio_check_job. Never use the retired video_generate route and never switch to HeyGen unless the user asks.');
+    }
+    if (/\b(heygen|hagen|hayden|ai avatar|digital twin|talking avatar|avatar video)\b/i.test(_skillMsgText)) {
+      await _injectSkillByName('heygen-video',
+        'IMPORTANT: Use the current organization HeyGen connection and v3 tools. Always discover ownership=private first and use recommendedForActiveAgent for a video of the current Bloomie. Never substitute a public avatar when a private self-avatar exists. Poll the real video job to completion and never invent a URL.');
+    }
+
     // EMAIL — marketing emails, newsletters, campaigns, AND editing existing emails
     if (/\b(email.*campaign|newsletter|email.*blast|drip.*email|welcome.*email|marketing.*email|email.*template|send.*to.*list|announce.*blog|promote.*blog|create.*email|draft.*email|edit.*email|update.*email|change.*email|fix.*email|email.*link|email.*cta|modify.*email)\b/i.test(_skillMsgText)) {
       await _injectSkillByName('email-creator',
@@ -5369,14 +5902,76 @@ NEVER call ghl_create_blog_post for Bloomie blog publishing.
   // ── TASK INJECTION — Provider-native task-specific behavioral contracts ────
   // Detects task type from user message. Provider-native injection string is
   // resolved after model detection below. Stored here for use after model resolution.
-  const detectedTaskType = detectTaskType(userMessage);
+  const recentUserTaskContext = history
+    .slice(-10)
+    .filter(entry => entry?.role === 'user')
+    .map(entry => getMessageText(entry.content))
+    .filter(Boolean)
+    .join('\n');
+  // Short continuations and upload turns must retain the active task type.
+  // Otherwise "use that one" or "I just uploaded it" drops an existing-site
+  // edit back into generic chat and the Bloomie falsely claims it lacks access.
+  const taskInstruction = isEngineeringTask(messageText)
+    ? messageText
+    : (isEngineeringTask(recentUserTaskContext)
+      ? `${recentUserTaskContext}\n${messageText}`.trim()
+      : messageText);
+  const detectedTaskType = detectTaskType(taskInstruction);
   let enrichedUserMessage = userMessage; // will be updated after model is known
 
   const messages = [...history, { role: 'user', content: enrichedUserMessage }];
   let currentMessages = [...messages];
 
   // Dynamic tool availability + capability notes (ONCE, before the loop)
-  const { tools: availableTools } = getAvailableTools({ desktopConnected });
+  const { tools: readyTools } = getAvailableTools({ desktopConnected });
+  let availableTools = selectTaskTools(readyTools, taskInstruction);
+  const bloomStudioLocked = /\b(bloom studio|bloomstudio|boom studio)\b/i.test(messageText);
+  const heygenLocked = /\b(heygen|hagen|hayden)\b/i.test(messageText) && !bloomStudioLocked;
+  if (bloomStudioLocked) {
+    availableTools = availableTools.filter(tool => !tool.name.startsWith('heygen_'));
+    systemPrompt += '\n\nPROVIDER LOCK: The user explicitly selected BLOOM Studio. Use only bloom_studio_generate_video and bloom_studio_check_job for video generation. HeyGen is unavailable for this request. If BLOOM Studio fails, report its exact verified error; do not switch providers.';
+  } else if (heygenLocked) {
+    availableTools = availableTools.filter(tool => !tool.name.startsWith('bloom_studio_'));
+    systemPrompt += '\n\nPROVIDER LOCK: The user explicitly selected HeyGen. Use only the tenant HeyGen tools for video generation. BLOOM Studio is unavailable for this request. If HeyGen fails, report its exact verified error; do not switch providers.';
+  }
+  // Resolve tenant context before deterministic skill selection so skill loading
+  // never falls through because the organization identifier is still in TDZ.
+  const resolvedOrgId = orgId || agentConfig?.organizationId || agentConfig?.organization_id || null;
+  const persistToolEvent = async event => {
+    try {
+      return await appendExecutionEvent({
+        sessionId,
+        organizationId: resolvedOrgId,
+        agentId: agentConfig?.agentId || agentConfig?.id || null,
+        event,
+      });
+    } catch (error) {
+      logger.warn('Execution event persistence failed (non-critical)', {
+        sessionId,
+        tool: event?.toolName,
+        type: event?.type,
+        error: error.message,
+      });
+      return null;
+    }
+  };
+  try {
+    const { buildSkillExecutionContract, buildSkillExecutionPlan, getSkillContextForOrg } = await import('../skills/skill-loader.js');
+    const skillPlan = buildSkillExecutionPlan('chat', taskInstruction, availableTools.map(tool => tool.name));
+    if (skillPlan.required) {
+      const deterministicContext = await getSkillContextForOrg('chat', taskInstruction, resolvedOrgId);
+      if (deterministicContext) systemPrompt += deterministicContext;
+      systemPrompt += buildSkillExecutionContract(skillPlan);
+      logger.info('Deterministic skill plan selected', {
+        sessionId,
+        skills: skillPlan.skills.map(skill => skill.name).join(','),
+        ready: skillPlan.ready,
+        missingTools: skillPlan.missingTools.join(','),
+      });
+    }
+  } catch (error) {
+    logger.warn('Deterministic skill planning failed', { sessionId, error: error.message });
+  }
   const capabilityNotes = getCapabilityNotes({ desktopConnected });
   if (capabilityNotes) systemPrompt += capabilityNotes;
 
@@ -5477,10 +6072,14 @@ NEVER call ghl_create_blog_post for Bloomie blog publishing.
   let totalOutputTokens = 0;
   let latestTaskTodos = null;
   let unfinishedPlanNudges = 0;
+  let currentExecutionRound = 0;
 
   // ── TOOL FAILURE TRACKING — counts failures per tool for smart retry/alternative logic ──
   const toolFailureCounts = {}; // { toolName: count } — tracks how many times each tool has failed
   const failedTools = [];       // Array of { name, error, round } — full failure log
+  const isExternalConnectorBlocker = failure =>
+    /\bis not connected for this organization\b|captcha|anti-bot|cloudflare|verification page|browser task timed out|browser access blocked/i
+      .test(String(failure?.error || failure || ''));
 
   // Model selection — per-org tier system with unified client failover
   const llmClient = getLLMClient();
@@ -5523,8 +6122,6 @@ NEVER call ghl_create_blog_post for Bloomie blog publishing.
   //
   let resolvedAdminConfig = null;
   let requestModel = null; // the model for THIS specific request
-  // orgId comes from the function parameter; enrich from agentConfig if the param was null
-  const resolvedOrgId = orgId || agentConfig?.organizationId || agentConfig?.organization_id || null;
 
   // ── Layer 1: Admin config / org tier → update singleton baseline ──
   try {
@@ -5575,9 +6172,20 @@ NEVER call ghl_create_blog_post for Bloomie blog publishing.
   // Final fallback: use whatever the singleton has (env/tier default)
   if (!requestModel) requestModel = llmClient.model;
 
-  const chatModel = requestModel;
+  const chatModel = selectExecutionModel({
+    requestedModel: requestModel,
+    instruction: typeof taskInstruction === 'string' ? taskInstruction : '',
+    openRouterAvailable: Boolean(process.env.OPENROUTER_API_KEY),
+    codingModel: process.env.OPENROUTER_CODING_MODEL || process.env.OPENROUTER_MODEL || 'google/gemini-2.5-flash',
+  });
   const chatProvider = detectProvider(chatModel);
-  logger.info('Chat model selected', { model: chatModel, provider: chatProvider, orgId: resolvedOrgId, source: requestModel !== llmClient.model ? 'admin-override' : 'tier-default' });
+  logger.info('Chat model selected', {
+    model: chatModel,
+    provider: chatProvider,
+    orgId: resolvedOrgId,
+    source: chatModel !== requestModel && isEngineeringTask(taskInstruction) ? 'task-routing' : (requestModel !== llmClient.model ? 'admin-override' : 'tier-default'),
+    toolCount: availableTools.length,
+  });
 
   // ── NOW APPLY PROVIDER-NATIVE TASK INJECTION (model is known) ────────────
   // Use the per-request resolved provider (NOT the singleton — multi-tenant safe)
@@ -5609,10 +6217,45 @@ NEVER call ghl_create_blog_post for Bloomie blog publishing.
     updatedAt: Date.now()
   });
 
+  async function checkpointExecution(status = 'running', overrides = {}) {
+    const todos = overrides.todos || latestTaskTodos || taskProgress.get(trackingKey)?.todos || [];
+    const currentStep = todos.find(todo => todo?.status === 'in_progress')?.content || null;
+    const pendingJobs = toolResults
+      .filter(result => result?.pending || ['pending', 'timeout'].includes(result?.status))
+      .map(result => ({
+        provider: result.provider || (result.requestId ? 'bloom_studio' : null),
+        requestId: result.requestId || result.request_id || null,
+        status: result.status || 'pending',
+        deployment: result.deployment || null,
+        job: result.job || null,
+        message: result.message || null,
+      }));
+    try {
+      return await persistExecutionCheckpoint({
+        sessionId,
+        organizationId: resolvedOrgId,
+        agentId: agentConfig?.agentId || agentConfig?.id || process.env.AGENT_UUID || null,
+        status,
+        currentStep,
+        todos,
+        toolsUsed,
+        toolResults,
+        pendingJobs,
+        lastError: overrides.lastError || failedTools.at(-1)?.error || null,
+        roundsUsed: overrides.roundsUsed ?? currentExecutionRound,
+      });
+    } catch (error) {
+      logger.warn('Execution checkpoint persistence failed (non-critical)', { sessionId, error: error.message });
+      return { persisted: false, reason: error.message };
+    }
+  }
+
+  await checkpointExecution('running');
+
   // ── HELPER: execute a tool with automatic retry on failure ──────────────
   // Retries once with same params before reporting failure to the agent.
   // Skips retry for tools where retry doesn't make sense (task_progress, bloom_log).
-  const noRetryTools = new Set(['task_progress', 'bloom_log', 'bloom_take_screenshot', 'bloom_browser_screenshot', 'load_skill']);
+  const noRetryTools = new Set(['task_progress', 'bloom_log', 'bloom_take_screenshot', 'bloom_browser_screenshot', 'browser_task', 'load_skill']);
   function isHtmlArtifactInput(toolName, toolInput) {
     if (toolName !== 'create_artifact') return false;
     const name = String(toolInput?.name || '').toLowerCase();
@@ -5620,7 +6263,41 @@ NEVER call ghl_create_blog_post for Bloomie blog publishing.
     return fileType === 'html' || name.endsWith('.html') || /<!doctype html|<html[\s>]/i.test(String(toolInput?.content || ''));
   }
 
-  async function executeWithRetry(toolName, toolInput, sid, agentCfg = null, orgIdForTool = null) {
+  async function executeWithRetry(toolName, toolInput, sid, agentCfg = null, orgIdForTool = null, lifecycleContext = null) {
+    if (
+      toolName === 'bloom_clarify' &&
+      isEngineeringTask(taskInstruction) &&
+      /\b(which|what|where)\b[^?]{0,140}\b(image|picture|widget|location|page|file|path)\b/i.test(String(toolInput?.question || '')) &&
+      /\b(widget|image|picture|photo)\b/i.test(authorizationContext)
+    ) {
+      return {
+        success: true,
+        rejectedClarification: true,
+        pauseExecution: false,
+        message: 'Do not ask the user to identify this discoverable website target again. Inspect the live page and connected repository, locate the named widget/image from evidence, and continue with the existing-site engineering workflow.',
+      };
+    }
+    if (toolName === 'uber_eats_finalize_purchase') {
+      const purchaseAuthorization = validateExactPurchaseAuthorization(messageText, toolInput);
+      if (!purchaseAuthorization.authorized) {
+        return {
+          success: false,
+          blocked: true,
+          error: `Uber Eats payment is blocked: ${purchaseAuthorization.reason} Show the restaurant, items, address summary, fees, tip, total, and ETA in one bloom_clarify card.`,
+        };
+      }
+    }
+    const mutation = validateMutationTarget(toolName, toolInput);
+    if (!mutation.allowed) {
+      return { success: false, blocked: true, error: mutation.error };
+    }
+    if (mutation.consequential && !instructionExplicitlyAuthorizesConsequence(authorizationContext)) {
+      return {
+        success: false,
+        blocked: true,
+        error: `The current user instruction does not explicitly authorize consequential action ${toolName}. Ask one focused authorization question.`,
+      };
+    }
     if (isPptxIntent && isHtmlArtifactInput(toolName, toolInput)) {
       const error = 'PowerPoint request guard: HTML artifacts are blocked for presentation/slide deck requests. Use create_pptx with a complete pptxgenjs script and save a real .pptx file.';
       toolFailureCounts[toolName] = (toolFailureCounts[toolName] || 0) + 1;
@@ -5631,10 +6308,23 @@ NEVER call ghl_create_blog_post for Bloomie blog publishing.
       });
       return { success: false, error, blocked: true, requiredTool: 'create_pptx' };
     }
+    if (
+      toolName === 'task_progress' &&
+      Array.isArray(toolInput?.todos) &&
+      toolInput.todos.length > 0 &&
+      toolInput.todos.every(todo => todo?.status === 'completed') &&
+      failedTools.length > 0
+    ) {
+      return {
+        success: false,
+        blocked: true,
+        error: `Cannot mark the plan complete while tool failures remain unresolved: ${failedTools.map(failure => failure.name).join(', ')}. Repair or explicitly report the failed step first.`,
+      };
+    }
 
     let result;
     try {
-      result = await executeTool(toolName, toolInput, sid, agentCfg, orgIdForTool);
+      result = await executeTool(toolName, toolInput, sid, agentCfg, orgIdForTool, lifecycleContext);
     } catch (toolError) {
       logger.error(`Tool ${toolName} threw error (attempt 1):`, toolError.message);
       result = { success: false, error: `Tool error: ${toolError.message}` };
@@ -5642,7 +6332,8 @@ NEVER call ghl_create_blog_post for Bloomie blog publishing.
 
     // Check if tool failed and is retryable
     const isFailed = result?.success === false || result?.error;
-    if (isFailed && !noRetryTools.has(toolName)) {
+    const failureClass = classifyToolFailure(result);
+    if (isFailed && failureClass === 'transient' && !noRetryTools.has(toolName)) {
       const priorFails = toolFailureCounts[toolName] || 0;
       if (priorFails < 2) { // Only auto-retry if this tool hasn't already failed 2+ times
         logger.info(`🔄 Auto-retrying ${toolName} (attempt 2, prior failures: ${priorFails})`);
@@ -5657,7 +6348,7 @@ NEVER call ghl_create_blog_post for Bloomie blog publishing.
           taskProgress.set(trackingKey, { todos: currentTodos, updatedAt: Date.now() });
         }
         try {
-          result = await executeTool(toolName, toolInput, sid, agentCfg, orgIdForTool);
+          result = await executeTool(toolName, toolInput, sid, agentCfg, orgIdForTool, lifecycleContext);
         } catch (retryError) {
           logger.error(`Tool ${toolName} threw error (attempt 2):`, retryError.message);
           result = { success: false, error: `Tool error after retry: ${retryError.message}` };
@@ -5671,6 +6362,10 @@ NEVER call ghl_create_blog_post for Bloomie blog publishing.
       toolFailureCounts[toolName] = (toolFailureCounts[toolName] || 0) + 1;
       failedTools.push({ name: toolName, error: result?.error || 'Unknown error', round: toolsUsed.length });
       logger.warn(`Tool ${toolName} failed (total failures: ${toolFailureCounts[toolName]})`, { error: result?.error });
+    } else if (toolName !== 'task_progress') {
+      for (let index = failedTools.length - 1; index >= 0; index -= 1) {
+        if (failedTools[index]?.name === toolName) failedTools.splice(index, 1);
+      }
     }
 
     return result;
@@ -5679,7 +6374,7 @@ NEVER call ghl_create_blog_post for Bloomie blog publishing.
   // ── HELPER: build tool result block for the message context ────────────
   function buildToolResultBlock(block, result) {
     // Strip large binary data from context (keep URLs only)
-    const contextSafeResult = {...result};
+    const contextSafeResult = compactToolResultForContext({...result});
     if (contextSafeResult.image_base64) {
       delete contextSafeResult.image_base64;
     }
@@ -5749,7 +6444,12 @@ NEVER call ghl_create_blog_post for Bloomie blog publishing.
 
   function updateLatestTaskTodosFromProgress(toolName, toolInput) {
     if (toolName === 'task_progress' && Array.isArray(toolInput?.todos)) {
-      latestTaskTodos = toolInput.todos;
+      latestTaskTodos = toolInput.todos.map((todo, index) => ({
+        ...todo,
+        status: ['pending', 'in_progress', 'completed'].includes(todo?.status)
+          ? todo.status
+          : (index === 0 ? 'in_progress' : 'pending'),
+      }));
     }
   }
 
@@ -5812,17 +6512,22 @@ NEVER call ghl_create_blog_post for Bloomie blog publishing.
   // MAIN AGENTIC LOOP — Plan → Execute → Verify → Retry
   // Up to 15 rounds for the main execution, plus up to 3 extra for verification/fix
   // ══════════════════════════════════════════════════════════════════════════
-  const MAX_EXEC_ROUNDS = 15;
-  const MAX_VERIFY_ROUNDS = 3;
+  const MAX_EXEC_ROUNDS = Math.max(15, Number(process.env.CHAT_MAX_EXEC_ROUNDS || 30));
+  const MAX_VERIFY_ROUNDS = Math.max(3, Number(process.env.CHAT_MAX_VERIFY_ROUNDS || 5));
+  // Keep each tool-planning turn affordable and focused. Long-running work gets
+  // additional rounds instead of reserving an unnecessarily large completion
+  // on every call (which low-balance providers can reject before execution).
+  const MAX_OUTPUT_TOKENS = Math.max(1024, Number(process.env.CHAT_MAX_OUTPUT_TOKENS || 2048));
   let verificationAttempted = false;
 
   for (let round = 0; round < MAX_EXEC_ROUNDS + MAX_VERIFY_ROUNDS; round++) {
+    currentExecutionRound = round + 1;
     // Trim context before each API call (tool results accumulate during the loop)
     currentMessages = trimMessagesToFit(currentMessages);
 
     const response = await callLLMWithRetry({
       model: chatModel,
-      max_tokens: 8192,
+      max_tokens: MAX_OUTPUT_TOKENS,
       system: systemPrompt,
       messages: currentMessages,
       tools: availableTools
@@ -5869,12 +6574,9 @@ NEVER call ghl_create_blog_post for Bloomie blog publishing.
       }).join("\n");
       appendThinking(sessionId, { type: "thinking", text: _desc, round });
     }
-    // Log tool calls
-    if (_toolCalls.length > 0) {
-      for (const tc of _toolCalls) {
-        appendThinking(sessionId, { type: "tool_call", name: tc.name, args: JSON.stringify(tc.input || {}).slice(0, 200), round });
-      }
-    }
+    // Tool lifecycle events are recorded immediately before and after actual
+    // execution below. Do not preview raw arguments here: they may contain
+    // credentials and would also create duplicate command cards.
     // Accumulate token usage every round
     if (response.usage) {
       totalInputTokens += response.usage.input_tokens || 0;
@@ -5920,6 +6622,26 @@ NEVER call ghl_create_blog_post for Bloomie blog publishing.
       }
 
       if (
+        /\b(?:cannot|can('|’)t|unable to)\b[^.\n]{0,120}\b(?:access|modify|edit|change)\b[^.\n]{0,120}\b(?:existing|external|independently hosted)?\s*(?:site|website|code|repository)\b/i.test(text) &&
+        isEngineeringTask(taskInstruction) &&
+        round < MAX_EXEC_ROUNDS + MAX_VERIFY_ROUNDS - 1
+      ) {
+        logger.warn('Rejected false existing-site access refusal', {
+          sessionId,
+          preview: text.slice(0, 300),
+        });
+        currentMessages.push({ role: 'assistant', content: response.content });
+        currentMessages.push({
+          role: 'user',
+          content: `[SYSTEM — FALSE ACCESS REFUSAL]
+This is a tenant-owned existing-site task and repository/deployment discovery tools are available.
+Do not tell the user to log into a widget provider or provide code, paths, branches, or repeated target details.
+Use the existing-site engineering workflow now: discover the tenant repository, inspect the live page and source for the named bottom-right chat widget, use the uploaded image already present in this conversation, make the smallest edit, run checks, inspect the diff, deploy, verify the live page, and then open the verified URL with BLOOM Desktop.`,
+        });
+        continue;
+      }
+
+      if (
         textLooksLikePlainClarification(text) &&
         !toolsUsed.some(t => t.name === 'bloom_clarify') &&
         round < MAX_EXEC_ROUNDS + MAX_VERIFY_ROUNDS - 1
@@ -5939,8 +6661,10 @@ NEVER call ghl_create_blog_post for Bloomie blog publishing.
       }
 
       const unfinishedTodos = getUnfinishedTaskTodos();
+      const hasExternalConnectorBlocker = failedTools.some(isExternalConnectorBlocker);
       if (
         unfinishedTodos.length > 0 &&
+        !hasExternalConnectorBlocker &&
         unfinishedPlanNudges < 3 &&
         round < MAX_EXEC_ROUNDS + MAX_VERIFY_ROUNDS - 1 &&
         (textLooksLikeDeferredWork(text) || toolsUsed.some(t => t.name === 'task_progress'))
@@ -6005,10 +6729,12 @@ NEVER call ghl_create_blog_post for Bloomie blog publishing.
           return !laterSuccess;
         });
 
-        if (unresolvedFailures.length > 0) {
+        const repairableFailures = unresolvedFailures.filter(failure => !isExternalConnectorBlocker(failure));
+
+        if (repairableFailures.length > 0) {
           verificationAttempted = true;
-          logger.info(`🔍 VERIFICATION: ${unresolvedFailures.length} unresolved tool failures detected, forcing verification round`, {
-            failures: unresolvedFailures.map(f => `${f.name}: ${f.error}`).join('; ')
+          logger.info(`🔍 VERIFICATION: ${repairableFailures.length} unresolved tool failures detected, forcing verification round`, {
+            failures: repairableFailures.map(f => `${f.name}: ${f.error}`).join('; ')
           });
 
           // Update passive tracker to show verification
@@ -6024,7 +6750,7 @@ NEVER call ghl_create_blog_post for Bloomie blog publishing.
           }
 
           // Inject the verification message and continue the loop
-          const failureList = unresolvedFailures.map(f => `- ${f.name}: ${f.error}`).join('\n');
+          const failureList = repairableFailures.map(f => `- ${f.name}: ${f.error}`).join('\n');
           currentMessages.push({ role: 'assistant', content: response.content });
           currentMessages.push({ role: 'user', content:
             `[SYSTEM — AUTOMATIC VERIFICATION]\n` +
@@ -6136,7 +6862,142 @@ NEVER call ghl_create_blog_post for Bloomie blog publishing.
         continue;
       }
 
-      return text + buildPersistentToolEvidence();
+      const completionEvaluation = evaluateCompletionContract(messageText, toolsUsed, toolResults);
+      if (
+        completionEvaluation.required &&
+        !completionEvaluation.complete &&
+        round < MAX_EXEC_ROUNDS + MAX_VERIFY_ROUNDS - 1
+      ) {
+        logger.warn('Completion contract missing required proof; forcing continuation', {
+          sessionId,
+          missing: completionEvaluation.missing.map(item => item.id).join(','),
+        });
+        currentMessages.push({ role: 'assistant', content: response.content });
+        currentMessages.push({ role: 'user', content: [{ type: 'text', text: buildCompletionNudge(completionEvaluation) }] });
+        await checkpointExecution('running', { roundsUsed: round + 1 });
+        continue;
+      }
+      if (completionEvaluation.required && !completionEvaluation.complete) {
+        const missingProof = completionEvaluation.missing
+          .map(item => item.description)
+          .join(', ');
+        logger.error('Completion contract remained unsatisfied at the execution limit', {
+          sessionId,
+          missing: completionEvaluation.missing.map(item => item.id).join(','),
+        });
+        await checkpointExecution('pending', { roundsUsed: round + 1 });
+        return `The work is still pending verification; it has not been completed. Missing proof: ${missingProof}.`;
+      }
+
+      if (
+        asksUserForDiscoverableTechnicalContent(text) &&
+        round < MAX_EXEC_ROUNDS + MAX_VERIFY_ROUNDS - 1
+      ) {
+        logger.warn('Rejected premature request for discoverable technical content', {
+          sessionId,
+          agentId: agentConfig?.agentId,
+        });
+        currentMessages.push({ role: 'assistant', content: response.content });
+        currentMessages.push({
+          role: 'user',
+          content: [{
+            type: 'text',
+            text: `[SYSTEM — AUTONOMY ENFORCEMENT]
+Do not ask the user to provide HTML, source code, a file path, branch, repository structure, framework, or deployment state.
+Use the connected repository, coding workspace, deployment, search, or browser tools to discover it yourself. If one access path is blocked, switch to another. Exhaust the available evidence sources before requesting user input. Continue the task now.`,
+          }],
+        });
+        await checkpointExecution('running', { roundsUsed: round + 1 });
+        continue;
+      }
+
+      if (isDedicatedBookRequest) {
+        const book = await inspectBookDeliverables(sessionId, orgId);
+        const missing = [];
+        if ((book?.wordCount || 0) < 10000) {
+          missing.push(`${Math.max(0, 10000 - (book?.wordCount || 0)).toLocaleString()} manuscript words`);
+        }
+        if (!book?.outline) missing.push('outline.md');
+        if (!book?.titlePage) missing.push('title page');
+        if (!book?.copyright) missing.push('copyright page');
+        if (!book?.toc) missing.push('table of contents');
+        if (!book?.preface) missing.push('preface');
+        if (!book?.introduction) missing.push('introduction');
+        if (!book?.manuscript) missing.push('complete Markdown manuscript');
+        if (!book?.aboutAuthor) missing.push('About the Author');
+        if (!book?.docx) missing.push('KDP eBook DOCX');
+        if (!book?.printPdf) missing.push('KDP print interior PDF');
+        if (!book?.cover) missing.push('book cover');
+        if (!book?.kdpChecklist) missing.push('KDP package checklist');
+
+        if (missing.length > 0 && bookVerificationNudges < 5 && round < MAX_EXEC_ROUNDS + MAX_VERIFY_ROUNDS - 1) {
+          bookVerificationNudges += 1;
+          currentMessages.push({ role: 'assistant', content: response.content });
+          currentMessages.push({
+            role: 'user',
+            content: [{
+              type: 'text',
+              text: `[SYSTEM — BOOK LENGTH AND DELIVERABLE VERIFICATION]
+The saved body chapter artifacts currently measure ${book?.wordCount || 0} words across ${book?.chapterCount || 0} chapter files.
+This project cannot be marked complete. Missing: ${missing.join(', ')}.
+Continue the KDP production workflow and update the saved artifacts. The body chapter files alone must measure 10,000–10,800 words. Save separate artifacts for outline.md, 00-half-title.md, 01-title-page.md, 02-copyright.md, 04-table-of-contents.md, 05-preface.md, 07-introduction.md, every chapter, 91-about-the-author.md, complete-manuscript.md, kdp-ebook.docx, kdp-print-interior.pdf, the 2:3 cover, and kdp-package-checklist.md. Optional sections must also be separate files. Do not merely claim completion; the server will inspect the saved files again.`,
+            }],
+          });
+          await checkpointExecution('running', { roundsUsed: round + 1 });
+          continue;
+        }
+        if (missing.length > 0) {
+          await checkpointExecution('pending', { roundsUsed: round + 1 });
+          return `The book is still being completed and has not passed KDP package verification. Current measured body length: ${book?.wordCount || 0} of 10,000 words. Missing: ${missing.join(', ')}.`;
+        }
+      }
+
+      const finalState = deriveExecutionState({ todos: latestTaskTodos, failedTools, toolResults, exhausted: false });
+      // A normal final answer is terminal for the visible checklist. Models sometimes
+      // forget the last task_progress update even though every tool succeeded, which
+      // previously left the dashboard stuck on an old "Working..." step.
+      if (
+        failedTools.length === 0 &&
+        !['pending', 'timeout', 'blocked', 'failed'].includes(finalState.status)
+      ) {
+        const visibleTodos = latestTaskTodos || taskProgress.get(trackingKey)?.todos || [];
+        if (visibleTodos.length > 0) {
+          const completedTodos = visibleTodos.map(todo => ({
+            ...todo,
+            status: 'completed',
+            activeForm: todo?.content || 'Completed',
+          }));
+          latestTaskTodos = completedTodos;
+          taskProgress.set(trackingKey, {
+            todos: completedTodos,
+            updatedAt: Date.now(),
+            terminal: true,
+          });
+        }
+      }
+      let supportReceipt = '';
+      if (finalState.status === 'failed' || failedTools.length > 0) {
+        try {
+          const ticketResult = await reportFailureTicket({
+            title: `Chat task failed: ${failedTools.at(-1)?.name || 'execution'}`,
+            description: `A Bloomie chat task reached a terminal failure after retry and verification. User request: ${messageText.slice(0, 1200)}`,
+            error: failedTools.at(-1)?.error || finalState.message || 'Unknown execution failure',
+            severity: 'high',
+            category: 'tool_failure',
+            agentId: agentConfig?.agentId,
+            agentName: agentConfig?.name,
+            organizationId: orgId,
+            affectedTask: sessionId,
+            source: 'chat',
+          });
+          supportReceipt = `\n\nSupport ticket ${ticketResult.ticket.id} was reported to Codex.`;
+        } catch (ticketError) {
+          logger.error('Chat failure could not be reported to Codex', { sessionId, error: ticketError.message });
+        }
+      }
+      await checkpointExecution(finalState.status === 'running' ? 'ready' : finalState.status, { roundsUsed: round + 1 });
+      const visibleText = ensureImageToolOutputsVisible(text, toolsUsed, toolResults, agentConfig);
+      return appendUberEatsResultsMarker(visibleText, toolsUsed, toolResults) + supportReceipt + buildPersistentToolEvidence();
     }
 
     // ── TOOL EXECUTION with auto-retry ───────────────────────────────────
@@ -6224,16 +7085,63 @@ NEVER call ghl_create_blog_post for Bloomie blog publishing.
             delete block.input.reference_image_url;
           }
 
+          const requestedSelfImage = block.name === 'image_generate' && looksLikeSelfImageRequest(block.input, agentConfig);
+          const latestUserMessage = [...currentMessages].reverse().find(message => message.role === 'user');
+          const latestUserText = typeof latestUserMessage?.content === 'string'
+            ? latestUserMessage.content
+            : (Array.isArray(latestUserMessage?.content)
+              ? latestUserMessage.content.filter(part => part.type === 'text').map(part => part.text || '').join(' ')
+              : '');
+          const isPortraitCompositionRepair = requestedSelfImage && /\b(cut off|cropped|hair|full head|entire head|headroom|same background|previous background|background (?:you|we) had|keep (?:the )?background|last image|previous image|fix (?:that|it)|repair)\b/i.test(latestUserText);
+          if (isPortraitCompositionRepair) {
+            block.input.preserve_headroom = true;
+            block.input.allow_crop = false;
+            delete block.input.crop_anchor;
+            const requestedWidth = Number(block.input.target_width);
+            const requestedHeight = Number(block.input.target_height);
+            if (!block.input.aspect_ratio && requestedWidth > 0 && requestedHeight > 0 && Math.abs((requestedWidth / requestedHeight) - (16 / 9)) < 0.08) {
+              block.input.aspect_ratio = '16:9';
+            }
+            block.input.prompt = `STRICT PORTRAIT COMPOSITION: Preserve the complete top of the subject's hair and entire head with generous visible headroom (at least 12% of the frame above the highest hair). Frame from mid-torso upward. Never crop the skull, hair, forehead, chin, microphone, or shoulders. Preserve the previous image's background, lighting, camera angle, and set unless the user explicitly changes them. ${block.input.prompt || ''}`;
+          }
+          if (requestedSelfImage && block.input.no_reference) {
+            delete block.input.no_reference;
+            logger.info('Removed no_reference override for canonical Bloomie self-image', {
+              agentId: agentConfig.agentId,
+            });
+          }
+
           if (block.name === 'image_generate' && !block.input.reference_image_url && !block.input.reference_image_base64 && !block.input.no_reference) {
             let foundRefUrl = null;
             let foundRefBase64 = null;
             let foundRefMime = null;
-            const isSelfImageRequest = looksLikeSelfImageRequest(block.input, agentConfig);
+            const isSelfImageRequest = requestedSelfImage;
 
-            // 1) If this is an image of the employee/Sarah, use the canonical
-            // saved avatar first. Otherwise a previous bad generation can become
-            // the next reference and make the visual identity drift.
-            if (isSelfImageRequest) {
+            // 1) For a requested correction, use the immediately previous
+            // generated image so its background and composition survive the
+            // repair. The person is already identity-locked in that image.
+            if (isSelfImageRequest && isPortraitCompositionRepair) {
+              for (let mi = currentMessages.length - 1; mi >= 0; mi--) {
+                const msg = currentMessages[mi];
+                if (msg.role !== 'assistant') continue;
+                const text = typeof msg.content === 'string' ? msg.content :
+                  (Array.isArray(msg.content) ? msg.content.filter(part => part.type === 'text').map(part => part.text || '').join(' ') : '');
+                const urls = text.match(/https:\/\/[^\s)\]]+\.(?:png|jpe?g|webp)(?:\?[^\s)\]]*)?/gi);
+                if (urls?.length) {
+                  foundRefUrl = urls[urls.length - 1];
+                  logger.info('Using previous generated portrait as composition-repair reference', {
+                    agentId: agentConfig.agentId,
+                    url: foundRefUrl.slice(0, 100)
+                  });
+                  break;
+                }
+              }
+            }
+
+            // 2) For a fresh self-image, use the canonical saved avatar.
+            // Otherwise a previous bad generation can become the next reference
+            // and make the visual identity drift.
+            if (!foundRefUrl && isSelfImageRequest) {
               foundRefUrl = await getAgentReferenceImageUrl(agentConfig.agentId);
               if (foundRefUrl) {
                 logger.info('Using agent avatar_url as canonical self-image reference', {
@@ -6243,7 +7151,7 @@ NEVER call ghl_create_blog_post for Bloomie blog publishing.
               }
             }
 
-            // 2) Check for user-uploaded images in conversation (highest priority
+            // 3) Check for user-uploaded images in conversation (highest priority
             // for non-self images, or fallback if the employee has no avatar).
             // Uploads come through as BOTH base64 AND url — check both formats
             if (!foundRefUrl && !foundRefBase64) {
@@ -6272,7 +7180,7 @@ NEVER call ghl_create_blog_post for Bloomie blog publishing.
               }
             }
 
-            // 3) If no user upload found, check for previously generated image URLs from this session
+            // 4) If no user upload found, check for previously generated image URLs from this session
             if (!foundRefUrl && !foundRefBase64) {
               for (let ti = toolResults.length - 1; ti >= 0; ti--) {
                 const tr = toolResults[ti];
@@ -6284,7 +7192,7 @@ NEVER call ghl_create_blog_post for Bloomie blog publishing.
               }
             }
 
-            // 4) Also check assistant message text for markdown image URLs from prior turns
+            // 5) Also check assistant message text for markdown image URLs from prior turns
             if (!foundRefUrl && !foundRefBase64) {
               for (let mi = currentMessages.length - 1; mi >= 0; mi--) {
                 const msg = currentMessages[mi];
@@ -6342,22 +7250,69 @@ NEVER call ghl_create_blog_post for Bloomie blog publishing.
           }
 
           toolsUsed.push({ name: block.name, input: block.input });
-          updateLatestTaskTodosFromProgress(block.name, block.input);
+          const toolStartedAt = Date.now();
+          const toolCallId = block.id || `tool-${round}-${toolsUsed.length}-${toolStartedAt}`;
+          appendThinking(sessionId, {
+            type: 'tool_call',
+            callId: toolCallId,
+            name: block.name,
+            args: '',
+            round,
+          });
+          await persistToolEvent({
+            type: 'tool.start',
+            callId: toolCallId,
+            toolName: block.name,
+            status: 'running',
+            startedAt: toolStartedAt,
+            input: block.input || {},
+          });
 
 
           // Execute with automatic retry on failure
-          const result = await executeWithRetry(block.name, block.input, sessionId, agentConfig, orgId);
+          const result = await executeWithRetry(block.name, block.input, sessionId, agentConfig, orgId, {
+            onOutput: chunk => {
+              void persistToolEvent({
+                type: 'tool.output',
+                callId: toolCallId,
+                toolName: block.name,
+                status: 'running',
+                startedAt: toolStartedAt,
+                output: chunk,
+              });
+            },
+          });
           toolResults.push(result);
+          if (result?.success !== false && !result?.error) {
+            updateLatestTaskTodosFromProgress(block.name, block.input);
+          }
+          const progressEvent = buildToolProgressUpdate(block.name, block.input, result);
+          if (progressEvent) appendProgressUpdate(sessionId, progressEvent.text, progressEvent.kind, { tool: block.name });
+          const intermediateState = deriveExecutionState({ todos: latestTaskTodos, failedTools, toolResults, exhausted: false });
+          await checkpointExecution(intermediateState.status, { roundsUsed: round + 1 });
 
           // ── THINKING LOG: Record tool result for thinking panel ──
-          const _resultPreview = typeof result === 'string' ? result.slice(0, 300) :
-            (result?.error ? `Error: ${result.error}` : JSON.stringify(result).slice(0, 300));
+          const _safeThinkingResult = sanitizeExecutionValue(result);
+          const _resultPreview = typeof _safeThinkingResult === 'string' ? _safeThinkingResult.slice(0, 300) :
+            (_safeThinkingResult?.error ? `Error: ${_safeThinkingResult.error}` : JSON.stringify(_safeThinkingResult).slice(0, 300));
           appendThinking(sessionId, {
             type: 'tool_result',
+            callId: toolCallId,
             name: block.name,
             result: _resultPreview,
             success: !result?.error,
             round
+          });
+          const toolFinishedAt = Date.now();
+          await persistToolEvent({
+            type: 'tool.finish',
+            callId: toolCallId,
+            toolName: block.name,
+            status: result?.success === false || result?.error || result?.status === 'failed' ? 'failed' : 'passed',
+            startedAt: toolStartedAt,
+            finishedAt: toolFinishedAt,
+            elapsedMs: toolFinishedAt - toolStartedAt,
+            output: result,
           });
 
           // ── CLARIFICATION PAUSE — bloom_clarify returns pauseExecution: true ──
@@ -6382,6 +7337,7 @@ NEVER call ghl_create_blog_post for Bloomie blog publishing.
             }
 
             await logCostAndUsage(round);
+            await checkpointExecution('blocked', { roundsUsed: round + 1 });
 
             // Return with clarification data — the frontend renders this as clickable buttons
             return {
@@ -6432,18 +7388,58 @@ NEVER call ghl_create_blog_post for Bloomie blog publishing.
 
   // ── EXHAUSTED ALL ROUNDS — return what we have ─────────────────────────
   await logCostAndUsage(MAX_EXEC_ROUNDS + MAX_VERIFY_ROUNDS);
+  const exhaustedState = deriveExecutionState({ todos: latestTaskTodos, failedTools, toolResults, exhausted: true });
+  await checkpointExecution(exhaustedState.status, { roundsUsed: MAX_EXEC_ROUNDS + MAX_VERIFY_ROUNDS });
   if (toolsUsed.length > 0) {
-    const toolSummary = toolsUsed.map(t => t.name).join(', ');
     const successfulArtifact = toolResults.find(r => r?.artifact?.name);
     if (successfulArtifact) {
       return `Done! I created "${successfulArtifact.artifact.name}" — you can find it in your Files tab. Let me know if you want any changes!`;
     }
-    if (failedTools.length > 0) {
-      return `I worked on this using ${toolSummary}, but ran into ${failedTools.length} issue(s) along the way. Want me to try a different approach?`;
-    }
-    return `I worked on this using ${toolSummary}. The task was more complex than expected — want me to continue or try a different approach?`;
+    return buildStateAwareHandoff(exhaustedState, { toolsUsed, failedTools });
   }
-  return "I got a bit carried away. Let me know if you need me to try a simpler approach.";
+  return buildStateAwareHandoff(exhaustedState, { toolsUsed, failedTools });
+}
+
+export async function runSarahWorkTask(brief, {
+  orgId,
+  sessionId,
+  userId = null,
+  agentId = null,
+} = {}) {
+  if (!sessionId) throw new Error('sessionId is required for Sarah Work tasks');
+  const config = await loadAgentConfig(agentId || null);
+  const history = await loadHistory(null, sessionId);
+  const last = history.at(-1);
+  const normalizedBrief = getMessageText(brief).trim();
+  const historyWithoutCurrent = last?.role === 'user' && getMessageText(last.content).trim() === normalizedBrief
+    ? history.slice(0, -1)
+    : history;
+
+  const { createClient } = await import('@supabase/supabase-js');
+  const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+  setProgressSink(sessionId, async event => {
+    await sb.from('messages').insert({
+      session_id: sessionId,
+      organization_id: orgId || null,
+      user_id: userId,
+      agent_id: config.agentId,
+      role: 'assistant',
+      content: event.text,
+      metadata: { source: 'sarah-work-controller', type: 'work_progress', kind: event.kind },
+    });
+  });
+
+  try {
+    const response = await chatWithAgent(normalizedBrief, historyWithoutCurrent, config, sessionId, orgId);
+    if (response && typeof response === 'object' && response.__clarification) {
+      return { status: 'clarifying', clarification: response.clarification, output: response.text || '' };
+    }
+    const output = typeof response === 'string' ? stripInternalEvidence(response) : String(response?.text || '');
+    await saveMessages(null, sessionId, normalizedBrief, output, null, userId, config.agentId, { skipUserSave: true });
+    return { status: classifyWorkOutputStatus(output), output, sessionId };
+  } finally {
+    setProgressSink(sessionId, null);
+  }
 }
 
 // ROUTES — DB-backed persistent sessions
@@ -6480,12 +7476,12 @@ async function loadHistory(_pool, sessionId) {
     const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
     const { data, error } = await sb
       .from('messages')
-      .select('role, content, files, created_at')
+      .select('role, content, files, metadata, created_at')
       .eq('session_id', sessionId)
       .order('created_at', { ascending: true })
       .limit(40);
     if (error) throw error;
-    return (data || []).map(msg => {
+    return (data || []).filter(msg => msg.metadata?.type !== 'execution_event').map(msg => {
       const role = msg.role === 'sarah' ? 'assistant' : msg.role;
 
       // ── RECONSTRUCT IMAGE CONTEXT FOR HISTORY ──────────────────────────
@@ -6524,14 +7520,58 @@ async function getAgentReferenceImageUrl(agentId) {
   try {
     const { createClient } = await import('@supabase/supabase-js');
     const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const { data: agentRow } = await sb
+      .from('agents')
+      .select('organization_id')
+      .eq('id', agentId)
+      .maybeSingle();
+    let approvedReference = null;
+    if (agentRow?.organization_id) {
+      const { data: referenceSetting } = await sb
+        .from('user_settings')
+        .select('value')
+        .eq('organization_id', agentRow.organization_id)
+        .eq('key', 'reference_library')
+        .maybeSingle();
+      approvedReference = (Array.isArray(referenceSetting?.value) ? referenceSetting.value : [])
+        .find(ref =>
+          ref.agent_id === agentId &&
+          ref.status === 'active' &&
+          ['identity', 'heygen'].includes(ref.category) &&
+          /^https?:\/\//i.test(ref.storage_url || '')
+        ) || null;
+    }
+    if (approvedReference?.storage_url && /^https?:\/\//i.test(approvedReference.storage_url)) {
+      return approvedReference.storage_url;
+    }
     const { data, error } = await sb
       .from('agents')
       .select('avatar_url')
       .eq('id', agentId)
       .maybeSingle();
     if (error) throw error;
-    const url = data?.avatar_url || null;
-    if (!url || url.startsWith('data:image')) return null;
+    let url = data?.avatar_url || null;
+    if (!url) return null;
+    if (url.startsWith('data:image')) {
+      const match = url.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/s);
+      if (!match) return null;
+      const extension = match[1].includes('png') ? 'png' : match[1].includes('webp') ? 'webp' : 'jpg';
+      const storagePath = `agent-avatars/${agentId}/canonical.${extension}`;
+      const { error: uploadError } = await sb.storage
+        .from('bloom-images')
+        .upload(storagePath, Buffer.from(match[2], 'base64'), {
+          contentType: match[1],
+          upsert: true,
+        });
+      if (uploadError) throw uploadError;
+      const { data: publicData } = sb.storage.from('bloom-images').getPublicUrl(storagePath);
+      url = publicData?.publicUrl || null;
+      if (url) {
+        const { error: updateError } = await sb.from('agents').update({ avatar_url: url }).eq('id', agentId);
+        if (updateError) throw updateError;
+        logger.info('Migrated embedded agent avatar to public storage', { agentId, storagePath });
+      }
+    }
     return /^https?:\/\//i.test(url) ? url : null;
   } catch (err) {
     logger.warn('Could not load agent reference image URL', { agentId, error: err.message });
@@ -6826,7 +7866,7 @@ router.get('/sessions', async (req, res) => {
 
     let query = sb
       .from('sessions')
-      .select('id, title, created_at, updated_at, agent_id')
+      .select('id, title, created_at, updated_at, agent_id, project_id')
       .eq('user_id', resolvedUserId);
     if (agentId) query = query.eq('agent_id', agentId);
     const { data, error } = await query
@@ -6875,11 +7915,19 @@ router.get('/sessions/:id', async (req, res) => {
 
     const { data, error } = await supabase
       .from('messages')
-      .select('id, role, content, files, created_at')
+      .select('id, role, content, files, metadata, created_at')
       .eq('session_id', req.params.id)
       .order('created_at', { ascending: true });
     if (error) throw new Error(error.message);
-    res.json({ messages: data || [] });
+    const rows = data || [];
+    const executionEvents = rows
+      .filter(row => row.metadata?.type === 'execution_event')
+      .map(row => row.metadata.execution_event)
+      .filter(Boolean);
+    res.json({
+      messages: rows.filter(row => row.metadata?.type !== 'execution_event'),
+      executionEvents: pairExecutionEvents(executionEvents),
+    });
   } catch (e) {
     logger.error('Session load error', { error: e.message });
     res.json({ messages: [] });
@@ -7006,13 +8054,29 @@ If the user says "this", "that", "the current page/file/artifact/post", or asks 
 router.post('/message', async (req, res) => {
   // Track which skills the agent loads during this turn — shown as badges in the dashboard
   let skillsUsedThisTurn = [];
-  const { message, sessionId = 'session-' + Date.now(), agentId, projectId, skipUserSave, activeArtifact } = req.body || {};
+  const { message, sessionId = 'session-' + Date.now(), agentId, projectId, skipUserSave, activeArtifact, sessionType, bookTitle } = req.body || {};
   try {
     if (!message?.trim()) return res.status(400).json({ error: 'Message required' });
+    if (sessionType === 'book_creation') {
+      const bookAccess = await authenticateBookAccess(req, agentId || null);
+      if (!bookAccess.authorized) {
+        return res.status(bookAccess.status).json({ error: bookAccess.error });
+      }
+    }
 
     const userId = await getUserId(req);
     const agentConfig = await loadAgentConfig(agentId || null);
     await ensureSession(null, sessionId, userId, agentConfig.agentId, projectId || null);
+    if (sessionType === 'book_creation') {
+      const safeBookTitle = String(bookTitle || 'Untitled Book').trim().slice(0, 90);
+      const { createClient: createBookClient } = await import('@supabase/supabase-js');
+      const bookClient = createBookClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+      await bookClient
+        .from('sessions')
+        .update({ title: `📚 ${safeBookTitle}`, updated_at: new Date().toISOString() })
+        .eq('id', sessionId)
+        .eq('user_id', userId);
+    }
     const history = await loadHistory(null, sessionId);
     if (!skipUserSave) {
       await saveUserMessage(sessionId, message, null, userId, agentConfig.agentId);
@@ -7090,7 +8154,6 @@ router.post('/message', async (req, res) => {
     // ── MANAGED WEBSITE AGENT ROUTING ─────────────────────────────────────────
     // If the dashboard sends sessionType='website_build' OR action='build_website',
     // route to the Managed Agent instead of Sarah's normal chat loop.
-    const sessionType = req.body?.sessionType;
     const action = req.body?.action;
     const isPptxIntent = /\b(presentation|slide\s*deck|slides?|powerpoint|\.pptx\b|pptx\b|pitch\s*deck|keynote|slideshow|slide\s*show)\b/i.test(enrichedMessage);
     const isWebsiteBuild = !isPptxIntent && (sessionType === 'website_build' || action === 'build_website');
@@ -7142,19 +8205,75 @@ router.post('/message', async (req, res) => {
           brief: message.trim(),
           type: _isBuild ? 'build' : 'work',
           status: 'queued',
+          project_id: projectId || null,
         }).select('id').single();
         if (_nb?.id) {
-          // Fire MA in background
+          if (!_isBuild) {
+            await ensureSession(null, _nb.id, userId, agentConfig.agentId, projectId || null);
+            await saveUserMessage(_nb.id, message.trim(), null, userId, agentConfig.agentId);
+          }
+          // Fire the specialized builder or Sarah's durable Work controller in background.
           (async () => {
             try {
-              const websiteAgent = await getWebsiteAgent();
-              if (websiteAgent) {
-                await _sbs.from('website_builds').update({ status: 'building' }).eq('id', _nb.id);
-                const _res = await websiteAgent(message.trim(), { orgId: userOrgId, chatSessionId: _nb.id, buildId: _nb.id });
-                await _sbs.from('website_builds').update({ status: 'complete', managed_agent_session_id: _res.sessionId || null, output_url: _res.outputUrl || null }).eq('id', _nb.id);
+              await _sbs.from('website_builds').update({ status: 'building' }).eq('id', _nb.id);
+              if (_isBuild) {
+                await ensureSession(null, _nb.id, userId, agentConfig.agentId, projectId || null);
+                await saveUserMessage(_nb.id, message.trim(), null, userId, agentConfig.agentId);
+                const _res = await runSarahWorkTask(
+                  `BUILD WORKSPACE TASK\n${message.trim()}\n\nUse your real engineering tools and connected tenant services. Inspect the actual source before editing, preserve unrelated work, verify the result, and deploy only when requested. Do not claim a file, commit, artifact, or deployment unless a tool produced it.`,
+                  {
+                    orgId: userOrgId,
+                    sessionId: _nb.id,
+                    userId,
+                    agentId: agentConfig.agentId,
+                  }
+                );
+                const _urls = String(_res.output || '').match(/https?:\/\/[^\s<>)\]}]+/g) || [];
+                const _outputUrl = _urls.find(url => /vercel\.app|bloomiestaffing\.com|railway\.app|netlify\.app/i.test(url)) || null;
+                await _sbs.from('website_builds').update({ status: 'complete', managed_agent_session_id: `sarah-${_nb.id}`, output_url: _outputUrl }).eq('id', _nb.id);
+              } else {
+                const _res = await runSarahWorkTask(message.trim(), {
+                  orgId: userOrgId,
+                  sessionId: _nb.id,
+                  userId,
+                  agentId: agentConfig.agentId,
+                });
+                if (_res.status === 'clarifying') {
+                  await _sbs.from('managed_clarify_queue').insert({
+                    session_id: _nb.id,
+                    question: _res.clarification.question,
+                    options: _res.clarification.options || [],
+                    allow_free_text: true,
+                  });
+                  await _sbs.from('website_builds').update({ status: 'clarifying' }).eq('id', _nb.id);
+                } else {
+                  await _sbs.from('website_builds').update({ status: 'complete' }).eq('id', _nb.id);
+                }
               }
             } catch(e) {
-              await _sbs.from('website_builds').update({ status: 'error' }).eq('id', _nb.id).catch(()=>{});
+              logger.error('Queued Work/Build execution failed', { buildId: _nb.id, type: _isBuild ? 'build' : 'work', error: e.message });
+              try {
+                await _sbs.from('website_builds').update({ status: 'error' }).eq('id', _nb.id);
+              } catch (updateError) {
+                logger.error('Failed to mark queued Work/Build execution as error', { buildId: _nb.id, error: updateError.message });
+              }
+              try {
+                await reportFailureTicket({
+                  supabase: _sbs,
+                  title: `${_isBuild ? 'Build' : 'Work'} session failed: ${message.trim().slice(0, 120)}`,
+                  description: `A queued Bloomie ${_isBuild ? 'Build' : 'Work'} session reached a terminal execution error.`,
+                  error: e.message,
+                  severity: 'high',
+                  category: 'tool_failure',
+                  agentId: agentConfig.agentId,
+                  agentName: agentConfig.name,
+                  organizationId: userOrgId,
+                  affectedTask: _nb.id,
+                  source: _isBuild ? 'build' : 'work',
+                });
+              } catch (ticketError) {
+                logger.error('Queued Work/Build failure could not be reported to Codex', { buildId: _nb.id, error: ticketError.message });
+              }
             }
           })();
           const _tab = _isBuild ? 'Build' : 'Work';
@@ -7203,7 +8322,7 @@ router.post('/message', async (req, res) => {
       const persistedClarifyText = `${clarifyText}\n\n${JSON.stringify({ __clarification: true, clarification: response.clarification })}`;
       await saveMessages(null, sessionId, message, persistedClarifyText, null, userId, agentConfig.agentId, { skipUserSave: true });
 
-      if (history.length === 0) {
+      if (history.length === 0 && sessionType !== 'book_creation') {
         generateSessionTitle(sessionId, message, clarifyText).catch(() => {});
       }
 
@@ -7228,7 +8347,7 @@ router.post('/message', async (req, res) => {
     // The full responseText is still saved so follow-up turns can inspect tool evidence.
 
     // Generate a smart title after the first message (history was empty = first exchange)
-    if (history.length === 0) {
+    if (history.length === 0 && sessionType !== 'book_creation') {
       generateSessionTitle(sessionId, message, cleanResponse).catch(() => {});
     }
 
@@ -7260,14 +8379,30 @@ router.post('/message', async (req, res) => {
 // POST /api/chat/upload — accept files + optional message, send to Sarah as multipart content
 router.post('/upload', async (req, res) => {
   try {
-    const { message = '', sessionId = 'session-' + Date.now(), files = [], agentId, projectId } = req.body;
+    const { message = '', sessionId = 'session-' + Date.now(), files = [], agentId, projectId, sessionType, bookTitle } = req.body;
     if (!files.length && !message.trim()) {
       return res.status(400).json({ error: 'Message or files required' });
+    }
+    if (sessionType === 'book_import') {
+      const bookAccess = await authenticateBookAccess(req, agentId || null);
+      if (!bookAccess.authorized) return res.status(bookAccess.status).json({ error: bookAccess.error });
+      if (req.body?.rightsConfirmed !== true) {
+        return res.status(400).json({ error: 'You must confirm that you own this book or have permission to edit it.' });
+      }
     }
 
     const userId = await getUserId(req);
     const agentConfig = await loadAgentConfig(agentId || null);
     await ensureSession(null, sessionId, userId, agentConfig.agentId, projectId || null);
+    if (sessionType === 'book_import') {
+      const safeBookTitle = String(bookTitle || files[0]?.name || 'Uploaded Book').replace(/\.[^.]+$/, '').trim().slice(0, 90);
+      const { createClient: createBookClient } = await import('@supabase/supabase-js');
+      const bookClient = createBookClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+      await bookClient.from('sessions').update({
+        title: `📚 ${safeBookTitle}`,
+        updated_at: new Date().toISOString(),
+      }).eq('id', sessionId).eq('user_id', userId);
+    }
     const history = await loadHistory(null, sessionId);
     const uploadedFiles = await saveChatImageUploads(files, sessionId, userId);
     const uploadedByName = new Map(uploadedFiles.map(f => [f.name, f]));
@@ -7453,8 +8588,15 @@ router.get('/health', (req, res) => {
 // Desktop subscribes to this for real-time checklist updates
 // Full path: /api/chat/progress-stream?sessionId=xxx
 // Desktop app connects via EventSource to this URL for live todo updates
-router.get('/progress-stream', (req, res) => {
+router.get('/progress-stream', async (req, res) => {
   const sessionId = req.query.sessionId || 'default';
+  if (sessionId !== 'default') {
+    const { validateSessionAccess } = await import('./org-boundary.js');
+    const access = await validateSessionAccess(req, sessionId);
+    if (!access.authorized || access.fallback) {
+      return res.status(access.fallback ? 401 : access.status).json({ error: access.fallback ? 'Authentication required' : access.error });
+    }
+  }
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
@@ -7465,9 +8607,13 @@ router.get('/progress-stream', (req, res) => {
 
   // Push progress + thinking updates every 500ms
   let lastThinkingCount = 0;
+  let lastProgressUpdateCount = 0;
+  let lastExecutionEventCount = 0;
   const interval = setInterval(() => {
     const progress = taskProgress.get(sessionId);
     const thinking = thinkingLog.get(sessionId);
+    const userProgress = progressUpdates.get(sessionId);
+    const executionEvents = executionEventSnapshot(sessionId);
 
     // Build combined payload
     const payload = {};
@@ -7479,6 +8625,14 @@ router.get('/progress-stream', (req, res) => {
       // Only send NEW events since last push
       payload.thinkingEvents = thinking.events.slice(lastThinkingCount);
       lastThinkingCount = thinking.events.length;
+    }
+    if (userProgress && userProgress.events.length > lastProgressUpdateCount) {
+      payload.progressUpdates = userProgress.events.slice(lastProgressUpdateCount);
+      lastProgressUpdateCount = userProgress.events.length;
+    }
+    if (executionEvents.length > lastExecutionEventCount) {
+      payload.executionEvents = executionEvents.slice(lastExecutionEventCount);
+      lastExecutionEventCount = executionEvents.length;
     }
 
     if (Object.keys(payload).length > 0) {
@@ -7492,6 +8646,20 @@ router.get('/progress-stream', (req, res) => {
   req.on('close', () => {
     clearInterval(interval);
     clearInterval(heartbeat);
+  });
+});
+
+// Current progress snapshot for clients recovering from a stale/retired SSE
+// connection during a rolling deployment.
+router.get('/progress-status', (req, res) => {
+  const sessionId = req.query.sessionId || 'default';
+  const progress = taskProgress.get(sessionId);
+  res.set('Cache-Control', 'no-store');
+  res.json({
+    sessionId,
+    todos: progress?.todos || [],
+    updatedAt: progress?.updatedAt || null,
+    terminal: progress?.terminal === true,
   });
 });
 

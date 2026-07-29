@@ -10,6 +10,7 @@ import path from 'path';
 import { createClient } from '@supabase/supabase-js';
 import multer from 'multer';
 import { createLogger } from '../logging/logger.js';
+import { getBrowserService } from '../browser/browser-service.js';
 
 const router = express.Router();
 const logger = createLogger('desktop-api');
@@ -18,8 +19,16 @@ const logger = createLogger('desktop-api');
 // Structure: { [sessionId]: { commands: [], registeredAt: Date, lastSeen: Date, capabilities: {} } }
 const sessions = new Map();
 
-// Clean up sessions not seen in 30 seconds
-const STALE_THRESHOLD_MS = 30_000;
+// Allow long browser/desktop commands to finish without making a visibly
+// running desktop disappear from the command bridge mid-task.
+const STALE_THRESHOLD_MS = 5 * 60_000;
+// Presence shown to Chat must be much fresher than the eventual cleanup
+// threshold. Otherwise a crashed or sleeping desktop can be advertised as
+// connected for several minutes and every command will simply time out.
+const ACTIVE_THRESHOLD_MS = 15_000;
+function isSessionActive(session, now = Date.now()) {
+  return !!session && now - session.lastSeen <= ACTIVE_THRESHOLD_MS;
+}
 function pruneStale() {
   const now = Date.now();
   for (const [id, session] of sessions) {
@@ -29,7 +38,8 @@ function pruneStale() {
     }
   }
 }
-setInterval(pruneStale, 10_000);
+const staleDesktopTimer = setInterval(pruneStale, 10_000);
+staleDesktopTimer.unref?.();
 
 // ─────────────────────────────────────────────
 // POST /api/desktop/register
@@ -37,22 +47,32 @@ setInterval(pruneStale, 10_000);
 // Body: { sessionId, hostname?, platform?, version?, capabilities? }
 // capabilities: { tools: [...], toolCount, categories, systemPromptInjection }
 // ─────────────────────────────────────────────
-router.post('/register', (req, res) => {
-  const { sessionId, hostname, platform, version, capabilities } = req.body;
+router.post('/register', async (req, res) => {
+  const { sessionId, hostname, platform, version, appVersion, capabilities, orgId, userId } = req.body;
   if (!sessionId) return res.status(400).json({ error: 'sessionId required' });
+  let identity = await resolveAuthenticatedDesktopIdentity(req);
+  if (!identity.success) {
+    identity = await resolveStoredDesktopIdentity(sessionId, orgId, userId);
+  }
+  if (!identity.success) return res.status(identity.status).json({ error: identity.error });
 
+  const existing = sessions.get(sessionId);
   sessions.set(sessionId, {
-    commands: [],
-    registeredAt: new Date().toISOString(),
+    commands: existing?.commands || [],
+    registeredAt: existing?.registeredAt || new Date().toISOString(),
     lastSeen: Date.now(),
-    hostname: hostname || 'unknown',
-    platform: platform || 'unknown',
-    version: version || 'unknown',
-    capabilities: capabilities || null
+    hostname: hostname || existing?.hostname || 'unknown',
+    platform: platform || existing?.platform || 'unknown',
+    version: version || appVersion || existing?.version || 'unknown',
+    orgId: identity.orgId,
+    userId: identity.userId,
+    agentId: identity.agentId,
+    capabilities: capabilities || existing?.capabilities || null
   });
 
-  const toolCount = capabilities?.toolCount || 'unknown';
-  logger.info(`Desktop registered: ${sessionId} (${platform || 'unknown'}) v${version || '?'} | ${toolCount} tools`);
+  const registered = sessions.get(sessionId);
+  const toolCount = registered.capabilities?.toolCount || 'unknown';
+  logger.info(`Desktop registered: ${sessionId} (${registered.platform}) v${registered.version} | ${toolCount} tools`);
   res.json({ success: true, sessionId });
 });
 
@@ -62,17 +82,25 @@ router.post('/register', (req, res) => {
 // Query: ?sessionId=xxx
 // ─────────────────────────────────────────────
 router.get('/status', (req, res) => {
-  const { sessionId } = req.query;
+  const { sessionId, orgId, userId } = req.query;
+  const now = Date.now();
   if (!sessionId) {
     // Return all active sessions (for dashboard)
     const active = [];
     for (const [id, s] of sessions) {
+      if (!isSessionActive(s, now)) continue;
+      if (orgId && s.orgId !== orgId) continue;
+      if (userId && s.userId !== userId) continue;
       active.push({
         sessionId: id,
         hostname: s.hostname,
         platform: s.platform,
         version: s.version,
+        orgId: s.orgId,
+        userId: s.userId,
+        agentId: s.agentId,
         registeredAt: s.registeredAt,
+        lastSeenAt: new Date(s.lastSeen).toISOString(),
         pendingCommands: s.commands.length,
         hasCapabilities: !!s.capabilities,
         toolCount: s.capabilities?.toolCount || 0
@@ -82,12 +110,13 @@ router.get('/status', (req, res) => {
   }
 
   const session = sessions.get(sessionId);
-  if (!session) return res.json({ connected: false });
+  if (!isSessionActive(session, now)) return res.json({ connected: false });
   res.json({
     connected: true,
     hostname: session.hostname,
     platform: session.platform,
     version: session.version,
+    lastSeenAt: new Date(session.lastSeen).toISOString(),
     pendingCommands: session.commands.length,
     hasCapabilities: !!session.capabilities,
     toolCount: session.capabilities?.toolCount || 0
@@ -100,7 +129,7 @@ router.get('/status', (req, res) => {
 // from the currently connected desktop
 // ─────────────────────────────────────────────
 router.get('/capabilities', (req, res) => {
-  const { sessionId } = req.query;
+  const { sessionId, orgId, userId } = req.query;
   let session;
 
   if (sessionId) {
@@ -108,6 +137,8 @@ router.get('/capabilities', (req, res) => {
   } else {
     // Return first active session's capabilities
     for (const [, s] of sessions) {
+      if (orgId && s.orgId !== orgId) continue;
+      if (userId && s.userId !== userId) continue;
       if (s.capabilities) { session = s; break; }
     }
   }
@@ -137,7 +168,7 @@ router.post('/command', (req, res) => {
   if (!commandId) return res.status(400).json({ error: 'commandId required' });
 
   const session = sessions.get(sessionId);
-  if (!session) {
+  if (!isSessionActive(session)) {
     return res.status(404).json({ error: 'Desktop session not found or not connected', sessionId });
   }
 
@@ -188,8 +219,41 @@ router.post('/result', (req, res) => {
   results.set(commandId, payload);
   logger.info(`Result received for command ${commandId} (${tool}): ${success ? 'OK' : 'FAILED'}`);
 
-  // Auto-prune results after 60s
-  setTimeout(() => results.delete(commandId), 60_000);
+  // Mirror BLOOM Desktop browser evidence into the dashboard's Live panel.
+  // Desktop result envelopes vary slightly by tool/version, so inspect the
+  // nested result chain and use the first concrete URL/screenshot we find.
+  if (String(tool || '').startsWith('bloom_browser_') && success !== false) {
+    const candidates = [result, result?.result, result?.result?.result].filter(Boolean);
+    const browserUrl = candidates
+      .map(item => item?.url || item?.currentUrl || item?.current_url || item?.url_final)
+      .find(Boolean);
+    const screenshotData = candidates
+      .map(item => item?.screenshot_base64 || item?.screenshot || item?.image_base64 || item?.image)
+      .find(value => typeof value === 'string' && value.length > 100);
+    const browser = getBrowserService();
+    browser.isRunning = true;
+    if (browserUrl) browser.currentUrl = browserUrl;
+    if (screenshotData) {
+      browser.lastScreenshot = screenshotData.replace(/^data:image\/[^;]+;base64,/, '');
+      browser.lastScreenshotTime = Date.now();
+      browser.emit('screenshot', {
+        data: browser.lastScreenshot,
+        url: browser.currentUrl || '',
+        timestamp: Date.now(),
+      });
+    } else {
+      browser.emit('status', {
+        type: 'status',
+        live: true,
+        url: browser.currentUrl || null,
+      });
+    }
+  }
+
+  // Long model/tool turns may not collect the result immediately. Keep it long
+  // enough for retry/resume behavior instead of deleting valid evidence after
+  // one minute.
+  setTimeout(() => results.delete(commandId), 10 * 60_000);
 
   res.json({ success: true });
 });
@@ -215,6 +279,124 @@ router.get('/result/:commandId', (req, res) => {
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://njfhzabmaxhfzekbzpzz.supabase.co';
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5qZmh6YWJtYXhoZnpla2J6cHp6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4MjYwMjMsImV4cCI6MjA4ODQwMjAyM30.QPTQhnlfZtmfQVm75GqG0Oazmyb7USjYBdLEy_G-iqU';
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || '';
+
+async function resolveAuthenticatedDesktopIdentity(req) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) {
+    return { success: false, status: 401, error: 'Authenticated desktop session required' };
+  }
+  try {
+    const token = authHeader.slice('Bearer '.length);
+    const anonClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: false } });
+    const { data: { user }, error: userError } = await anonClient.auth.getUser(token);
+    if (userError || !user) return { success: false, status: 401, error: 'Invalid desktop session' };
+
+    const dbClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY || SUPABASE_ANON_KEY, { auth: { persistSession: false } });
+    const { data: membership, error: membershipError } = await dbClient
+      .from('organization_members')
+      .select('organization_id, organizations(id, name)')
+      .eq('user_id', user.id)
+      .limit(1)
+      .maybeSingle();
+    if (membershipError || !membership) {
+      return { success: false, status: 403, error: 'No active BLOOM organization for this desktop user' };
+    }
+    const { data: agent } = await dbClient
+      .from('agents')
+      .select('id, name')
+      .eq('organization_id', membership.organization_id)
+      .limit(1)
+      .maybeSingle();
+    return {
+      success: true,
+      status: 200,
+      userId: user.id,
+      email: user.email,
+      orgId: membership.organization_id,
+      orgName: membership.organizations?.name || 'BLOOM',
+      agentId: agent?.id || null,
+      agentName: agent?.name || null,
+    };
+  } catch (error) {
+    logger.error('Desktop identity resolution failed', { error: error.message });
+    return { success: false, status: 500, error: 'Desktop identity resolution failed' };
+  }
+}
+
+async function resolveStoredDesktopIdentity(sessionId, claimedOrgId, claimedUserId) {
+  if (!SUPABASE_SERVICE_KEY || !sessionId || !claimedOrgId || !claimedUserId) {
+    return { success: false, status: 401, error: 'Invalid desktop session' };
+  }
+  try {
+    const dbClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, { auth: { persistSession: false } });
+    const { data: stored, error } = await dbClient
+      .from('desktop_sessions')
+      .select('id, user_id, organization_id, hostname, platform, status')
+      .eq('user_id', claimedUserId)
+      .eq('organization_id', claimedOrgId)
+      .maybeSingle();
+    const recognizedStoredSessionId = stored && (
+      sessionId === stored.id ||
+      sessionId === `desktop-${stored.user_id}`
+    );
+    let recoveredUserId = stored?.user_id;
+    let recoveredOrgId = stored?.organization_id;
+    if (!stored && sessionId === `desktop-${claimedUserId}`) {
+      const { data: membership, error: membershipError } = await dbClient
+        .from('organization_members')
+        .select('user_id, organization_id')
+        .eq('user_id', claimedUserId)
+        .eq('organization_id', claimedOrgId)
+        .maybeSingle();
+      if (!membershipError && membership) {
+        recoveredUserId = membership.user_id;
+        recoveredOrgId = membership.organization_id;
+      }
+    }
+    if (
+      error ||
+      !recoveredUserId ||
+      !recoveredOrgId ||
+      (stored && (!recognizedStoredSessionId || stored.status === 'revoked'))
+    ) {
+      return { success: false, status: 401, error: 'Invalid desktop session' };
+    }
+    const { data: agent } = await dbClient
+      .from('agents')
+      .select('id, name')
+      .eq('organization_id', recoveredOrgId)
+      .limit(1)
+      .maybeSingle();
+    if (stored) {
+      await dbClient
+        .from('desktop_sessions')
+        .update({ status: 'online', last_seen_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .eq('id', stored.id);
+    }
+    logger.info('Recovered authenticated desktop registration from durable tenant session', {
+      sessionId,
+      orgId: recoveredOrgId,
+      userId: recoveredUserId,
+    });
+    return {
+      success: true,
+      status: 200,
+      userId: recoveredUserId,
+      orgId: recoveredOrgId,
+      agentId: agent?.id || null,
+      agentName: agent?.name || null,
+    };
+  } catch (error) {
+    logger.error('Stored desktop identity recovery failed', { error: error.message });
+    return { success: false, status: 500, error: 'Desktop identity recovery failed' };
+  }
+}
+
+router.get('/identity', async (req, res) => {
+  const identity = await resolveAuthenticatedDesktopIdentity(req);
+  if (!identity.success) return res.status(identity.status).json({ error: identity.error });
+  res.json(identity);
+});
 
 // Download file metadata — updated when new builds are uploaded
 const DOWNLOAD_FILES = {

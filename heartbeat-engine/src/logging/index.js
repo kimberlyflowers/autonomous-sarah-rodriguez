@@ -79,23 +79,32 @@ export async function logAction(cycleId, decision, result) {
   }
 }
 
+export function normalizeRejectionRecord(candidate, reason, confidence, reasonCode = null) {
+  return {
+    candidateAction: String(candidate || reasonCode || 'unknown_action').trim() || 'unknown_action',
+    reason: reason || 'No rejection reason provided',
+    confidence: Number.isFinite(Number(confidence)) ? Number(confidence) : 0,
+  };
+}
+
 // Log agent rejection decision
 export async function logRejection(cycleId, candidate, reason, confidence, reasonCode = null) {
   try {
     const supabase = await getSupabase();
+    const normalized = normalizeRejectionRecord(candidate, reason, confidence, reasonCode);
     const { error } = await supabase.from('rejection_log').insert({
       ...(cycleId && cycleId.includes('-') ? { cycle_id: cycleId } : {}),
       agent_id:         AGENT_ID,
       organization_id:  ORG_ID,
-      candidate_action: candidate,
-      reason,
+      candidate_action: normalized.candidateAction,
+      reason:            normalized.reason,
       reason_code:      reasonCode,
-      confidence
+      confidence:        normalized.confidence
     });
 
     if (error) logger.warn('logRejection Supabase error:', { error: error.message });
 
-    logger.info(`Logged rejection: ${candidate}`, { cycleId, reason, confidence, reason_code: reasonCode });
+    logger.info(`Logged rejection: ${normalized.candidateAction}`, { cycleId, reason, confidence, reason_code: reasonCode });
   } catch (error) {
     logger.error('Failed to log rejection:', error);
   }

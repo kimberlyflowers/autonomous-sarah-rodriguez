@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, Component } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, Component, forwardRef } from "react";
 import { ConversationProvider, useConversation } from "@elevenlabs/react";
 import { LiveAvatarSession as LiveAvatarWebSession, SessionEvent, SessionState } from "@heygen/liveavatar-web-sdk";
 import ReactMarkdown from "react-markdown";
@@ -7,12 +7,116 @@ import { supabase } from "./supabase.js";
 import QRCode from 'qrcode';
 import PageEditor from "./PageEditor.jsx";
 import BloomieAdmin from "./components/BloomieAdmin.jsx";
+import ReferenceLibrary from "./components/ReferenceLibrary.jsx";
+import GoogleDrivePicker from "./components/GoogleDrivePicker.jsx";
+import HTMLFlipBook from "react-pageflip";
+import * as pdfjsLib from "pdfjs-dist";
+import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+
+pdfjsLib.GlobalWorkerOptions.workerSrc=pdfWorkerUrl;
 
 // Get auth headers for API calls
 async function getAuthHeaders() {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return { "Content-Type": "application/json" };
   return { "Content-Type": "application/json", "Authorization": `Bearer ${session.access_token}` };
+}
+
+const BLOOM_READ_STATE_KEY='bloomie-conversation-read-v1';
+let bloomNotificationAudioContext=null;
+function readConversationState(){
+  try{return JSON.parse(localStorage.getItem(BLOOM_READ_STATE_KEY)||'{}')||{};}catch{return{};}
+}
+function conversationReadKey(kind,id){return `${kind}:${id}`;}
+function seedConversationReads(kind,items=[],initialUnreadCount=0){
+  const state=readConversationState();
+  const seededKey=`${kind}:__initial_read_state_seeded`;
+  if(state[seededKey])return;
+  const newestUnread=new Set(
+    [...items]
+      .sort((a,b)=>new Date(b.updated_at||b.created_at||0)-new Date(a.updated_at||a.created_at||0))
+      .slice(0,initialUnreadCount)
+      .map(item=>item.id)
+  );
+  let changed=false;
+  for(const item of items){
+    const key=conversationReadKey(kind,item.id);
+    if(state[key]==null){
+      state[key]=newestUnread.has(item.id)?0:new Date(item.updated_at||item.created_at||Date.now()).getTime();
+      changed=true;
+    }
+  }
+  state[seededKey]=Date.now();
+  localStorage.setItem(BLOOM_READ_STATE_KEY,JSON.stringify(state));
+}
+function markConversationRead(kind,id,when=Date.now()){
+  if(!id)return;
+  const state=readConversationState();
+  state[conversationReadKey(kind,id)]=Math.max(Number(state[conversationReadKey(kind,id)]||0),new Date(when||Date.now()).getTime());
+  localStorage.setItem(BLOOM_READ_STATE_KEY,JSON.stringify(state));
+  window.dispatchEvent(new CustomEvent('bloomie-read-state-changed',{detail:{kind,id}}));
+}
+function isConversationUnread(kind,item){
+  if(!item?.id)return false;
+  const updated=new Date(item.updated_at||item.created_at||0).getTime();
+  return updated>Number(readConversationState()[conversationReadKey(kind,item.id)]||0);
+}
+function unlockBloomNotificationSound(){
+  try{
+    const AudioCtx=window.AudioContext||window.webkitAudioContext;
+    if(!AudioCtx)return;
+    bloomNotificationAudioContext=bloomNotificationAudioContext||new AudioCtx();
+    if(bloomNotificationAudioContext.state==='suspended')void bloomNotificationAudioContext.resume();
+  }catch{}
+}
+function playBloomResponseSound(){
+  try{
+    unlockBloomNotificationSound();
+    const ctx=bloomNotificationAudioContext;
+    if(!ctx||ctx.state!=='running')return false;
+    const start=ctx.currentTime;
+    [[659.25,0],[783.99,.09]].forEach(([frequency,offset])=>{
+      const oscillator=ctx.createOscillator();
+      const gain=ctx.createGain();
+      oscillator.type='sine';oscillator.frequency.value=frequency;
+      gain.gain.setValueAtTime(0.0001,start+offset);
+      gain.gain.exponentialRampToValueAtTime(0.12,start+offset+.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001,start+offset+.16);
+      oscillator.connect(gain);gain.connect(ctx.destination);
+      oscillator.start(start+offset);oscillator.stop(start+offset+.17);
+    });
+    if(document.hidden&&navigator.vibrate)navigator.vibrate(35);
+    return true;
+  }catch{return false;}
+}
+
+function subscribeAuthenticatedEvents(url,onMessage,onError=()=>{}){
+  const controller=new AbortController();
+  (async()=>{
+    try{
+      const headers=await getAuthHeaders();
+      const response=await _originalFetch(url,{headers,signal:controller.signal,cache:'no-store'});
+      if(!response.ok||!response.body)throw new Error(`Event stream failed (${response.status})`);
+      const reader=response.body.getReader();
+      const decoder=new TextDecoder();
+      let buffer='';
+      while(true){
+        const {done,value}=await reader.read();
+        if(done)break;
+        buffer+=decoder.decode(value,{stream:true});
+        const frames=buffer.split('\n\n');
+        buffer=frames.pop()||'';
+        for(const frame of frames){
+          const line=frame.split('\n').find(item=>item.startsWith('data:'));
+          if(!line)continue;
+          try{onMessage(JSON.parse(line.slice(5).trim()));}catch{}
+        }
+      }
+    }catch(error){
+      if(error.name!=='AbortError')onError(error);
+    }
+  })();
+  return()=>controller.abort();
 }
 
 // Intercept all fetch calls — attach auth header automatically
@@ -79,6 +183,115 @@ function useW() {
     return ()=>window.removeEventListener("resize",f);
   },[]);
   return w;
+}
+
+function isPlayableVideoUrl(href="") {
+  return /\.(mp4|webm|mov)(?:$|[?#])/i.test(String(href))
+    || /\/api\/public\/video\//i.test(String(href));
+}
+
+function isPlayableAudioUrl(href="") {
+  return /\.(mp3|wav|m4a|aac|ogg)(?:$|[?#])/i.test(String(href));
+}
+
+function isDeliverableFileUrl(href="") {
+  return /\.(pdf|docx?|xlsx?|pptx?|csv|zip|html?)(?:$|[?#])/i.test(String(href))
+    || /\/api\/files\/(preview|publish|download)\//i.test(String(href));
+}
+
+function MarkdownInlineImage({src,alt}) {
+  return <img src={src} alt={alt||"Generated deliverable"} loading="lazy" style={{display:"block",width:"100%",maxWidth:720,maxHeight:560,objectFit:"contain",borderRadius:12,margin:"10px 0",background:"rgba(0,0,0,.08)"}}/>;
+}
+
+function requestedMediaKind(text="") {
+  const value=String(text);
+  // Mentioning an image or video in a question is not a generation request.
+  // Only show processing UI when the turn contains a concrete creation/edit
+  // action; the agent can still discuss or inspect media without a false card.
+  const hasCreationIntent=/\b(generate|create|make|render|produce|design|draw|illustrate|edit|remake|regenerate|animate|lip[ -]?sync(?:ing)?|turn\b.{0,40}\binto)\b/i.test(value);
+  if(!hasCreationIntent) return null;
+  if(/\b(video|lip[ -]?sync|animate|talking[ -]?head)\b/i.test(value)) return "video";
+  if(/\b(image|photo|picture|portrait|headshot|graphic|illustration)\b/i.test(value)) return "image";
+  return null;
+}
+
+function MediaProcessingCard({kind="image",c}) {
+  const isVideo=kind==="video";
+  return(
+    <div data-testid="media-processing-card" style={{width:"min(100%, 420px)",maxWidth:420,margin:"8px auto 12px",borderRadius:14,overflow:"hidden",border:"1px solid "+c.ln,background:c.sf,boxSizing:"border-box"}}>
+      <div data-testid="media-processing-preview" style={{width:"100%",aspectRatio:"16 / 9",display:"flex",alignItems:"center",justifyContent:"center",position:"relative",background:`linear-gradient(110deg,${c.sf} 20%,${c.cd} 42%,${c.sf} 64%)`,backgroundSize:"220% 100%",animation:"processingSweep 1.7s ease-in-out infinite"}}>
+        <div style={{width:54,height:54,borderRadius:18,display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,rgba(244,162,97,.24),rgba(231,111,139,.24))",border:"1px solid rgba(244,162,97,.35)",fontSize:24}}>{isVideo?"▶":"✦"}</div>
+      </div>
+      <div style={{padding:"11px 13px",display:"flex",alignItems:"center",gap:9}}>
+        <span style={{width:8,height:8,borderRadius:"50%",background:c.ac,animation:"pulse 1.2s ease infinite"}}/>
+        <div><div style={{fontSize:13,fontWeight:700,color:c.tx}}>{isVideo?"Rendering video":"Generating image"}</div><div style={{fontSize:11,color:c.so,marginTop:1}}>This preview will become the finished deliverable automatically.</div></div>
+      </div>
+    </div>
+  );
+}
+
+function MarkdownMediaLink({href,children,color}) {
+  if(isPlayableVideoUrl(href)) {
+    return(
+      <div style={{margin:"10px 0",width:"100%",maxWidth:720}}>
+        <video
+          src={href}
+          controls
+          playsInline
+          preload="metadata"
+          style={{display:"block",width:"100%",maxHeight:480,borderRadius:12,background:"#000"}}
+        >
+          <a href={href} target="_blank" rel="noopener noreferrer">Open video</a>
+        </video>
+        <a href={href} target="_blank" rel="noopener noreferrer" style={{display:"inline-block",marginTop:6,color,textDecoration:"underline",fontSize:12}}>Open video in a new tab</a>
+      </div>
+    );
+  }
+  if(isPlayableAudioUrl(href)) {
+    return(
+      <div style={{margin:"10px 0",width:"100%",maxWidth:720}}>
+        <audio src={href} controls preload="metadata" style={{display:"block",width:"100%"}}>
+          <a href={href} target="_blank" rel="noopener noreferrer">Open audio</a>
+        </audio>
+        <a href={href} target="_blank" rel="noopener noreferrer" style={{display:"inline-block",marginTop:6,color,textDecoration:"underline",fontSize:12}}>Open audio in a new tab</a>
+      </div>
+    );
+  }
+  if(isDeliverableFileUrl(href)) {
+    return(
+      <a href={href} target="_blank" rel="noopener noreferrer" style={{display:"flex",alignItems:"center",gap:10,width:"100%",maxWidth:720,margin:"10px 0",padding:"12px 14px",border:"1px solid rgba(127,127,127,.28)",borderRadius:12,color,textDecoration:"none",background:"rgba(127,127,127,.08)"}}>
+        <span aria-hidden="true" style={{fontSize:20}}>📄</span>
+        <span style={{minWidth:0,fontWeight:700,overflowWrap:"anywhere"}}>{children||"Open deliverable"}</span>
+        <span aria-hidden="true" style={{marginLeft:"auto"}}>↗</span>
+      </a>
+    );
+  }
+  return <a href={href} target="_blank" rel="noopener noreferrer" style={{color,textDecoration:"underline"}}>{children}</a>;
+}
+
+function createChatMarkdownComponents(c,setChatLightbox) {
+  return {
+    h1:({children})=><div style={{fontSize:17,fontWeight:700,margin:"18px 0 8px",color:c.tx}}>{children}</div>,
+    h2:({children})=><div style={{fontSize:15,fontWeight:700,margin:"16px 0 6px",color:c.tx}}>{children}</div>,
+    h3:({children})=><div style={{fontSize:14,fontWeight:700,margin:"14px 0 6px",color:c.tx}}>{children}</div>,
+    p:({children})=><div style={{margin:"8px 0"}}>{children}</div>,
+    strong:({children})=><strong>{children}</strong>,
+    em:({children})=><em>{children}</em>,
+    ul:({children})=><div style={{margin:"6px 0",paddingLeft:4}}>{children}</div>,
+    ol:({children})=><div style={{margin:"6px 0",paddingLeft:4}}>{children}</div>,
+    li:({children,index,ordered})=><div style={{display:"flex",gap:8,margin:"3px 0"}}><span style={{color:c.ac,flexShrink:0}}>{ordered?`${(index||0)+1}.`:"•"}</span><span>{children}</span></div>,
+    img:({src,alt})=><img src={src} alt={alt} onClick={()=>setChatLightbox({src,alt:alt||''})} style={{maxWidth:"100%",height:"auto",borderRadius:8,margin:"10px 0",display:"block",cursor:"zoom-in"}}/>,
+    code:({inline,children})=>{
+      if(inline) return <code style={{background:c.bg,border:"1px solid "+c.ln,padding:"1px 6px",borderRadius:4,fontSize:"12.5px",fontFamily:"ui-monospace,SFMono-Regular,Menlo,monospace"}}>{children}</code>;
+      return <pre style={{background:c.bg,border:"1px solid "+c.ln,borderRadius:8,padding:"12px 16px",margin:"10px 0",overflowX:"auto",fontSize:"12.5px",lineHeight:1.5,fontFamily:"ui-monospace,SFMono-Regular,Menlo,monospace"}}><code>{children}</code></pre>;
+    },
+    hr:()=><hr style={{border:"none",borderTop:"1px solid "+c.ln,margin:"16px 0"}}/>,
+    a:({href,children})=><MarkdownMediaLink href={href} color={c.ac}>{children}</MarkdownMediaLink>,
+    table:({children})=><div style={{overflowX:"auto",margin:"10px 0"}}><table style={{borderCollapse:"collapse",width:"100%",fontSize:13}}>{children}</table></div>,
+    th:({children})=><th style={{border:"1px solid "+c.ln,padding:"6px 10px",fontWeight:600,textAlign:"left",background:c.sf}}>{children}</th>,
+    td:({children})=><td style={{border:"1px solid "+c.ln,padding:"6px 10px"}}>{children}</td>,
+    blockquote:({children})=><div style={{borderLeft:"3px solid "+c.ac,paddingLeft:12,margin:"10px 0",color:c.so}}>{children}</div>,
+  };
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -284,8 +497,10 @@ function useSarahChat() {
   const loadSession = async (sessionId) => {
     sid.current = sessionId;
     setCurrentSessionId(sessionId);
+    markConversationRead('chat',sessionId);
     try {
-      const r = await fetch("/api/chat/sessions/"+sessionId);
+      const headers = await getAuthHeaders();
+      const r = await fetch("/api/chat/sessions/"+sessionId,{headers});
       const d = await r.json();
       const msgs = (d.messages||[]).map(m=>({
         id: m.id,
@@ -306,6 +521,7 @@ function useSarahChat() {
   };
 
   const abortRef = useRef(null);
+  const queuedMessagesRef = useRef([]);
 
   const stopSarah = () => {
     if(abortRef.current) { abortRef.current.abort(); abortRef.current=null; }
@@ -313,18 +529,39 @@ function useSarahChat() {
     setWorkingStatus("");
   };
 
-  const send = async (text, projectId = null, activeArtifactContext = null) => {
+  const send = async (text, projectId = null, activeArtifactContext = null, queuedMeta = null) => {
     if(!text.trim()) return false;
+    unlockBloomNotificationSound();
+    // Never start overlapping requests for the same chat. Aborting the browser
+    // fetch does not stop server-side tools, so overlapping turns can duplicate
+    // paid work and overwrite the durable execution checkpoint. Follow-up text
+    // is displayed immediately, then executed in order after the active turn.
+    if(abortRef.current && !queuedMeta) {
+      const ts = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
+      const userMsgId = Date.now();
+      const queueAckId = userMsgId + 1;
+      queuedMessagesRef.current.push({text,projectId,activeArtifactContext,userMsgId,queueAckId});
+      setMessages(p=>[
+        ...p,
+        {id:userMsgId,b:false,t:text,tm:ts,queued:true},
+        {id:queueAckId,b:true,t:"Queued — I’ll finish the active step, then apply this next.",tm:ts,isAck:true,isQueuedAck:true}
+      ]);
+      return true;
+    }
     if(!sid.current) { const id="session-"+Date.now(); sid.current=id; setCurrentSessionId(id); }
     const ts = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
-    const userMsgId = Date.now();
-    setMessages(p=>[...p,{id:userMsgId,b:false,t:text,tm:ts}]);
+    const userMsgId = queuedMeta?.userMsgId || Date.now();
+    if(queuedMeta?.queueAckId) {
+      setMessages(p=>p.filter(m=>m.id!==queuedMeta.queueAckId));
+    } else {
+      setMessages(p=>[...p,{id:userMsgId,b:false,t:text,tm:ts}]);
+    }
     setLoading(true);
 
     // Detect if this is a WORK task or just casual chat
     // Direct work keywords
-    const hasWorkVerbs = /\b(write|create|build|make|draft|design|generate|research|check|find|search|send|schedule|update|look up|go to|navigate|analyze|summarize|review|edit|fix|compile|prepare|pull|set up|book|cancel|redo|retry|try again|do it|do that|go ahead|start|finish|continue|proceed|run|execute|launch|publish)\b/i.test(text);
-    const hasWorkNouns = /\b(blog|email|post|website|landing page|report|document|contact|lead|campaign|sequence|flyer|graphic|proposal|invoice|spreadsheet|calendar|appointment|site|page|sop|newsletter|funnel|book|chapter)\b/i.test(text);
+    const hasWorkVerbs = /\b(write|create|build|make|draft|design|generate|research|inspect|investigate|audit|diagnose|verify|validate|test|check|find|locate|search|send|share|show|display|schedule|update|look up|go to|navigate|analyze|summarize|review|edit|fix|compile|prepare|pull|set up|book|cancel|redo|retry|try again|do it|do that|go ahead|start|finish|continue|proceed|run|execute|launch|publish|deploy|commit)\b/i.test(text);
+    const hasWorkNouns = /\b(blog|email|post|website|landing page|report|document|contact|lead|campaign|sequence|flyer|graphic|visual|image|photo|picture|portrait|headshot|avatar|proposal|invoice|spreadsheet|calendar|appointment|site|page|sop|newsletter|funnel|book|chapter|repository|repo|codebase|source tree|branch|file|framework|deployment|build|logs?|database|api|integration|connector|webhook)\b/i.test(text);
     // Continuation signals — short messages that reference ongoing work
     const isContinuation = /^(ok|yes|yeah|yep|sure|do it|go|go ahead|try again|retry|redo|proceed|continue|start|finish it|yes please|ok do it|go for it|let's go|make it|ship it)\b/i.test(text.trim());
     // Check if recent messages suggest we're in a work context
@@ -397,7 +634,7 @@ function useSarahChat() {
           const audio = new Audio(data.audio);
           audio.play().catch(()=>{});
         } catch {}
-      }
+      } else playBloomResponseSound();
       fetchSessions();
       setTimeout(fetchSessions, 3000);
       return true;
@@ -418,10 +655,18 @@ function useSarahChat() {
       const ts2 = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
       setMessages(p=>[...p,{id:Date.now(),b:true,t:"Connection issue — please try again.",tm:ts2}]);
       return false;
-    } finally { setLoading(false); setWorkingStatus(""); }
+    } finally {
+      setLoading(false);
+      setWorkingStatus("");
+      const next = queuedMessagesRef.current.shift();
+      if(next) {
+        setTimeout(()=>send(next.text,next.projectId,next.activeArtifactContext,next),0);
+      }
+    }
   };
 
   const sendFiles = async (files, text='', projectId = null) => {
+    unlockBloomNotificationSound();
     const ts = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
     setLoading(true);
     try {
@@ -452,6 +697,7 @@ function useSarahChat() {
       }
       const ts2 = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
       setMessages(p=>[...p,{id:Date.now(),b:true,t:data.response||data.message||"Got it.",tm:ts2}]);
+      playBloomResponseSound();
       fetchSessions();
       return true;
     } catch {
@@ -463,6 +709,7 @@ function useSarahChat() {
 
   // sendFilesEncoded — same as sendFiles but skips FileReader (base64 already encoded, e.g. screenshots)
   const sendFilesEncoded = async (encoded, text='', projectId = null) => {
+    unlockBloomNotificationSound();
     const ts = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
     setLoading(true);
     try {
@@ -485,6 +732,7 @@ function useSarahChat() {
       }
       const ts2 = new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
       setMessages(p=>[...p,{id:Date.now(),b:true,t:data.response||data.message||"Got it.",tm:ts2}]);
+      playBloomResponseSound();
       fetchSessions();
       return true;
     } catch {
@@ -494,7 +742,7 @@ function useSarahChat() {
     } finally { setLoading(false); }
   };
 
-  return {messages,setMessages,send,sendFiles,sendFilesEncoded,loading,workingStatus,sessions,currentSessionId,newSession,loadSession,deleteSession,fetchSessions,stopSarah,sid,agents,currentAgentId,currentAgent,switchAgent};
+  return {messages,setMessages,send,sendFiles,sendFilesEncoded,loading,workingStatus,sessions,setSessions,currentSessionId,newSession,loadSession,deleteSession,fetchSessions,stopSarah,sid,agents,currentAgentId,currentAgent,switchAgent};
 }
 
 
@@ -1126,7 +1374,21 @@ function Screen({c,mob,mode,setMode,aFN="Agent"}) {
     let es;
     let retryCount = 0;
     let retryTimer = null;
+    let stateTimer = null;
     const MAX_RETRIES = 5;
+    const refreshCurrentState = async () => {
+      try {
+        const response = await fetch("/api/browser/screenshot", { cache: "no-store" });
+        const state = await response.json();
+        if (state.live && state.screenshot) {
+          setScreenshot("data:image/jpeg;base64," + state.screenshot);
+          if (state.url) setBrowserUrl(state.url);
+          setLive(true);
+        } else if (!state.live) {
+          setLive(false);
+        }
+      } catch {}
+    };
     const connect = () => {
       if(es) { try { es.close(); } catch {} es = null; }
       es = new EventSource("/api/browser/stream");
@@ -1159,8 +1421,14 @@ function Screen({c,mob,mode,setMode,aFN="Agent"}) {
       };
     };
     connect();
+    refreshCurrentState();
+    // SSE connections can remain pinned to a retired Railway instance during
+    // a rolling deploy. Polling the current endpoint keeps the viewer accurate
+    // without requiring the user to refresh or reopen the panel.
+    stateTimer = setInterval(refreshCurrentState, 2000);
     return () => {
       if(retryTimer) clearTimeout(retryTimer);
+      if(stateTimer) clearInterval(stateTimer);
       try { es&&es.close(); } catch {}
     };
   },[mode]);
@@ -1345,12 +1613,12 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null, lastSara
     const live=sdkSessionRef.current;
     if(!live || live.state!==SessionState.CONNECTED) {
       pendingAvatarSpeechRef.current=clean;
-      setSpeechStatus("Sarah Live is connecting...");
+      setSpeechStatus(`${firstName} Live is connecting...`);
       return false;
     }
     try {
       live.repeat(clean);
-      setSpeechStatus(reason==="manual"?"Speaking now":"Speaking Sarah's latest reply");
+      setSpeechStatus(reason==="manual"?"Speaking now":`Speaking ${firstName}'s latest reply`);
       setTimeout(()=>setSpeechStatus(""),3500);
       return true;
     } catch(e) {
@@ -1385,7 +1653,7 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null, lastSara
       liveSession.on(SessionEvent.SESSION_STATE_CHANGED,state=>{
         setSdkStatus(state);
         if(state===SessionState.CONNECTED) {
-          setSpeechStatus("Use the main mic below to talk through Sarah Live");
+          setSpeechStatus(`Use the main mic below to talk through ${firstName} Live`);
           flushPendingAvatarSpeech(250);
           flushPendingAvatarSpeech(1000);
         }
@@ -1425,18 +1693,18 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null, lastSara
   const speakSdkText=()=>{
     const text=speechText();
     if(!text) return;
-    if(!sendTextToAvatar(text,"manual")) setErr("Start Sarah Live first, then try speaking again.");
+    if(!sendTextToAvatar(text,"manual")) setErr(`Start ${firstName} Live first, then try speaking again.`);
   };
 
   const startAvatarListening=()=>{
     if(!isLiveAvatarCommandReady()) {
-      setSpeechStatus("Sarah Live is still connecting. Try again in a moment.");
+      setSpeechStatus(`${firstName} Live is still connecting. Try again in a moment.`);
       return false;
     }
     try {
       sdkSessionRef.current?.startListening();
       setAvatarMicStatus("listening");
-      setSpeechStatus("Sarah is listening through LiveAvatar");
+      setSpeechStatus(`${firstName} is listening through LiveAvatar`);
       return true;
     } catch(e) {
       setErr(e.message||"Could not start LiveAvatar listening");
@@ -1549,7 +1817,7 @@ function LiveAvatarPanel({c, agentId, agentName="Agent", agentImg=null, lastSara
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
             <button onClick={connected?stopSdkLive:startSdkLive} disabled={starting} style={{padding:"9px 12px",borderRadius:8,border:"none",background:connected?"#EF4444":c.gradient,color:"#fff",fontSize:12,fontWeight:800,cursor:starting?"wait":"pointer",flexShrink:0}}>{connected?"End":"Start"}</button>
             <div style={{flex:1,minWidth:0,padding:"8px 10px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,color:c.so,fontSize:11,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
-              {speechStatus || (connected ? "Use the main mic below to talk through Sarah Live" : "Start the live avatar, then Sarah can speak here")}
+              {speechStatus || (connected ? `Use the main mic below to talk through ${firstName} Live` : `Start the live avatar, then ${firstName} can speak here`)}
             </div>
           </div>
         </div>
@@ -1672,28 +1940,112 @@ function ProgressRing({pct,sz,stroke,color,bg}) {
    THINKING PANEL — Real-time reasoning, tool calls, and results
    Toggle on/off via the + button in the chat input area
    ═══════════════════════════════════════════════════════════════ */
-function ThinkingPanel({c, sessionId, isOpen, onClose}) {
+function mergeExecutionCalls(existing=[],events=[]){
+  const byId=new Map((existing||[]).map(call=>[call.callId,{...call,events:[...(call.events||[])]}]));
+  for(const event of events||[]){
+    if(!event?.callId)continue;
+    const call=byId.get(event.callId)||{
+      callId:event.callId,toolName:event.toolName||'tool',status:'running',
+      startedAt:event.startedAt||event.timestamp||Date.now(),finishedAt:null,
+      elapsedMs:null,input:event.input||{},output:'',events:[]
+    };
+    if(!call.events.some(item=>item.id&&item.id===event.id))call.events.push(event);
+    if(event.type==='tool.start'){call.toolName=event.toolName||call.toolName;call.input=event.input||{};call.status='running';call.startedAt=event.startedAt||event.timestamp||call.startedAt;}
+    if(event.type==='tool.output'){
+      const chunk=typeof event.output==='string'?event.output:JSON.stringify(event.output||'');
+      call.output=(call.output+(call.output?'\n':'')+chunk).slice(-24000);
+    }
+    if(event.type==='tool.finish'){
+      call.status=event.status||'passed';call.finishedAt=event.finishedAt||event.timestamp||Date.now();
+      call.elapsedMs=event.elapsedMs??Math.max(0,call.finishedAt-call.startedAt);
+      if(event.output){
+        call.output=typeof event.output==='string'?event.output:JSON.stringify(event.output,null,2);
+      }
+    }
+    byId.set(event.callId,call);
+  }
+  return Array.from(byId.values()).sort((a,b)=>(a.startedAt||0)-(b.startedAt||0));
+}
+
+function ExecutionCommandCard({c,call}){
+  const [open,setOpen]=useState(call.status==='running'||call.status==='failed');
+  const [,tick]=useState(0);
+  useEffect(()=>{
+    if(call.status!=='running')return;
+    const timer=setInterval(()=>tick(value=>value+1),1000);
+    return()=>clearInterval(timer);
+  },[call.status]);
+  useEffect(()=>{if(call.status==='failed')setOpen(true);},[call.status]);
+  const elapsed=call.elapsedMs??Math.max(0,Date.now()-(call.startedAt||Date.now()));
+  const elapsedLabel=elapsed<1000?`${elapsed}ms`:elapsed<60000?`${(elapsed/1000).toFixed(1)}s`:`${Math.floor(elapsed/60000)}m ${Math.round((elapsed%60000)/1000)}s`;
+  const passed=call.status==='passed';
+  const failed=call.status==='failed';
+  const statusColor=passed?(c.gr||'#22c55e'):failed?'#ef4444':(c.ac||'#F4A261');
+  const label=String(call.toolName||'tool').replace(/_/g,' ');
+  const command=Array.isArray(call.input?.command)
+    ?call.input.command.join(' ')
+    :call.input?.command&&Array.isArray(call.input?.args)
+      ?[call.input.command,...call.input.args].join(' ')
+      :label;
+  return <div data-testid="execution-command-card" style={{border:'1px solid '+c.ln,borderRadius:11,background:c.cd,overflow:'hidden',margin:'7px 0',maxWidth:'100%'}}>
+    <button onClick={()=>setOpen(value=>!value)} style={{width:'100%',padding:'9px 11px',border:'none',background:'transparent',color:c.tx,cursor:'pointer',display:'flex',alignItems:'center',gap:8,textAlign:'left'}}>
+      <span style={{width:8,height:8,borderRadius:'50%',background:statusColor,boxShadow:call.status==='running'?`0 0 0 4px ${statusColor}22`:'none',flexShrink:0}}/>
+      <code style={{flex:1,minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontSize:11,color:c.tx}}>{command}</code>
+      <span style={{fontSize:10,fontWeight:700,color:statusColor,textTransform:'uppercase'}}>{call.status==='running'?'Running':passed?'Passed':'Failed'}</span>
+      <span style={{fontSize:10,color:c.so,minWidth:38,textAlign:'right'}}>{elapsedLabel}</span>
+      <span style={{fontSize:10,color:c.so,transform:open?'rotate(90deg)':'none'}}>▶</span>
+    </button>
+    {open&&<div style={{borderTop:'1px solid '+c.ln,padding:'9px 11px'}}>
+      {Object.keys(call.input||{}).length>0&&<details style={{marginBottom:8}}>
+        <summary style={{fontSize:10,color:c.so,cursor:'pointer'}}>Sanitized input</summary>
+        <pre style={{margin:'6px 0 0',padding:8,borderRadius:7,background:c.bg,color:c.tx,fontSize:10,lineHeight:1.45,whiteSpace:'pre-wrap',overflowWrap:'anywhere',maxHeight:160,overflow:'auto'}}>{JSON.stringify(call.input,null,2)}</pre>
+      </details>}
+      <div style={{fontSize:10,fontWeight:700,color:c.so,marginBottom:5}}>COMMAND OUTPUT</div>
+      <pre aria-live="polite" style={{margin:0,padding:8,borderRadius:7,background:'#0d1117',color:'#d1d5db',fontSize:10,lineHeight:1.45,whiteSpace:'pre-wrap',overflowWrap:'anywhere',maxHeight:260,overflow:'auto'}}>{call.output||(call.status==='running'?'Waiting for output…':'No output returned.')}</pre>
+    </div>}
+  </div>;
+}
+
+function ExecutionCommandCards({c,sessionId,source='chat'}){
+  const [calls,setCalls]=useState([]);
+  useEffect(()=>{
+    if(!sessionId){setCalls([]);return;}
+    let active=true;
+    setCalls([]);
+    getAuthHeaders().then(headers=>fetch(source==='work'?`/api/builds/${sessionId}`:`/api/chat/sessions/${sessionId}`,{headers}))
+      .then(response=>response.json()).then(data=>{if(active)setCalls(data.executionEvents||[]);}).catch(()=>{});
+    const unsubscribe=subscribeAuthenticatedEvents(`/api/chat/progress-stream?sessionId=${encodeURIComponent(sessionId)}`,data=>{
+      if(active&&Array.isArray(data.executionEvents)&&data.executionEvents.length){
+        setCalls(current=>mergeExecutionCalls(current,data.executionEvents));
+      }
+    });
+    return()=>{active=false;unsubscribe();};
+  },[sessionId,source]);
+  if(!calls.length)return null;
+  return <div data-testid="execution-command-history" style={{width:'100%',minWidth:0}}>
+    {calls.map(call=><ExecutionCommandCard key={call.callId} c={c} call={call}/>)}
+  </div>;
+}
+
+function ThinkingPanel({c, sessionId, isOpen, onClose, agentName='Agent'}) {
+  const agentFirstName=(agentName||'Agent').split(' ')[0];
   const [events,setEvents]=useState([]);
   const [collapsed,setCollapsed]=useState(false);
   const scrollRef=useRef(null);
   const lastEventTime=useRef(0);
   useEffect(()=>{
     if(!sessionId){return;}
-    const es=new EventSource(`/api/chat/progress-stream?sessionId=${encodeURIComponent(sessionId)}`);
-    es.onmessage=(e)=>{
-      try{
-        const d=JSON.parse(e.data);
-        if(d.connected) return;
-        if(d.thinkingEvents && Array.isArray(d.thinkingEvents)){
+    const unsubscribe=subscribeAuthenticatedEvents(`/api/chat/progress-stream?sessionId=${encodeURIComponent(sessionId)}`,d=>{
+      if(d.connected) return;
+      if(d.thinkingEvents && Array.isArray(d.thinkingEvents)){
           setEvents(prev=>[...prev,...d.thinkingEvents]);
           setCollapsed(false);
           lastEventTime.current=Date.now();
-        }
-      }catch{}
-    };
-    return()=>es.close();
+      }
+    });
+    return unsubscribe;
   },[sessionId]);
-  // Auto-collapse when no new events for 4 seconds (Sarah finished thinking)
+  // Auto-collapse when no new events for 4 seconds (the active agent finished thinking)
   useEffect(()=>{
     if(events.length===0) return;
     const timer=setInterval(()=>{
@@ -1716,7 +2068,7 @@ function ThinkingPanel({c, sessionId, isOpen, onClose}) {
     else if (ev.type === 'tool_result' && ev.result) merged.push(ev);
   }
   if(merged.length===0) return null;
-  // Collapsed state — just a subtle line showing Sarah finished
+  // Collapsed state — just a subtle line showing the active agent finished
   if(collapsed) {
     return(
       <div onClick={()=>setCollapsed(false)} style={{
@@ -1725,7 +2077,7 @@ function ThinkingPanel({c, sessionId, isOpen, onClose}) {
         opacity:0.5,fontSize:11,color:c.so||'#a0a0a0',fontStyle:'italic'
       }}>
         <span style={{color:c.ac||'#F4A261'}}>{String.fromCodePoint(0x1F4AD)}</span>
-        Sarah's thought process ({merged.length} steps) — tap to expand
+        {agentFirstName}'s thought process ({merged.length} steps) — tap to expand
       </div>
     );
   }
@@ -1749,7 +2101,7 @@ function ThinkingPanel({c, sessionId, isOpen, onClose}) {
             animation:'pulse 1.5s infinite'
           }}/>
           <span style={{fontSize:11,fontWeight:500,color:c.so||'#a0a0a0',fontStyle:'italic'}}>
-            Sarah is thinking...
+            {agentFirstName} is thinking...
           </span>
         </div>
         <button onClick={()=>setCollapsed(true)} style={{
@@ -1801,6 +2153,44 @@ function ThinkingPanel({c, sessionId, isOpen, onClose}) {
     </div>
   );
 }
+
+/* User-facing execution commentary. This is intentionally separate from the
+   private Thinking Stream: it contains concise milestones, evidence, pending
+   states, and next actions that are safe and useful to show by default. */
+function LiveProgressNarration({c, sessionId}) {
+  const [updates,setUpdates]=useState([]);
+  useEffect(()=>{
+    if(!sessionId){setUpdates([]);return;}
+    setUpdates([]);
+    const unsubscribe=subscribeAuthenticatedEvents(`/api/chat/progress-stream?sessionId=${encodeURIComponent(sessionId)}`,d=>{
+      if(Array.isArray(d.progressUpdates)&&d.progressUpdates.length){
+          setUpdates(prev=>{
+            const byId=new Map([...prev,...d.progressUpdates].map(item=>[item.id,item]));
+            return Array.from(byId.values()).slice(-4);
+          });
+      }
+    });
+    return unsubscribe;
+  },[sessionId]);
+  if(updates.length===0) return <span>Processing the next verified step…</span>;
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:4}}>
+      {updates.map((item,index)=>(
+        <div key={item.id||index} style={{
+          display:"flex",alignItems:"flex-start",gap:6,
+          color:index===updates.length-1?c.tx:c.so,
+          fontWeight:index===updates.length-1?600:400
+        }}>
+          <span style={{
+            width:6,height:6,borderRadius:"50%",marginTop:5,flexShrink:0,
+            background:item.kind==="success"?c.gr:item.kind==="error"?"#ea4335":c.ac
+          }}/>
+          <span>{item.text}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
 function ActiveTaskTracker({c, sessionId}) {
   const [todos,setTodos]=useState([]);
   const [isActive,setIsActive]=useState(false);
@@ -1812,26 +2202,29 @@ function ActiveTaskTracker({c, sessionId}) {
     setTodos([]);setIsActive(false);
 
     // Subscribe to real-time task_progress SSE stream
-    const es=new EventSource(`/api/chat/progress-stream?sessionId=${encodeURIComponent(sessionId)}`);
-
-    es.onmessage=(e)=>{
-      try{
-        const d=JSON.parse(e.data);
-        if(d.connected) return; // handshake ping
-        if(Array.isArray(d.todos)){
-          setTodos(d.todos);
-          setIsActive(d.todos.some(t=>t.status==='in_progress'));
+    const unsubscribe=subscribeAuthenticatedEvents(`/api/chat/progress-stream?sessionId=${encodeURIComponent(sessionId)}`,d=>{
+      if(d.connected) return;
+      if(Array.isArray(d.todos)){
+        setTodos(d.todos);
+        setIsActive(d.todos.some(t=>t.status==='in_progress'));
+      }
+    });
+    let statusTimer = null;
+    const refreshProgress = async () => {
+      try {
+        const response = await fetch(`/api/chat/progress-status?sessionId=${encodeURIComponent(sessionId)}`, { cache: "no-store" });
+        const data = await response.json();
+        if(Array.isArray(data.todos)){
+          setTodos(data.todos);
+          setIsActive(data.todos.some(t=>t.status==='in_progress'));
         }
-      }catch{}
+      } catch {}
     };
 
-    es.onerror=()=>{
-      // SSE disconnected — fall back to one-time fetch
-      fetch(`/api/chat/progress-stream?sessionId=${encodeURIComponent(sessionId)}`)
-        .catch(()=>{});
-    };
+    refreshProgress();
+    statusTimer=setInterval(refreshProgress,2000);
 
-    return()=>es.close();
+    return()=>{unsubscribe();if(statusTimer)clearInterval(statusTimer);};
   },[sessionId]);
 
   if(todos.length===0) return(
@@ -1970,12 +2363,66 @@ function parseMessageCards(text) {
   return cards;
 }
 
+function parseUberEatsResults(text) {
+  if (!text) return null;
+  const match = String(text).match(/<!--\s*uber_eats_results:([A-Za-z0-9_-]+)\s*-->/i);
+  if (!match) return null;
+  try {
+    const normalized = match[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized + '='.repeat((4 - normalized.length % 4) % 4);
+    const bytes = Uint8Array.from(atob(padded), char => char.charCodeAt(0));
+    const parsed = JSON.parse(new TextDecoder().decode(bytes));
+    if (!Array.isArray(parsed?.candidates) || parsed.candidates.length === 0) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function UberEatsResultsCard({results,c}) {
+  if (!results?.candidates?.length) return null;
+  const openOption = url => {
+    if (!/^https:\/\/([a-z0-9-]+\.)*ubereats\.com\//i.test(url || '')) return;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+  return <div style={{marginTop:12,width:'100%',maxWidth:520,borderRadius:16,border:'1px solid '+c.ln,background:c.sf,overflow:'hidden'}}>
+    <div style={{padding:'13px 14px 11px',borderBottom:'1px solid '+c.ln}}>
+      <div style={{display:'flex',alignItems:'center',gap:8,fontWeight:750,fontSize:14,color:c.tx}}>
+        <span aria-hidden="true">🍽️</span> Uber Eats options
+      </div>
+      <div style={{marginTop:4,fontSize:11,lineHeight:1.45,color:c.so}}>
+        {results.addressSummary ? `${results.addressSummary} · ` : ''}Live availability, menu, fees, and ETA will be verified in Uber Eats.
+      </div>
+    </div>
+    <div style={{display:'grid',gap:0}}>
+      {results.candidates.map((option,index)=><button
+        key={`${option.url}-${index}`}
+        type="button"
+        onClick={()=>openOption(option.url)}
+        style={{width:'100%',minWidth:0,padding:'12px 14px',display:'flex',alignItems:'center',gap:11,textAlign:'left',border:0,borderBottom:index<results.candidates.length-1?'1px solid '+c.ln:'none',background:'transparent',color:c.tx,cursor:'pointer'}}
+      >
+        <span style={{width:26,height:26,flex:'0 0 26px',borderRadius:9,display:'grid',placeItems:'center',background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',fontSize:11,fontWeight:800}}>{index+1}</span>
+        <span style={{minWidth:0,flex:1}}>
+          <span style={{display:'block',fontSize:13,fontWeight:720,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{option.name}</span>
+          {option.summary&&<span style={{display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden',marginTop:2,fontSize:11,lineHeight:1.4,color:c.so}}>{option.summary}</span>}
+        </span>
+        <span aria-hidden="true" style={{flexShrink:0,color:c.ac,fontWeight:800}}>›</span>
+      </button>)}
+    </div>
+    <button type="button" onClick={()=>openOption(results.browserHandoffUrl)} style={{width:'100%',padding:'11px 14px',border:0,borderTop:'1px solid '+c.ln,background:'rgba(244,162,97,.08)',color:c.ac,fontSize:12,fontWeight:750,cursor:'pointer'}}>
+      See all results in Uber Eats →
+    </button>
+  </div>;
+}
+
 // Strip hidden file tags and legacy trigger phrases from message text before rendering
 function cleanMessageText(text) {
   if (!text) return text;
   let cleaned = text;
   // Remove hidden file tags: <!-- file:filename.ext -->
   cleaned = cleaned.replace(/<!--\s*file:\s*[^>]+?-->\n?/g, '');
+  // Restaurant options render as an interactive card instead of encoded text.
+  cleaned = cleaned.replace(/<!--\s*uber_eats_results:[A-Za-z0-9_-]+\s*-->\n?/gi, '');
   // Remove legacy trigger phrases: "Here's your [type] — "filename.ext""
   cleaned = cleaned.replace(/Here's your .+?(?:—|–|-)\s*"[^"]+\.(?:html|md|docx|pdf|txt|js|css|jsx|json)"\n?/gi, '');
   // Strip __clarification JSON from display text (will be rendered as card instead)
@@ -2269,9 +2716,12 @@ function SessionFilesPanel({c, sessionId, setActiveArtifact, aFN="Agent"}){
                 overflow: 'hidden'
               }}>
                 {isImage && (f.storagePath || f.previewUrl) ? (
-                  <img 
-                    src={f.storagePath || f.previewUrl}
+                  <img
+                    src={`/api/files/thumbnail/${f.fileId}`}
                     alt={f.name}
+                    loading="lazy"
+                    decoding="async"
+                    fetchPriority="low"
                     style={{
                       width: '100%',
                       height: '100%',
@@ -2399,6 +2849,21 @@ function artifactEmbedUrl(fileId) {
 
 function officeViewerUrl(fileId) {
   return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(artifactEmbedUrl(fileId))}`;
+}
+
+function responsiveArtifactDocument(content='', mobile=false) {
+  if (!mobile || !content) return content;
+  const mobileHead = `<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<style id="bloom-mobile-artifact-fit">
+  html,body{width:100%!important;max-width:100%!important;min-width:0!important;overflow-x:hidden!important;box-sizing:border-box!important}
+  *,*::before,*::after{box-sizing:border-box}
+  img,video,canvas,svg,iframe{max-width:100%!important}
+  pre,code,table{max-width:100%!important;overflow-wrap:anywhere;word-break:break-word}
+</style>`;
+  if (/<head[\s>]/i.test(content)) {
+    return content.replace(/<head([^>]*)>/i, `<head$1>${mobileHead}`);
+  }
+  return `<!doctype html><html><head>${mobileHead}</head><body>${content}</body></html>`;
 }
 
 function googleImportLabel(name='') {
@@ -2631,6 +3096,8 @@ function BinaryArtifactCardPreview({ file, c }) {
 
 // ── ArtifactPane — Claude-style code/preview panel in right sidebar ──────────
 function ArtifactPane({ art, c, onClose, onRequestChanges }) {
+  const paneWidth = useW();
+  const mob = paneWidth < 768;
   const [artView, setArtView] = useState('preview'); // 'preview' | 'code'
   const [publishing, setPublishing] = useState(false);
   const [publishSlug, setPublishSlug] = useState('');
@@ -2638,6 +3105,10 @@ function ArtifactPane({ art, c, onClose, onRequestChanges }) {
   const [publishedUrl, setPublishedUrl] = useState(art.slug ? window.location.origin+'/p/'+art.slug : null);
   const [artContent, setArtContent] = useState(art.content || '');
   const isHtml = art.name?.endsWith('.html');
+  const previewContent = useMemo(
+    () => responsiveArtifactDocument(artContent, mob),
+    [artContent, mob],
+  );
 
   // If content wasn't loaded yet, fetch it
   useEffect(() => {
@@ -2671,11 +3142,11 @@ function ArtifactPane({ art, c, onClose, onRequestChanges }) {
   };
 
   return (
-    <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
+    <div style={{flex:1,minWidth:0,maxWidth:'100vw',display:'flex',flexDirection:'column',overflow:'hidden'}}>
       {/* Header */}
-      <div style={{padding:'10px 14px',borderBottom:'1px solid '+c.ln,background:c.cd,display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
+      <div style={{padding:mob?'8px':'10px 14px',borderBottom:'1px solid '+c.ln,background:c.cd,display:'flex',alignItems:'center',gap:mob?5:8,flexWrap:mob?'wrap':'nowrap',maxWidth:'100%',overflow:'hidden',flexShrink:0}}>
         <button onClick={onClose} style={{width:22,height:22,borderRadius:5,border:'1px solid '+c.ln,background:'transparent',cursor:'pointer',fontSize:11,color:c.so,display:'flex',alignItems:'center',justifyContent:'center'}}>←</button>
-        <div style={{flex:1,minWidth:0,fontSize:12,fontWeight:700,color:c.tx,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{art.name}</div>
+        <div style={{flex:1,minWidth:0,flexBasis:mob?'calc(100% - 58px)':'auto',fontSize:12,fontWeight:700,color:c.tx,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{art.name}</div>
         {/* Code / Preview tabs — only for HTML */}
         {isHtml && (
           <div style={{display:'flex',gap:1,background:c.bg,borderRadius:7,padding:2,border:'1px solid '+c.ln,flexShrink:0}}>
@@ -2713,7 +3184,7 @@ function ArtifactPane({ art, c, onClose, onRequestChanges }) {
       <div style={{flex:1,overflow:'hidden',position:'relative'}}>
         {isHtml ? (
           artView === 'preview' ? (
-            <iframe srcDoc={artContent} style={{width:'100%',height:'100%',border:'none',background:'#fff'}} sandbox="allow-scripts allow-same-origin" title={art.name}/>
+            <iframe srcDoc={previewContent} style={{display:'block',width:'100%',maxWidth:'100%',height:'100%',border:'none',background:'#fff',overflow:'hidden'}} sandbox="allow-scripts allow-same-origin" title={art.name}/>
           ) : (
             <div style={{height:'100%',overflow:'auto',background:'#1a1a2e'}}>
               <pre style={{margin:0,padding:'14px 16px',fontSize:11,lineHeight:1.6,color:'#e8e8f0',fontFamily:'monospace',whiteSpace:'pre-wrap',wordBreak:'break-all'}}>{artContent}</pre>
@@ -3147,6 +3618,7 @@ function BusinessProfilePage({c,mob,userImg,setUserImg,meInitial="U",aFN="Your B
   const [activeIdx,setActiveIdx]=useState(0);
   const [saving,setSaving]=useState(false);
   const [saved,setSaved]=useState(false);
+  const [brandDriveOpen,setBrandDriveOpen]=useState(false);
 
   const brand=kits[activeIdx]||kits[0]||emptyKit;
   const setBrand=(fn)=>setKits(prev=>{const next=[...prev];next[activeIdx]=typeof fn==='function'?fn(next[activeIdx]):{...next[activeIdx],...fn};return next;});
@@ -3193,8 +3665,8 @@ function BusinessProfilePage({c,mob,userImg,setUserImg,meInitial="U",aFN="Your B
     setActiveIdx(prev=>prev>=i?Math.max(0,prev-1):prev);
   };
 
-  const handleLogoUpload=(e)=>{
-    const f=e.target.files[0];if(!f)return;
+  const processLogoFile=(f)=>{
+    if(!f)return;
     const reader=new FileReader();
     reader.onload=async(ev)=>{
       try{
@@ -3208,6 +3680,7 @@ function BusinessProfilePage({c,mob,userImg,setUserImg,meInitial="U",aFN="Your B
       }catch{setBrand(p=>({...p,logo:ev.target.result}));}
     };reader.readAsDataURL(f);
   };
+  const handleLogoUpload=(e)=>processLogoFile(e.target.files[0]);
 
   const updateColor=(i,val)=>{
     setBrand(p=>{const cols=[...p.colors];cols[i]=val;return{...p,colors:cols};});
@@ -3302,6 +3775,7 @@ function BusinessProfilePage({c,mob,userImg,setUserImg,meInitial="U",aFN="Your B
               <div style={{fontSize:12,color:c.so,lineHeight:1.6}}>
                 {brand.logo?"Click to replace":"Upload your logo (PNG, SVG, or JPG)"}
                 <br/>Used in websites, emails, social posts, and documents
+                <br/><button onClick={()=>setBrandDriveOpen(true)} style={{marginTop:5,padding:"4px 8px",borderRadius:6,border:"1px solid "+c.ac,background:"transparent",cursor:"pointer",fontSize:10,color:c.ac,fontWeight:700}}>Choose from Google Drive</button>
                 {brand.logo&&<><br/><button onClick={()=>setBrand(p=>({...p,logo:null}))} style={{marginTop:4,padding:"2px 8px",borderRadius:4,border:"1px solid rgba(234,67,53,0.3)",background:"transparent",cursor:"pointer",fontSize:10,color:"#ea4335",fontFamily:"inherit"}}>Remove</button></>}
               </div>
             </div>
@@ -3417,6 +3891,7 @@ function BusinessProfilePage({c,mob,userImg,setUserImg,meInitial="U",aFN="Your B
 
 
           {chatLightbox&&<ImageLightbox src={chatLightbox.src} alt={chatLightbox.alt} onClose={()=>setChatLightbox(null)}/>}
+          {brandDriveOpen&&<GoogleDrivePicker c={c} onClose={()=>setBrandDriveOpen(false)} onSelect={file=>{if(!file.type?.startsWith("image/"))throw new Error("Choose an image file for the logo.");const bytes=Uint8Array.from(atob(file.data),ch=>ch.charCodeAt(0));processLogoFile(new File([bytes],file.name,{type:file.type}));}}/>}
     </div>
   );
 }
@@ -3544,6 +4019,1407 @@ function SiteLoginsManager({c,mob,aFN="Agent"}){
       )}
     </div>
   );
+}
+
+function countBookWords(value){
+  return String(value||'').replace(/```[\s\S]*?```/g,' ').replace(/[#>*_`~[\](){}|\\-]/g,' ').trim().split(/\s+/).filter(Boolean).length;
+}
+function bookSectionRank(file){
+  const name=String(file?.name||'').toLowerCase();
+  if(/complete[-_ ]?manuscript|outline(?!.*table)|front[-_ ]matter|back[-_ ]matter/.test(name))return 999;
+  if(/half[-_ ]?title/.test(name))return 10;
+  if(/title[-_ ]?page/.test(name))return 20;
+  if(/copyright/.test(name))return 30;
+  if(/dedication/.test(name))return 40;
+  if(/table[-_ ]of[-_ ]contents|\btoc\b/.test(name))return 50;
+  if(/preface/.test(name))return 60;
+  if(/acknowledg/.test(name))return 70;
+  if(/introduction/.test(name))return 80;
+  const chapter=Number(name.match(/(?:chapter|ch)[-_ ]?(\d+)/)?.[1]||0);
+  if(chapter)return 100+chapter;
+  if(/conclusion|epilogue|afterword/.test(name))return 300;
+  if(/about[-_ ]the[-_ ]author|author[-_ ]bio/.test(name))return 310;
+  if(/resources/.test(name))return 320;
+  if(/references|bibliography/.test(name))return 330;
+  return 999;
+}
+function formatBookElapsed(milliseconds){
+  const minutes=Math.max(0,Math.floor(milliseconds/60000));
+  const seconds=Math.max(0,Math.floor((milliseconds%60000)/1000));
+  return `${minutes}:${String(seconds).padStart(2,'0')}`;
+}
+function paginateBookSection(markdown='',wordsPerPage=165){
+  const blocks=String(markdown||'').split(/\n{2,}/).map(block=>block.trim()).filter(Boolean);
+  if(!blocks.length)return[''];
+  const pages=[];let current=[];let words=0;
+  for(const block of blocks){
+    const blockWords=countBookWords(block);
+    if(blockWords>wordsPerPage){
+      if(current.length){pages.push(current.join('\n\n'));current=[];words=0;}
+      const tokens=block.split(/\s+/).filter(Boolean);
+      while(tokens.length>wordsPerPage){
+        pages.push(tokens.splice(0,wordsPerPage).join(' '));
+      }
+      if(tokens.length){current=[tokens.join(' ')];words=tokens.length;}
+      continue;
+    }
+    if(current.length&&words+blockWords>wordsPerPage){
+      pages.push(current.join('\n\n'));current=[];words=0;
+    }
+    current.push(block);words+=blockWords;
+  }
+  if(current.length)pages.push(current.join('\n\n'));
+  return pages.length?pages:[''];
+}
+function inspectBookArtifacts(files=[]){
+  const textFiles=files.filter(file=>typeof file.content==='string'&&file.content.trim());
+  const chapters=textFiles.filter(file=>/(?:^|[-_ ])(?:chapter|ch)[-_ ]?\d+/i.test(file.name||'')).sort((a,b)=>{
+    const number=file=>Number(String(file.name||'').match(/(?:chapter|ch)[-_ ]?(\d+)/i)?.[1]||999);
+    return number(a)-number(b);
+  });
+  const manuscripts=textFiles.filter(file=>/(?:complete[-_ ]?)?manuscript/i.test(file.name||'')&&!/outline/i.test(file.name||'')).sort((a,b)=>countBookWords(b.content)-countBookWords(a.content));
+  const wordCount=chapters.reduce((sum,file)=>sum+countBookWords(file.content),0);
+  const outline=files.some(file=>/outline|table[-_ ]of[-_ ]contents/i.test(file.name||''));
+  const frontMatter=files.some(file=>/front[-_ ]matter|preface|introduction|copyright|title[-_ ]page/i.test(file.name||''));
+  const backMatter=files.some(file=>/back[-_ ]matter|about[-_ ]the[-_ ]author|acknowledg|bibliography|references/i.test(file.name||''));
+  const docx=files.some(file=>/\.docx$/i.test(file.name||'')||/wordprocessingml/i.test(file.mimeType||''));
+  const printPdf=files.some(file=>/kdp|print|interior/i.test(file.name||'')&&/\.pdf$/i.test(file.name||''));
+  const kdpChecklist=files.some(file=>/kdp[-_ ](?:package[-_ ])?checklist|upload[-_ ]checklist/i.test(file.name||''));
+  const cover=files.some(file=>/cover/i.test(file.name||'')&&/image|png|jpe?g|webp/i.test(`${file.fileType} ${file.mimeType} ${file.name}`));
+  const sections=textFiles.filter(file=>bookSectionRank(file)<999).sort((a,b)=>bookSectionRank(a)-bookSectionRank(b));
+  const titlePage=files.some(file=>/title[-_ ]?page/i.test(file.name||''));
+  const copyright=files.some(file=>/copyright/i.test(file.name||''));
+  const toc=files.some(file=>/table[-_ ]of[-_ ]contents|\btoc\b/i.test(file.name||''));
+  const preface=files.some(file=>/preface/i.test(file.name||''));
+  const introduction=files.some(file=>/introduction/i.test(file.name||''));
+  const aboutAuthor=files.some(file=>/about[-_ ]the[-_ ]author|author[-_ ]bio/i.test(file.name||''));
+  return {wordCount,chapters,sections,manuscript:manuscripts[0]||null,outline,frontMatter,titlePage,copyright,toc,preface,introduction,backMatter,aboutAuthor,docx,printPdf,kdpChecklist,cover,complete:wordCount>=10000&&!!manuscripts[0]&&outline&&titlePage&&copyright&&toc&&preface&&introduction&&aboutAuthor&&docx&&printPdf&&kdpChecklist&&cover};
+}
+function deriveBookProjectState(project,history=[],proof={}){
+  if(proof.complete)return'complete';
+  const recentText=(history||[]).slice(-5).map(message=>String(message?.content||message?.text||'')).join(' ');
+  if(/failed to process|generation needs attention|stopped\. what would you like|timed out|technical error|has not passed.*verification/i.test(recentText))return'needs_attention';
+  const updatedAt=new Date(project?.updated_at||project?.created_at||0).getTime();
+  if(updatedAt&&Date.now()-updatedAt<15*60*1000)return'in_progress';
+  return'needs_attention';
+}
+function bookProjectStateLabel(state){
+  return state==='complete'?'Completed book':state==='in_progress'?'Pending':'Needs review';
+}
+
+const BookFlipPage=forwardRef(function BookFlipPage({page,coverUrl,coverIsWrap,bookDescription,onEditCover,onSelectText},ref){
+  const sectionName=String(page?.sectionName||'').toLowerCase();
+  const pageClass=/title[-_ ]?page/.test(sectionName)?'kdp-title-page':/copyright/.test(sectionName)?'kdp-copyright-page':/table[-_ ]of[-_ ]contents|\btoc\b/.test(sectionName)?'kdp-toc-page':/(?:chapter|ch)[-_ ]?\d+/.test(sectionName)?'kdp-chapter-page':'';
+  const isCover=page?.kind==='front'||page?.kind==='back';
+  return <div ref={ref} data-density={isCover?'hard':'soft'} data-reader-page-key={page?.key||''} className={`bloom-flip-page ${isCover?'bloom-flip-cover':''}`} onMouseUp={event=>!isCover&&onSelectText?.(page,event)} onContextMenu={event=>{if(!isCover){event.preventDefault();onSelectText?.(page,event,true);}}}>
+    {page?.kind==='front'?(coverIsWrap?<div className="bloom-wrap-cover" style={{backgroundImage:`url("${coverUrl}")`,backgroundPosition:'right center'}}/>:<img src={coverUrl} alt="Front cover" className="bloom-cover-image"/>)
+      :page?.kind==='back'?(coverIsWrap?<div className="bloom-wrap-cover" style={{backgroundImage:`url("${coverUrl}")`,backgroundPosition:'left center'}}/>:<div className="bloom-back-cover"><div><strong>Back cover</strong><p>{bookDescription||'The finished back-cover description will appear here.'}</p></div></div>)
+      :<><div className={`kdp-book-page ${pageClass}`}><ReactMarkdown remarkPlugins={[remarkGfm]}>{page?.text||''}</ReactMarkdown></div><div className="bloom-page-number">{page?.displayNumber}</div></>}
+    {isCover&&<button onClick={onEditCover} className="bloom-cover-edit">Edit cover</button>}
+  </div>;
+});
+
+function BookSuiteIcon({name,size=21}){
+  const common={width:size,height:size,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:1.9,strokeLinecap:'round',strokeLinejoin:'round','aria-hidden':true};
+  if(name==='home')return <svg {...common}><path d="m3 10 9-7 9 7"/><path d="M5 9v11h14V9"/><path d="M9 20v-6h6v6"/></svg>;
+  if(name==='create')return <svg {...common}><path d="M12 3v4M12 17v4M3 12h4M17 12h4"/><path d="m5.6 5.6 2.8 2.8m7.2 7.2 2.8 2.8m0-12.8-2.8 2.8m-7.2 7.2-2.8 2.8"/><circle cx="12" cy="12" r="3"/></svg>;
+  if(name==='projects')return <svg {...common}><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21.5z"/><path d="M4 5.5v16M8 7h8M8 11h8"/></svg>;
+  if(name==='authors')return <svg {...common}><circle cx="12" cy="8" r="4"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0"/></svg>;
+  if(name==='publish')return <svg {...common}><path d="M12 16V3"/><path d="m7 8 5-5 5 5"/><path d="M5 13v7h14v-7"/></svg>;
+  if(name==='resources')return <svg {...common}><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4z"/><path d="M17 14v6M14 17h6"/></svg>;
+  if(name==='menu')return <svg {...common}><path d="M4 7h16M4 12h16M4 17h16"/></svg>;
+  return <svg {...common}><circle cx="12" cy="12" r="8"/></svg>;
+}
+
+function AppMenuIcon({name,size=18}){
+  const common={width:size,height:size,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:1.9,strokeLinecap:'round',strokeLinejoin:'round','aria-hidden':true};
+  if(name==='business')return <svg {...common}><path d="M4 21V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v16"/><path d="M9 21v-4h4v4M8 7h1m3 0h1M8 11h1m3 0h1M17 9h3v12"/></svg>;
+  if(name==='billing')return <svg {...common}><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h3"/></svg>;
+  if(name==='desktop')return <svg {...common}><rect x="3" y="3" width="18" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>;
+  if(name==='skills')return <svg {...common}><path d="M9 18h6M10 22h4"/><path d="M8.2 14.5A7 7 0 1 1 15.8 14.5C14.7 15.3 14 16.2 14 18h-4c0-1.8-.7-2.7-1.8-3.5Z"/></svg>;
+  if(name==='settings')return <svg {...common}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21h-4v-.09A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3v-4h.09A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3h4v.09A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.15.36.36.7.6 1 .3.28.7.42 1.1.4h.09v4h-.09c-.4-.02-.8.12-1.1.4-.24.3-.45.64-.6 1Z"/></svg>;
+  if(name==='developer')return <svg {...common}><path d="m8 9-4 3 4 3M16 9l4 3-4 3M14 5l-4 14"/></svg>;
+  if(name==='light')return <svg {...common}><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.66 6.34l1.41-1.41"/></svg>;
+  if(name==='dark')return <svg {...common}><path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5 8.5 8.5 0 1 0 20.5 14.2Z"/></svg>;
+  if(name==='logout')return <svg {...common}><path d="M10 17l5-5-5-5M15 12H3"/><path d="M14 3h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5"/></svg>;
+  if(name==='form')return <svg {...common}><path d="M6 3h12a2 2 0 0 1 2 2v16H4V5a2 2 0 0 1 2-2Z"/><path d="M8 8h8M8 12h5M8 16h3"/><path d="m15 16 1.5 1.5L20 14"/></svg>;
+  return <svg {...common}><circle cx="12" cy="12" r="8"/></svg>;
+}
+
+const FINISHED_BOOK_LIBRARY=[{
+  id:'conquer-your-doubts',
+  title:'Conquer Your Doubts: A Guide to Unshakeable Confidence',
+  type:'Finished book',
+  url:'/assets/book-library/conquer-your-doubts-complete.pdf',
+  coverUrl:'/assets/book-library/conquer-your-doubts-cover.png',
+}];
+
+const PdfFlipPage=forwardRef(function PdfFlipPage({pdf,pageNumber,pageWidth},ref){
+  const [pageImage,setPageImage]=useState('');
+  const [failed,setFailed]=useState(false);
+  useEffect(()=>{
+    let cancelled=false;
+    (async()=>{
+      try{
+        const page=await pdf.getPage(pageNumber);
+        const base=page.getViewport({scale:1});
+        const targetWidth=pageWidth;
+        const viewport=page.getViewport({scale:targetWidth/base.width});
+        const canvas=document.createElement('canvas');
+        const ratio=Math.min(window.devicePixelRatio||1,2);
+        canvas.width=Math.floor(viewport.width*ratio);
+        canvas.height=Math.floor(viewport.height*ratio);
+        const context=canvas.getContext('2d');
+        await page.render({canvasContext:context,viewport,transform:ratio===1?null:[ratio,0,0,ratio,0,0]}).promise;
+        if(!cancelled)setPageImage(canvas.toDataURL('image/jpeg',0.94));
+      }catch{if(!cancelled)setFailed(true);}
+    })();
+    return()=>{cancelled=true;};
+  },[pdf,pageNumber,pageWidth]);
+  return <div ref={ref} data-density={pageNumber===1?'hard':'soft'} className={`bloom-flip-page ${pageNumber===1?'bloom-flip-cover':''}`} style={{padding:0,background:'#fff',display:'grid',placeItems:'center',overflow:'hidden',boxShadow:'inset 0 0 0 1px rgba(20,20,24,.1)'}}>
+    {failed?<div style={{color:'#7b7b82',padding:20}}>Page could not be rendered.</div>:pageImage?<img src={pageImage} alt={`Page ${pageNumber}`} draggable="false" style={{display:'block',width:'100%',height:'100%',objectFit:'contain'}}/>:<div style={{color:'#7b7b82',fontSize:11}}>Rendering page {pageNumber}…</div>}
+  </div>;
+});
+
+function LibraryBookReader({resource,onClose,onEdit,mob,c}){
+  const [pdf,setPdf]=useState(null);
+  const [page,setPage]=useState(1);
+  const [error,setError]=useState('');
+  const [readerSize,setReaderSize]=useState({width:mob?320:400,height:mob?480:600});
+  const flipRef=useRef(null);
+  useEffect(()=>{
+    let disposed=false;
+    const task=pdfjsLib.getDocument(resource.url);
+    task.promise.then(async doc=>{
+      if(disposed)return;
+      const firstPage=await doc.getPage(1);
+      const viewport=firstPage.getViewport({scale:1});
+      const maxWidth=mob?320:500;
+      const maxHeight=mob?480:640;
+      const scale=Math.min(maxWidth/viewport.width,maxHeight/viewport.height);
+      setReaderSize({width:Math.round(viewport.width*scale),height:Math.round(viewport.height*scale)});
+      setPdf(doc);
+    }).catch(()=>{if(!disposed)setError('This book could not be opened.');});
+    return()=>{disposed=true;task.destroy();};
+  },[resource.url]);
+  return <div data-testid="library-book-reader" role="dialog" aria-modal="true" style={{position:'fixed',inset:0,zIndex:1300,background:'rgba(7,8,12,.88)',backdropFilter:'blur(10px)',display:'grid',placeItems:'center',padding:mob?10:24}}>
+    <div style={{width:'min(1180px,100%)',height:mob?'calc(100dvh - 20px)':'min(880px,calc(100vh - 48px))',borderRadius:18,background:c.cd,border:'1px solid '+c.ln,display:'flex',flexDirection:'column',overflow:'hidden',boxShadow:'0 28px 90px rgba(0,0,0,.5)'}}>
+      <div style={{padding:'12px 15px',borderBottom:'1px solid '+c.ln,display:'flex',alignItems:'center',justifyContent:'space-between',gap:12}}>
+        <div style={{minWidth:0}}><div style={{fontSize:9,fontWeight:900,color:c.ac,textTransform:'uppercase',letterSpacing:'.09em'}}>Library reader</div><div style={{fontSize:13,fontWeight:800,color:c.tx,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{resource.title}</div></div>
+        <button onClick={onClose} aria-label="Close reader" style={{border:'1px solid '+c.ln,borderRadius:9,background:c.sf,color:c.tx,width:34,height:34,cursor:'pointer'}}>×</button>
+      </div>
+      <div style={{flex:1,minHeight:0,display:'grid',placeItems:'center',padding:mob?'8px 4px':'18px',overflow:'hidden',background:'#15161b'}}>
+        <style>{`
+          .bloom-real-book{margin:0 auto!important;filter:drop-shadow(0 22px 26px rgba(0,0,0,.3));overflow:hidden!important;clip-path:inset(0 round 3px);contain:paint}
+          .bloom-flip-page{position:relative;box-sizing:border-box;width:100%;height:100%;overflow:hidden;background:#fffdf8;color:#26231f;border:1px solid rgba(83,68,47,.2)}
+          .bloom-flip-page:before{content:"";position:absolute;z-index:2;top:0;bottom:0;width:18px;right:0;background:linear-gradient(90deg,transparent,rgba(45,35,25,.1));pointer-events:none}
+          .bloom-flip-cover:before{display:none}
+          .stf__parent{margin:0 auto;overflow:hidden!important;clip-path:inset(0 round 3px);contain:paint}
+          .stf__block{background:transparent!important}
+        `}</style>
+        {error?<div style={{color:'#ef6464'}}>{error}</div>:!pdf?<div style={{color:c.so}}>Preparing page-turn preview…</div>:<HTMLFlipBook ref={flipRef} className="bloom-real-book" width={readerSize.width} height={readerSize.height} size="fixed" drawShadow autoSize={false} maxShadowOpacity={0.65} startZIndex={10} showCover mobileScrollSupport usePortrait={mob} swipeDistance={20} clickEventForward useMouseEvents flippingTime={1050} onFlip={event=>setPage(event.data+1)} style={{}}>
+          {Array.from({length:pdf.numPages},(_,index)=><PdfFlipPage key={index+1} pdf={pdf} pageNumber={index+1} pageWidth={readerSize.width}/>)}
+        </HTMLFlipBook>}
+      </div>
+      <div style={{padding:'11px 14px',borderTop:'1px solid '+c.ln,display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,flexWrap:'wrap'}}>
+        <div style={{display:'flex',gap:7,alignItems:'center'}}><button onClick={()=>flipRef.current?.pageFlip()?.flipPrev('bottom')} disabled={!pdf||page<=1} style={{padding:'8px 10px',borderRadius:8,border:'1px solid '+c.ln,background:c.sf,color:c.tx}}>← Previous</button><span style={{fontSize:10,color:c.so}}>Page {page} of {pdf?.numPages||'—'}</span><button onClick={()=>flipRef.current?.pageFlip()?.flipNext('bottom')} disabled={!pdf||page>=pdf.numPages} style={{padding:'8px 10px',borderRadius:8,border:'1px solid '+c.ln,background:c.sf,color:c.tx}}>Next →</button></div>
+        <div style={{display:'flex',gap:7}}><button onClick={()=>onEdit(resource,page)} style={{padding:'9px 12px',borderRadius:9,border:'1px solid '+c.ac,background:c.ac+'12',color:c.ac,fontWeight:850,cursor:'pointer'}}>Edit with Bloomie</button><a href={resource.url} download style={{padding:'9px 12px',borderRadius:9,background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',fontWeight:850,textDecoration:'none'}}>Download PDF</a></div>
+      </div>
+    </div>
+  </div>;
+}
+
+const cleanChatTitle=title=>String(title||'New conversation').replace(/^[\p{Extended_Pictographic}\uFE0F\u200D\s]+/u,'').trim()||'New conversation';
+
+function BookWorkspace({c,mob,aFN="Bloomie",agentId,onOpenChat,standalone=false}){
+  const [access,setAccess]=useState('checking');
+  const [boosterResources,setBoosterResources]=useState([]);
+  const [libraryReader,setLibraryReader]=useState(null);
+  const [boosterStatus,setBoosterStatus]=useState('idle');
+  const [checkout,setCheckout]=useState(null);
+  const [checkoutError,setCheckoutError]=useState('');
+  const [view,setView]=useState('new');
+  const [stage,setStage]=useState('setup');
+  const [mode,setMode]=useState('keyword');
+  const [startMode,setStartMode]=useState('surprise');
+  const [setupStep,setSetupStep]=useState(1);
+  const [setupMessage,setSetupMessage]=useState('');
+  const [brief,setBrief]=useState('');
+  const [topic,setTopic]=useState('');
+  const [bookDescription,setBookDescription]=useState('');
+  const [chapterPlanMode,setChapterPlanMode]=useState('auto');
+  const [chapterPlan,setChapterPlan]=useState('');
+  const [title,setTitle]=useState('');
+  const [bookType,setBookType]=useState('Business / self-help');
+  const [reader,setReader]=useState('General audience');
+  const [voice,setVoice]=useState('Conversational and encouraging');
+  const [projects,setProjects]=useState([]);
+  const [projectFilter,setProjectFilter]=useState('all');
+  const [active,setActive]=useState(null);
+  const [messages,setMessages]=useState([]);
+  const [artifacts,setArtifacts]=useState([]);
+  const [status,setStatus]=useState('idle');
+  const [error,setError]=useState('');
+  const [chapterIndex,setChapterIndex]=useState(0);
+  const [pageIndex,setPageIndex]=useState(0);
+  const [pageTurnDirection,setPageTurnDirection]=useState('');
+  const [pageTurnAnimating,setPageTurnAnimating]=useState(false);
+  const [readerEdge,setReaderEdge]=useState('front');
+  const [coverIsWrap,setCoverIsWrap]=useState(false);
+  const flipBookRef=useRef(null);
+  const [readerPageNumber,setReaderPageNumber]=useState(0);
+  const [pageSelection,setPageSelection]=useState(null);
+  const [selectionDraft,setSelectionDraft]=useState('');
+  const [selectionEditing,setSelectionEditing]=useState(false);
+  const [selectionWorking,setSelectionWorking]=useState(false);
+  const [revision,setRevision]=useState('');
+  const [revising,setRevising]=useState(false);
+  const [directEditing,setDirectEditing]=useState(false);
+  const [sectionDraft,setSectionDraft]=useState('');
+  const [savingSection,setSavingSection]=useState(false);
+  const [sectionSaveMessage,setSectionSaveMessage]=useState('');
+  const [bookUpload,setBookUpload]=useState({manuscript:null,cover:null,title:'',rightsConfirmed:false});
+  const [bookUploadStatus,setBookUploadStatus]=useState('idle');
+  const [bookUploadMessage,setBookUploadMessage]=useState('');
+  const [coverRevision,setCoverRevision]=useState('');
+  const [coverRevising,setCoverRevising]=useState(false);
+  const [coverRevisionMessage,setCoverRevisionMessage]=useState('');
+  const [bookSection,setBookSection]=useState('dashboard');
+  const [bookNavOpen,setBookNavOpen]=useState(false);
+  const [toolMode,setToolMode]=useState('keyword');
+  const [toolBrief,setToolBrief]=useState('');
+  const [toolProjectId,setToolProjectId]=useState('');
+  const [toolStatus,setToolStatus]=useState('idle');
+  const [toolMessage,setToolMessage]=useState('');
+  const [audioVoice,setAudioVoice]=useState('Warm, natural, conversational');
+  const [trimSize,setTrimSize]=useState('6 × 9 inches');
+  const [authors,setAuthors]=useState([]);
+  const [authorStatus,setAuthorStatus]=useState('idle');
+  const [selectedAuthorId,setSelectedAuthorId]=useState('');
+  const [authorForm,setAuthorForm]=useState({name:'',biography:'',voiceDirection:'',sample:null,headshot:null});
+  const [bookClock,setBookClock]=useState(Date.now());
+  const bookProof=useMemo(()=>inspectBookArtifacts(artifacts),[artifacts]);
+  const filteredProjects=useMemo(()=>projectFilter==='all'?projects:projects.filter(project=>project.bookState===projectFilter),[projects,projectFilter]);
+  const activeSection=bookProof.sections[chapterIndex]||bookProof.sections[0]||null;
+  const activeSectionPages=useMemo(()=>paginateBookSection(activeSection?.content||''),[activeSection?.fileId,activeSection?.content]);
+  const bookPageCounts=useMemo(()=>bookProof.sections.map(section=>paginateBookSection(section.content||'').length),[bookProof.sections]);
+  const totalBookPages=useMemo(()=>bookPageCounts.reduce((sum,count)=>sum+count,0),[bookPageCounts]);
+  const globalBookPage=useMemo(()=>bookPageCounts.slice(0,chapterIndex).reduce((sum,count)=>sum+count,0)+pageIndex,[bookPageCounts,chapterIndex,pageIndex]);
+  const outlineArtifact=useMemo(()=>artifacts.find(file=>/outline|table[-_ ]of[-_ ]contents/i.test(file.name||''))||null,[artifacts]);
+  const coverArtifact=useMemo(()=>artifacts.find(file=>/cover/i.test(file.name||'')&&/image|png|jpe?g|webp/i.test(`${file.fileType} ${file.mimeType} ${file.name}`))||null,[artifacts]);
+  const coverPreviewUrl=coverArtifact?.previewUrl||coverArtifact?.downloadUrl||coverArtifact?.url||coverArtifact?.download_url||coverArtifact?.storage_url||'/assets/book-studio-stage-bestseller.png';
+  const totalReaderPages=totalBookPages+(coverArtifact?2:0);
+  const readerPages=useMemo(()=>{
+    const pages=[];
+    if(coverArtifact)pages.push({kind:'front',key:`front-${coverArtifact.fileId||coverArtifact.name}`});
+    let displayNumber=1;
+    bookProof.sections.forEach((section,sectionIndex)=>{
+      paginateBookSection(section.content||'').forEach((text,sectionPageIndex)=>{
+        pages.push({kind:'content',key:`${section.fileId}-${sectionPageIndex}`,text,sectionName:section.name,sectionIndex,sectionPageIndex,displayNumber});
+        displayNumber+=1;
+      });
+    });
+    if(coverArtifact)pages.push({kind:'back',key:`back-${coverArtifact.fileId||coverArtifact.name}`});
+    return pages;
+  },[bookProof.sections,coverArtifact]);
+  const handleReaderFlip=useCallback(event=>{
+    const nextIndex=Number(event?.data||0);
+    setReaderPageNumber(nextIndex);
+    const page=readerPages[nextIndex];
+    if(page?.kind==='content'){
+      setReaderEdge('content');
+      setChapterIndex(page.sectionIndex);
+      setPageIndex(page.sectionPageIndex);
+    }else if(page?.kind==='front')setReaderEdge('front');
+    else if(page?.kind==='back')setReaderEdge('back');
+  },[readerPages]);
+  const capturePageSelection=useCallback((page,event,force=false)=>{
+    const text=window.getSelection()?.toString().trim()||'';
+    if(!text){if(force)setPageSelection(null);return;}
+    setPageSelection({text,page,x:event.clientX||window.innerWidth/2,y:event.clientY||window.innerHeight/2});
+    setSelectionDraft(text);
+    setSelectionEditing(false);
+  },[]);
+  useEffect(()=>{
+    const captureClonedPageSelection=event=>{
+      const selection=window.getSelection();
+      const text=selection?.toString().trim()||'';
+      if(!text)return;
+      const anchor=selection.anchorNode?.nodeType===1?selection.anchorNode:selection.anchorNode?.parentElement;
+      const pageElement=anchor?.closest?.('[data-reader-page-key]');
+      const page=readerPages.find(item=>item.key===pageElement?.dataset?.readerPageKey);
+      if(page?.kind==='content')capturePageSelection(page,event,event.type==='contextmenu');
+    };
+    document.addEventListener('mouseup',captureClonedPageSelection);
+    document.addEventListener('contextmenu',captureClonedPageSelection);
+    return()=>{document.removeEventListener('mouseup',captureClonedPageSelection);document.removeEventListener('contextmenu',captureClonedPageSelection);};
+  },[readerPages,capturePageSelection]);
+  const productionPhase=bookProof.kdpChecklist?'KDP package complete':bookProof.printPdf&&bookProof.docx?'Running KDP validation':bookProof.cover?'Preparing upload files':bookProof.manuscript&&bookProof.backMatter?'Creating the cover':bookProof.chapters.length?'Writing and assembling the book':bookProof.frontMatter?'Writing the body chapters':bookProof.outline?'Creating the front matter':'Planning the outline';
+  const previewPhase=activeSection?'section':bookProof.outline?'outline':'planning';
+  const bookStartedAt=new Date(active?.created_at||active?.updated_at||Date.now()).getTime();
+  const bookElapsed=formatBookElapsed(Math.max(0,bookClock-bookStartedAt));
+  const advanceBookForward=()=>{
+    if(readerEdge==='front'){setReaderEdge('content');return;}
+    if(readerEdge==='back')return;
+    const step=mob?1:2;
+    if(pageIndex+step<activeSectionPages.length){setPageIndex(index=>index+step);return;}
+    if(chapterIndex<bookProof.sections.length-1){setChapterIndex(index=>index+1);setPageIndex(0);}
+    else if(coverArtifact)setReaderEdge('back');
+  };
+  const advanceBookBack=()=>{
+    if(readerEdge==='back'){
+      setReaderEdge('content');
+      const lastIndex=Math.max(0,bookProof.sections.length-1);
+      setChapterIndex(lastIndex);
+      setPageIndex(Math.max(0,(bookPageCounts[lastIndex]||1)-(mob?1:2)));
+      return;
+    }
+    if(readerEdge==='front')return;
+    const step=mob?1:2;
+    if(pageIndex-step>=0){setPageIndex(index=>index-step);return;}
+    if(chapterIndex>0){
+      const previousIndex=chapterIndex-1;
+      setChapterIndex(previousIndex);
+      setPageIndex(Math.max(0,(bookPageCounts[previousIndex]||1)-step));
+    }else if(coverArtifact)setReaderEdge('front');
+  };
+  const animateBookTurn=direction=>{
+    if(pageTurnAnimating)return;
+    setPageTurnDirection(direction);setPageTurnAnimating(true);
+    window.setTimeout(()=>{
+      if(direction==='forward')advanceBookForward();else advanceBookBack();
+      setPageTurnAnimating(false);setPageTurnDirection('');
+    },760);
+  };
+  const turnBookForward=()=>animateBookTurn('forward');
+  const turnBookBack=()=>animateBookTurn('back');
+  useEffect(()=>{if(chapterIndex>=bookProof.sections.length)setChapterIndex(Math.max(0,bookProof.sections.length-1));},[bookProof.sections.length,chapterIndex]);
+  useEffect(()=>{if(status!=='working')return;const timer=setInterval(()=>setBookClock(Date.now()),1000);return()=>clearInterval(timer);},[status]);
+  useEffect(()=>{setDirectEditing(false);setSectionDraft(activeSection?.content||'');setSectionSaveMessage('');},[activeSection?.fileId]);
+  const checkBookAccess=useCallback(async()=>{
+    try{
+      const h=await getAuthHeaders();
+      const r=await fetch(`/api/books/access?agentId=${encodeURIComponent(agentId||'')}`,{headers:h});
+      const d=await r.json();
+      setAccess(r.ok&&d.authorized?'active':d.checkoutRequired?'checkout':'blocked');
+      if(!r.ok&&!d.checkoutRequired)setCheckoutError(d.error||'Book Creator access could not be verified.');
+    }catch(e){setAccess('blocked');setCheckoutError(e.message||'Book Creator access could not be verified.');}
+  },[agentId]);
+  useEffect(()=>{checkBookAccess();},[checkBookAccess]);
+
+  const loadAuthors=useCallback(async()=>{
+    setAuthorStatus('loading');
+    try{
+      const h=await getAuthHeaders();
+      const r=await fetch(`/api/books/authors?agentId=${encodeURIComponent(agentId||'')}`,{headers:h});
+      const d=await r.json();
+      if(!r.ok)throw new Error(d.error||'Author Library could not be loaded.');
+      setAuthors(d.authors||[]);
+      setSelectedAuthorId(current=>current||(d.authors?.[0]?.id||''));
+      setAuthorStatus('ready');
+    }catch(e){setAuthorStatus('failed');setError(e.message||'Author Library could not be loaded.');}
+  },[agentId]);
+  useEffect(()=>{if(access==='active')loadAuthors();},[access,loadAuthors]);
+
+  const loadBooster=useCallback(async()=>{
+    setBoosterStatus('loading');
+    try{
+      const h=await getAuthHeaders();
+      const r=await fetch(`/api/books/booster?agentId=${encodeURIComponent(agentId||'')}`,{headers:h});
+      const d=await r.json();
+      if(!r.ok){
+        setBoosterResources([]);
+        setBoosterStatus(d.upgradeRequired?'locked':'error');
+        return;
+      }
+      setBoosterResources(d.resources||[]);
+      setBoosterStatus('active');
+    }catch{
+      setBoosterStatus('error');
+    }
+  },[agentId]);
+
+  const openBookCheckout=async()=>{
+    setCheckoutError('');
+    try{
+      const h=await getAuthHeaders();
+      const r=await fetch('/api/billing/prepare-checkout',{method:'POST',headers:h,body:JSON.stringify({plan:'book_creator'})});
+      const d=await r.json();
+      if(!r.ok||!d.success)throw new Error(d.error||'Could not prepare Book Creator checkout.');
+      if(d.alreadyActive){await checkBookAccess();return;}
+      if(!d.checkoutPlanId)throw new Error('Whop checkout is not configured for Book Creator.');
+      setCheckout({planId:d.checkoutPlanId,name:d.plan?.name||'Bloomie Book Creator'});
+    }catch(e){setCheckoutError(e.message||'Could not prepare checkout.');}
+  };
+
+  const openBoosterCheckout=async()=>{
+    setCheckoutError('');
+    try{
+      const h=await getAuthHeaders();
+      const r=await fetch('/api/billing/prepare-checkout',{method:'POST',headers:h,body:JSON.stringify({plan:'book_creator_booster'})});
+      const d=await r.json();
+      if(!r.ok||!d.success)throw new Error(d.error||'Could not prepare the Quick-Launch Booster checkout.');
+      if(d.alreadyActive){await checkBookAccess();await loadBooster();return;}
+      setCheckout({planId:d.checkoutPlanId,name:d.plan?.name||'Book Creator Quick-Launch Booster'});
+    }catch(e){setCheckoutError(e.message||'Could not prepare the booster checkout.');}
+  };
+
+  const loadProjects=useCallback(async()=>{
+    try{
+      const h=await getAuthHeaders();
+      const r=await fetch(`/api/chat/sessions?agentId=${encodeURIComponent(agentId||'')}`,{headers:h});
+      const d=await r.json();
+      const bookSessions=(d.sessions||[]).filter(session=>String(session.title||'').startsWith('📚 '));
+      const enriched=await Promise.all(bookSessions.map(async project=>{
+        try{
+          const [historyRes,fileRes]=await Promise.all([
+            fetch(`/api/chat/sessions/${project.id}`,{headers:h}),
+            fetch(`/api/files/artifacts?sessionId=${encodeURIComponent(project.id)}&limit=60&includeContent=true`,{headers:h}),
+          ]);
+          const history=await historyRes.json();
+          const files=await fileRes.json();
+          const artifacts=files.artifacts||[];
+          const proof=inspectBookArtifacts(artifacts);
+          const cover=artifacts.find(file=>/cover/i.test(file.name||'')&&/image|png|jpe?g|webp/i.test(`${file.fileType} ${file.mimeType} ${file.name}`));
+          return {...project,bookState:deriveBookProjectState(project,history.messages||[],proof),bookProof:proof,coverUrl:cover?.previewUrl||cover?.downloadUrl||cover?.url||cover?.download_url||cover?.storage_url||''};
+        }catch{
+          return {...project,bookState:'needs_attention',bookProof:inspectBookArtifacts([]),coverUrl:''};
+        }
+      }));
+      setProjects(enriched);
+    }catch{}
+  },[agentId]);
+  const loadProject=useCallback(async project=>{
+    setActive(project);setView('project');
+    try{
+      const h=await getAuthHeaders();
+      const [historyRes,fileRes]=await Promise.all([
+        fetch(`/api/chat/sessions/${project.id}`,{headers:h}),
+        fetch(`/api/files/artifacts?sessionId=${encodeURIComponent(project.id)}&limit=40&includeContent=true`,{headers:h})
+      ]);
+      const history=await historyRes.json();
+      const files=await fileRes.json();
+      setMessages(history.messages||[]);
+      setArtifacts(files.artifacts||[]);
+      const proof=inspectBookArtifacts(files.artifacts||[]);
+      setStatus(proof.complete?'complete':'working');
+      setReaderEdge(proof.cover?'front':'content');
+      setStage(proof.chapters.length?'preview':'outline');
+    }catch(e){setError(e.message||'Could not load this book.');}
+  },[]);
+  useEffect(()=>{loadProjects();},[loadProjects]);
+
+  const startBook=async()=>{
+    let selectedAuthor=authors.find(author=>author.id===selectedAuthorId)||null;
+    if(!selectedAuthor&&authorForm.name.trim()){
+      selectedAuthor=await createAuthor();
+      if(!selectedAuthor)return;
+    }
+    const suppliedDirection=[
+      topic.trim()&&`Topic: ${topic.trim()}`,
+      bookDescription.trim()&&`Book description: ${bookDescription.trim()}`,
+      chapterPlanMode==='custom'&&chapterPlan.trim()&&`Requested chapter outline or chapter directions:\n${chapterPlan.trim()}`,
+    ].filter(Boolean).join('\n');
+    const surpriseBrief=`Choose a timely, compelling ${bookType.toLowerCase()} concept for ${reader.toLowerCase()}. ${suppliedDirection||'Choose the strongest subject and reader transformation.'} Create the strongest marketable title, clear reader transformation, chapter structure, examples, and publishing description. Use the selected author profile and approved tenant references as the source of truth.`;
+    const effectiveBrief=startMode==='surprise'?surpriseBrief:(suppliedDirection||brief.trim());
+    if(!effectiveBrief)return;
+    const sessionId=crypto.randomUUID();
+    const workingTitle=(title.trim()||(startMode==='surprise'?'Bloomie Surprise Book':effectiveBrief.split(/\s+/).slice(0,7).join(' '))).slice(0,90);
+    const project={id:sessionId,title:`📚 ${workingTitle}`,created_at:new Date().toISOString(),updated_at:new Date().toISOString()};
+    setActive(project);setMessages([]);setArtifacts([]);setError('');setStatus('working');setView('project');setStage('outline');
+    setProjects(current=>[project,...current]);
+    const approvedBrief=`DEDICATED BLOOMIE BOOK WORKSPACE REQUEST
+
+Create a polished, complete manuscript of 10,000–10,800 measured words. This form is the user's approved creative brief, so do not pause for routine clarification. Make responsible editorial choices where details are not specified.
+
+Working title: ${workingTitle}
+Input mode: ${startMode==='surprise'?'surprise me':mode}
+${startMode==='surprise'?'Creative direction chosen by Bloomie':mode==='keyword'?'Keyword or topic':'Book description'}: ${effectiveBrief}
+Book type: ${bookType}
+Target reader: ${reader}
+Author voice: ${voice}
+Author profile: ${selectedAuthor?selectedAuthor.name:'No saved author selected'}
+Author biography: ${selectedAuthor?.biography||'Not provided'}
+Author voice direction: ${selectedAuthor?.voice_direction||voice}
+Approved author reference IDs: ${(selectedAuthor?.reference_ids||[]).join(', ')||'None'}
+Chapter planning: ${chapterPlanMode==='custom'&&chapterPlan.trim()?`Follow the user's requested chapter outline or chapter directions below unless a small editorial adjustment is required for coherence.\n${chapterPlan.trim()}`:'Create the strongest chapter structure for the approved topic and reader transformation.'}
+Core message: Derive one clear, useful promise from the approved topic or description.
+Starting point: Starting from scratch.
+Scope: Complete approximately 10,000-word manuscript plus supporting cover.
+
+Required workflow:
+1. Publish task_progress with these complete visible stages: Researching the approved brief; Building the outline; Creating front matter; Writing and saving body chapters; Creating back matter; Assembling the KDP interiors; Creating the cover; Validating and packaging KDP uploads.
+2. Create outline.md, then save every readable book section as its own Markdown artifact. Do not group the readable sections into one front-matter.md or back-matter.md file.
+3. Save the front of the book in this exact reading order: 00-half-title.md, 01-title-page.md, 02-copyright.md, optional 03-dedication.md only when appropriate, 04-table-of-contents.md, 05-preface.md, optional 06-acknowledgments.md, and 07-introduction.md. The TOC chapter names must exactly match the body headings and support a Kindle interactive TOC when Heading 1 styles are applied. Do not invent an ISBN, publisher, endorsements, or legal claims.
+4. Write 7–9 substantial body chapters. Save every chapter as a separately named Markdown artifact such as chapter-01-title.md. The saved chapter files alone—not the front or back matter—must total 10,000–10,800 measured words. Maintain a running body word count.
+5. Save the end of the book as separate artifacts: optional 90-conclusion.md when the manuscript needs one, required 91-about-the-author.md, optional 92-resources.md, and 93-references.md only when real sources were used. Never invent citations.
+6. Assemble complete-manuscript.md from those same saved artifacts in exact reading order: title pages, copyright, optional dedication, TOC, preface, optional acknowledgments, introduction, numbered chapters, optional conclusion, About the Author, optional resources, and real references.
+7. Create kdp-ebook.docx with real Heading 1 chapter titles, page breaks between major sections, no tab-based indents, and a navigable TOC-ready structure.
+8. Create kdp-print-interior.pdf for a 6 × 9 inch, no-bleed paperback unless the approved brief specifies another trim or interior bleed. Use mirrored margins, an inside gutter based on final page count, embedded fonts and images, 300 DPI images, no crop marks/comments/placeholders, and chapters beginning on appropriate pages.
+9. Generate a professional 2:3 portrait front cover that fits this specific genre and audience. Do not use placeholder art. Save back-cover/book-description copy and five discoverability keywords with the project. A full print wrap must be calculated only after the final page count and paper choice are known.
+10. Create kdp-package-checklist.md recording the final title and author match, body word count, trim size, bleed choice, page count, gutter/margins, embedded fonts, image resolution, TOC/heading validation, eBook DOCX, print PDF, cover status, and preview still required in Kindle Previewer and KDP Print Previewer.
+11. Continue through tool calls and verification until the deliverables exist. Never report completion below 10,000 measured body words or while any required KDP package file is missing. Report the exact verified body word count and real files inline when complete.`;
+    let pollTimer;
+    try{
+      pollTimer=setInterval(async()=>{
+        try{
+          const h=await getAuthHeaders();
+          const [historyRes,fileRes]=await Promise.all([
+            fetch(`/api/chat/sessions/${sessionId}`,{headers:h}),
+            fetch(`/api/files/artifacts?sessionId=${encodeURIComponent(sessionId)}&limit=40&includeContent=true`,{headers:h})
+          ]);
+          const history=await historyRes.json();const files=await fileRes.json();
+          setMessages(history.messages||[]);setArtifacts(files.artifacts||[]);
+        }catch{}
+      },2500);
+      const h=await getAuthHeaders();
+      const r=await fetch('/api/chat/message',{method:'POST',headers:h,body:JSON.stringify({
+        message:approvedBrief,sessionId,agentId,sessionType:'book_creation',bookTitle:workingTitle
+      })});
+      const d=await r.json();
+      if(!r.ok)throw new Error(d.error||'Book generation could not start.');
+      await loadProject(project);
+      await loadProjects();
+    }catch(e){setStatus('failed');setError(e.message||'Book generation failed.');}
+    finally{if(pollTimer)clearInterval(pollTimer);}
+  };
+
+  const requestChapterRevision=async()=>{
+    if(!active?.id||!activeSection||!revision.trim()||revising)return;
+    setRevising(true);setError('');setStatus('working');
+    try{
+      const h=await getAuthHeaders();
+      const r=await fetch('/api/chat/message',{method:'POST',headers:h,body:JSON.stringify({
+        message:`BOOK SECTION REVISION REQUEST
+Book project: ${String(active.title||'').replace(/^📚\s*/,'')}
+Book section artifact to revise: ${activeSection.name}
+Requested changes: ${revision.trim()}
+
+Edit the existing section artifact in place and preserve its position in the reading order. Preserve the book's voice and continuity. Then rebuild complete-manuscript.md, the DOCX, and print PDF so they contain the revised section. Recalculate the body-chapter word count and keep the finished book at 10,000–10,800 body words. Do not create a duplicate section file.`,
+        sessionId:active.id,agentId,sessionType:'book_creation',bookTitle:String(active.title||'').replace(/^📚\s*/,'')
+      })});
+      const d=await r.json();
+      if(!r.ok)throw new Error(d.error||'The revision could not be completed.');
+      setRevision('');
+      await loadProject(active);
+    }catch(e){setStatus('failed');setError(e.message||'The revision failed.');}
+    finally{setRevising(false);}
+  };
+
+  const saveSectionDirectly=async()=>{
+    if(!activeSection?.fileId||!sectionDraft.trim()||savingSection)return;
+    setSavingSection(true);setError('');setSectionSaveMessage('');
+    try{
+      const h=await getAuthHeaders();
+      const r=await fetch(`/api/files/artifacts/${activeSection.fileId}`,{
+        method:'PUT',headers:h,body:JSON.stringify({content:sectionDraft})
+      });
+      const d=await r.json();
+      if(!r.ok||!d.success)throw new Error(d.error||'This section could not be saved.');
+      setArtifacts(current=>current.map(file=>file.fileId===activeSection.fileId?{...file,content:sectionDraft,fileSize:d.artifact?.file_size||file.fileSize}:file));
+      setDirectEditing(false);
+      setSectionSaveMessage('Saved. This section will be used the next time the complete manuscript and publishing files are rebuilt.');
+    }catch(e){setError(e.message||'This section could not be saved.');}
+    finally{setSavingSection(false);}
+  };
+
+  const saveSelectedText=async()=>{
+    const section=bookProof.sections[pageSelection?.page?.sectionIndex];
+    if(!section?.fileId||!pageSelection?.text||!selectionDraft.trim()||selectionWorking)return;
+    const source=String(section.content||'');
+    if(!source.includes(pageSelection.text)){setError('That selected passage changed. Select it again before saving.');return;}
+    setSelectionWorking(true);setError('');
+    try{
+      const content=source.replace(pageSelection.text,selectionDraft.trim());
+      const h=await getAuthHeaders();
+      const r=await fetch(`/api/files/artifacts/${section.fileId}`,{method:'PUT',headers:h,body:JSON.stringify({content})});
+      const d=await r.json();
+      if(!r.ok||!d.success)throw new Error(d.error||'The selected text could not be saved.');
+      setArtifacts(current=>current.map(file=>file.fileId===section.fileId?{...file,content}:file));
+      setPageSelection(null);setSelectionEditing(false);
+      window.getSelection()?.removeAllRanges();
+    }catch(e){setError(e.message||'The selected text could not be saved.');}
+    finally{setSelectionWorking(false);}
+  };
+
+  const requestSelectedTextChange=async action=>{
+    const section=bookProof.sections[pageSelection?.page?.sectionIndex];
+    if(!active?.id||!section||!pageSelection?.text||selectionWorking)return;
+    const directions={
+      rewrite:'Rewrite only this selected passage for clarity and impact while preserving its meaning and the author voice.',
+      expand:'Expand only this selected passage with useful detail and a concrete example.',
+      shorten:'Shorten only this selected passage without losing its important meaning.',
+      tone:'Make only this selected passage warmer, more natural, and consistent with the saved author voice.',
+      image:'Generate a publishing-appropriate image for this exact passage, save it as a project artifact, and insert its Markdown image reference immediately after the selected passage.',
+    };
+    setSelectionWorking(true);setError('');
+    try{
+      const h=await getAuthHeaders();
+      const r=await fetch('/api/chat/message',{method:'POST',headers:h,body:JSON.stringify({
+        message:`BOOK PREVIEW SELECTION EDIT
+Book project: ${String(active.title||'').replace(/^📚\s*/,'')}
+Section artifact: ${section.name}
+Exact selected text:
+<<<
+${pageSelection.text}
+>>>
+Requested operation: ${directions[action]||directions.rewrite}
+
+Locate this exact selection inside the named artifact and modify only that occurrence. Do not rewrite the surrounding section. Save the artifact in place, preserve reading order, then rebuild complete-manuscript.md, DOCX, and print PDF. If the operation is image insertion, use the current image-generation tool and include accessible alt text. Verify the updated artifact before reporting completion.`,
+        sessionId:active.id,agentId,sessionType:'book_creation',bookTitle:String(active.title||'').replace(/^📚\s*/,'')
+      })});
+      const d=await r.json();
+      if(!r.ok)throw new Error(d.error||'The selected passage could not be updated.');
+      setPageSelection(null);window.getSelection()?.removeAllRanges();
+      await loadProject(active);
+    }catch(e){setError(e.message||'The selected passage could not be updated.');}
+    finally{setSelectionWorking(false);}
+  };
+
+  const requestCoverRevision=async()=>{
+    if(!active?.id||!coverArtifact||!coverRevision.trim()||coverRevising)return;
+    setCoverRevising(true);setError('');setCoverRevisionMessage('');
+    try{
+      const h=await getAuthHeaders();
+      const sourceUrl=coverArtifact.previewUrl||coverArtifact.downloadUrl||coverArtifact.url||coverArtifact.download_url||coverArtifact.storage_url||`/api/files/preview/${coverArtifact.fileId}`;
+      const r=await fetch('/api/chat/message',{method:'POST',headers:h,body:JSON.stringify({
+        message:`BOOK COVER REVISION REQUEST
+Book project: ${String(active.title||'').replace(/^📚\s*/,'')}
+Current cover artifact: ${coverArtifact.name}
+Current cover reference: ${sourceUrl}
+Requested changes: ${coverRevision.trim()}
+
+Create a NEW revised cover version; do not overwrite or delete the current cover. Use image_generate with engine "runpod", size "1024x1536", aspect_ratio "2:3", target_width 1800, target_height 2700, allow_crop false. This tenant's RunPod image engine is FLUX Dev. Preserve the exact book title and author spelling from the current project metadata. Compose the new artwork natively as a full 2:3 portrait cover with safe margins; do not crop, stretch, letterbox, or add blurred edges. Save the completed full-resolution image as a new project artifact whose filename includes "cover-revision". Verify the saved artifact and show the revised cover inline.`,
+        sessionId:active.id,agentId,sessionType:'book_cover',bookTitle:String(active.title||'').replace(/^📚\s*/,'')
+      })});
+      const d=await r.json();
+      if(!r.ok)throw new Error(d.error||'The cover revision could not be completed.');
+      setCoverRevision('');
+      setCoverRevisionMessage('The revised RunPod cover was saved as a new version. The original remains in the project files.');
+      await loadProject(active);
+    }catch(e){setError(e.message||'The cover revision failed.');}
+    finally{setCoverRevising(false);}
+  };
+
+  const runBookTool=async(section)=>{
+    if(!toolBrief.trim()&&section==='research')return;
+    if(!toolProjectId&&['audio','pod','cover'].includes(section))return;
+    setToolStatus('working');setToolMessage('');
+    const selectedProject=projects.find(project=>project.id===toolProjectId);
+    const sessionId=selectedProject?.id||crypto.randomUUID();
+    const instructions={
+      research:`BOOK MARKET RESEARCH REQUEST
+Research mode: ${toolMode}
+Topic or book idea: ${toolBrief.trim()}
+
+Produce practical, evidence-based publishing research for this exact idea. Save a polished Markdown research report containing reader profile, market promise, keyword directions, competitive positioning, category opportunities, risks, and a recommended book concept. Do not claim live marketplace facts without sources.`,
+      agent:`BOOK AGENT REQUEST
+${selectedProject?`Existing book project: ${String(selectedProject.title||'').replace(/^📚\s*/,'')}`:'New book planning session'}
+User request: ${toolBrief.trim()}
+
+Act as the dedicated book strategist and editor. Complete the requested planning, writing, or revision work and save any useful deliverables as project artifacts. Continue through verification rather than returning planning-only prose.`,
+      audio:`AUDIOBOOK PRODUCTION REQUEST
+Source book project: ${String(selectedProject?.title||'').replace(/^📚\s*/,'')}
+Narration direction: ${audioVoice}
+Additional direction: ${toolBrief.trim()||'Use the finished manuscript as written.'}
+
+Load the completed manuscript artifacts from this project. Prepare an audiobook production package, split narration by chapter, use the tenant-authorized audio tools, save playable chapter audio files plus a delivery manifest, and verify each saved output before reporting completion.`,
+      pod:`PRINT-ON-DEMAND PRODUCTION REQUEST
+Source book project: ${String(selectedProject?.title||'').replace(/^📚\s*/,'')}
+Trim size: ${trimSize}
+Additional direction: ${toolBrief.trim()||'Use professional trade paperback styling.'}
+
+Create a print-ready POD package from the saved manuscript. Produce an interior PDF, print specifications, cover-wrap brief, metadata checklist, and upload-readiness report. Preserve tenant and project boundaries and verify every saved artifact.`,
+      cover:`BOOK COVER GENERATION REQUEST
+Source book project: ${String(selectedProject?.title||'').replace(/^📚\s*/,'')}
+Creative direction: ${toolBrief.trim()||'Create a professional genre-appropriate cover based on the manuscript and metadata.'}
+
+Read the project title, description, genre, and reader promise. Use image_generate with engine "runpod", size "1024x1536", aspect_ratio "2:3", target_width 1800, target_height 2700, and allow_crop false. The configured RunPod engine is FLUX Dev. Generate the cover natively at the publishing ratio without cropping, stretching, letterboxing, or blurred edges. Save the full-resolution image as a project artifact and verify that the title and author treatment are usable.`,
+    };
+    try{
+      const h=await getAuthHeaders();
+      const r=await fetch('/api/chat/message',{method:'POST',headers:h,body:JSON.stringify({
+        message:instructions[section]||instructions.agent,
+        sessionId,agentId,sessionType:`book_${section}`,
+        bookTitle:String(selectedProject?.title||'').replace(/^📚\s*/,'')
+      })});
+      const d=await r.json();
+      if(!r.ok)throw new Error(d.error||'The Book Studio task could not start.');
+      setToolStatus('complete');
+      setToolMessage(section==='research'?'Research report saved.':`The ${section} task finished and its deliverables were saved with the project.`);
+      if(selectedProject)await loadProject(selectedProject);
+      await loadProjects();
+    }catch(e){
+      setToolStatus('failed');
+      setToolMessage(e.message||'The Book Studio task failed.');
+    }
+  };
+
+  const filePayload=file=>new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=()=>resolve({name:file.name,type:file.type,data:String(reader.result||'').split(',')[1]||''});
+    reader.onerror=()=>reject(new Error(`Could not read ${file.name}`));
+    reader.readAsDataURL(file);
+  });
+  const importOwnedBook=async(upload=bookUpload)=>{
+    if(!upload.manuscript||!upload.rightsConfirmed||bookUploadStatus==='working')return;
+    setBookUploadStatus('working');setBookUploadMessage('');setError('');
+    try{
+      const sessionId=crypto.randomUUID();
+      const files=[await filePayload(upload.manuscript)];
+      if(upload.cover)files.push(await filePayload(upload.cover));
+      const importedTitle=(upload.title.trim()||upload.manuscript.name.replace(/\.[^.]+$/,'')).slice(0,90);
+      const h=await getAuthHeaders();
+      const r=await fetch('/api/chat/upload',{method:'POST',headers:h,body:JSON.stringify({
+        message:`OWNED BOOK IMPORT REQUEST
+Book title: ${importedTitle}
+Rights confirmation: The signed-in user affirmed that they own this work or have permission from the rights holder to edit it.
+
+Import the attached manuscript into this Book Studio project. Preserve the author's wording. Extract and save each readable part as its own editable artifact in correct reading order: title page, copyright, table of contents, preface, introduction, every numbered chapter, conclusion, acknowledgments, and about the author when present. Save complete-manuscript.md as well. If a cover image is attached, save it as the active cover artifact without regenerating it. Do not invent missing manuscript content during import. After saving, verify the section list and measured body word count so the user can open Preview & Edit and turn pages immediately.`,
+        sessionId,agentId,sessionType:'book_import',bookTitle:importedTitle,rightsConfirmed:true,files
+      })});
+      const d=await r.json();
+      if(!r.ok)throw new Error(d.error||'The book could not be imported.');
+      setBookUploadStatus('complete');
+      setBookUploadMessage('Book imported. Opening its editable page preview…');
+      const project={id:sessionId,title:`📚 ${importedTitle}`,created_at:new Date().toISOString(),updated_at:new Date().toISOString()};
+      await loadProjects();
+      await loadProject(project);
+      setReaderEdge('front');
+      setStage('preview');
+    }catch(e){setBookUploadStatus('failed');setBookUploadMessage(e.message||'The book import failed.');}
+  };
+  const editLibraryBook=async(resource,pageNumber=1)=>{
+    setLibraryReader(null);
+    setBookUploadStatus('working');
+    setBookUploadMessage(`Preparing page ${pageNumber} and the full book for editing…`);
+    try{
+      const [pdfResponse,coverResponse]=await Promise.all([fetch(resource.url),fetch(resource.coverUrl)]);
+      if(!pdfResponse.ok)throw new Error('The library PDF could not be loaded for editing.');
+      const manuscript=new File([await pdfResponse.blob()],`${resource.id}.pdf`,{type:'application/pdf'});
+      const cover=coverResponse.ok?new File([await coverResponse.blob()],`${resource.id}-cover.png`,{type:coverResponse.headers.get('content-type')||'image/png'}):null;
+      const upload={manuscript,cover,title:resource.title,rightsConfirmed:true};
+      setBookUpload(upload);
+      setBookSection('creator');
+      setView('new');
+      setStage('setup');
+      setStartMode('upload');
+      setSetupStep(1);
+      await importOwnedBook(upload);
+    }catch(e){
+      setBookUploadStatus('failed');
+      setBookUploadMessage(e.message||'The library book could not be prepared for editing.');
+      setBookSection('creator');
+      setView('new');
+      setStage('setup');
+      setStartMode('upload');
+    }
+  };
+  const createAuthor=async()=>{
+    if(!authorForm.name.trim()||authorStatus==='saving')return;
+    setAuthorStatus('saving');setError('');
+    try{
+      const h=await getAuthHeaders();
+      const referenceIds=[];let headshotUrl='';
+      for(const [file,category,title] of [
+        [authorForm.sample,'writing_style',`${authorForm.name} writing sample`],
+        [authorForm.headshot,'brand',`${authorForm.name} author photo`],
+      ]){
+        if(!file)continue;
+        const payload=await filePayload(file);
+        const rr=await fetch('/api/references/upload',{method:'POST',headers:h,body:JSON.stringify({
+          file:payload,title,description:`Approved source material for the ${authorForm.name} reusable Book Studio author profile.`,
+          category,scope:'organization',approved:true,
+        })});
+        const rd=await rr.json();
+        if(!rr.ok)throw new Error(rd.error||`Could not upload ${file.name}`);
+        referenceIds.push(rd.reference.id);
+        if(file===authorForm.headshot)headshotUrl=rd.reference.storage_url||'';
+      }
+      const r=await fetch('/api/books/authors',{method:'POST',headers:h,body:JSON.stringify({
+        agentId,name:authorForm.name,biography:authorForm.biography,
+        voiceDirection:authorForm.voiceDirection,referenceIds,headshotUrl,
+      })});
+      const d=await r.json();
+      if(!r.ok)throw new Error(d.error||'Author profile could not be created.');
+      setAuthors(current=>[d.author,...current]);
+      setSelectedAuthorId(d.author.id);
+      setAuthorForm({name:'',biography:'',voiceDirection:'',sample:null,headshot:null});
+      setAuthorStatus('ready');
+      return d.author;
+    }catch(e){setAuthorStatus('failed');setError(e.message||'Author profile could not be created.');return null;}
+  };
+
+  const inputStyle={width:'100%',padding:'12px 13px',borderRadius:10,border:'1px solid '+c.ln,background:c.inp,color:c.tx,fontSize:13,fontFamily:'inherit'};
+  const selectStyle={...inputStyle,cursor:'pointer'};
+  const bookNavGroups=[
+    {label:'Book Studio',items:[
+      {key:'dashboard',label:'Home',icon:'home'},
+      {key:'creator',label:'Create',icon:'create'},
+      {key:'books',label:'Projects',icon:'projects'},
+      {key:'authors',label:'Authors',icon:'authors'},
+      {key:'publish',label:'Publish',icon:'publish'},
+    ]},
+    {label:'More',items:[{key:'booster',label:'Library',icon:'resources'}]},
+  ];
+  const selectBookSection=key=>{
+    setBookSection(key);
+    setBookNavOpen(false);
+    if(key==='creator'){setView('new');setStage('setup');}
+    if(key==='books'){setView('saved');loadProjects();}
+    if(key==='booster'){setView('booster');loadBooster();}
+  };
+  const bookSidebar=<aside data-testid="book-suite-sidebar" style={{width:mob?286:248,maxWidth:'86vw',height:'100%',background:c.cd,borderRight:'1px solid '+c.ln,display:'flex',flexDirection:'column',flexShrink:0,overflow:'hidden',...(mob?{position:'absolute',zIndex:80,left:0,top:0,bottom:0,transform:bookNavOpen?'translateX(0)':'translateX(-102%)',transition:'transform .2s ease',boxShadow:bookNavOpen?'16px 0 40px rgba(0,0,0,.3)':'none'}:{})}}>
+    <div style={{padding:'18px 16px 13px',borderBottom:'1px solid '+c.ln}}>
+      <div style={{display:'flex',alignItems:'center',gap:10}}>
+        <div style={{width:38,height:38,borderRadius:12,display:'grid',placeItems:'center',background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',fontWeight:900,fontSize:18,boxShadow:'0 7px 18px rgba(231,111,139,.24)'}}>B</div>
+        <div><div style={{fontSize:14,fontWeight:850,color:c.tx}}>Book Studio</div><div style={{fontSize:10,color:c.so}}>Powered by your Bloomie</div></div>
+      </div>
+    </div>
+    <div style={{flex:1,minHeight:0,overflowY:'auto',padding:'10px 9px 18px'}}>
+      {bookNavGroups.map(group=><div key={group.label} style={{marginBottom:13}}>
+        <div style={{padding:'4px 9px 5px',fontSize:9,fontWeight:850,color:c.fa,textTransform:'uppercase',letterSpacing:'.09em'}}>{group.label}</div>
+        {group.items.map(item=>{
+          const active=bookSection===item.key;
+          return <button key={item.key} onClick={()=>selectBookSection(item.key)} style={{width:'100%',padding:'10px 11px',marginBottom:2,border:active?'1px solid rgba(231,111,139,.28)':'1px solid transparent',borderRadius:10,background:active?'linear-gradient(135deg,rgba(244,162,97,.14),rgba(231,111,139,.14))':'transparent',color:active?c.tx:c.so,cursor:'pointer',display:'flex',alignItems:'center',gap:11,textAlign:'left',fontSize:12,fontWeight:active?800:650}}>
+            <span style={{width:24,height:24,display:'grid',placeItems:'center',color:active?c.ac:c.so,flexShrink:0}}><BookSuiteIcon name={item.icon}/></span>
+            <span>{item.label}</span>
+          </button>;
+        })}
+      </div>)}
+    </div>
+  </aside>;
+  const bookShell=content=><div data-testid="book-suite-shell" style={{height:'100%',minHeight:0,position:'relative',display:'flex',overflow:'hidden',background:c.bg}}>
+    {mob&&bookNavOpen&&<div onClick={()=>setBookNavOpen(false)} style={{position:'absolute',inset:0,zIndex:75,background:'rgba(0,0,0,.44)'}}/>}
+    {bookSidebar}
+    <section style={{flex:1,minWidth:0,minHeight:0,position:'relative',overflow:'hidden'}}>
+      {mob&&<button aria-label="Open Book Studio menu" onClick={()=>setBookNavOpen(true)} style={{position:'absolute',zIndex:30,top:10,left:10,width:42,height:42,borderRadius:11,border:'1px solid '+c.ln,background:c.cd,color:c.tx,boxShadow:'0 5px 18px rgba(0,0,0,.18)',cursor:'pointer',display:'grid',placeItems:'center'}}><BookSuiteIcon name="menu" size={23}/></button>}
+      {content}
+    </section>
+  </div>;
+  if(access!=='active')return bookShell(<div data-testid="book-access-gate" style={{height:'100%',overflowY:'auto',padding:mob?'62px 14px 90px':'52px 36px 70px'}}>
+    <div style={{maxWidth:620,margin:'0 auto',padding:mob?22:36,borderRadius:20,background:c.cd,border:'1px solid '+c.ln,boxShadow:'0 18px 55px rgba(0,0,0,.12)',textAlign:'center'}}>
+      <div style={{width:58,height:58,borderRadius:17,display:'grid',placeItems:'center',margin:'0 auto 15px',background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',fontSize:27,fontWeight:900}}>B</div>
+      <h1 style={{fontSize:mob?24:30,color:c.tx,margin:'0 0 9px'}}>Bloomie Book Creator</h1>
+      {access==='checking'?<p style={{color:c.so,fontSize:13}}>Checking your Book Creator access…</p>:<>
+        <p style={{color:c.so,fontSize:13,lineHeight:1.65,maxWidth:500,margin:'0 auto 18px'}}>Turn one idea into a complete, editable 10,000-word manuscript with a cover and export files. Purchase once through the secure checkout inside Bloomie.</p>
+        {checkoutError&&<div style={{padding:'10px 12px',borderRadius:10,background:'rgba(239,68,68,.08)',border:'1px solid rgba(239,68,68,.25)',color:'#ef6464',fontSize:12,marginBottom:14}}>{checkoutError}</div>}
+        {access==='checkout'&&<button onClick={openBookCheckout} style={{width:'100%',padding:'13px',border:0,borderRadius:11,background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',fontSize:14,fontWeight:800,cursor:'pointer'}}>Get Book Creator — $37 once</button>}
+        <button onClick={checkBookAccess} style={{marginTop:10,padding:'9px 13px',border:'1px solid '+c.ln,borderRadius:9,background:c.sf,color:c.so,fontSize:12,fontWeight:700,cursor:'pointer'}}>I already purchased — refresh access</button>
+      </>}
+    </div>
+    {checkout&&<div role="dialog" aria-modal="true" aria-label={`${checkout.name} checkout`} style={{position:'fixed',inset:0,zIndex:10000,background:'rgba(0,0,0,.78)',display:'flex',alignItems:mob?'flex-end':'center',justifyContent:'center',padding:mob?0:20}} onClick={()=>setCheckout(null)}>
+      <div style={{width:'100%',maxWidth:560,height:mob?'92dvh':'min(780px,92vh)',background:c.cd,border:'1px solid '+c.ln,borderRadius:mob?'18px 18px 0 0':18,display:'flex',flexDirection:'column',overflow:'hidden'}} onClick={e=>e.stopPropagation()}>
+        <div style={{display:'flex',alignItems:'center',gap:12,padding:'14px 16px',borderBottom:'1px solid '+c.ln}}><div style={{flex:1}}><div style={{fontSize:15,fontWeight:750,color:c.tx}}>{checkout.name}</div><div style={{fontSize:11,color:c.so}}>Secure checkout powered by Whop</div></div><button aria-label="Close checkout" onClick={()=>setCheckout(null)} style={{width:34,height:34,borderRadius:9,border:'1px solid '+c.ln,background:c.sf,color:c.tx,cursor:'pointer',fontSize:19}}>×</button></div>
+        <div style={{flex:1,minHeight:0,overflowY:'auto',background:'#fff'}}><div data-whop-checkout-plan-id={checkout.planId} data-whop-checkout-return-url={`${window.location.origin}/book-creator?billing=success`} style={{width:'100%',minHeight:'100%'}}/></div>
+      </div>
+    </div>}
+  </div>);
+  const moduleCopy={
+    dashboard:{title:'Book Studio',sub:'Research an idea, create the manuscript, produce each format, and prepare it for publishing.'},
+    authors:{title:'Author Library',sub:'Create reusable author identities from approved writing samples, biography, imagery, and voice direction.'},
+    research:{title:'Research Tools',sub:'Turn a broad idea into a clear, market-aware book direction.'},
+    agent:{title:'AI Book Agent',sub:`Give ${aFN} a strategy, writing, or revision assignment for a new or saved book.`},
+    audio:{title:'Audio Book Creator',sub:'Convert a completed manuscript into organized, playable chapter narration.'},
+    pod:{title:'POD Book Creator',sub:'Create a print-ready interior and production package for a physical edition.'},
+    cover:{title:'Cover Generator',sub:'Generate a native-size, genre-aware cover from the project source material.'},
+    audiobooks:{title:'Manage AudioBooks',sub:'Open the source projects that contain your narration and audio deliverables.'},
+    podbooks:{title:'Manage POD Books',sub:'Open the source projects that contain print-ready files and production checks.'},
+    publish:{title:'Publishing Hub',sub:'Review completed projects and continue to the appropriate publishing marketplace.'},
+  };
+  if(!['creator','books','booster'].includes(bookSection)){
+    const module=moduleCopy[bookSection]||moduleCopy.dashboard;
+    return bookShell(<div data-testid={`book-module-${bookSection}`} style={{height:'100%',overflowY:'auto',padding:mob?'66px 14px 90px':'34px 38px 70px'}}>
+      <div style={{maxWidth:1040,margin:'0 auto'}}>
+        <div style={{display:'inline-flex',padding:'6px 11px',borderRadius:18,background:'linear-gradient(135deg,rgba(244,162,97,.14),rgba(231,111,139,.14))',border:'1px solid rgba(231,111,139,.24)',color:c.ac,fontSize:10,fontWeight:850}}>✦ BLOOMIE BOOK STUDIO</div>
+        <h1 style={{fontSize:mob?26:36,color:c.tx,margin:'15px 0 8px'}}>{module.title}</h1>
+        <p style={{fontSize:13,lineHeight:1.65,color:c.so,maxWidth:680,marginBottom:25}}>{module.sub}</p>
+        {bookSection==='authors'&&<div style={{display:'grid',gridTemplateColumns:mob?'1fr':'minmax(300px,390px) minmax(0,1fr)',gap:16,alignItems:'start'}}>
+          <div style={{padding:mob?18:22,borderRadius:17,border:'1px solid '+c.ln,background:c.cd}}>
+            <h2 style={{fontSize:16,color:c.tx,margin:'0 0 5px'}}>Create an author</h2>
+            <p style={{fontSize:11,lineHeight:1.55,color:c.so,margin:'0 0 16px'}}>Use material you own or have permission to use. The writing sample becomes a reusable style reference for future projects.</p>
+            <label style={{display:'block',fontSize:11,fontWeight:800,color:c.tx,marginBottom:6}}>Author name</label>
+            <input value={authorForm.name} onChange={e=>setAuthorForm({...authorForm,name:e.target.value})} placeholder="Name shown on the book" style={{...inputStyle,marginBottom:12}}/>
+            <label style={{display:'block',fontSize:11,fontWeight:800,color:c.tx,marginBottom:6}}>Biography</label>
+            <textarea value={authorForm.biography} onChange={e=>setAuthorForm({...authorForm,biography:e.target.value})} rows={4} placeholder="Background, expertise, audience, and point of view…" style={{...inputStyle,resize:'vertical',marginBottom:12}}/>
+            <label style={{display:'block',fontSize:11,fontWeight:800,color:c.tx,marginBottom:6}}>Voice direction</label>
+            <textarea value={authorForm.voiceDirection} onChange={e=>setAuthorForm({...authorForm,voiceDirection:e.target.value})} rows={3} placeholder="Conversational, direct, faith-centered, research-led…" style={{...inputStyle,resize:'vertical',marginBottom:12}}/>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:9,marginBottom:14}}>
+              <label style={{padding:'11px',borderRadius:10,border:'1px dashed '+c.ln,background:c.sf,color:c.so,fontSize:10,fontWeight:750,cursor:'pointer',textAlign:'center'}}>Writing sample<input type="file" accept=".pdf,.docx,.txt,.md,.html" onChange={e=>setAuthorForm({...authorForm,sample:e.target.files?.[0]||null})} style={{display:'none'}}/><span style={{display:'block',marginTop:5,color:authorForm.sample?c.ac:c.fa,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{authorForm.sample?.name||'PDF, DOCX, TXT'}</span></label>
+              <label style={{padding:'11px',borderRadius:10,border:'1px dashed '+c.ln,background:c.sf,color:c.so,fontSize:10,fontWeight:750,cursor:'pointer',textAlign:'center'}}>Author photo<input type="file" accept="image/*" onChange={e=>setAuthorForm({...authorForm,headshot:e.target.files?.[0]||null})} style={{display:'none'}}/><span style={{display:'block',marginTop:5,color:authorForm.headshot?c.ac:c.fa,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{authorForm.headshot?.name||'JPG, PNG, WEBP'}</span></label>
+            </div>
+            <button onClick={createAuthor} disabled={!authorForm.name.trim()||authorStatus==='saving'} style={{width:'100%',padding:12,border:0,borderRadius:10,background:authorForm.name.trim()?'linear-gradient(135deg,#F4A261,#E76F8B)':c.sf,color:authorForm.name.trim()?'#fff':c.fa,fontWeight:850,cursor:authorForm.name.trim()?'pointer':'not-allowed'}}>{authorStatus==='saving'?'Building author profile…':'Save reusable author'}</button>
+          </div>
+          <div>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}><h2 style={{fontSize:15,color:c.tx,margin:0}}>Saved authors</h2><span style={{fontSize:10,color:c.so}}>{authors.length} profile{authors.length===1?'':'s'}</span></div>
+            {authorStatus==='loading'?<div style={{padding:34,textAlign:'center',color:c.so}}>Loading Author Library…</div>:authors.length===0?<div style={{padding:40,borderRadius:15,border:'1px dashed '+c.ln,color:c.so,textAlign:'center'}}><div style={{fontSize:30,marginBottom:8}}>A</div><strong style={{color:c.tx}}>No authors yet</strong><div style={{fontSize:11,marginTop:6}}>Create the first reusable author profile.</div></div>:<div style={{display:'grid',gridTemplateColumns:mob?'1fr':'repeat(2,minmax(0,1fr))',gap:10}}>{authors.map(author=><button key={author.id} onClick={()=>{setSelectedAuthorId(author.id);setBookSection('creator');setView('new');setStage('setup');}} style={{padding:15,borderRadius:14,border:'1px solid '+(selectedAuthorId===author.id?c.ac:c.ln),background:selectedAuthorId===author.id?'linear-gradient(135deg,rgba(244,162,97,.1),rgba(231,111,139,.1))':c.cd,color:c.tx,textAlign:'left',cursor:'pointer',display:'flex',gap:11}}>
+              {author.headshot_url?<img src={author.headshot_url} alt="" style={{width:46,height:46,borderRadius:12,objectFit:'cover',flexShrink:0}}/>:<div style={{width:46,height:46,borderRadius:12,display:'grid',placeItems:'center',background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',fontSize:18,fontWeight:900,flexShrink:0}}>{author.name.charAt(0).toUpperCase()}</div>}
+              <span style={{minWidth:0}}><strong style={{display:'block',fontSize:13,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{author.name}</strong><span style={{display:'block',fontSize:10,lineHeight:1.45,color:c.so,marginTop:4}}>{author.reference_ids?.length||0} approved reference{author.reference_ids?.length===1?'':'s'}</span><span style={{display:'block',fontSize:10,fontWeight:800,color:c.ac,marginTop:7}}>Use for a new book →</span></span>
+            </button>)}</div>}
+          </div>
+        </div>}
+        {bookSection==='dashboard'&&<div>
+          <div data-testid="book-dashboard-hero" style={{position:'relative',overflow:'hidden',padding:mob?'24px 20px':'34px 36px',borderRadius:24,border:'1px solid rgba(231,111,139,.28)',background:'radial-gradient(circle at 82% 18%,rgba(231,111,139,.22),transparent 32%),linear-gradient(135deg,rgba(244,162,97,.12),rgba(231,111,139,.08) 52%,rgba(15,18,28,.2))',marginBottom:18}}>
+            <div style={{position:'relative',zIndex:2,maxWidth:620}}>
+              <div style={{fontSize:10,fontWeight:900,letterSpacing:'.12em',color:c.ac,marginBottom:10}}>YOUR AI PUBLISHING STUDIO</div>
+              <h2 style={{fontSize:mob?28:42,lineHeight:1.06,color:c.tx,margin:'0 0 12px'}}>Watch your next book come alive.</h2>
+              <p style={{fontSize:13,lineHeight:1.65,color:c.so,maxWidth:540,margin:'0 0 20px'}}>Choose a direction—or let Bloomie surprise you. Then watch the outline, chapters, cover, and finished book assemble in one live production room.</p>
+              <div style={{display:'flex',gap:9,flexWrap:'wrap'}}>
+                <button onClick={()=>{setStartMode('surprise');setSetupStep(1);selectBookSection('creator');}} style={{padding:'12px 17px',border:0,borderRadius:11,background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',fontSize:12,fontWeight:850,cursor:'pointer'}}>✦ Surprise me</button>
+                <button onClick={()=>{setStartMode('topic');setSetupStep(1);selectBookSection('creator');}} style={{padding:'12px 17px',borderRadius:11,border:'1px solid '+c.ln,background:c.cd,color:c.tx,fontSize:12,fontWeight:800,cursor:'pointer'}}>Create with my idea</button>
+              </div>
+            </div>
+            {!mob&&<div aria-hidden="true" style={{position:'absolute',right:38,bottom:-24,width:210,height:250,transform:'rotate(4deg)',borderRadius:'10px 18px 18px 10px',background:'linear-gradient(145deg,#F4A261,#E76F8B)',boxShadow:'-22px 28px 50px rgba(0,0,0,.3)',opacity:.9}}><div style={{position:'absolute',inset:'14px 14px 14px 22px',border:'1px solid rgba(255,255,255,.28)',borderRadius:9}}/><div style={{position:'absolute',left:42,right:28,top:55,height:6,borderRadius:5,background:'rgba(255,255,255,.8)'}}/><div style={{position:'absolute',left:42,right:54,top:75,height:4,borderRadius:5,background:'rgba(255,255,255,.45)'}}/></div>}
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:mob?'repeat(3,1fr)':'repeat(3,minmax(0,1fr))',gap:10,marginBottom:18}}>
+            {[['Projects',projects.length],['Books',projects.filter(project=>project.bookState==='complete').length],['Needs attention',projects.filter(project=>project.bookState==='needs_attention').length]].map(([label,value])=><div key={label} style={{padding:mob?'13px 11px':'16px 18px',borderRadius:15,border:'1px solid '+c.ln,background:c.cd}}><div style={{fontSize:mob?22:28,fontWeight:900,color:c.tx}}>{value}</div><div style={{fontSize:10,color:c.so,marginTop:3}}>{label}</div></div>)}
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'minmax(0,1.5fr) minmax(280px,.75fr)',gap:14}}>
+            <div style={{padding:18,borderRadius:18,border:'1px solid '+c.ln,background:c.cd}}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:13}}><h3 style={{margin:0,fontSize:15,color:c.tx}}>Continue creating</h3><button onClick={()=>selectBookSection('books')} style={{border:0,background:'transparent',color:c.ac,fontSize:11,fontWeight:800,cursor:'pointer'}}>View all →</button></div>
+              {projects.length===0?<button onClick={()=>selectBookSection('creator')} style={{width:'100%',padding:24,borderRadius:14,border:'1px dashed '+c.ln,background:c.sf,color:c.so,cursor:'pointer'}}><strong style={{display:'block',color:c.tx,marginBottom:5}}>Your first book starts here</strong><span style={{fontSize:11}}>Bloomie can choose the idea and build it for you.</span></button>:projects.slice(0,3).map(project=><button key={project.id} onClick={()=>{selectBookSection('books');loadProject(project);}} style={{width:'100%',display:'flex',alignItems:'center',gap:11,padding:'11px 0',border:0,borderTop:'1px solid '+c.ln,background:'transparent',color:c.tx,textAlign:'left',cursor:'pointer'}}><img src={project.coverUrl||'/assets/book-studio-stage-bestseller.png'} alt="" style={{width:38,height:51,borderRadius:7,objectFit:'cover',flexShrink:0,boxShadow:'0 5px 12px rgba(0,0,0,.22)'}}/><span style={{minWidth:0,flex:1}}><strong style={{display:'block',fontSize:12,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{String(project.title||'Untitled').replace(/^📚\s*/,'')}</strong><span style={{display:'block',fontSize:10,color:project.bookState==='complete'?c.gr:project.bookState==='needs_attention'?'#ef6464':c.ac,marginTop:3,fontWeight:750}}>{bookProjectStateLabel(project.bookState)}</span><span style={{display:'block',fontSize:9,color:c.fa,marginTop:2}}>Open production room</span></span><span style={{color:c.ac}}>→</span></button>)}
+            </div>
+            <div style={{padding:18,borderRadius:18,border:'1px solid '+c.ln,background:c.cd}}>
+              <h3 style={{margin:'0 0 13px',fontSize:15,color:c.tx}}>What happens next</h3>
+              {[['1','Bloomie shapes the idea'],['2','Chapters appear live'],['3','Cover and files arrive']].map(([number,label])=><div key={number} style={{display:'flex',alignItems:'center',gap:10,marginBottom:12}}><span style={{width:27,height:27,borderRadius:9,display:'grid',placeItems:'center',background:c.ac+'18',color:c.ac,fontSize:10,fontWeight:900}}>{number}</span><span style={{fontSize:11,color:c.so}}>{label}</span></div>)}
+            </div>
+          </div>
+        </div>}
+        {bookSection==='research'&&<div style={{maxWidth:760,padding:mob?18:24,borderRadius:18,border:'1px solid '+c.ln,background:c.cd}}>
+          <div style={{display:'grid',gridTemplateColumns:mob?'repeat(2,1fr)':'repeat(4,1fr)',gap:7,marginBottom:16}}>
+            {[['keyword','Keywords'],['product','Book concept'],['competitor','Positioning'],['category','Categories']].map(([key,label])=><button key={key} onClick={()=>setToolMode(key)} style={{padding:'9px 8px',borderRadius:9,border:'1px solid '+(toolMode===key?c.ac:c.ln),background:toolMode===key?'linear-gradient(135deg,rgba(244,162,97,.14),rgba(231,111,139,.14))':c.sf,color:toolMode===key?c.ac:c.so,fontSize:11,fontWeight:800,cursor:'pointer'}}>{label}</button>)}
+          </div>
+          <label style={{display:'block',fontSize:12,fontWeight:800,color:c.tx,marginBottom:7}}>Topic, audience, or book idea</label>
+          <textarea value={toolBrief} onChange={e=>setToolBrief(e.target.value)} rows={6} placeholder="Describe the idea you want researched…" style={{...inputStyle,resize:'vertical',marginBottom:13}}/>
+          <button onClick={()=>runBookTool('research')} disabled={!toolBrief.trim()||toolStatus==='working'} style={{width:'100%',padding:12,border:0,borderRadius:10,background:toolBrief.trim()?'linear-gradient(135deg,#F4A261,#E76F8B)':c.sf,color:toolBrief.trim()?'#fff':c.fa,fontWeight:850,cursor:'pointer'}}>{toolStatus==='working'?'Researching…':'Run research'}</button>
+        </div>}
+        {bookSection==='agent'&&<div style={{maxWidth:760,padding:mob?18:24,borderRadius:18,border:'1px solid '+c.ln,background:c.cd}}>
+          <label style={{display:'block',fontSize:12,fontWeight:800,color:c.tx,marginBottom:7}}>Book project <span style={{color:c.fa,fontWeight:600}}>(optional)</span></label>
+          <select value={toolProjectId} onChange={e=>setToolProjectId(e.target.value)} style={{...selectStyle,marginBottom:14}}><option value="">Start a new planning session</option>{projects.map(project=><option key={project.id} value={project.id}>{String(project.title||'Untitled').replace(/^📚\s*/,'')}</option>)}</select>
+          <label style={{display:'block',fontSize:12,fontWeight:800,color:c.tx,marginBottom:7}}>What should your Book Agent do?</label>
+          <textarea value={toolBrief} onChange={e=>setToolBrief(e.target.value)} rows={7} placeholder="Plan the book, improve the outline, rewrite a chapter, strengthen the voice…" style={{...inputStyle,resize:'vertical',marginBottom:13}}/>
+          <button onClick={()=>runBookTool('agent')} disabled={!toolBrief.trim()||toolStatus==='working'} style={{width:'100%',padding:12,border:0,borderRadius:10,background:toolBrief.trim()?'linear-gradient(135deg,#F4A261,#E76F8B)':c.sf,color:toolBrief.trim()?'#fff':c.fa,fontWeight:850,cursor:'pointer'}}>{toolStatus==='working'?`${aFN} is working…`:`Send to ${aFN}`}</button>
+        </div>}
+        {['audio','pod','cover'].includes(bookSection)&&<div style={{maxWidth:760,padding:mob?18:24,borderRadius:18,border:'1px solid '+c.ln,background:c.cd}}>
+          <label style={{display:'block',fontSize:12,fontWeight:800,color:c.tx,marginBottom:7}}>Source book project</label>
+          <select value={toolProjectId} onChange={e=>setToolProjectId(e.target.value)} style={{...selectStyle,marginBottom:14}}><option value="">Select a completed book…</option>{projects.map(project=><option key={project.id} value={project.id}>{String(project.title||'Untitled').replace(/^📚\s*/,'')}</option>)}</select>
+          {bookSection==='audio'&&<><label style={{display:'block',fontSize:12,fontWeight:800,color:c.tx,marginBottom:7}}>Narration direction</label><select value={audioVoice} onChange={e=>setAudioVoice(e.target.value)} style={{...selectStyle,marginBottom:14}}><option>Warm, natural, conversational</option><option>Confident and authoritative</option><option>Inspirational and uplifting</option><option>Calm and reflective</option></select></>}
+          {bookSection==='pod'&&<><label style={{display:'block',fontSize:12,fontWeight:800,color:c.tx,marginBottom:7}}>Trim size</label><select value={trimSize} onChange={e=>setTrimSize(e.target.value)} style={{...selectStyle,marginBottom:14}}><option>6 × 9 inches</option><option>5.5 × 8.5 inches</option><option>8.5 × 11 inches</option></select></>}
+          <label style={{display:'block',fontSize:12,fontWeight:800,color:c.tx,marginBottom:7}}>Additional direction <span style={{color:c.fa,fontWeight:600}}>(optional)</span></label>
+          <textarea value={toolBrief} onChange={e=>setToolBrief(e.target.value)} rows={4} placeholder={bookSection==='cover'?'Describe the visual direction, mood, or imagery…':'Add any production notes…'} style={{...inputStyle,resize:'vertical',marginBottom:13}}/>
+          <button onClick={()=>runBookTool(bookSection)} disabled={!toolProjectId||toolStatus==='working'} style={{width:'100%',padding:12,border:0,borderRadius:10,background:toolProjectId?'linear-gradient(135deg,#F4A261,#E76F8B)':c.sf,color:toolProjectId?'#fff':c.fa,fontWeight:850,cursor:toolProjectId?'pointer':'not-allowed'}}>{toolStatus==='working'?'Creating and verifying…':bookSection==='audio'?'Create audiobook package':bookSection==='pod'?'Create print package':'Generate cover'}</button>
+        </div>}
+        {['audiobooks','podbooks'].includes(bookSection)&&<div style={{display:'grid',gap:10,maxWidth:820}}>{projects.length?projects.map(project=><button key={project.id} onClick={()=>loadProject(project)} style={{padding:'15px 17px',borderRadius:13,border:'1px solid '+c.ln,background:c.cd,color:c.tx,textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'space-between',gap:12}}><span><strong style={{display:'block',fontSize:13}}>{String(project.title||'Untitled').replace(/^📚\s*/,'')}</strong><span style={{fontSize:10,color:c.so}}>Open project files and deliverables</span></span><span style={{color:c.ac,fontWeight:850}}>Open →</span></button>):<div style={{padding:30,border:'1px dashed '+c.ln,borderRadius:14,color:c.so,textAlign:'center'}}>No book projects are available yet.</div>}</div>}
+        {bookSection==='publish'&&<div style={{display:'grid',gridTemplateColumns:mob?'1fr':'repeat(2,minmax(0,1fr))',gap:11}}>
+          {[['Amazon KDP','Kindle ebooks and paperback publishing','https://kdp.amazon.com/'],['Audible / ACX','Audiobook production and distribution','https://www.acx.com/'],['Barnes & Noble Press','Ebook and print publishing','https://press.barnesandnoble.com/'],['IngramSpark','Wide print distribution','https://www.ingramspark.com/'],['Draft2Digital','Wide ebook distribution','https://www.draft2digital.com/'],['PublishDrive','Multi-store publishing','https://publishdrive.com/']].map(([name,description,url])=><a key={name} href={url} target="_blank" rel="noreferrer" style={{padding:18,borderRadius:14,border:'1px solid '+c.ln,background:c.cd,color:c.tx,textDecoration:'none'}}><div style={{fontSize:14,fontWeight:820,marginBottom:6}}>{name}</div><div style={{fontSize:11,color:c.so}}>{description}</div><div style={{fontSize:11,fontWeight:850,color:c.ac,marginTop:12}}>Open publisher ↗</div></a>)}
+        </div>}
+        {toolMessage&&<div style={{maxWidth:760,marginTop:14,padding:'11px 13px',borderRadius:10,border:'1px solid '+(toolStatus==='failed'?'rgba(239,68,68,.35)':'rgba(34,197,94,.3)'),background:toolStatus==='failed'?'rgba(239,68,68,.08)':'rgba(34,197,94,.08)',color:toolStatus==='failed'?'#ef6464':c.gr,fontSize:12}}>{toolMessage}</div>}
+      </div>
+    </div>);
+  }
+  return bookShell(<div data-testid="book-workspace" style={{height:'100%',overflowY:'auto',padding:mob?'62px 14px 90px':'30px 36px 70px'}}>
+    <div style={{maxWidth:980,margin:'0 auto'}}>
+      <div style={{textAlign:'left',marginBottom:20}}>
+        <div style={{display:'inline-flex',alignItems:'center',gap:7,padding:'6px 12px',borderRadius:18,background:c.ac+'14',border:'1px solid '+c.ac+'35',color:c.ac,fontSize:11,fontWeight:750}}>✦ Bloomie Book Creator</div>
+        <h1 style={{fontSize:mob?26:36,lineHeight:1.15,color:c.tx,margin:'14px 0 8px'}}>{view==='project'&&active?String(active.title||'').replace(/^📚\s*/,''):'Create a complete book'}</h1>
+        <p style={{fontSize:13,color:c.so,maxWidth:650,margin:0,lineHeight:1.6}}>{view==='project'?'Watch the manuscript, cover, and publishing files come together in real time.':'Make a few simple choices—or let Bloomie decide—and watch the work come alive.'}</p>
+      </div>
+      {view==='project'&&<div data-testid="book-workflow-steps" style={{maxWidth:940,margin:'0 0 22px',display:'grid',gridTemplateColumns:mob?'repeat(5,minmax(112px,1fr))':'repeat(5,1fr)',gap:7,overflowX:mob?'auto':'visible',paddingBottom:mob?5:0}}>
+        {[
+          ['setup','1','Setup'],
+          ['outline','2','Outline'],
+          ['chapters','3','Chapters'],
+          ['preview','4','Preview & Edit'],
+          ['publish','5','Cover & Export'],
+        ].map(([key,number,label])=><button key={key} onClick={()=>{setStage(key);if(active)setView('project');else setView('new');}} style={{minWidth:0,padding:'10px 8px',borderRadius:11,border:'1px solid '+(stage===key?c.ac:c.ln),background:stage===key?c.ac+'14':c.cd,color:stage===key?c.ac:c.so,cursor:'pointer',textAlign:'left'}}>
+          <div style={{fontSize:9,fontWeight:850,opacity:.8}}>STEP {number}</div>
+          <div style={{fontSize:11,fontWeight:800,marginTop:3,whiteSpace:'nowrap'}}>{label}</div>
+        </button>)}
+      </div>}
+
+      {view==='new'&&stage==='setup'&&<div data-testid="guided-book-launch" style={{maxWidth:1050,margin:'0 auto'}}>
+        <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'minmax(0,1.15fr) minmax(300px,.85fr)',gap:16,alignItems:'stretch'}}>
+          <div style={{padding:mob?20:30,borderRadius:22,background:c.cd,border:'1px solid '+c.ln,boxShadow:'0 18px 55px rgba(0,0,0,.1)'}}>
+            <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:18}}>{[1,2,3,4].map(number=><span key={number} style={{height:5,flex:1,borderRadius:5,background:number<=setupStep?'linear-gradient(90deg,#F4A261,#E76F8B)':c.sf}}/>)}</div>
+            {setupStep===1&&<>
+              <div style={{fontSize:10,fontWeight:900,color:c.ac,letterSpacing:'.1em',marginBottom:8}}>START YOUR BOOK</div>
+              <h2 style={{fontSize:mob?23:29,lineHeight:1.15,color:c.tx,margin:'0 0 8px'}}>How much do you want to decide?</h2>
+              <p style={{fontSize:12,color:c.so,lineHeight:1.6,margin:'0 0 18px'}}>Choose how much help you want, then review the topic, title, description, and optional chapter plan before anything is generated.</p>
+              <div style={{display:'grid',gap:10}}>
+                {[
+                  ['surprise','✦','Surprise me','Bloomie chooses the concept, title, reader promise, and structure.'],
+                  ['topic','⌕','I have a topic','Give one keyword or simple idea. Bloomie handles the rest.'],
+                  ['description','▤','I know what I want','Share a description when you already have a clear direction.'],
+                  ['upload','⇧','Upload your own book','Import a manuscript you own or have permission to edit, then revise it page by page.'],
+                ].map(([key,icon,label,description])=><button key={key} data-testid={`book-create-option-${key}`} aria-pressed={startMode===key} onClick={()=>{setStartMode(key);setMode(key==='description'?'description':'keyword');setSetupMessage('');}} style={{padding:'15px 16px',borderRadius:14,border:'1px solid '+(startMode===key?c.ac:c.ln),background:startMode===key?'linear-gradient(135deg,rgba(244,162,97,.13),rgba(231,111,139,.13))':c.sf,color:c.tx,textAlign:'left',cursor:'pointer',display:'flex',gap:13,alignItems:'center'}}>
+                  <span style={{width:39,height:39,borderRadius:12,display:'grid',placeItems:'center',background:startMode===key?'linear-gradient(135deg,#F4A261,#E76F8B)':c.cd,color:startMode===key?'#fff':c.ac,fontSize:16,flexShrink:0}}>{icon}</span>
+                  <span><strong style={{display:'block',fontSize:13,marginBottom:4}}>{label}</strong><span style={{display:'block',fontSize:10,lineHeight:1.45,color:c.so}}>{description}</span></span>
+                </button>)}
+              </div>
+              {startMode==='upload'?<div data-testid="owned-book-upload" style={{marginTop:14,padding:15,borderRadius:14,background:c.sf,border:'1px solid '+c.ln}}>
+                <label style={{display:'block',fontSize:10,fontWeight:800,color:c.so}}>Book title<input value={bookUpload.title} onChange={e=>setBookUpload({...bookUpload,title:e.target.value})} placeholder="Optional — the filename can be used" style={{...inputStyle,marginTop:6,marginBottom:10}}/></label>
+                <label style={{display:'block',padding:'14px',borderRadius:11,border:'1px dashed '+(bookUpload.manuscript?c.ac:c.ln),background:c.cd,color:c.so,fontSize:10,fontWeight:800,cursor:'pointer',textAlign:'center'}}>Upload manuscript<input type="file" accept=".pdf,.docx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown" onChange={e=>setBookUpload({...bookUpload,manuscript:e.target.files?.[0]||null})} style={{display:'none'}}/><span style={{display:'block',marginTop:6,color:bookUpload.manuscript?c.ac:c.fa,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{bookUpload.manuscript?.name||'PDF, DOCX, TXT, or Markdown'}</span></label>
+                <label style={{display:'block',marginTop:9,padding:'12px',borderRadius:11,border:'1px dashed '+(bookUpload.cover?c.ac:c.ln),background:c.cd,color:c.so,fontSize:10,fontWeight:800,cursor:'pointer',textAlign:'center'}}>Optional existing cover<input type="file" accept="image/*" onChange={e=>setBookUpload({...bookUpload,cover:e.target.files?.[0]||null})} style={{display:'none'}}/><span style={{display:'block',marginTop:5,color:bookUpload.cover?c.ac:c.fa,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{bookUpload.cover?.name||'JPG, PNG, or WEBP'}</span></label>
+                <label style={{display:'flex',alignItems:'flex-start',gap:9,marginTop:12,padding:12,borderRadius:11,background:c.cd,border:'1px solid '+(bookUpload.rightsConfirmed?c.ac:c.ln),cursor:'pointer'}}><input type="checkbox" checked={bookUpload.rightsConfirmed} onChange={e=>setBookUpload({...bookUpload,rightsConfirmed:e.target.checked})} style={{marginTop:2,accentColor:c.ac}}/><span style={{fontSize:10,lineHeight:1.5,color:c.so}}>I confirm that I own this book or have permission from the copyright holder to upload and edit it.</span></label>
+                <button onClick={()=>importOwnedBook()} disabled={!bookUpload.manuscript||!bookUpload.rightsConfirmed||bookUploadStatus==='working'} style={{width:'100%',marginTop:11,padding:12,border:0,borderRadius:10,background:bookUpload.manuscript&&bookUpload.rightsConfirmed?'linear-gradient(135deg,#F4A261,#E76F8B)':c.cd,color:bookUpload.manuscript&&bookUpload.rightsConfirmed?'#fff':c.fa,fontWeight:850,cursor:bookUpload.manuscript&&bookUpload.rightsConfirmed?'pointer':'not-allowed'}}>{bookUploadStatus==='working'?'Importing and preparing pages…':'Import as editable book'}</button>
+                {bookUploadMessage&&<div role="status" style={{marginTop:9,fontSize:10,lineHeight:1.5,color:bookUploadStatus==='failed'?'#ef4444':c.gr}}>{bookUploadMessage}</div>}
+              </div>:<>
+              <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'1fr 1fr',gap:9,marginTop:14}}>
+                <label style={{fontSize:10,fontWeight:800,color:c.so}}>Topic or keyword<input value={topic} onChange={e=>{setTopic(e.target.value);setSetupMessage('');}} placeholder={startMode==='surprise'?'Optional — Bloomie can choose':'e.g., confidence after a career change'} style={{...inputStyle,marginTop:6}}/></label>
+                <label style={{fontSize:10,fontWeight:800,color:c.so}}>Working title<input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Optional — Bloomie can create it" style={{...inputStyle,marginTop:6}}/></label>
+              </div>
+              <label style={{display:'block',fontSize:10,fontWeight:800,color:c.so,marginTop:10}}>Book description<textarea value={bookDescription} onChange={e=>{setBookDescription(e.target.value);setSetupMessage('');}} rows={3} placeholder={startMode==='surprise'?'Optional — add anything Bloomie should include':'Describe the transformation, message, stories, or framework…'} style={{...inputStyle,resize:'vertical',marginTop:6}}/></label>
+              <div style={{marginTop:12,padding:13,borderRadius:13,background:c.sf,border:'1px solid '+c.ln}}>
+                <div style={{fontSize:10,fontWeight:850,color:c.tx,marginBottom:8}}>How should the chapters be planned?</div>
+                <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'1fr 1fr',gap:8}}>
+                  <button type="button" onClick={()=>setChapterPlanMode('auto')} style={{padding:'10px 11px',borderRadius:10,border:'1px solid '+(chapterPlanMode==='auto'?c.ac:c.ln),background:chapterPlanMode==='auto'?c.ac+'15':c.cd,color:chapterPlanMode==='auto'?c.ac:c.so,fontSize:10,fontWeight:800,cursor:'pointer'}}>Let Bloomie create the outline</button>
+                  <button type="button" onClick={()=>setChapterPlanMode('custom')} style={{padding:'10px 11px',borderRadius:10,border:'1px solid '+(chapterPlanMode==='custom'?c.ac:c.ln),background:chapterPlanMode==='custom'?c.ac+'15':c.cd,color:chapterPlanMode==='custom'?c.ac:c.so,fontSize:10,fontWeight:800,cursor:'pointer'}}>I have chapter ideas</button>
+                </div>
+                {chapterPlanMode==='custom'&&<label style={{display:'block',fontSize:10,fontWeight:800,color:c.so,marginTop:10}}>Chapter outline or directions<textarea value={chapterPlan} onChange={e=>setChapterPlan(e.target.value)} rows={5} placeholder={"Paste a full outline, or describe what each chapter should cover.\nExample:\n1. Why starting over feels difficult\n2. Rebuilding confidence through small wins\n3. Creating a practical 90-day plan"} style={{...inputStyle,resize:'vertical',marginTop:6}}/></label>}
+              </div>
+              </>}
+              {setupMessage&&<div role="alert" style={{marginTop:10,padding:'9px 11px',borderRadius:9,background:'rgba(244,162,97,.1)',border:'1px solid rgba(244,162,97,.28)',color:c.ac,fontSize:10,fontWeight:750}}>{setupMessage}</div>}
+            </>}
+            {setupStep===2&&<>
+              <div style={{fontSize:10,fontWeight:900,color:c.ac,letterSpacing:'.1em',marginBottom:8}}>CHOOSE THE FEEL</div>
+              <h2 style={{fontSize:mob?23:29,lineHeight:1.15,color:c.tx,margin:'0 0 8px'}}>Pick what feels closest.</h2>
+              <p style={{fontSize:12,color:c.so,lineHeight:1.6,margin:'0 0 18px'}}>No publishing knowledge needed. Bloomie turns these choices into the complete creative brief.</p>
+              <div style={{fontSize:11,fontWeight:850,color:c.tx,marginBottom:8}}>Book style</div>
+              <div style={{display:'flex',gap:7,flexWrap:'wrap',marginBottom:18}}>{['Business / self-help','Memoir / personal story','Faith-based / devotional','Educational','Fiction / creative'].map(option=><button key={option} onClick={()=>setBookType(option)} style={{padding:'9px 11px',borderRadius:18,border:'1px solid '+(bookType===option?c.ac:c.ln),background:bookType===option?c.ac+'15':c.sf,color:bookType===option?c.ac:c.so,fontSize:10,fontWeight:750,cursor:'pointer'}}>{option.replace(' / ',' + ')}</button>)}</div>
+              <div style={{fontSize:11,fontWeight:850,color:c.tx,marginBottom:8}}>Who should love it?</div>
+              <div style={{display:'flex',gap:7,flexWrap:'wrap',marginBottom:18}}>{['General audience','Business owners','Parents and families','Faith community','Students and learners'].map(option=><button key={option} onClick={()=>setReader(option)} style={{padding:'9px 11px',borderRadius:18,border:'1px solid '+(reader===option?c.ac:c.ln),background:reader===option?c.ac+'15':c.sf,color:reader===option?c.ac:c.so,fontSize:10,fontWeight:750,cursor:'pointer'}}>{option}</button>)}</div>
+              <div style={{fontSize:11,fontWeight:850,color:c.tx,marginBottom:8}}>How should it sound?</div>
+              <div style={{display:'grid',gridTemplateColumns:mob?'1fr 1fr':'repeat(2,1fr)',gap:8}}>{['Conversational and encouraging','Authoritative and practical','Inspirational and uplifting','Raw and personal'].map(option=><button key={option} onClick={()=>setVoice(option)} style={{padding:'11px',borderRadius:11,border:'1px solid '+(voice===option?c.ac:c.ln),background:voice===option?c.ac+'15':c.sf,color:voice===option?c.ac:c.so,fontSize:10,fontWeight:750,cursor:'pointer'}}>{option}</button>)}</div>
+            </>}
+            {setupStep===3&&<>
+              <div style={{fontSize:10,fontWeight:900,color:c.ac,letterSpacing:'.1em',marginBottom:8}}>CHOOSE THE AUTHOR</div>
+              <h2 style={{fontSize:mob?23:29,lineHeight:1.15,color:c.tx,margin:'0 0 8px'}}>Who is this book from?</h2>
+              <p style={{fontSize:12,color:c.so,lineHeight:1.6,margin:'0 0 18px'}}>Use a saved author, your Bloomie, or add the author name and photo now. The photo becomes the source for the author profile and cover direction.</p>
+              <label style={{display:'block',fontSize:10,fontWeight:800,color:c.so,marginBottom:6}}>Saved author</label>
+              <select value={selectedAuthorId} onChange={e=>setSelectedAuthorId(e.target.value)} style={{...selectStyle,marginBottom:13}}><option value="">Use my Bloomie or add a new author below</option>{authors.map(author=><option key={author.id} value={author.id}>{author.name}</option>)}</select>
+              {!selectedAuthorId&&<div style={{padding:14,borderRadius:13,background:c.sf,border:'1px solid '+c.ln}}>
+                <label style={{display:'block',fontSize:10,fontWeight:800,color:c.so}}>Author name<input value={authorForm.name} onChange={e=>setAuthorForm({...authorForm,name:e.target.value})} placeholder={`Leave blank to use ${aFN}`} style={{...inputStyle,marginTop:6,marginBottom:10}}/></label>
+                <label style={{display:'block',padding:'14px',borderRadius:11,border:'1px dashed '+(authorForm.headshot?c.ac:c.ln),background:c.cd,color:c.so,fontSize:10,fontWeight:800,cursor:'pointer',textAlign:'center'}}>Upload author picture<input type="file" accept="image/*" onChange={e=>setAuthorForm({...authorForm,headshot:e.target.files?.[0]||null})} style={{display:'none'}}/><span style={{display:'block',marginTop:6,color:authorForm.headshot?c.ac:c.fa,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{authorForm.headshot?.name||'JPG, PNG, or WEBP — optional when using your Bloomie'}</span></label>
+              </div>}
+            </>}
+            {setupStep===4&&<>
+              <div style={{fontSize:10,fontWeight:900,color:c.ac,letterSpacing:'.1em',marginBottom:8}}>READY TO BUILD</div>
+              <h2 style={{fontSize:mob?23:29,lineHeight:1.15,color:c.tx,margin:'0 0 8px'}}>Bloomie has enough to begin.</h2>
+              <p style={{fontSize:12,color:c.so,lineHeight:1.6,margin:'0 0 18px'}}>Review the simple choices below. The title, outline, chapters, cover, and files will be built and shown live.</p>
+              <div style={{padding:16,borderRadius:14,background:c.sf,border:'1px solid '+c.ln,display:'grid',gap:11,marginBottom:14}}>
+                {[['Topic',topic||'Bloomie will choose'],['Title',title||'Bloomie will create it'],['Description',bookDescription||'Bloomie will develop the reader transformation'],['Chapter plan',chapterPlanMode==='custom'&&chapterPlan.trim()?chapterPlan:'Bloomie will create the outline'],['Style',bookType],['Reader',reader],['Voice',voice],['Author',authors.find(author=>author.id===selectedAuthorId)?.name||authorForm.name||`Your ${aFN}`]].map(([label,value])=><div key={label} style={{display:'flex',justifyContent:'space-between',gap:14,fontSize:11}}><span style={{color:c.so}}>{label}</span><strong style={{color:c.tx,textAlign:'right',maxWidth:'68%',whiteSpace:'pre-wrap'}}>{value}</strong></div>)}
+              </div>
+              {authorForm.headshot&&<div style={{display:'flex',alignItems:'center',gap:9,padding:'9px 11px',borderRadius:10,background:c.sf,border:'1px solid '+c.ln,fontSize:10,color:c.so}}><span style={{width:30,height:30,borderRadius:9,background:c.ac+'20',display:'grid',placeItems:'center',color:c.ac,fontWeight:900}}>✓</span><span>Author picture ready: <strong style={{color:c.tx}}>{authorForm.headshot.name}</strong></span></div>}
+            </>}
+            <div style={{display:'flex',gap:9,marginTop:22}}>
+              {setupStep>1&&<button onClick={()=>setSetupStep(step=>step-1)} style={{padding:'12px 16px',borderRadius:11,border:'1px solid '+c.ln,background:c.sf,color:c.tx,fontSize:12,fontWeight:800,cursor:'pointer'}}>Back</button>}
+              {setupStep<4&&startMode!=='upload'?<button onClick={()=>{if(setupStep===1&&startMode!=='surprise'&&!topic.trim()&&!bookDescription.trim()){setSetupMessage('Add a topic or book description, or choose Surprise me.');return;}setSetupMessage('');setSetupStep(step=>step+1);}} style={{flex:1,padding:'12px 16px',border:0,borderRadius:11,background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',fontSize:12,fontWeight:850,cursor:'pointer'}}>Continue →</button>:setupStep===4?<button onClick={startBook} disabled={authorStatus==='saving'} style={{flex:1,padding:'13px 16px',border:0,borderRadius:11,background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',fontSize:13,fontWeight:900,cursor:'pointer',boxShadow:'0 9px 24px rgba(231,111,139,.24)'}}>{authorStatus==='saving'?'Saving author…':'Build my book ✦'}</button>:null}
+            </div>
+          </div>
+          <div style={{minHeight:mob?380:560,padding:mob?20:26,borderRadius:22,border:'1px solid rgba(231,111,139,.25)',background:'radial-gradient(circle at 50% 30%,rgba(231,111,139,.18),transparent 42%),'+c.sf,display:'flex',flexDirection:'column',justifyContent:'center',alignItems:'center',textAlign:'center',overflow:'hidden',position:'relative'}}>
+            <div style={{fontSize:9,fontWeight:900,letterSpacing:'.12em',color:c.ac,marginBottom:18}}>LIVE BOOK STAGE</div>
+            <div style={{position:'relative',width:mob?210:250,height:mob?265:320,marginBottom:22,borderRadius:18,overflow:'hidden',boxShadow:'0 25px 55px rgba(0,0,0,.3)'}}>
+              <img src="/assets/book-studio-stage-bestseller.png" alt="A bestseller-style hardcover book featuring a confident woman" style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
+              <div style={{position:'absolute',left:18,right:18,bottom:17,padding:'11px 12px',borderRadius:11,background:'rgba(17,18,24,.82)',backdropFilter:'blur(10px)',border:'1px solid rgba(255,255,255,.14)',color:'#fff'}}>
+                <div style={{fontSize:8,fontWeight:850,letterSpacing:'.13em',opacity:.72}}>YOUR BOOK IN PRODUCTION</div>
+                <div style={{fontFamily:"Georgia,'Times New Roman',serif",fontSize:16,lineHeight:1.2,fontWeight:700,marginTop:5}}>{title||'Your Next Book'}</div>
+                <div style={{fontSize:8,opacity:.7,marginTop:4}}>{authors.find(author=>author.id===selectedAuthorId)?.name||aFN}</div>
+              </div>
+            </div>
+            <strong style={{fontSize:14,color:c.tx}}>This becomes your live production room</strong>
+            <span style={{fontSize:11,lineHeight:1.55,color:c.so,maxWidth:300,marginTop:7}}>Pages, chapters, word count, cover art, and finished downloads appear here as Bloomie creates them.</span>
+          </div>
+        </div>
+      </div>}
+      {view==='new'&&stage!=='setup'&&<div style={{maxWidth:760,margin:'0 auto',padding:mob?'34px 20px':'54px 36px',borderRadius:18,background:c.cd,border:'1px solid '+c.ln,textAlign:'center'}}>
+        <div style={{width:54,height:54,borderRadius:16,display:'grid',placeItems:'center',margin:'0 auto 14px',background:c.ac+'12',color:c.ac,fontSize:24}}>{stage==='outline'?'☷':stage==='chapters'?'§':stage==='preview'?'▤':'↧'}</div>
+        <h2 style={{fontSize:20,color:c.tx,marginBottom:8}}>{stage==='outline'?'Your outline will appear here':stage==='chapters'?'Your chapter workspace will appear here':stage==='preview'?'Your formatted book preview and editor will appear here':'Your cover and export files will appear here'}</h2>
+        <p style={{fontSize:12,color:c.so,lineHeight:1.65,maxWidth:520,margin:'0 auto 18px'}}>{stage==='preview'?`After chapters are created, read the book page by page and leave revision instructions for ${aFN} directly beneath the selected chapter.`:'Start a new book or open one of your saved book projects to continue this stage.'}</p>
+        <div style={{display:'flex',justifyContent:'center',gap:9,flexWrap:'wrap'}}><button onClick={()=>setStage('setup')} style={{padding:'10px 15px',borderRadius:9,border:0,background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',fontSize:12,fontWeight:800,cursor:'pointer'}}>Start a new book</button><button onClick={()=>{setView('saved');loadProjects();}} style={{padding:'10px 15px',borderRadius:9,border:'1px solid '+c.ln,background:c.sf,color:c.tx,fontSize:12,fontWeight:750,cursor:'pointer'}}>Open saved projects</button></div>
+      </div>}
+
+      {view==='saved'&&<div style={{maxWidth:840,margin:'0 auto'}}>
+        <div style={{display:'flex',gap:7,overflowX:'auto',paddingBottom:4,marginBottom:14}}>
+          {[['all','All'],['in_progress','Pending'],['needs_attention','Needs review'],['complete','Completed']].map(([key,label])=>{
+            const count=key==='all'?projects.length:projects.filter(project=>project.bookState===key).length;
+            return <button key={key} type="button" onClick={()=>setProjectFilter(key)} style={{padding:'9px 12px',borderRadius:18,border:'1px solid '+(projectFilter===key?c.ac:c.ln),background:projectFilter===key?c.ac+'18':c.cd,color:projectFilter===key?c.ac:c.so,fontSize:10,fontWeight:850,cursor:'pointer',whiteSpace:'nowrap'}}>{label} <span style={{opacity:.72}}>({count})</span></button>;
+          })}
+        </div>
+        {projects.length===0?<div style={{padding:50,textAlign:'center',borderRadius:18,border:'1px solid '+c.ln,background:c.cd,color:c.so}}>No saved book projects yet.</div>:filteredProjects.length===0?<div style={{padding:42,textAlign:'center',borderRadius:18,border:'1px dashed '+c.ln,background:c.cd,color:c.so}}>No projects are currently in this status.</div>:<div style={{display:'grid',gridTemplateColumns:mob?'1fr':'repeat(2,minmax(0,1fr))',gap:14}}>{filteredProjects.map(project=><button key={project.id} onClick={()=>loadProject(project)} style={{padding:16,textAlign:'left',borderRadius:15,border:'1px solid '+c.ln,background:c.cd,color:c.tx,cursor:'pointer'}}><div style={{display:'flex',gap:13,alignItems:'center'}}><img src={project.coverUrl||'/assets/book-studio-stage-bestseller.png'} alt="" style={{width:62,height:84,borderRadius:8,objectFit:'cover',boxShadow:'0 8px 20px rgba(0,0,0,.24)',flexShrink:0}}/><div style={{minWidth:0,flex:1}}><div style={{fontSize:14,fontWeight:750,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{String(project.title||'').replace(/^📚\s*/,'')}</div><div style={{fontSize:10,fontWeight:800,color:project.bookState==='complete'?c.gr:project.bookState==='needs_attention'?'#ef6464':c.ac,marginTop:7}}>{bookProjectStateLabel(project.bookState)}</div><div style={{fontSize:10,color:c.so,marginTop:5}}>{new Date(project.updated_at||project.created_at).toLocaleDateString()}</div></div><span style={{color:c.ac,fontWeight:850}}>Open →</span></div></button>)}</div>}
+      </div>}
+
+      {view==='preview'&&<div data-testid="book-preview-empty-state" style={{width:'100%',maxWidth:1180,margin:'0 auto'}}>
+        <div style={{border:'1px solid '+c.ln,borderRadius:18,overflow:'hidden',background:c.sf}}>
+          <div style={{padding:'12px 15px',borderBottom:'1px solid '+c.ln,display:'flex',alignItems:'center',justifyContent:'space-between',gap:10}}><div><div style={{fontSize:10,fontWeight:850,color:c.ac,textTransform:'uppercase',letterSpacing:'.08em'}}>Book reader and editor</div><div style={{fontSize:14,fontWeight:750,color:c.tx,marginTop:3}}>Your book preview will appear here</div></div><div style={{display:'flex',gap:6}}><button disabled style={{padding:'7px 9px',borderRadius:8,border:'1px solid '+c.ln,background:c.cd,color:c.fa}}>← Previous</button><button disabled style={{padding:'7px 9px',borderRadius:8,border:'1px solid '+c.ln,background:c.cd,color:c.fa}}>Next →</button></div></div>
+          <div style={{width:'100%',maxWidth:1000,minHeight:mob?390:560,margin:'0 auto',padding:mob?'35px 24px':'58px clamp(60px,8vw,110px)',background:c.cd,color:c.tx,fontFamily:"Georgia,'Times New Roman',serif",boxSizing:'border-box',boxShadow:mob?'none':'0 8px 28px rgba(0,0,0,.09)'}}>
+            <div style={{textAlign:'center',paddingTop:mob?70:115}}><div style={{fontSize:28,marginBottom:12,color:c.ac}}>▤</div><h2 style={{fontSize:20,margin:'0 0 9px'}}>No chapter selected yet</h2><p style={{fontFamily:'inherit',fontSize:14,lineHeight:1.7,color:c.so,maxWidth:470,margin:'0 auto'}}>Create a book or open a saved project. Each chapter will appear here in a page-style reader with Previous and Next controls.</p></div>
+          </div>
+          <div style={{padding:15,borderTop:'1px solid '+c.ln}}><label style={{display:'block',fontSize:11,fontWeight:800,color:c.tx,marginBottom:7}}>Ask your Bloomie to revise the selected chapter</label><textarea disabled rows={3} placeholder="Revision instructions activate when a chapter is available." style={{...inputStyle,resize:'none',opacity:.65}}/><button onClick={()=>{setView('new');setStage('setup');}} style={{marginTop:9,width:'100%',padding:11,border:0,borderRadius:10,background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',fontSize:12,fontWeight:800,cursor:'pointer'}}>Create a book to begin</button></div>
+        </div>
+      </div>}
+
+      {view==='booster'&&<div data-testid="book-booster-library" style={{maxWidth:980,margin:'0 auto'}}>
+        <div style={{padding:mob?20:28,borderRadius:18,background:c.cd,border:'1px solid '+c.ln}}>
+          <div style={{display:'flex',alignItems:'center',gap:13,marginBottom:22}}><div style={{width:48,height:48,borderRadius:14,display:'grid',placeItems:'center',background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff'}}><BookSuiteIcon name="resources" size={24}/></div><div><h2 style={{fontSize:20,color:c.tx,margin:0}}>Your Library</h2><p style={{fontSize:12,color:c.so,margin:'4px 0 0'}}>Read, edit with your Bloomie, or download your finished books and included bonuses.</p></div></div>
+          <div style={{fontSize:10,fontWeight:900,color:c.ac,textTransform:'uppercase',letterSpacing:'.09em',marginBottom:9}}>Finished books</div>
+          <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'repeat(3,minmax(0,1fr))',gap:12,marginBottom:24}}>{FINISHED_BOOK_LIBRARY.map(resource=><div key={resource.id} data-testid={`library-card-${resource.id}`} style={{borderRadius:14,border:'1px solid '+c.ln,background:c.sf,overflow:'hidden'}}><img src={resource.coverUrl} alt={`${resource.title} cover`} style={{width:'100%',aspectRatio:'2 / 3',objectFit:'cover',display:'block'}}/><div style={{padding:13}}><div style={{fontSize:9,fontWeight:900,color:c.gr,textTransform:'uppercase'}}>Finished book</div><div style={{fontSize:13,fontWeight:800,color:c.tx,lineHeight:1.35,margin:'5px 0 11px'}}>{resource.title}</div><button onClick={()=>setLibraryReader(resource)} style={{width:'100%',padding:9,border:0,borderRadius:8,background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',fontWeight:850,cursor:'pointer'}}>Read full book</button><div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginTop:6}}><button onClick={()=>editLibraryBook(resource)} style={{padding:8,borderRadius:8,border:'1px solid '+c.ln,background:c.cd,color:c.tx,fontSize:10,fontWeight:800,cursor:'pointer'}}>Edit</button><a href={resource.url} download style={{padding:8,borderRadius:8,border:'1px solid '+c.ln,background:c.cd,color:c.tx,fontSize:10,fontWeight:800,textDecoration:'none',textAlign:'center'}}>Download</a></div></div></div>)}</div>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,marginBottom:10}}><div><div style={{fontSize:10,fontWeight:900,color:c.ac,textTransform:'uppercase',letterSpacing:'.09em'}}>Quick-Launch bonuses</div><div style={{fontSize:11,color:c.so,marginTop:3}}>Your upsell resources remain included in this Library.</div></div>{boosterStatus==='active'&&<span style={{padding:'5px 8px',borderRadius:12,background:c.gr+'16',color:c.gr,fontSize:9,fontWeight:900}}>UPSELL INCLUDED</span>}</div>
+          {boosterStatus==='loading'&&<div style={{padding:34,textAlign:'center',color:c.so}}>Checking your booster access…</div>}
+          {boosterStatus==='locked'&&<div style={{padding:mob?18:24,borderRadius:14,background:c.sf,border:'1px solid '+c.ln,textAlign:'center'}}><h3 style={{color:c.tx,margin:'0 0 8px'}}>Unlock the Booster Library</h3><p style={{fontSize:12,lineHeight:1.6,color:c.so,margin:'0 auto 16px',maxWidth:530}}>Get the Kindle Cash Multiplier training, KDP checklist, book-description templates, and 30 Books in 30 Days blueprint.</p><button onClick={openBoosterCheckout} style={{padding:'12px 18px',border:0,borderRadius:10,background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',fontSize:13,fontWeight:800,cursor:'pointer'}}>Add Quick-Launch Booster — $9.95</button></div>}
+          {boosterStatus==='error'&&<div style={{padding:18,borderRadius:12,background:'#ef444415',color:'#ef4444',fontSize:12}}>Booster access could not be verified. Please refresh and try again.</div>}
+          {boosterStatus==='active'&&<div style={{display:'grid',gridTemplateColumns:mob?'repeat(2,minmax(0,1fr))':'repeat(4,minmax(0,1fr))',gap:12}}>{boosterResources.map(resource=><div key={resource.id} data-testid={`library-card-${resource.id}`} style={{borderRadius:14,border:'1px solid '+c.ln,background:c.sf,overflow:'hidden'}}><img src={resource.coverUrl} alt={`${resource.title} cover`} style={{width:'100%',aspectRatio:'2 / 3',objectFit:'cover',display:'block'}}/><div style={{padding:11}}><div style={{fontSize:9,fontWeight:900,color:c.ac,textTransform:'uppercase'}}>{resource.type} · Bonus</div><div style={{fontSize:11,fontWeight:800,color:c.tx,lineHeight:1.35,minHeight:45,margin:'5px 0 9px'}}>{resource.title}</div><button onClick={()=>setLibraryReader(resource)} style={{width:'100%',padding:8,border:0,borderRadius:8,background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',fontSize:10,fontWeight:850,cursor:'pointer'}}>Read full book</button><div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:5,marginTop:5}}><button onClick={()=>editLibraryBook(resource)} style={{padding:7,borderRadius:7,border:'1px solid '+c.ln,background:c.cd,color:c.tx,fontSize:9,fontWeight:800,cursor:'pointer'}}>Edit</button><a href={resource.url} download style={{padding:7,borderRadius:7,border:'1px solid '+c.ln,background:c.cd,color:c.tx,fontSize:9,fontWeight:800,textDecoration:'none',textAlign:'center'}}>Download</a></div></div></div>)}</div>}
+        </div>
+        {libraryReader&&<LibraryBookReader resource={libraryReader} onClose={()=>setLibraryReader(null)} onEdit={editLibraryBook} mob={mob} c={c}/>}
+      </div>}
+
+      {view==='project'&&active&&<div style={{width:'100%',maxWidth:1180,margin:'0 auto'}}>
+        <button onClick={()=>setView('saved')} style={{border:0,background:'transparent',color:c.ac,fontWeight:700,cursor:'pointer',marginBottom:12}}>← Saved books</button>
+        <div style={{padding:mob?18:24,borderRadius:18,background:c.cd,border:'1px solid '+c.ln}}>
+          <div style={{display:'flex',alignItems:'flex-start',gap:14,marginBottom:18}}>
+            <div style={{width:48,height:62,borderRadius:8,background:'linear-gradient(145deg,#F4A261,#E76F8B)',display:'grid',placeItems:'center',color:'#fff',fontWeight:900,fontSize:21}}>B</div>
+            <div style={{flex:1,minWidth:0}}><h2 style={{fontSize:20,color:c.tx,marginBottom:5}}>{String(active.title||'').replace(/^📚\s*/,'')}</h2><div style={{fontSize:12,color:status==='failed'?'#ef4444':status==='complete'?c.gr:c.ac,fontWeight:700}}>{status==='working'?productionPhase:status==='complete'?'Book project complete':status==='failed'?'Generation needs attention':'Saved project'}</div></div>
+          </div>
+          <div data-testid="book-live-production-console" style={{marginBottom:18,borderRadius:17,border:'1px solid rgba(231,111,139,.28)',background:`linear-gradient(145deg,${c.cd},rgba(231,111,139,.045))`,overflow:'hidden'}}>
+            <div style={{padding:mob?'14px':'16px 18px',borderBottom:'1px solid '+c.ln,display:'flex',alignItems:'center',justifyContent:'space-between',gap:12}}>
+              <div><div style={{fontSize:9,fontWeight:900,color:c.ac,letterSpacing:'.11em'}}>LIVE BOOK ASSEMBLY</div><div style={{fontSize:13,fontWeight:800,color:c.tx,marginTop:4}}>{status==='complete'?'Your book passed final verification':status==='failed'?'Production paused before the next file was saved':productionPhase}</div></div>
+              <div style={{display:'flex',alignItems:'center',gap:6,padding:'6px 9px',borderRadius:18,background:status==='complete'?'rgba(34,197,94,.1)':'rgba(244,162,97,.1)',color:status==='complete'?c.gr:c.ac,fontSize:9,fontWeight:850}}><span style={{width:7,height:7,borderRadius:'50%',background:'currentColor',animation:status==='working'?'pulse 1.3s ease infinite':'none'}}/>{status==='complete'?'VERIFIED':status==='working'?'BUILDING':'READY'}</div>
+            </div>
+            <div style={{padding:mob?'13px':'15px 18px'}}>
+              <div data-testid="book-generation-timing" style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,marginBottom:11,padding:'9px 11px',borderRadius:10,background:c.sf,border:'1px solid '+c.ln,fontSize:10,color:c.so}}>
+                <span><strong style={{color:c.tx}}>Elapsed {bookElapsed}</strong> · updates as each section is saved</span>
+                <span style={{textAlign:'right'}}>Typical estimate <strong style={{color:c.ac}}>18–35 min</strong></span>
+              </div>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(8,minmax(118px,1fr))',gap:7,overflowX:'auto',paddingBottom:6}}>
+                {[
+                  ['Brief',true,'Concept locked'],
+                  ['Outline',bookProof.outline,bookProof.outline?'Structure saved':status==='working'?'Planning now':'Not saved yet'],
+                  ['Front matter',bookProof.frontMatter,bookProof.frontMatter?'Sections saved':bookProof.outline&&status==='working'?'Creating now':'Waiting for outline'],
+                  ['Body',bookProof.chapters.length>0,bookProof.chapters.length?`${bookProof.chapters.length} chapters`:bookProof.frontMatter&&status==='working'?'Writing now':'Waiting for front matter'],
+                  ['Back matter',bookProof.backMatter,bookProof.backMatter?'Sections saved':bookProof.chapters.length&&status==='working'?'Creating now':'Waiting for body'],
+                  ['Interior',!!bookProof.manuscript,bookProof.wordCount?`${bookProof.wordCount.toLocaleString()} body words`:bookProof.backMatter&&status==='working'?'Assembling now':'Waiting for sections'],
+                  ['Cover',bookProof.cover,bookProof.cover?'Artwork saved':bookProof.manuscript&&status==='working'?'Creating now':'Waiting for interior'],
+                  ['KDP files',bookProof.docx&&bookProof.printPdf&&bookProof.kdpChecklist,bookProof.docx&&bookProof.printPdf&&bookProof.kdpChecklist?'Uploads ready':bookProof.cover&&status==='working'?'Validating now':'Waiting for cover'],
+                ].map(([label,done,detail],index)=>{
+                  const prior=[true,bookProof.outline,bookProof.frontMatter,bookProof.chapters.length>0,bookProof.backMatter,!!bookProof.manuscript,bookProof.cover];
+                  const activeStep=!done&&(index===0||prior[index-1])&&status==='working';
+                  return <div key={label} data-book-step-state={done?'saved':activeStep?'generating':'waiting'} style={{padding:'10px 9px',borderRadius:10,border:'1px solid '+(done?'rgba(34,197,94,.25)':activeStep?'rgba(231,111,139,.34)':c.ln),background:done?'rgba(34,197,94,.06)':activeStep?'linear-gradient(135deg,rgba(244,162,97,.1),rgba(231,111,139,.1))':c.sf,transform:activeStep?'translateY(-3px)':'none',boxShadow:activeStep?'0 8px 24px rgba(231,111,139,.18)':'none',transition:'transform .35s ease, box-shadow .35s ease, background .35s ease'}}>
+                    <div style={{display:'flex',alignItems:'center',gap:5,marginBottom:5}}><span style={{width:18,height:18,borderRadius:6,display:'grid',placeItems:'center',background:done?c.gr:activeStep?'linear-gradient(135deg,#F4A261,#E76F8B)':c.cd,color:done||activeStep?'#fff':c.fa,fontSize:9,fontWeight:900}}>{done?'✓':index+1}</span><span style={{fontSize:10,fontWeight:850,color:done?c.gr:activeStep?c.tx:c.so}}>{label}</span></div>
+                    <div style={{fontSize:9,color:c.fa,lineHeight:1.35}}>{detail}</div>
+                  </div>;
+                })}
+              </div>
+              <div data-testid="book-production-theater" style={{marginTop:14,display:'grid',gridTemplateColumns:mob?'1fr':'220px minmax(0,1fr)',gap:12,alignItems:'stretch'}}>
+                <div style={{position:'relative',minHeight:mob?240:290,borderRadius:14,overflow:'hidden',background:'#11131a',border:'1px solid '+c.ln}}>
+                  <img src={coverPreviewUrl} alt={bookProof.cover?'Generated book cover':'Book cover being created'} style={{width:'100%',height:'100%',objectFit:'cover',display:'block',opacity:bookProof.cover?1:.72,transition:'opacity .4s ease'}}/>
+                  <div style={{position:'absolute',inset:'auto 10px 10px',padding:'9px 10px',borderRadius:10,background:'rgba(12,13,18,.82)',backdropFilter:'blur(9px)',border:'1px solid rgba(255,255,255,.12)'}}>
+                    <div style={{fontSize:8,fontWeight:900,letterSpacing:'.1em',color:bookProof.cover?c.gr:c.ac}}>{bookProof.cover?'COVER READY':bookProof.manuscript&&status==='working'?'COVER IN PROGRESS':'COVER PREVIEW'}</div>
+                    <div style={{fontSize:10,color:'#fff',marginTop:3,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{String(active.title||'Your book').replace(/^📚\s*/,'')}</div>
+                  </div>
+                </div>
+                <div style={{minHeight:mob?310:290,borderRadius:14,background:`linear-gradient(145deg,${c.sf},${c.cd})`,color:c.tx,padding:mob?'20px 18px':'25px 30px',boxShadow:'inset 0 0 0 1px '+c.ln,overflow:'hidden',position:'relative'}}>
+                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,paddingBottom:11,borderBottom:'1px solid '+c.ln,marginBottom:15}}>
+                    <div><div style={{fontSize:8,fontWeight:900,letterSpacing:'.12em',color:c.ac}}>{previewPhase==='section'?'LIVE BOOK SECTION':previewPhase==='outline'?'OUTLINE PREVIEW':'PLANNING STAGE'}</div><div style={{fontFamily:"Georgia,'Times New Roman',serif",fontSize:16,fontWeight:700,marginTop:4}}>{activeSection?String(activeSection.name||'').replace(/\.(md|txt)$/i,'').replace(/[-_]/g,' '):bookProof.outline?'Outline saved':'Building the outline'}</div></div>
+                    <div style={{fontSize:9,color:c.so,textAlign:'right'}}>{bookProof.sections.length}<br/>{bookProof.sections.length===1?'section':'sections'} saved</div>
+                  </div>
+                  <div style={{fontFamily:"Georgia,'Times New Roman',serif",fontSize:mob?12:13,lineHeight:1.72,color:c.so,maxHeight:mob?210:180,overflow:'hidden',whiteSpace:'pre-wrap'}}>
+                    {activeSection?.content?.slice(0,1250)||outlineArtifact?.content?.slice(0,1250)||(status==='failed'?`Generation paused before ${aFN} saved the next section. Resume or retry the task; each completed book section will appear here in reading order.`:`${aFN} is organizing the topic, reader promise, and section journey. The outline will appear first, followed by the title page, copyright, table of contents, preface, introduction, chapters, and back matter as each file is saved.`)}
+                  </div>
+                  <div style={{position:'absolute',left:0,right:0,bottom:0,height:55,background:`linear-gradient(transparent,${c.cd})`}}/>
+                </div>
+              </div>
+              {status==='working'&&<div style={{marginTop:12,padding:'10px 11px',borderRadius:10,background:c.sf,border:'1px solid '+c.ln,fontSize:11,lineHeight:1.5,color:c.so}}><LiveProgressNarration c={c} sessionId={active.id}/></div>}
+              <div style={{marginTop:8}}><ActiveTaskTracker c={c} sessionId={active.id}/></div>
+            </div>
+          </div>
+          <div style={{padding:14,borderRadius:12,background:c.sf,border:'1px solid '+c.ln,marginBottom:16}}>
+            <div style={{display:'flex',justifyContent:'space-between',gap:12,fontSize:12,color:c.so,marginBottom:8}}><span>Measured manuscript</span><strong style={{color:bookProof.wordCount>=10000?c.gr:c.tx}}>{bookProof.wordCount.toLocaleString()} / 10,000 words</strong></div>
+            <div style={{height:7,borderRadius:8,overflow:'hidden',background:c.cd}}><div style={{width:`${Math.min(100,(bookProof.wordCount/10000)*100)}%`,height:'100%',background:'linear-gradient(90deg,#F4A261,#E76F8B)',transition:'width .35s ease'}}/></div>
+            <div style={{fontSize:10,color:c.fa,marginTop:8}}>{bookProof.chapters.length} chapter file{bookProof.chapters.length===1?'':'s'} saved · Completion is locked until the saved body chapters pass 10,000 words and the KDP interior package is verified.</div>
+          </div>
+          {error&&<div style={{padding:12,borderRadius:10,background:'#ef444415',color:'#ef4444',fontSize:12,marginBottom:14}}>{error}</div>}
+          {stage==='setup'&&<div data-testid="book-project-setup-stage" style={{marginBottom:18,display:'grid',gridTemplateColumns:mob?'1fr':'minmax(0,1.2fr) minmax(260px,.8fr)',gap:12}}>
+            <div style={{padding:mob?18:24,borderRadius:14,border:'1px solid '+c.ln,background:c.sf}}><div style={{fontSize:9,fontWeight:900,color:c.ac,textTransform:'uppercase',letterSpacing:'.09em'}}>Project setup</div><h3 style={{fontSize:18,color:c.tx,margin:'8px 0 7px'}}>{String(active.title||'Untitled book').replace(/^📚\s*/,'')}</h3><p style={{fontSize:12,lineHeight:1.65,color:c.so,margin:'0 0 16px'}}>This project is connected to {aFN}. Use the steps above to review the plan, edit sections, preview the complete book, and export the publishing package.</p><button onClick={()=>setStage('outline')} style={{padding:'10px 14px',border:0,borderRadius:9,background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',fontWeight:850,cursor:'pointer'}}>Continue to outline →</button></div>
+            <div style={{padding:18,borderRadius:14,border:'1px solid '+c.ln,background:c.sf,display:'grid',gap:9}}>{[['Status',bookProjectStateLabel(active.bookState||deriveBookProjectState(active,artifacts,history))],['Saved sections',bookProof.sections.length],['Body words',bookProof.wordCount.toLocaleString()],['Cover',bookProof.cover?'Ready':'In progress']].map(([label,value])=><div key={label} style={{display:'flex',justifyContent:'space-between',gap:12,paddingBottom:8,borderBottom:'1px solid '+c.ln,fontSize:11}}><span style={{color:c.so}}>{label}</span><strong style={{color:c.tx}}>{value}</strong></div>)}</div>
+          </div>}
+          {stage==='outline'&&<div style={{marginBottom:18,padding:mob?18:26,borderRadius:14,border:'1px solid '+c.ln,background:c.sf,minHeight:260}}>{outlineArtifact?<ReactMarkdown remarkPlugins={[remarkGfm]}>{outlineArtifact.content||''}</ReactMarkdown>:<div style={{textAlign:'center',paddingTop:55,color:c.so}}><div style={{fontSize:22,marginBottom:9}}>☷</div><strong style={{color:c.tx}}>Building the outline</strong><div style={{fontSize:11,marginTop:6}}>The table of contents and chapter plan will appear here as soon as {aFN} saves it.</div></div>}</div>}
+          {stage==='chapters'&&<div style={{marginBottom:18}}><div style={{fontSize:12,fontWeight:750,color:c.so,marginBottom:8}}>Book sections</div>{bookProof.sections.length>0?<div style={{display:'grid',gap:8}}>{bookProof.sections.map((file,index)=><button key={file.fileId} onClick={()=>{setChapterIndex(index);setPageIndex(0);setReaderEdge('content');setStage('preview');}} style={{padding:'12px',borderRadius:10,border:'1px solid '+c.ln,background:c.sf,color:c.tx,fontSize:12,fontWeight:650,display:'flex',justifyContent:'space-between',gap:8,cursor:'pointer',textAlign:'left'}}><span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{file.name}</span><span style={{color:c.so}}>{countBookWords(file.content).toLocaleString()} words →</span></button>)}</div>:<div style={{padding:38,textAlign:'center',borderRadius:12,border:'1px dashed '+c.ln,color:c.so}}>Title page, copyright, contents, preface, introduction, chapters, and closing sections will appear here in reading order.</div>}</div>}
+          {stage==='preview'&&activeSection&&<div data-testid="book-reader-preview" role="dialog" aria-modal="true" style={{position:'fixed',zIndex:1250,left:'50%',top:'50%',transform:'translate(-50%,-50%)',width:mob?'calc(100vw - 18px)':'min(1120px,calc(100vw - 48px))',height:mob?'calc(100dvh - 18px)':'min(860px,calc(100vh - 48px))',border:'1px solid '+c.ln,borderRadius:16,overflowY:'auto',overflowX:'hidden',background:c.sf,boxShadow:'0 30px 100px rgba(0,0,0,.62)'}}>
+            <div style={{padding:'11px 13px',borderBottom:'1px solid '+c.ln,display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,flexWrap:'wrap'}}>
+              <div><div style={{fontSize:10,fontWeight:800,color:c.ac,textTransform:'uppercase',letterSpacing:'.08em'}}>Book preview</div><div style={{fontSize:13,fontWeight:750,color:c.tx,marginTop:3}}>{activeSection.name}</div></div>
+              <div style={{display:'flex',alignItems:'center',gap:7}}>
+                <button onClick={()=>{setChapterIndex(i=>Math.max(0,i-1));setPageIndex(0);}} disabled={chapterIndex===0||directEditing} style={{padding:'7px 10px',borderRadius:8,border:'1px solid '+c.ln,background:c.cd,color:c.tx,cursor:chapterIndex===0||directEditing?'not-allowed':'pointer',opacity:(chapterIndex===0||directEditing)?0.45:1}}>← Previous</button>
+                <span style={{fontSize:11,color:c.so}}>Section {chapterIndex+1} of {bookProof.sections.length}</span>
+                <button onClick={()=>{setChapterIndex(i=>Math.min(bookProof.sections.length-1,i+1));setPageIndex(0);}} disabled={chapterIndex>=bookProof.sections.length-1||directEditing} style={{padding:'7px 10px',borderRadius:8,border:'1px solid '+c.ln,background:c.cd,color:c.tx,cursor:chapterIndex>=bookProof.sections.length-1||directEditing?'not-allowed':'pointer',opacity:(chapterIndex>=bookProof.sections.length-1||directEditing)?0.45:1}}>Next →</button>
+                <button onClick={()=>{setPageSelection(null);setDirectEditing(false);setStage('chapters');}} aria-label="Close book preview" style={{width:34,height:34,borderRadius:9,border:'1px solid '+c.ln,background:c.cd,color:c.tx,fontSize:18,cursor:'pointer'}}>×</button>
+              </div>
+            </div>
+            {directEditing?<div style={{width:'100%',maxWidth:1000,margin:'0 auto',padding:mob?'18px':'24px',boxSizing:'border-box',background:c.cd}}>
+              <textarea data-testid="book-direct-section-editor" value={sectionDraft} onChange={e=>setSectionDraft(e.target.value)} style={{width:'100%',minHeight:mob?390:610,boxSizing:'border-box',padding:mob?'20px 17px':'34px 42px',borderRadius:12,border:'1px solid '+c.ac,background:c.sf,color:c.tx,fontFamily:"Georgia,'Times New Roman',serif",fontSize:mob?15:17,lineHeight:1.8,resize:'vertical',outline:'none'}}/>
+              <div style={{display:'flex',gap:9,justifyContent:'flex-end',marginTop:11}}>
+                <button onClick={()=>{setDirectEditing(false);setSectionDraft(activeSection.content||'');}} disabled={savingSection} style={{padding:'9px 14px',borderRadius:9,border:'1px solid '+c.ln,background:c.sf,color:c.tx,fontWeight:750,cursor:'pointer'}}>Cancel</button>
+                <button onClick={saveSectionDirectly} disabled={savingSection||!sectionDraft.trim()} style={{padding:'9px 16px',border:0,borderRadius:9,background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',fontWeight:850,cursor:savingSection?'wait':'pointer'}}>{savingSection?'Saving…':'Save section'}</button>
+              </div>
+            </div>:<div data-testid="book-page-turner" style={{padding:mob?'12px':'24px',background:c.cd}}>
+              <style>{`
+                .kdp-book-page h1,.kdp-book-page h2,.kdp-book-page h3{font-family:Georgia,'Times New Roman',serif;color:#1f1c18}
+                .kdp-book-page h1{font-size:1.55em;line-height:1.2;margin:0 0 1.5em;text-align:center;font-weight:700}
+                .kdp-book-page h2{font-size:1.25em;line-height:1.25;margin:1.4em 0 .7em}
+                .kdp-book-page p{margin:0 0 .72em;text-indent:1.25em}
+                .kdp-book-page h1+p,.kdp-book-page h2+p,.kdp-book-page h3+p,.kdp-book-page blockquote+p{ text-indent:0 }
+                .kdp-book-page ul,.kdp-book-page ol{margin:.7em 0 1em;padding-left:1.4em}
+                .kdp-book-page li{margin:.35em 0}
+                .kdp-title-page{display:flex;align-items:center;justify-content:center;text-align:center}
+                .kdp-title-page h1{font-size:1.9em;line-height:1.25;margin:0;max-width:88%}
+                .kdp-copyright-page{display:flex;align-items:flex-end}
+                .kdp-copyright-page h1{font-size:1em;text-align:left;margin:0 0 .8em}
+                .kdp-copyright-page p{text-indent:0;font-size:.86em}
+                .kdp-toc-page h1{text-align:center;margin-bottom:1.35em}
+                .kdp-toc-page ul{list-style:none;padding:0;margin:0}
+                .kdp-toc-page li{margin:0 0 .68em;padding-bottom:.32em;border-bottom:1px dotted rgba(38,35,31,.22);line-height:1.35}
+                .kdp-chapter-page h1{margin-top:8%;margin-bottom:2em}
+                .kdp-book-shell{position:relative;filter:drop-shadow(0 22px 22px rgba(0,0,0,.24))}
+                .kdp-book-shell:before,.kdp-book-shell:after{content:"";position:absolute;inset:5px -5px -5px 5px;border-radius:12px;background:repeating-linear-gradient(0deg,#d7d0c4 0,#d7d0c4 1px,#fffdf8 1px,#fffdf8 3px);border:1px solid rgba(73,59,40,.18)}
+                .kdp-book-shell:before{transform:translate(5px,5px);opacity:.72}
+                .kdp-book-shell:after{transform:translate(2px,2px);opacity:.9}
+                .kdp-page-cell{position:relative;z-index:2;isolation:isolate}
+                .kdp-page-under{position:absolute;inset:0;z-index:0;overflow:hidden;background:#fffdf8;border:1px solid rgba(83,68,47,.18);padding:9% 8% 6%}
+                .kdp-page-leaf{position:relative;z-index:2}
+                .kdp-page-leaf:after{content:"";pointer-events:none;position:absolute;inset:0;opacity:0;background:linear-gradient(90deg,transparent 0%,rgba(255,255,255,.5) 38%,rgba(32,25,18,.25) 52%,transparent 72%);background-size:220% 100%}
+                @keyframes kdpTurnForward{0%{transform:rotateY(0deg) skewY(0);border-radius:0 12px 12px 0}34%{transform:rotateY(-54deg) skewY(-1.4deg);filter:brightness(.94);box-shadow:-24px 12px 36px rgba(0,0,0,.34)}64%{transform:rotateY(-122deg) skewY(1.2deg);filter:brightness(.78);box-shadow:-42px 12px 48px rgba(0,0,0,.32)}100%{transform:rotateY(-179deg);filter:brightness(.68);box-shadow:-50px 10px 54px rgba(0,0,0,.18)}}
+                @keyframes kdpTurnBack{0%{transform:rotateY(0deg) skewY(0);border-radius:12px 0 0 12px}34%{transform:rotateY(54deg) skewY(1.4deg);filter:brightness(.94);box-shadow:24px 12px 36px rgba(0,0,0,.34)}64%{transform:rotateY(122deg) skewY(-1.2deg);filter:brightness(.78);box-shadow:42px 12px 48px rgba(0,0,0,.32)}100%{transform:rotateY(179deg);filter:brightness(.68);box-shadow:50px 10px 54px rgba(0,0,0,.18)}}
+                @keyframes kdpCurlLight{0%{opacity:0;background-position:180% 0}28%{opacity:.8}72%{opacity:.52}100%{opacity:0;background-position:-80% 0}}
+                .kdp-page-turn-forward{transform-origin:left center;animation:kdpTurnForward .72s cubic-bezier(.55,.05,.42,.98) forwards;z-index:5}
+                .kdp-page-turn-back{transform-origin:right center;animation:kdpTurnBack .72s cubic-bezier(.55,.05,.42,.98) forwards;z-index:5}
+                .kdp-page-turn-forward:after,.kdp-page-turn-back:after{animation:kdpCurlLight .72s ease forwards}
+                .bloom-real-book{margin:0 auto!important;filter:drop-shadow(0 22px 26px rgba(0,0,0,.3));overflow:hidden!important;clip-path:inset(0 round 3px);contain:paint}
+                .bloom-flip-page{position:relative;box-sizing:border-box;width:100%;height:100%;overflow:hidden;padding:9% 8% 6%;background:#fffdf8;color:#26231f;border:1px solid rgba(83,68,47,.2);font-family:Georgia,'Times New Roman',serif;font-size:13px;line-height:1.58;user-select:text!important;-webkit-user-select:text!important}
+                .bloom-flip-page:before{content:"";position:absolute;top:0;bottom:0;width:18px;right:0;background:linear-gradient(90deg,transparent,rgba(45,35,25,.1));pointer-events:none}
+                .bloom-flip-cover{padding:0;background:#15110f}
+                .bloom-wrap-cover{width:100%;height:100%;background-repeat:no-repeat;background-size:200% 100%}
+                .bloom-cover-image{display:block;width:100%;height:100%;object-fit:cover}
+                .bloom-back-cover{display:flex;align-items:center;justify-content:center;width:100%;height:100%;padding:14%;box-sizing:border-box;background:linear-gradient(155deg,#251f1d,#090807);color:#f8efe8;text-align:center}
+                .bloom-back-cover strong{font-size:19px}.bloom-back-cover p{font-size:12px;line-height:1.65;opacity:.76;margin-top:13px}
+                .bloom-page-number{position:absolute;left:0;right:0;bottom:4%;text-align:center;font-size:10px;color:#8b8277}
+                .bloom-cover-edit{position:absolute;right:12px;bottom:12px;z-index:8;padding:8px 11px;border-radius:9px;border:1px solid rgba(255,255,255,.45);background:rgba(15,12,10,.78);backdrop-filter:blur(8px);color:#fff;font-size:10px;font-weight:850;cursor:pointer}
+                .stf__parent{margin:0 auto;overflow:hidden!important;clip-path:inset(0 round 3px);contain:paint}
+                .stf__block{background:transparent!important}
+              `}</style>
+              <img src={coverPreviewUrl} alt="" onLoad={e=>setCoverIsWrap(e.currentTarget.naturalWidth/e.currentTarget.naturalHeight>1.15)} style={{display:'none'}}/>
+              <div data-testid="real-book-page-flip" style={{width:'100%',maxWidth:mob?344:840,height:mob?500:640,margin:'0 auto',display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden',padding:mob?'10px 0':'20px',boxSizing:'border-box'}}>
+                <HTMLFlipBook
+                  key={`${active.id}-${readerPages.length}-${coverArtifact?.fileId||coverArtifact?.name||'no-cover'}`}
+                  ref={flipBookRef}
+                  className="bloom-real-book"
+                  style={{}}
+                  width={mob?320:400}
+                  height={mob?480:600}
+                  size="fixed"
+                  drawShadow
+                  flippingTime={1050}
+                  usePortrait={mob}
+                  startZIndex={10}
+                  autoSize={false}
+                  maxShadowOpacity={0.65}
+                  showCover
+                  mobileScrollSupport
+                  swipeDistance={20}
+                  clickEventForward
+                  useMouseEvents
+                  onFlip={handleReaderFlip}
+                >
+                  {readerPages.map(page=><BookFlipPage key={page.key} page={page} coverUrl={coverPreviewUrl} coverIsWrap={coverIsWrap} bookDescription={bookDescription} onEditCover={()=>setStage('publish')} onSelectText={capturePageSelection}/>)}
+                </HTMLFlipBook>
+              </div>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:10,marginTop:16,flexWrap:'wrap'}}>
+                <button aria-label="Turn to previous page" onClick={()=>flipBookRef.current?.pageFlip()?.flipPrev('bottom')} disabled={readerPageNumber<=0} style={{padding:'9px 14px',borderRadius:9,border:'1px solid '+c.ln,background:c.sf,color:c.tx,cursor:readerPageNumber<=0?'not-allowed':'pointer',opacity:readerPageNumber<=0?0.45:1}}>← Turn back</button>
+                <span style={{minWidth:170,textAlign:'center',fontSize:11,color:c.so}}>{readerPages[readerPageNumber]?.kind==='front'?'Front cover':readerPages[readerPageNumber]?.kind==='back'?'Back cover':`Page${!mob&&readerPages[readerPageNumber+1]?.kind==='content'?'s':''} ${readerPages[readerPageNumber]?.displayNumber||1}${!mob&&readerPages[readerPageNumber+1]?.kind==='content'?`–${readerPages[readerPageNumber+1].displayNumber}`:''} of ${totalBookPages}`}</span>
+                <button aria-label="Turn to next page" onClick={()=>flipBookRef.current?.pageFlip()?.flipNext('bottom')} disabled={readerPageNumber>=readerPages.length-1} style={{padding:'9px 14px',borderRadius:9,border:'1px solid '+c.ln,background:c.sf,color:c.tx,cursor:readerPageNumber>=readerPages.length-1?'not-allowed':'pointer',opacity:readerPageNumber>=readerPages.length-1?0.45:1}}>Turn page →</button>
+              </div>
+              {pageSelection&&<div data-testid="book-selection-editor" style={{position:'fixed',zIndex:12000,left:mob?12:Math.min(window.innerWidth-390,Math.max(12,pageSelection.x-170)),right:mob?12:'auto',top:mob?'auto':Math.min(window.innerHeight-250,Math.max(12,pageSelection.y+12)),bottom:mob?12:'auto',boxSizing:'border-box',width:mob?'auto':370,padding:12,borderRadius:14,border:'1px solid '+c.ln,background:c.cd,boxShadow:'0 18px 55px rgba(0,0,0,.38)',color:c.tx}}>
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,marginBottom:9}}><div><div style={{fontSize:10,fontWeight:900,color:c.ac,textTransform:'uppercase',letterSpacing:'.08em'}}>Selected passage</div><div style={{fontSize:10,color:c.so,marginTop:2}}>Change only the highlighted words</div></div><button onClick={()=>setPageSelection(null)} style={{width:28,height:28,borderRadius:8,border:'1px solid '+c.ln,background:c.sf,color:c.so,cursor:'pointer'}}>×</button></div>
+                <div style={{maxHeight:58,overflow:'hidden',padding:'8px 9px',borderRadius:8,background:c.sf,color:c.so,fontSize:10,lineHeight:1.45,marginBottom:9}}>{pageSelection.text}</div>
+                {selectionEditing?<><textarea value={selectionDraft} onChange={e=>setSelectionDraft(e.target.value)} rows={5} style={{...inputStyle,resize:'vertical',marginBottom:8}}/><div style={{display:'flex',gap:7}}><button onClick={()=>setSelectionEditing(false)} style={{flex:1,padding:9,borderRadius:8,border:'1px solid '+c.ln,background:c.sf,color:c.tx,cursor:'pointer'}}>Cancel</button><button onClick={saveSelectedText} disabled={selectionWorking||!selectionDraft.trim()} style={{flex:1,padding:9,border:0,borderRadius:8,background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',fontWeight:850,cursor:'pointer'}}>{selectionWorking?'Saving…':'Save change'}</button></div></>:<div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:7}}>
+                  <button onClick={()=>setSelectionEditing(true)} style={{padding:9,borderRadius:8,border:'1px solid '+c.ac,background:c.ac+'12',color:c.ac,fontWeight:800,cursor:'pointer'}}>Edit manually</button>
+                  <button onClick={()=>requestSelectedTextChange('rewrite')} disabled={selectionWorking} style={{padding:9,borderRadius:8,border:'1px solid '+c.ln,background:c.sf,color:c.tx,cursor:'pointer'}}>Rewrite</button>
+                  <button onClick={()=>requestSelectedTextChange('expand')} disabled={selectionWorking} style={{padding:9,borderRadius:8,border:'1px solid '+c.ln,background:c.sf,color:c.tx,cursor:'pointer'}}>Expand</button>
+                  <button onClick={()=>requestSelectedTextChange('shorten')} disabled={selectionWorking} style={{padding:9,borderRadius:8,border:'1px solid '+c.ln,background:c.sf,color:c.tx,cursor:'pointer'}}>Shorten</button>
+                  <button onClick={()=>requestSelectedTextChange('tone')} disabled={selectionWorking} style={{padding:9,borderRadius:8,border:'1px solid '+c.ln,background:c.sf,color:c.tx,cursor:'pointer'}}>Change tone</button>
+                  <button onClick={()=>requestSelectedTextChange('image')} disabled={selectionWorking} style={{padding:9,borderRadius:8,border:'1px solid '+c.ln,background:c.sf,color:c.tx,cursor:'pointer'}}>Add image</button>
+                </div>}
+              </div>}
+              {false&&<div style={{display:'none'}}>
+              <img src={coverPreviewUrl} alt="" onLoad={e=>setCoverIsWrap(e.currentTarget.naturalWidth/e.currentTarget.naturalHeight>1.15)} style={{display:'none'}}/>
+              {readerEdge!=='content'&&coverArtifact?<div className="kdp-book-shell" style={{width:'100%',maxWidth:mob?330:390,margin:'0 auto',aspectRatio:'2 / 3',perspective:1700}}>
+                <div className={pageTurnAnimating?`kdp-page-leaf kdp-page-turn-${pageTurnDirection}`:'kdp-page-leaf'} style={{position:'absolute',inset:0,borderRadius:readerEdge==='front'?'5px 13px 13px 5px':'13px 5px 5px 13px',overflow:'hidden',background:readerEdge==='back'&&!coverIsWrap?'#211c1a':'#fff',boxShadow:'inset 0 0 0 1px rgba(255,255,255,.14),0 18px 46px rgba(0,0,0,.3)',backfaceVisibility:'hidden',transformStyle:'preserve-3d'}}>
+                  {coverIsWrap?<div style={{width:'100%',height:'100%',backgroundImage:`url("${coverPreviewUrl}")`,backgroundRepeat:'no-repeat',backgroundSize:'200% 100%',backgroundPosition:readerEdge==='front'?'right center':'left center'}}/>:readerEdge==='front'?<img src={coverPreviewUrl} alt="Front cover" style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>:<div style={{width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center',padding:'14%',boxSizing:'border-box',background:'linear-gradient(155deg,#251f1d,#090807)',color:'#f8efe8',textAlign:'center',fontFamily:"Georgia,'Times New Roman',serif"}}><div><div style={{fontSize:mob?16:19,fontWeight:800,lineHeight:1.35}}>Back cover</div><p style={{fontSize:mob?11:12,lineHeight:1.65,opacity:.76,marginTop:13}}>{bookDescription||'The finished back-cover artwork and description will appear here when a full print wrap is uploaded or generated.'}</p></div></div>}
+                </div>
+                <button onClick={()=>setStage('publish')} style={{position:'absolute',right:12,bottom:12,zIndex:8,padding:'8px 11px',borderRadius:9,border:'1px solid rgba(255,255,255,.45)',background:'rgba(15,12,10,.78)',backdropFilter:'blur(8px)',color:'#fff',fontSize:10,fontWeight:850,cursor:'pointer'}}>Edit cover</button>
+              </div>:<div className="kdp-book-shell" style={{width:'100%',maxWidth:mob?360:840,margin:'0 auto',display:'grid',gridTemplateColumns:mob?'1fr':'1fr 1fr',alignItems:'start',perspective:1700}}>
+                {[pageIndex,pageIndex+1].slice(0,mob?1:2).map((bookPage,spreadIndex)=>{
+                  const pageText=activeSectionPages[bookPage];
+                  const underPage=pageTurnDirection==='back'?Math.max(0,bookPage-(mob?1:2)):bookPage+(mob?1:2);
+                  const underText=activeSectionPages[underPage]||'';
+                  const sectionName=String(activeSection.name||'').toLowerCase();
+                  const pageClass=/title[-_ ]?page/.test(sectionName)?'kdp-title-page':/copyright/.test(sectionName)?'kdp-copyright-page':/table[-_ ]of[-_ ]contents|\btoc\b/.test(sectionName)?'kdp-toc-page':/(?:chapter|ch)[-_ ]?\d+/.test(sectionName)?'kdp-chapter-page':'';
+                  const turnClass=pageTurnAnimating&&((pageTurnDirection==='forward'&&(mob||spreadIndex===1))||(pageTurnDirection==='back'&&(mob||spreadIndex===0)))?`kdp-page-turn-${pageTurnDirection}`:'';
+                  const pageStyle={display:'flex',flexDirection:'column',minWidth:0,aspectRatio:'2 / 3',boxSizing:'border-box',padding:mob?'9% 8% 6%':'9% 8% 6%',background:'#fffdf8',color:'#26231f',fontFamily:"Georgia,'Times New Roman',serif",fontSize:13,lineHeight:1.58,borderRadius:mob?12:spreadIndex===0?'12px 0 0 12px':'0 12px 12px 0',border:'1px solid rgba(83,68,47,.18)',backfaceVisibility:'hidden',transformStyle:'preserve-3d',boxShadow:mob?'0 14px 36px rgba(0,0,0,.22)':spreadIndex===0?'inset -16px 0 24px -22px rgba(0,0,0,.5)':'inset 16px 0 24px -22px rgba(0,0,0,.5)'};
+                  return <div key={`${activeSection.fileId}-${bookPage}`} className="kdp-page-cell" style={{aspectRatio:'2 / 3'}}>
+                    <div className="kdp-page-under" style={{...pageStyle,zIndex:0}}>{underText?<div className={`kdp-book-page ${pageClass}`} style={{flex:1,overflow:'hidden'}}><ReactMarkdown remarkPlugins={[remarkGfm]}>{underText}</ReactMarkdown></div>:<div style={{flex:1}}/>}</div>
+                    <div className={`kdp-page-leaf ${turnClass}`} style={{...pageStyle,position:'absolute',inset:0}}>
+                      {pageText?<div className={`kdp-book-page ${pageClass}`} style={{flex:1,overflow:'hidden'}}><ReactMarkdown remarkPlugins={[remarkGfm]}>{pageText}</ReactMarkdown></div>:<div style={{flex:1}}/>}
+                      <div style={{textAlign:spreadIndex===0&&!mob?'left':'right',fontSize:10,color:'#8b8277',paddingTop:12}}>{globalBookPage+spreadIndex+1}</div>
+                    </div>
+                  </div>;
+                })}
+              </div>}
+              <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:10,marginTop:16,flexWrap:'wrap'}}>
+                <button aria-label="Turn to previous page" onClick={turnBookBack} disabled={readerEdge==='front'||(!coverArtifact&&globalBookPage===0)||pageTurnAnimating} style={{padding:'9px 14px',borderRadius:9,border:'1px solid '+c.ln,background:c.sf,color:c.tx,cursor:readerEdge==='front'||pageTurnAnimating?'not-allowed':'pointer',opacity:readerEdge==='front'?0.45:1}}>← Turn back</button>
+                <span style={{minWidth:160,textAlign:'center',fontSize:11,color:c.so}}>{readerEdge==='front'?'Front cover':readerEdge==='back'?'Back cover':`Page ${globalBookPage+(coverArtifact?2:1)}${!mob&&globalBookPage+1<totalBookPages?'–'+Math.min(totalReaderPages-1,globalBookPage+(coverArtifact?3:2)):''} of ${totalReaderPages}`}</span>
+                <button aria-label="Turn to next page" onClick={turnBookForward} disabled={readerEdge==='back'||(!coverArtifact&&globalBookPage+(mob?1:2)>=totalBookPages)||pageTurnAnimating} style={{padding:'9px 14px',borderRadius:9,border:'1px solid '+c.ln,background:c.sf,color:c.tx,cursor:readerEdge==='back'||pageTurnAnimating?'not-allowed':'pointer',opacity:readerEdge==='back'?0.45:1}}>Turn page →</button>
+              </div>
+              </div>}
+            </div>}
+            <div style={{padding:14,borderTop:'1px solid '+c.ln}}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,marginBottom:13,paddingBottom:13,borderBottom:'1px solid '+c.ln}}>
+                <div><div style={{fontSize:11,fontWeight:850,color:c.tx}}>Edit the words yourself</div><div style={{fontSize:10,color:c.so,marginTop:3}}>Type directly into this section and save without using AI credits.</div></div>
+                <button onClick={()=>{setSectionDraft(activeSection.content||'');setDirectEditing(true);setSectionSaveMessage('');}} disabled={directEditing} style={{padding:'9px 13px',borderRadius:9,border:'1px solid '+c.ac,background:c.ac+'12',color:c.ac,fontSize:11,fontWeight:850,cursor:directEditing?'default':'pointer'}}>{directEditing?'Editing now':'Edit directly'}</button>
+              </div>
+              {sectionSaveMessage&&<div role="status" style={{padding:'9px 11px',borderRadius:9,background:'rgba(34,197,94,.1)',color:c.gr,fontSize:10,lineHeight:1.45,marginBottom:11}}>{sectionSaveMessage}</div>}
+              <label style={{display:'block',fontSize:11,fontWeight:800,color:c.tx,marginBottom:7}}>Ask {aFN} to revise this section</label>
+              <textarea value={revision} onChange={e=>setRevision(e.target.value)} rows={3} placeholder="Example: Make the opening more personal, add a practical example, and shorten the final section." style={{...inputStyle,resize:'vertical',marginBottom:8}}/>
+              <button onClick={requestChapterRevision} disabled={!revision.trim()||revising} style={{width:'100%',padding:11,border:0,borderRadius:10,background:revision.trim()&&!revising?'linear-gradient(135deg,#F4A261,#E76F8B)':c.cd,color:revision.trim()&&!revising?'#fff':c.fa,fontSize:12,fontWeight:800,cursor:revision.trim()&&!revising?'pointer':'not-allowed'}}>{revising?'Revising section…':'Request section edits'}</button>
+            </div>
+          </div>}
+          {stage==='preview'&&!activeSection&&<div style={{padding:42,textAlign:'center',borderRadius:14,border:'1px dashed '+c.ln,background:c.sf,color:c.so,marginBottom:18}}>The page preview and agent revision box will activate when the first readable book section is saved.</div>}
+          {stage==='publish'&&<div style={{marginBottom:18}}>
+            <div style={{fontSize:12,fontWeight:750,color:c.so,marginBottom:8}}>Book cover</div>
+            {coverArtifact?<div data-testid="book-cover-revision-workspace" style={{display:'grid',gridTemplateColumns:mob?'1fr':'minmax(220px,320px) minmax(0,1fr)',gap:mob?14:20,padding:mob?14:18,borderRadius:15,border:'1px solid '+c.ln,background:c.sf,marginBottom:16}}>
+              <div style={{width:'100%',maxWidth:mob?260:320,margin:'0 auto',aspectRatio:'2 / 3',borderRadius:12,overflow:'hidden',background:c.cd,boxShadow:'0 12px 34px rgba(0,0,0,.2)'}}><img src={coverPreviewUrl} alt={`Current cover for ${String(active.title||'').replace(/^📚\s*/,'')}`} style={{width:'100%',height:'100%',objectFit:'contain',display:'block'}}/></div>
+              <div style={{alignSelf:'center'}}>
+                <div style={{fontSize:10,fontWeight:850,color:c.ac,textTransform:'uppercase',letterSpacing:'.08em'}}>Current active cover</div>
+                <div style={{fontSize:15,fontWeight:800,color:c.tx,marginTop:5,overflowWrap:'anywhere'}}>{coverArtifact.name}</div>
+                <p style={{fontSize:11,lineHeight:1.55,color:c.so,margin:'9px 0 14px'}}>Describe the change you want. Book Studio will generate a new 2:3 cover through RunPod and keep this version in the project history.</p>
+                <label style={{display:'block',fontSize:11,fontWeight:800,color:c.tx,marginBottom:7}}>Revise this cover</label>
+                <textarea data-testid="book-cover-revision-prompt" value={coverRevision} onChange={e=>setCoverRevision(e.target.value)} rows={4} placeholder="Example: Keep the title and author exactly the same, make the background more cinematic, and use warmer gold lighting." style={{...inputStyle,resize:'vertical',marginBottom:8}}/>
+                <button onClick={requestCoverRevision} disabled={!coverRevision.trim()||coverRevising} style={{width:'100%',padding:11,border:0,borderRadius:10,background:coverRevision.trim()&&!coverRevising?'linear-gradient(135deg,#F4A261,#E76F8B)':c.cd,color:coverRevision.trim()&&!coverRevising?'#fff':c.fa,fontSize:12,fontWeight:850,cursor:coverRevision.trim()&&!coverRevising?'pointer':'not-allowed'}}>{coverRevising?'Generating revised cover…':'Generate revision with RunPod'}</button>
+                {coverRevisionMessage&&<div role="status" style={{padding:'9px 11px',borderRadius:9,background:'rgba(34,197,94,.1)',color:c.gr,fontSize:10,lineHeight:1.45,marginTop:10}}>{coverRevisionMessage}</div>}
+              </div>
+            </div>:<div style={{padding:38,textAlign:'center',borderRadius:12,border:'1px dashed '+c.ln,color:c.so,marginBottom:16}}>When the cover is generated, it will appear here with its own RunPod revision controls.</div>}
+            <div style={{fontSize:12,fontWeight:750,color:c.so,marginBottom:8}}>Export files and cover history</div>
+            {artifacts.length>0?<div style={{display:'grid',gap:8}}>{artifacts.filter(file=>!bookProof.chapters.some(chapter=>chapter.fileId===file.fileId)).map(file=><a key={file.fileId} href={file.downloadUrl||`/api/files/download/${file.fileId}`} style={{padding:'11px 12px',borderRadius:10,border:'1px solid '+c.ln,background:c.sf,color:c.tx,textDecoration:'none',fontSize:12,fontWeight:650,display:'flex',justifyContent:'space-between',gap:8}}><span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{file.name}</span><span style={{color:c.ac}}>Download ↓</span></a>)}</div>:<div style={{padding:38,textAlign:'center',borderRadius:12,border:'1px dashed '+c.ln,color:c.so}}>The complete manuscript, DOCX, PDF, and cover versions will appear here.</div>}
+          </div>}
+          {messages.length>0&&<div style={{padding:14,borderRadius:12,background:c.sf,border:'1px solid '+c.ln,maxHeight:300,overflowY:'auto'}}>{messages.filter(message=>message.role==='assistant').slice(-6).map(message=><div key={message.id} style={{fontSize:12,lineHeight:1.55,color:c.so,marginBottom:10}}><ReactMarkdown remarkPlugins={[remarkGfm]}>{cleanMessageText(message.content)}</ReactMarkdown></div>)}</div>}
+          {!standalone&&<button onClick={()=>onOpenChat(active.id)} style={{marginTop:14,width:'100%',padding:11,borderRadius:10,border:'1px solid '+c.ac,background:c.ac+'10',color:c.ac,fontSize:12,fontWeight:750,cursor:'pointer'}}>Open full creation chat</button>}
+        </div>
+      </div>}
+      {checkout&&<div role="dialog" aria-modal="true" aria-label={`${checkout.name} checkout`} style={{position:'fixed',inset:0,zIndex:10000,background:'rgba(0,0,0,.78)',display:'flex',alignItems:mob?'flex-end':'center',justifyContent:'center',padding:mob?0:20}} onClick={()=>setCheckout(null)}>
+        <div style={{width:'100%',maxWidth:560,height:mob?'92dvh':'min(780px,92vh)',background:c.cd,border:'1px solid '+c.ln,borderRadius:mob?'18px 18px 0 0':18,display:'flex',flexDirection:'column',overflow:'hidden'}} onClick={e=>e.stopPropagation()}>
+          <div style={{display:'flex',alignItems:'center',gap:12,padding:'14px 16px',borderBottom:'1px solid '+c.ln}}><div style={{flex:1}}><div style={{fontSize:15,fontWeight:750,color:c.tx}}>{checkout.name}</div><div style={{fontSize:11,color:c.so}}>Secure checkout powered by Whop</div></div><button aria-label="Close checkout" onClick={()=>setCheckout(null)} style={{width:34,height:34,borderRadius:9,border:'1px solid '+c.ln,background:c.sf,color:c.tx,cursor:'pointer',fontSize:19}}>×</button></div>
+          <div style={{flex:1,minHeight:0,overflowY:'auto',background:'#fff'}}><div data-whop-checkout-plan-id={checkout.planId} data-whop-checkout-return-url={`${window.location.origin}/book-creator?billing=success`} style={{width:'100%',minHeight:'100%'}}/></div>
+        </div>
+      </div>}
+    </div>
+  </div>);
 }
 
 function DocsPage({c,mob,aFN="Agent",agentId}){
@@ -3694,181 +5570,96 @@ function DocsPage({c,mob,aFN="Agent",agentId}){
 }
 
 function BillingPage({c,mob,aFN="Agent"}){
-  const [showEstimate,setShowEstimate]=useState(false);
-  const currentPlan="enterprise";
-  const plan=PLANS_DATA[currentPlan];
+  const [billing,setBilling]=useState(null);
+  const [loading,setLoading]=useState(true);
+  const [opening,setOpening]=useState("");
+  const [error,setError]=useState("");
+  const [checkout,setCheckout]=useState(null);
 
-  // Simulated usage — will come from API
-  const usage={emails:7340,sms:680,mms:120,phone:145,images:52,videos:18,chatMessages:4820,blogPosts:28,emailDrafts:44,codePages:8,research:16};
-  const daysInPeriod=31,daysPassed=19,daysLeft=daysInPeriod-daysPassed;
+  useEffect(()=>{
+    let active=true;
+    getAuthHeaders().then(headers=>fetch("/api/billing/plans",{headers})).then(async r=>{
+      const data=await r.json();
+      if(!r.ok||!data.success)throw new Error(data.error||"Billing is unavailable");
+      if(active)setBilling(data);
+    }).catch(err=>active&&setError(err.message)).finally(()=>active&&setLoading(false));
+    return()=>{active=false;};
+  },[]);
 
-  const overageItems=[
-    {key:"email",label:"Email sends",icon:"✉️",used:usage.emails,limit:plan.emails,rate:OVERAGE_RATES.email,unit:"email"},
-    {key:"sms",label:"SMS messages",icon:"💬",used:usage.sms,limit:plan.sms,rate:OVERAGE_RATES.sms,unit:"text"},
-    {key:"mms",label:"MMS messages",icon:"📸",used:usage.mms,limit:plan.mms,rate:OVERAGE_RATES.mms,unit:"msg"},
-    {key:"phone",label:"Phone minutes",icon:"📞",used:usage.phone,limit:plan.phone,rate:OVERAGE_RATES.phone,unit:"min"},
-    {key:"image",label:"Images",icon:"🎨",used:usage.images,limit:plan.images,rate:OVERAGE_RATES.image,unit:"image"},
-    {key:"video",label:"Videos (8s)",icon:"🎬",used:usage.videos,limit:plan.videos,rate:OVERAGE_RATES.video,unit:"video"},
-  ].filter(i=>i.limit>0);
+  const openCheckout=async planKey=>{
+    setOpening(planKey);setError("");
+    try{
+      const headers=await getAuthHeaders();
+      const r=await fetch("/api/billing/prepare-checkout",{method:"POST",headers,body:JSON.stringify({plan:planKey})});
+      const data=await r.json();
+      if(!r.ok||!data.success)throw new Error(data.error||"Could not prepare checkout");
+      if(data.alreadyActive){alert(data.message);return;}
+      if(!data.checkoutPlanId)throw new Error("Whop checkout is not configured for this plan");
+      setCheckout({planId:data.checkoutPlanId,name:data.plan?.name||"Bloomie plan"});
+    }catch(err){setError(err.message);}
+    finally{setOpening("");}
+  };
 
-  const currentOverage=overageItems.reduce((s,i)=>s+Math.max(0,i.used-i.limit)*i.rate,0);
-  const projMult=daysPassed>0?daysInPeriod/daysPassed:1;
-  const projItems=overageItems.map(i=>({...i,projected:Math.round(i.used*projMult),projOver:Math.max(0,Math.round(i.used*projMult)-i.limit),projCost:Math.max(0,Math.round(i.used*projMult)-i.limit)*i.rate}));
-  const projTotalOver=projItems.reduce((s,i)=>s+i.projCost,0);
+  const currentLabels={starter:"Starter",standard:"Standard",pro:"AI Employee - Part Time",enterprise:"AI Employee - Full Time"};
 
   return(
     <div style={{padding:mob?"16px 12px 40px":"24px 28px 60px",maxWidth:860,margin:"0 auto"}}>
-      <style>{`@keyframes bFadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}`}</style>
-
-      {/* Header */}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:24}}>
-        <div>
-          <h1 style={{fontSize:mob?18:20,fontWeight:700}}>💳 Billing</h1>
-          <p style={{fontSize:13,color:c.so,marginTop:3}}>Manage your plan, usage, and payment</p>
-        </div>
-        <div style={{textAlign:"right"}}>
-          <div style={{fontSize:11,color:c.so}}>Billing period</div>
-          <div style={{fontSize:13,fontWeight:600}}>Mar 1 — Mar 31, 2026</div>
-          <div style={{fontSize:11,color:c.ac2||c.ac||"#F4A261",marginTop:2}}>{daysLeft} days remaining</div>
-        </div>
+      <div style={{marginBottom:22}}>
+        <h1 style={{fontSize:mob?20:24,fontWeight:700,margin:0}}>Billing & Plan</h1>
+        <p style={{fontSize:13,color:c.so,marginTop:5}}>Review your Bloomie plan and approve upgrades securely on Whop.</p>
       </div>
 
-      {/* Plan + Amount */}
-      <div style={{display:"grid",gridTemplateColumns:mob?"1fr":"1fr 1fr",gap:14,marginBottom:18}}>
-        <div style={{background:c.cd,borderRadius:12,border:"1px solid "+c.ln,padding:18}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-            <div>
-              <div style={{fontSize:11,fontWeight:700,color:c.so,textTransform:"uppercase",letterSpacing:"0.5px"}}>Current Plan</div>
-              <div style={{fontSize:22,fontWeight:700,marginTop:2,background:"linear-gradient(135deg,#F4A261,#E76F8B)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>Enterprise</div>
+      {loading&&<div style={{padding:24,borderRadius:12,background:c.cd,border:"1px solid "+c.ln,color:c.so}}>Loading your plan…</div>}
+      {error&&<div style={{padding:"11px 14px",borderRadius:10,background:"rgba(239,68,68,.08)",border:"1px solid rgba(239,68,68,.25)",color:"#ef6464",marginBottom:14}}>{error}</div>}
+
+      {billing&&<>
+        <div style={{padding:18,borderRadius:12,background:c.cd,border:"1px solid "+c.ln,marginBottom:16,display:"flex",justifyContent:"space-between",alignItems:mob?"flex-start":"center",gap:12,flexDirection:mob?"column":"row"}}>
+          <div>
+            <div style={{fontSize:11,fontWeight:700,color:c.so,textTransform:"uppercase",letterSpacing:".5px"}}>Current tenant plan</div>
+            <div style={{fontSize:22,fontWeight:750,marginTop:4,color:c.ac}}>{currentLabels[billing.currentPlan]||billing.currentPlan}</div>
+            <div style={{fontSize:12,color:c.so,marginTop:4}}>{billing.organizationName}</div>
+          </div>
+          <div style={{padding:"7px 12px",borderRadius:999,background:"rgba(52,168,83,.1)",color:"#34a853",fontSize:12,fontWeight:700}}>✓ Active</div>
+        </div>
+
+        <div style={{display:"grid",gridTemplateColumns:mob?"1fr":"repeat(2,minmax(0,1fr))",gap:14}}>
+          {billing.plans.map(plan=>{
+            const active=(plan.key==="full_time"&&billing.currentPlan==="enterprise")||(plan.key==="part_time"&&billing.currentPlan==="pro");
+            return <div key={plan.key} style={{padding:20,borderRadius:14,background:c.cd,border:"1px solid "+(active?"#34a853":c.ln),display:"flex",flexDirection:"column",minHeight:230}}>
+              <div style={{fontSize:12,fontWeight:700,color:active?"#34a853":c.ac}}>{active?"CURRENT PLAN":"AVAILABLE PLAN"}</div>
+              <div style={{fontSize:18,fontWeight:750,marginTop:8}}>{plan.name}</div>
+              <div style={{fontSize:28,fontWeight:800,marginTop:8}}>${plan.price}<span style={{fontSize:13,fontWeight:500,color:c.so}}>{plan.cadence==="one_time"?" once":"/month"}</span></div>
+              <div style={{fontSize:13,lineHeight:1.55,color:c.so,marginTop:10,flex:1}}>{plan.description}</div>
+              <button disabled={active||opening===plan.key} onClick={()=>openCheckout(plan.key)} style={{marginTop:18,padding:"11px 16px",borderRadius:10,border:active?"1px solid "+c.ln:"none",background:active?c.sf:"linear-gradient(135deg,#F4A261,#E76F8B)",color:active?c.so:"#fff",fontSize:13,fontWeight:750,cursor:active?"default":"pointer",opacity:opening===plan.key ? .7 : 1}}>
+                {active?"Already active":opening===plan.key?"Preparing…":"Review secure checkout"}
+              </button>
+            </div>;
+          })}
+        </div>
+
+        <div style={{marginTop:16,padding:16,borderRadius:12,background:c.sf,border:"1px solid "+c.ln,fontSize:12,lineHeight:1.6,color:c.so}}>
+          <strong style={{color:c.tx}}>How upgrades work:</strong> selecting a plan opens Whop’s secure hosted checkout inside Bloomie. Nothing is charged until you review and approve it. Your plan changes only after Whop confirms a successful purchase with a signed webhook.
+        </div>
+      </>}
+      {checkout&&<div role="dialog" aria-modal="true" aria-label={`${checkout.name} checkout`} style={{position:"fixed",inset:0,zIndex:10000,background:"rgba(0,0,0,.78)",display:"flex",alignItems:mob?"flex-end":"center",justifyContent:"center",padding:mob?0:20}} onClick={()=>setCheckout(null)}>
+        <div style={{width:"100%",maxWidth:560,height:mob?"92dvh":"min(780px,92vh)",background:c.cd,border:"1px solid "+c.ln,borderRadius:mob?"18px 18px 0 0":18,display:"flex",flexDirection:"column",overflow:"hidden",boxShadow:"0 24px 80px rgba(0,0,0,.45)"}} onClick={e=>e.stopPropagation()}>
+          <div style={{display:"flex",alignItems:"center",gap:12,padding:"14px 16px",borderBottom:"1px solid "+c.ln,flexShrink:0}}>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:15,fontWeight:750,color:c.tx}}>{checkout.name}</div>
+              <div style={{fontSize:11,color:c.so,marginTop:2}}>Secure checkout powered by Whop</div>
             </div>
-            <div style={{fontSize:24,fontWeight:700}}>{$(plan.price)}<span style={{fontSize:13,color:c.so,fontWeight:500}}>/mo</span></div>
+            <button aria-label="Close checkout" onClick={()=>setCheckout(null)} style={{width:34,height:34,borderRadius:9,border:"1px solid "+c.ln,background:c.sf,color:c.tx,cursor:"pointer",fontSize:19,lineHeight:1}}>×</button>
           </div>
-          <div style={{fontSize:12,color:c.so,lineHeight:1.6}}>Unlimited chat · Unlimited articles & emails · {plan.images} images · {plan.videos} videos · {plan.emails.toLocaleString()} email sends · {plan.sms.toLocaleString()} SMS</div>
-          <button style={{marginTop:10,padding:"7px 16px",borderRadius:8,border:"1px solid "+c.ln,background:"none",color:c.ac2||"#F4A261",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Change Plan</button>
-        </div>
-        <div style={{background:c.cd,borderRadius:12,border:currentOverage>0?"1px solid rgba(234,67,53,0.3)":"1px solid "+c.ln,padding:18}}>
-          <div style={{fontSize:11,fontWeight:700,color:c.so,textTransform:"uppercase",letterSpacing:"0.5px"}}>Current Total</div>
-          <div style={{fontSize:30,fontWeight:700,marginTop:4}}>{$(plan.price+currentOverage)}</div>
-          <div style={{display:"flex",gap:16,marginTop:6,fontSize:12}}>
-            <div><span style={{color:c.so}}>Base:</span> <span style={{fontWeight:600}}>{$(plan.price)}</span></div>
-            {currentOverage>0&&<div><span style={{color:c.so}}>Overages:</span> <span style={{fontWeight:700,color:"#ea4335"}}>{$(currentOverage)}</span></div>}
-          </div>
-          <div style={{marginTop:12}}>
-            <div style={{height:4,borderRadius:2,background:c.ln}}><div style={{height:4,borderRadius:2,background:c.ac2||"#F4A261",width:(daysPassed/daysInPeriod*100)+"%"}}/></div>
-            <div style={{display:"flex",justifyContent:"space-between",marginTop:4,fontSize:10,color:c.so}}><span>Mar 1</span><span>Day {daysPassed}</span><span>Mar 31</span></div>
+          <div style={{flex:1,minHeight:0,overflowY:"auto",WebkitOverflowScrolling:"touch",background:"#fff"}}>
+            <div
+              key={checkout.planId}
+              data-whop-checkout-plan-id={checkout.planId}
+              data-whop-checkout-return-url={`${window.location.origin}/app?billing=success`}
+              style={{width:"100%",minHeight:"100%"}}
+            />
           </div>
         </div>
-      </div>
-
-      {/* CRM Sends */}
-      <div style={{background:c.cd,borderRadius:12,border:"1px solid "+c.ln,padding:18,marginBottom:14}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-          <div style={{fontSize:15,fontWeight:700}}>CRM Communication Sends</div>
-          {currentOverage>0&&<div style={{fontSize:12,fontWeight:700,color:"#ea4335",display:"flex",alignItems:"center",gap:4}}><span style={{width:6,height:6,borderRadius:3,background:"#ea4335",display:"inline-block"}}/>{$(currentOverage)} in overages</div>}
-        </div>
-        <div style={{fontSize:12,color:c.so,marginBottom:14}}>Included with BLOOM CRM. Overages billed at end of period.</div>
-
-        {overageItems.filter(i=>["email","sms","mms","phone"].includes(i.key)).map(i=><BillingUsageBar key={i.key} {...i} c={c}/>)}
-
-        {/* Estimate toggle */}
-        <button onClick={()=>setShowEstimate(!showEstimate)} style={{width:"100%",padding:"9px 14px",borderRadius:8,cursor:"pointer",fontFamily:"inherit",border:showEstimate?"1px solid rgba(244,162,97,0.3)":"1px solid "+c.ln,background:showEstimate?"rgba(244,162,97,0.06)":c.sf||"#222",display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:4}}>
-          <span style={{fontSize:13,fontWeight:600,color:showEstimate?c.ac2||"#F4A261":c.so}}>{showEstimate?"Hide":"View"} End-of-Month Estimate</span>
-          <span style={{fontSize:12,color:c.so,transform:showEstimate?"rotate(180deg)":"none",transition:"transform .2s"}}>▼</span>
-        </button>
-
-        {showEstimate&&(
-          <div style={{marginTop:12,padding:16,borderRadius:10,background:c.sf||"#222",border:"1px solid "+c.ln,animation:"bFadeIn .25s ease"}}>
-            <div style={{fontSize:12,fontWeight:700,color:c.ac2||"#F4A261",marginBottom:4}}>Projected End-of-Month Estimate</div>
-            <div style={{fontSize:11,color:c.so,marginBottom:12}}>Based on your pace through day {daysPassed}, projected to end of billing period.</div>
-            {projItems.filter(i=>["email","sms","mms","phone"].includes(i.key)).map(i=>{
-              const isO=i.projOver>0;
-              return(
-                <div key={i.key} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderRadius:6,marginBottom:4,background:isO?"rgba(234,67,53,0.06)":"transparent",border:isO?"1px solid rgba(234,67,53,0.15)":"1px solid transparent"}}>
-                  <span style={{fontSize:14,width:22}}>{i.icon}</span>
-                  <span style={{flex:1,fontSize:12,fontWeight:600,color:isO?"#ea4335":c.tx}}>{i.label}</span>
-                  <div style={{textAlign:"right"}}>
-                    <div style={{fontSize:12,color:isO?"#ea4335":c.so}}>~{i.projected.toLocaleString()} <span style={{color:c.so}}>/ {i.limit.toLocaleString()}</span></div>
-                    {isO?<div style={{fontSize:11,fontWeight:700,color:"#ea4335"}}>+{i.projOver.toLocaleString()} over → {$(i.projCost)}</div>:<div style={{fontSize:11,color:"#34a853"}}>Within plan</div>}
-                  </div>
-                </div>
-              );
-            })}
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",borderTop:"1px solid "+c.ln,marginTop:10,paddingTop:10}}>
-              <span style={{fontSize:13,fontWeight:700}}>Estimated Total Bill</span>
-              <div style={{textAlign:"right"}}>
-                <div style={{fontSize:20,fontWeight:700,color:projTotalOver>0?"#ea4335":"#34a853"}}>{$(plan.price+projTotalOver)}</div>
-                {projTotalOver>0&&<div style={{fontSize:11,color:"#ea4335"}}>{$(plan.price)} base + {$(projTotalOver)} overages</div>}
-              </div>
-            </div>
-            {projTotalOver>10&&<div style={{marginTop:10,padding:"9px 14px",borderRadius:8,fontSize:12,lineHeight:1.5,background:"rgba(244,162,97,0.06)",border:"1px solid rgba(244,162,97,0.2)",color:c.ac2||"#F4A261"}}>💡 <strong>Tip:</strong> You're on pace for {$(projTotalOver)} in overages. Consider adjusting {aFN}'s send frequency or upgrading your plan.</div>}
-          </div>
-        )}
-      </div>
-
-      {/* AI Generation */}
-      <div style={{background:c.cd,borderRadius:12,border:"1px solid "+c.ln,padding:18,marginBottom:14}}>
-        <div style={{fontSize:15,fontWeight:700,marginBottom:4}}>AI Generation</div>
-        <div style={{fontSize:12,color:c.so,marginBottom:14}}>{aFN} picks the best AI model for each job automatically.</div>
-        {overageItems.filter(i=>["image","video"].includes(i.key)).map(i=><BillingUsageBar key={i.key} {...i} c={c}/>)}
-        <div style={{borderTop:"1px solid "+c.ln,marginTop:6,paddingTop:14}}>
-          <div style={{fontSize:12,fontWeight:700,color:c.so,marginBottom:10}}>Content Created This Period</div>
-          <div style={{display:"grid",gridTemplateColumns:mob?"repeat(3,1fr)":"repeat(5,1fr)",gap:8}}>
-            {[{l:"Chat Messages",v:usage.chatMessages,i:null},{l:"Articles",v:usage.blogPosts,i:null},{l:"Emails Drafted",v:usage.emailDrafts,i:null},{l:"Pages Built",v:usage.codePages,i:null},{l:"Research",v:usage.research,i:null}].map((s,idx)=>(
-              <div key={idx} style={{textAlign:"center",padding:"10px 6px",borderRadius:8,background:c.sf||"#222",border:"1px solid "+c.ln}}>
-                <div style={{fontSize:16,marginBottom:4}}>{s.i}</div>
-                <div style={{fontSize:18,fontWeight:700,color:c.ac2||"#F4A261"}}>{s.v.toLocaleString()}</div>
-                <div style={{fontSize:10,color:c.so,marginTop:2}}>{s.l}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Plan comparison */}
-      <div style={{background:c.cd,borderRadius:12,border:"1px solid "+c.ln,padding:18,marginBottom:14,overflowX:"auto"}}>
-        <div style={{fontSize:15,fontWeight:700,marginBottom:14}}>Plan Comparison</div>
-        <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:500}}>
-          <thead><tr style={{borderBottom:"1px solid "+c.ln}}>
-            <th style={{textAlign:"left",padding:"8px 12px",color:c.so,fontWeight:600,fontSize:12}}>Feature</th>
-            {Object.entries(PLANS_DATA).map(([k,p])=><th key={k} style={{textAlign:"center",padding:"8px 12px",color:k===currentPlan?c.ac2||"#F4A261":c.tx,fontWeight:700}}>{p.name}<div style={{fontSize:11,fontWeight:500,color:k===currentPlan?c.ac2||"#F4A261":c.so}}>{$(p.price)}/mo</div>{k===currentPlan&&<div style={{fontSize:9,color:"#34a853",marginTop:2}}>CURRENT</div>}</th>)}
-          </tr></thead>
-          <tbody>
-            {[
-              {l:"Chat with your Bloomie",v:["Unlimited","Unlimited","Unlimited"]},
-              {l:"BLOOM CRM",v:["Included","Included","Included"]},
-              {l:"Scheduled Tasks",v:["5","15","Unlimited"]},
-              {l:"Emails included",v:["1,000","5,000","10,000"]},
-              {l:"SMS included",v:["200","500","1,000"]},
-              {l:"Images",v:["—","40/mo","80/mo"]},
-              {l:"Videos",v:["—","—","30/mo"]},
-              {l:"Phone minutes",v:["—","60 min","200 min"]},
-              {l:"Email overage",v:["$0.02","$0.02","$0.02"]},
-              {l:"SMS overage",v:["$0.03","$0.03","$0.03"]},
-              {l:"Image overage",v:["—","$0.15","$0.15"]},
-              {l:"Video overage",v:["—","—","$2.00"]},
-            ].map((r,i)=><tr key={i} style={{borderBottom:"1px solid rgba(42,42,42,0.4)"}}><td style={{padding:"8px 12px",color:c.so,fontSize:12}}>{r.l}</td>{r.v.map((v,j)=><td key={j} style={{textAlign:"center",padding:"8px 12px",color:v==="—"?c.so:v==="Unlimited"||v==="Included"?"#34a853":c.tx,fontWeight:v==="Unlimited"||v==="Included"?600:400}}>{v}</td>)}</tr>)}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Video add-on */}
-      <div style={{background:"linear-gradient(135deg,rgba(244,162,97,0.06),rgba(231,111,139,0.06))",borderRadius:12,border:"1px solid rgba(244,162,97,0.2)",padding:18,marginBottom:14,display:"flex",justifyContent:"space-between",alignItems:"center",gap:14,flexWrap:"wrap"}}>
-        <div>
-          <div style={{fontSize:14,fontWeight:700,color:c.ac2||"#F4A261"}}>Video Creator Pack</div>
-          <div style={{fontSize:12,color:c.so,marginTop:3}}>Need more videos? Add 100 videos/month for $200. Extra clips at $1.50 each.</div>
-        </div>
-        <button style={{padding:"10px 22px",borderRadius:8,border:"none",cursor:"pointer",fontFamily:"inherit",background:"linear-gradient(135deg,#F4A261,#E76F8B)",fontSize:13,fontWeight:700,color:"#fff",flexShrink:0}}>Add to Plan</button>
-      </div>
-
-      {/* Payment method */}
-      <div style={{background:c.cd,borderRadius:12,border:"1px solid "+c.ln,padding:18}}>
-        <div style={{fontSize:15,fontWeight:700,marginBottom:12}}>Payment Method</div>
-        <div style={{display:"flex",alignItems:"center",gap:12}}>
-          <div style={{width:48,height:32,borderRadius:6,background:c.sf||"#222",border:"1px solid "+c.ln,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>💳</div>
-          <div><div style={{fontSize:13,fontWeight:600}}>Visa ending in 4242</div><div style={{fontSize:11,color:c.so}}>Expires 08/2027</div></div>
-          <button style={{marginLeft:"auto",padding:"6px 14px",borderRadius:6,border:"1px solid "+c.ln,background:"none",color:c.so,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Update</button>
-        </div>
-      </div>
+      </div>}
     </div>
   );
 }
@@ -3878,7 +5669,7 @@ function BillingPage({c,mob,aFN="Agent"}){
    DISPATCH PAGE — Mobile access to your Bloomie
    ═══════════════════════════════════════════════════════════════ */
 function DispatchPage({c, mob, currentAgent, agentImgUrl}) {
-  const SARAH_URL = 'https://autonomous-sarah-rodriguez-production.up.railway.app';
+  const SARAH_URL = typeof window !== 'undefined' ? window.location.origin : 'https://app.bloomiestaffing.com';
   const dispatchUrl = SARAH_URL + '/dispatch';
   const [copied, setCopied] = useState(false);
   const [qrVisible, setQrVisible] = useState(false);
@@ -3913,7 +5704,7 @@ function DispatchPage({c, mob, currentAgent, agentImgUrl}) {
         return;
       }
       const { downloadUrl } = await tokenRes.json();
-      const filename = platform.includes('mac') ? 'BLOOM-Desktop.dmg' : 'BLOOM-Desktop.exe';
+          const filename = platform.includes('mac') ? 'BLOOM-Desktop.dmg' : 'BLOOM-Desktop-Windows.exe';
 
       // Stream download via fetch (avoids Railway 503 on navigation requests)
       const dlRes = await fetch(SARAH_URL + downloadUrl);
@@ -4014,24 +5805,24 @@ function DispatchPage({c, mob, currentAgent, agentImgUrl}) {
         <div style={{display:'flex', gap:10, flexWrap:'wrap', marginBottom:16}}>
           {/* macOS Button */}
           <button
-            onClick={() => downloadDesktop(isMac ? 'mac-arm64' : 'windows')}
-            disabled={downloading !== null}
+            onClick={() => downloadDesktop('mac-arm64')}
+            disabled={downloading !== null || desktopAvail?.['mac-arm64']?.available === false}
             style={{flex:1, minWidth:140, padding:'14px 20px', borderRadius:12, border:'none', background: isMac ? 'linear-gradient(135deg,#F4A261,#E76F8B)' : c.sf, color: isMac ? '#fff' : c.tx, cursor: downloading ? 'wait' : 'pointer', fontSize:13, fontWeight:700, fontFamily:'inherit', display:'flex', alignItems:'center', justifyContent:'center', gap:8, transition:'transform .1s', opacity: downloading === 'mac-arm64' || downloading === 'mac-intel' ? 0.6 : 1}}>
             <svg width='18' height='18' viewBox='0 0 24 24' fill={isMac ? '#fff' : c.so}>
               <path d='M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z'/>
             </svg>
-            {downloading === 'mac-arm64' || downloading === 'mac-intel' ? 'Downloading...' : 'Download for macOS'}
+            {downloading === 'mac-arm64' || downloading === 'mac-intel' ? 'Downloading...' : desktopAvail?.['mac-arm64']?.available === false ? 'macOS coming soon' : 'Download for macOS'}
           </button>
 
           {/* Windows Button */}
           <button
             onClick={() => downloadDesktop('windows')}
-            disabled={downloading !== null}
+            disabled={downloading !== null || desktopAvail?.windows?.available === false}
             style={{flex:1, minWidth:140, padding:'14px 20px', borderRadius:12, border:'none', background: isWin ? 'linear-gradient(135deg,#F4A261,#E76F8B)' : c.sf, color: isWin ? '#fff' : c.tx, cursor: downloading ? 'wait' : 'pointer', fontSize:13, fontWeight:700, fontFamily:'inherit', display:'flex', alignItems:'center', justifyContent:'center', gap:8, transition:'transform .1s', opacity: downloading === 'windows' ? 0.6 : 1}}>
             <svg width='16' height='16' viewBox='0 0 24 24' fill={isWin ? '#fff' : c.so}>
               <path d='M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801'/>
             </svg>
-            {downloading === 'windows' ? 'Downloading...' : 'Download for Windows'}
+            {downloading === 'windows' ? 'Downloading...' : desktopAvail?.windows?.available === false ? 'Windows coming soon' : 'Download for Windows'}
           </button>
         </div>
 
@@ -4142,12 +5933,12 @@ function QRCanvas({url, size=160}) {
   return <canvas ref={canvasRef} style={{borderRadius:8,display:'block'}}/>;
 }
 
-export default function AppWithErrorBoundary({ user: authUser }) {
-  return <ErrorBoundary><ConversationProvider><App authUser={authUser} /></ConversationProvider></ErrorBoundary>;
+export default function AppWithErrorBoundary({ user: authUser, passwordRecovery = false }) {
+  return <ErrorBoundary><ConversationProvider><App authUser={authUser} passwordRecovery={passwordRecovery} /></ConversationProvider></ErrorBoundary>;
 }
 
 // ── Password Change Panel — used in Settings > General > Security ──────────
-function PwChangePanel({c}) {
+function PwChangePanel({c, recoveryMode = false}) {
   const [nw, setNw] = useState('');
   const [conf, setConf] = useState('');
   const [saving, setSaving] = useState(false);
@@ -4166,7 +5957,8 @@ function PwChangePanel({c}) {
   };
 
   return (
-    <div style={{padding:'14px 16px',borderRadius:10,background:c.sf,border:'1px solid '+c.ln,display:'flex',flexDirection:'column',gap:10}}>
+    <div data-testid="password-change-panel" style={{padding:'14px 16px',borderRadius:10,background:c.sf,border:'1px solid '+c.ln,display:'flex',flexDirection:'column',gap:10}}>
+      {recoveryMode&&<div style={{fontSize:12,color:c.ac,fontWeight:700,padding:'8px 10px',background:c.ac+'12',borderRadius:7}}>Choose a new password to finish recovering your account.</div>}
       <input
         type="password" placeholder="New password" value={nw} onChange={e=>setNw(e.target.value)}
         style={{padding:'9px 12px',borderRadius:8,border:'1.5px solid '+c.ln,background:c.cd,fontSize:13,color:c.tx,outline:'none'}}
@@ -4190,12 +5982,250 @@ function PwChangePanel({c}) {
 }
 
 
+function ManagedWorkspaceStyles(){
+  return <style>{`
+    .managed-thread{width:100%;max-width:780px;margin:0 auto;padding:22px 22px 34px}
+    .managed-markdown{font-size:14px;line-height:1.7;color:inherit;min-width:0}
+    .managed-markdown>*:first-child{margin-top:0}.managed-markdown>*:last-child{margin-bottom:0}
+    .managed-markdown p{margin:0 0 12px}.managed-markdown h1{font-size:22px;line-height:1.25;margin:22px 0 10px}
+    .managed-markdown h2{font-size:18px;line-height:1.35;margin:20px 0 8px}.managed-markdown h3{font-size:16px;margin:18px 0 8px}
+    .managed-markdown ul,.managed-markdown ol{margin:8px 0 14px;padding-left:22px}.managed-markdown li{margin:5px 0}
+    .managed-markdown pre{max-width:100%;overflow:auto;margin:12px 0;border-radius:12px}
+    .managed-markdown code{overflow-wrap:anywhere}.managed-markdown table{display:block;max-width:100%;overflow-x:auto;border-collapse:collapse;margin:12px 0}
+    .managed-markdown th,.managed-markdown td{padding:8px 10px;border:1px solid rgba(127,127,127,.25);text-align:left}
+    .managed-markdown blockquote{margin:12px 0;padding:2px 0 2px 14px;border-left:3px solid #F4A261;opacity:.9}
+    @keyframes processingSweep{0%{background-position:180% 0}100%{background-position:-40% 0}}
+    .managed-user-bubble{max-width:min(78%,620px)}
+    .managed-composer{padding:10px max(14px,env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left))}
+    @media(max-width:767px){
+      .managed-thread{padding:16px 14px 28px;max-width:none}
+      .managed-markdown{font-size:15px;line-height:1.65}
+      .managed-user-bubble{max-width:88%}
+      .managed-desktop-artifact{display:none!important}
+      .managed-session-header{padding-left:14px!important;padding-right:14px!important}
+    }
+  `}</style>;
+}
+
+function ManagedMessage({message,c,aFN="Bloomie",agent=null,user=null}){
+  const isUser=message.role==='user';
+  const attachments=message.images||message.files||[];
+  const uberEatsResults=!isUser?parseUberEatsResults(message.content):null;
+  return(
+    <div style={{display:'flex',justifyContent:isUser?'flex-end':'flex-start',gap:10,alignItems:'flex-start',marginBottom:20,minWidth:0}}>
+      {!isUser&&<Face sz={30} agent={agent||{nm:aFN,img:null,grad:'linear-gradient(135deg,#F4A261,#E76F8B)'}} style={{marginTop:2}}/>}
+      <div className={isUser?'managed-user-bubble':''} style={{minWidth:0,...(isUser?{padding:'11px 15px',borderRadius:'20px 20px 5px 20px',background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff'}:{flex:1,color:c.tx})}}>
+        {attachments.length>0&&<div style={{display:'flex',gap:7,flexWrap:'wrap',marginBottom:message.content?8:0}}>
+          {attachments.map((file,j)=>file.data&&String(file.type||'').startsWith('image/')
+            ?<img key={j} src={file.data} alt={file.name||'Attachment'} style={{width:120,height:88,objectFit:'cover',borderRadius:10}}/>
+            :<div key={j} style={{padding:'7px 10px',borderRadius:10,background:isUser?'rgba(255,255,255,.14)':c.cd,border:'1px solid '+(isUser?'rgba(255,255,255,.25)':c.ln),fontSize:12}}>File · {file.name||'Attachment'}</div>)}
+        </div>}
+        {message.content&&<div className="managed-markdown">
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
+            a:({node,href,children})=><MarkdownMediaLink href={href} color={isUser?'#fff':c.ac}>{children}</MarkdownMediaLink>,
+            img:({node,src,alt})=><MarkdownInlineImage src={src} alt={alt}/>,
+            code:({node,inline,className,children,...props})=>inline
+              ?<code {...props} style={{padding:'2px 5px',borderRadius:5,background:isUser?'rgba(0,0,0,.16)':c.sf,fontSize:'.9em'}}>{children}</code>
+              :<code {...props} className={className} style={{display:'block',padding:'13px 14px',background:'#0d1117',color:'#e6edf3',fontSize:12,lineHeight:1.55,fontFamily:"'Fira Code','Cascadia Code',monospace"}}>{children}</code>
+          }}>{cleanMessageText(message.content)}</ReactMarkdown>
+          {uberEatsResults&&<UberEatsResultsCard results={uberEatsResults} c={c}/>}
+        </div>}
+      </div>
+      {isUser&&<Face sz={30} agent={user||{nm:'You',img:null,grad:'linear-gradient(135deg,#F4A261,#E76F8B)'}} style={{marginTop:2}}/>}
+    </div>
+  );
+}
+
+function ManagedArtifacts({sessionId,c,mob,onOpen}){
+  const [files,setFiles]=useState([]);
+  const [open,setOpen]=useState(false);
+  useEffect(()=>{
+    if(!sessionId){setFiles([]);return;}
+    let live=true;
+    const load=async()=>{
+      try{
+        const h=await getAuthHeaders();
+        const r=await fetch(`/api/files/artifacts?sessionId=${encodeURIComponent(sessionId)}&limit=20`,{headers:h});
+        const d=await r.json();
+        if(live&&r.ok)setFiles(d.artifacts||[]);
+      }catch{}
+    };
+    load();const timer=setInterval(load,5000);
+    return()=>{live=false;clearInterval(timer);};
+  },[sessionId]);
+  if(!sessionId)return null;
+  const openFile=async(file)=>{
+    try{
+      const h=await getAuthHeaders();
+      const r=await fetch(`/api/files/preview/${file.fileId}`,{headers:h});
+      const d=await r.json();
+      onOpen({...file,content:d.content||'',fileId:file.fileId});
+      setOpen(false);
+    }catch{onOpen(file);}
+  };
+  return <>
+    <button onClick={()=>setOpen(true)} style={{padding:'7px 11px',borderRadius:9,border:'1px solid '+c.ln,background:c.sf,color:c.tx,fontSize:12,fontWeight:650,cursor:'pointer',whiteSpace:'nowrap'}}>
+      Files{files.length?` ${files.length}`:''}
+    </button>
+    {open&&<div onClick={()=>setOpen(false)} style={{position:'fixed',inset:0,zIndex:9000,background:'rgba(0,0,0,.62)',display:'flex',alignItems:mob?'flex-end':'center',justifyContent:'center',padding:mob?0:24}}>
+      <div onClick={e=>e.stopPropagation()} style={{width:mob?'100%':520,maxHeight:mob?'82dvh':'70vh',borderRadius:mob?'20px 20px 0 0':18,background:c.cd,border:'1px solid '+c.ln,overflow:'hidden',boxShadow:'0 24px 80px rgba(0,0,0,.45)'}}>
+        <div style={{padding:'14px 16px',display:'flex',alignItems:'center',borderBottom:'1px solid '+c.ln}}>
+          <div style={{flex:1,fontSize:15,fontWeight:750,color:c.tx}}>Session files</div>
+          <button onClick={()=>setOpen(false)} aria-label="Close files" style={{width:32,height:32,borderRadius:9,border:'1px solid '+c.ln,background:'transparent',color:c.tx,cursor:'pointer'}}>×</button>
+        </div>
+        <div style={{padding:10,overflowY:'auto',maxHeight:mob?'calc(82dvh - 62px)':'calc(70vh - 62px)'}}>
+          {files.length===0?<div style={{padding:34,textAlign:'center',fontSize:13,color:c.so}}>Artifacts created in this session will appear here.</div>:files.map(file=>
+            <button key={file.fileId||file.id} onClick={()=>openFile(file)} style={{width:'100%',display:'flex',alignItems:'center',gap:11,textAlign:'left',padding:'12px',border:0,borderBottom:'1px solid '+c.ln,background:'transparent',color:c.tx,cursor:'pointer'}}>
+              <span style={{width:36,height:36,borderRadius:10,background:c.sf,display:'grid',placeItems:'center',fontSize:10,fontWeight:800,color:c.ac}}>{(file.name?.split('.').pop()||'FILE').toUpperCase()}</span>
+              <span style={{flex:1,minWidth:0}}><span style={{display:'block',fontSize:13,fontWeight:650,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{file.name}</span><span style={{fontSize:11,color:c.so}}>Tap to preview</span></span>
+              <span style={{color:c.so}}>›</span>
+            </button>)}
+        </div>
+      </div>
+    </div>}
+  </>;
+}
+
+function WorkWorkspacePanel({c,mob,tab,setTab,sessionId,setActiveArtifact,aFN,agentId,agent,browserMode,setBrowserMode,lastAgentText="",onClose}){
+  return(
+    <div data-testid="work-live-workspace" style={{
+      ...(mob
+        ? {position:'fixed',inset:0,zIndex:9050}
+        : {width:'100%',height:'100%',flex:1}),
+      minWidth:0,background:c.cd,display:'flex',flexDirection:'column',overflow:'hidden'
+    }}>
+      <div style={{height:44,display:'flex',alignItems:'stretch',borderBottom:'1px solid '+c.ln,background:c.sf,flexShrink:0,paddingTop:mob?'env(safe-area-inset-top)':0}}>
+        <button onClick={()=>setTab('live')} style={{flex:1,border:'none',borderBottom:tab==='live'?'2px solid '+c.ac:'2px solid transparent',background:'transparent',color:tab==='live'?c.tx:c.so,fontSize:12,fontWeight:750,cursor:'pointer'}}>Live</button>
+        <button onClick={()=>setTab('browser')} style={{flex:1,border:'none',borderBottom:tab==='browser'?'2px solid '+c.ac:'2px solid transparent',background:'transparent',color:tab==='browser'?c.tx:c.so,fontSize:12,fontWeight:750,cursor:'pointer'}}>Browser</button>
+        <button onClick={()=>setTab('files')} style={{flex:1,border:'none',borderBottom:tab==='files'?'2px solid '+c.ac:'2px solid transparent',background:'transparent',color:tab==='files'?c.tx:c.so,fontSize:12,fontWeight:750,cursor:'pointer'}}>Files</button>
+        {onClose&&<button onClick={onClose} aria-label="Collapse Work workspace" title="Collapse panel" style={{width:36,padding:'8px 0',border:'none',borderBottom:'2px solid transparent',background:'transparent',color:c.so,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke={c.so} strokeWidth="2"><path d="M6 3l5 5-5 5"/></svg>
+        </button>}
+      </div>
+      <div style={{flex:1,minHeight:0,display:'flex',flexDirection:'column',overflow:'hidden'}}>
+        {tab==='live'
+          ?<LiveAvatarPanel c={c} agentId={agentId} agentName={agent?.nm||aFN} agentImg={agent?.img||null} lastSarahText={lastAgentText}/>
+          :tab==='browser'
+            ?<Screen c={c} mob={mob} mode={browserMode} setMode={setBrowserMode} aFN={aFN}/>
+          :sessionId
+            ?<SessionFilesPanel c={c} sessionId={sessionId} setActiveArtifact={setActiveArtifact} aFN={aFN}/>
+            :<div style={{flex:1,display:'grid',placeItems:'center',padding:24,textAlign:'center',color:c.so,fontSize:13}}>Start or select a Work session to see its files.</div>
+        }
+      </div>
+    </div>
+  );
+}
+
+function WorkSessionsSidebar({c,agentId,activeId,onSelect,projects=[],onProjectChange,searchQuery=""}){
+  const [items,setItems]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [expanded,setExpanded]=useState(()=>new Set());
+  const [menuId,setMenuId]=useState(null);
+  const [,setReadVersion]=useState(0);
+  useEffect(()=>{
+    const refresh=()=>setReadVersion(value=>value+1);
+    window.addEventListener('bloomie-read-state-changed',refresh);
+    window.addEventListener('storage',refresh);
+    return()=>{window.removeEventListener('bloomie-read-state-changed',refresh);window.removeEventListener('storage',refresh);};
+  },[]);
+  useEffect(()=>{
+    let live=true;
+    const load=async()=>{
+      try{
+        const h=await getAuthHeaders();
+        const r=await fetch('/api/builds'+(agentId?`?agentId=${encodeURIComponent(agentId)}`:''),{headers:h});
+        const d=await r.json();
+        if(live&&r.ok){
+          seedConversationReads('work',d.builds||[]);
+          setItems(d.builds||[]);
+        }
+      }catch{}
+      if(live)setLoading(false);
+    };
+    load();
+    const timer=setInterval(load,5000);
+    return()=>{live=false;clearInterval(timer);};
+  },[agentId]);
+  const visible=items.filter(item=>!searchQuery.trim()||(item.title||'Work session').toLowerCase().includes(searchQuery.toLowerCase()));
+  const color=status=>status==='complete'?'#22c55e':status==='error'?'#ef4444':status==='building'||status==='in_progress'?'#F4A261':'#60a5fa';
+  const label=status=>status==='complete'?'Complete':status==='error'?'Error':status==='building'||status==='in_progress'?'Working…':status==='clarifying'?'Waiting for you':'Queued';
+  const move=async(item,projectId)=>{
+    try{
+      const h=await getAuthHeaders();
+      const currentProject=item.project_id;
+      const targetId=projectId||currentProject;
+      if(!targetId)return;
+      const r=await fetch(`/api/projects/${targetId}/work-sessions`,{
+        method:'PATCH',
+        headers:{...h,'Content-Type':'application/json'},
+        body:JSON.stringify({workSessionIds:[item.id],action:projectId?'add':'remove'})
+      });
+      const d=await r.json();
+      if(!r.ok||!d.success)throw new Error(d.error||'Move failed');
+      setItems(list=>list.map(row=>row.id===item.id?{...row,project_id:projectId||null}:row));
+      if(projectId)setExpanded(current=>new Set([...current,projectId]));
+      setMenuId(null);
+      onProjectChange?.(item.id,projectId||null);
+    }catch(error){window.alert(error.message||'Could not move this Work session');}
+  };
+  const renderItem=item=>{
+    const selected=activeId===item.id;
+    const unread=!selected&&isConversationUnread('work',item);
+    return <div key={item.id} style={{position:'relative',marginBottom:3}}>
+      <button onClick={()=>{markConversationRead('work',item.id,item.updated_at);onSelect(item.id,item.project_id||null);}} style={{width:'100%',padding:'10px 34px 10px 10px',borderRadius:10,border:'none',background:selected?c.ac+'15':'transparent',color:selected?c.ac:c.tx,cursor:'pointer',textAlign:'left',display:'flex',alignItems:'flex-start',gap:9}}>
+        <span style={{width:8,height:8,borderRadius:'50%',background:color(item.status),marginTop:5,flexShrink:0}}/>
+        <span style={{flex:1,minWidth:0}}>
+          <span style={{display:'flex',alignItems:'center',gap:7,fontSize:13,fontWeight:selected||unread?650:550}}>
+            <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{item.title||'Work session'}</span>
+            {unread&&<span aria-label="Unread Work response" title="Unread" style={{width:8,height:8,borderRadius:'50%',background:'#3b82f6',boxShadow:'0 0 0 2px rgba(59,130,246,.15)',flexShrink:0}}/>}
+          </span>
+          <span style={{display:'block',fontSize:10,color:c.fa,marginTop:3}}>{label(item.status)}{item.type==='build'?' · Build':''}</span>
+        </span>
+      </button>
+      <button onClick={event=>{event.stopPropagation();setMenuId(menuId===item.id?null:item.id);}} aria-label={`Work session options for ${item.title||'Work session'}`} style={{position:'absolute',right:5,top:9,width:26,height:26,border:'none',borderRadius:7,background:menuId===item.id?c.sf:'transparent',color:c.so,cursor:'pointer',fontSize:18}}>⋮</button>
+      {menuId===item.id&&<>
+        <div onClick={()=>setMenuId(null)} style={{position:'fixed',inset:0,zIndex:998}}/>
+        <div style={{position:'absolute',right:5,top:36,zIndex:999,width:190,padding:5,borderRadius:10,border:'1px solid '+c.ln,background:c.cd,boxShadow:'0 8px 24px rgba(0,0,0,.2)'}}>
+          <div style={{padding:'6px 8px',fontSize:10,fontWeight:700,color:c.fa,textTransform:'uppercase'}}>Move to Project</div>
+          {projects.map(project=><button key={project.id} onClick={()=>move(item,project.id)} style={{width:'100%',padding:'8px',border:'none',borderRadius:7,background:item.project_id===project.id?c.ac+'15':'transparent',color:c.tx,textAlign:'left',fontSize:12,cursor:'pointer'}}>📁 {project.name}{item.project_id===project.id?' ✓':''}</button>)}
+          {item.project_id&&<button onClick={()=>move(item,null)} style={{width:'100%',padding:'8px',border:'none',borderTop:'1px solid '+c.ln,background:'transparent',color:c.so,textAlign:'left',fontSize:12,cursor:'pointer'}}>Remove from Project</button>}
+        </div>
+      </>}
+    </div>;
+  };
+  return(
+    <div data-testid="sidebar-work-sessions" style={{padding:'8px'}}>
+      <div style={{padding:'2px 8px 8px',fontSize:10,fontWeight:700,color:c.fa,textTransform:'uppercase',letterSpacing:'.6px'}}>Work Sessions</div>
+      {loading?<div style={{padding:20,textAlign:'center',fontSize:11,color:c.fa}}>Loading Work sessions…</div>:visible.length===0?<div style={{padding:20,textAlign:'center',fontSize:11,color:c.fa}}>{searchQuery.trim()?'No Work sessions found':'No Work sessions yet'}</div>:<>
+        {projects.map(project=>{
+          const projectItems=visible.filter(item=>item.project_id===project.id);
+          if(!projectItems.length)return null;
+          const open=expanded.has(project.id)||Boolean(searchQuery.trim());
+          return <div key={project.id} style={{marginBottom:5}}>
+            <button onClick={()=>setExpanded(current=>{const next=new Set(current);open?next.delete(project.id):next.add(project.id);return next;})} style={{width:'100%',padding:'8px 9px',border:'none',borderRadius:8,background:'transparent',color:c.tx,cursor:'pointer',display:'flex',alignItems:'center',gap:8,textAlign:'left'}}>
+              <span style={{fontSize:10,color:c.so,transform:open?'rotate(90deg)':'none'}}>▶</span><span>📁</span><span style={{flex:1,minWidth:0,fontSize:12,fontWeight:650,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{project.name}</span><span style={{fontSize:10,color:c.fa}}>{projectItems.length}</span>
+            </button>
+            {open&&<div style={{paddingLeft:12}}>{projectItems.map(renderItem)}</div>}
+          </div>;
+        })}
+        {visible.some(item=>!item.project_id)&&<>
+          <div style={{padding:'8px 8px 5px',fontSize:10,fontWeight:700,color:c.fa,textTransform:'uppercase',letterSpacing:'.5px'}}>Unfiled</div>
+          {visible.filter(item=>!item.project_id).map(renderItem)}
+        </>}
+      </>}
+    </div>
+  );
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // WORK TAB — Cowork-style Managed Agent sessions
 // Left: session list  |  Right: live checklist + progress log + clarify Q&A
 // ══════════════════════════════════════════════════════════════════════════════
-function WorkTab({c,mob,aFN="Bloomie"}){
+function WorkTab({c,mob,aFN="Bloomie",agentId="",agent=null,user=null,initialProjectId="",requestedSessionId=null,newSessionNonce=0,newSessionProjectId="",onActiveSessionChange,onNavigate}){
   const [sessions,setSessions]=useState([]);
+  const [projects,setWorkProjects]=useState([]);
+  const [projectId,setProjectId]=useState(initialProjectId||'');
+  const [loadError,setLoadError]=useState('');
   const [activeSid,setActiveSid]=useState(null);
   const [session,setSession]=useState(null);
   const [checklist,setChecklist]=useState([]);
@@ -4204,15 +6234,45 @@ function WorkTab({c,mob,aFN="Bloomie"}){
   const [chatInput,setChatInput]=useState('');
   const [chatSending,setChatSending]=useState(false);
   const [pendingImgs,setPendingImgs]=useState([]);
+  const [activeArtifact,setActiveArtifact]=useState(null);
+  const [workspaceTab,setWorkspaceTab]=useState('live');
+  const [workspaceOpen,setWorkspaceOpen]=useState(true);
+  const [mobileWorkspaceOpen,setMobileWorkspaceOpen]=useState(false);
+  const [browserMode,setBrowserMode]=useState('docked');
+  const [showWorkPlusMenu,setShowWorkPlusMenu]=useState(false);
+  const [workDriveOpen,setWorkDriveOpen]=useState(false);
   const pollRef=useRef(null);
   const logRef=useRef(null);
   const imgRef=useRef(null);
+  const lastAssistantMessageRef=useRef(null);
+  const initializedMessagesRef=useRef(false);
 
-  useEffect(()=>{loadSessions();},[]);
+  useEffect(()=>{
+    setActiveSid(null);
+    setSession(null);
+    setMsgs([]);
+    setChecklist([]);
+    loadSessions();
+    getAuthHeaders()
+      .then(h=>fetch('/api/projects',{headers:h}))
+      .then(r=>r.json())
+      .then(d=>setWorkProjects(d.projects||[]))
+      .catch(()=>{});
+  },[agentId]);
+  useEffect(()=>{if(initialProjectId)setProjectId(initialProjectId);},[initialProjectId]);
   useEffect(()=>{logRef.current?.scrollIntoView({behavior:'smooth'});},[msgs]);
+  useEffect(()=>{if(requestedSessionId&&requestedSessionId!==activeSid)setActiveSid(requestedSessionId);},[requestedSessionId]);
+  useEffect(()=>{
+    if(!newSessionNonce)return;
+    setActiveSid(null);setSession(null);setMsgs([]);setChecklist([]);setClarify(null);
+    setProjectId(newSessionProjectId||'');
+  },[newSessionNonce]);
+  useEffect(()=>{onActiveSessionChange?.(activeSid);},[activeSid]);
 
   useEffect(()=>{
     if(!activeSid)return;
+    initializedMessagesRef.current=false;
+    lastAssistantMessageRef.current=null;
     loadDetail(activeSid);
     if(pollRef.current)clearInterval(pollRef.current);
     pollRef.current=setInterval(()=>loadDetail(activeSid),2500);
@@ -4221,42 +6281,66 @@ function WorkTab({c,mob,aFN="Bloomie"}){
 
   const loadSessions=async()=>{
     try{
+      setLoadError('');
       const h=await getAuthHeaders();
-      const r=await fetch('/api/builds?type=work',{headers:h});
+      // Work is the single execution workspace. Include legacy Build records so
+      // existing coding sessions remain accessible after removing the Build tab.
+      const r=await fetch('/api/builds'+(agentId?`?agentId=${encodeURIComponent(agentId)}`:''),{headers:h});
       const d=await r.json();
+      if(!r.ok)throw new Error(d.error||`Work sessions failed (${r.status})`);
       setSessions(d.builds||[]);
-    }catch{}
+      if(!activeSid&&d.builds?.length)setActiveSid(d.builds[0].id);
+    }catch(e){setLoadError(e.message||'Could not load Work sessions');}
   };
 
   const loadDetail=async(id)=>{
     try{
       const h=await getAuthHeaders();
-      const r=await fetch('/api/builds/'+id,{headers:h});
+      const r=await fetch('/api/builds/'+id+(agentId?`?agentId=${encodeURIComponent(agentId)}`:''),{headers:h});
       const d=await r.json();
+      if(!r.ok)throw new Error(d.error||`Work session failed (${r.status})`);
+      setLoadError('');
       setSession(d.build);
       setChecklist(d.progress||[]);
       setMsgs(d.messages||[]);
       setClarify(d.clarify||null);
-      if(d.build?.status==='complete'||d.build?.status==='error')clearInterval(pollRef.current);
-    }catch{}
+      markConversationRead('work',id,d.build?.updated_at||Date.now());
+      const completedResponses=(d.messages||[]).filter(message=>
+        message.role==='assistant'&&
+        message.metadata?.type!=='work_progress'&&
+        message.metadata?.type!=='execution_event'
+      );
+      const latestResponse=completedResponses[completedResponses.length-1];
+      const responseSignature=latestResponse&&(latestResponse.id||latestResponse.created_at||`${latestResponse.content||''}:${completedResponses.length}`);
+      if(initializedMessagesRef.current&&responseSignature&&responseSignature!==lastAssistantMessageRef.current){
+        playBloomResponseSound();
+      }
+      lastAssistantMessageRef.current=responseSignature||null;
+      initializedMessagesRef.current=true;
+      if(d.build?.status==='complete'||d.build?.status==='error'){
+        clearInterval(pollRef.current);
+        setSessions(p=>p.map(s=>s.id===d.build.id?{...s,...d.build}:s));
+      }
+    }catch(e){setLoadError(e.message||'Could not load this Work session');}
   };
 
   const sendChat=async()=>{
     const msg=chatInput.trim();
     const imgs=[...pendingImgs];
     if(!msg&&!imgs.length||chatSending)return;
+    unlockBloomNotificationSound();
     setChatSending(true);
     setChatInput('');setPendingImgs([]);
     setMsgs(p=>[...p,{role:'user',content:msg,images:imgs,ts:Date.now()}]);
     try{
       const h=await getAuthHeaders();
       if(!activeSid){
-        const r=await fetch('/api/builds',{method:'POST',headers:{...h,'Content-Type':'application/json'},body:JSON.stringify({brief:msg,title:msg.slice(0,60),type:'work',images:imgs})});
+        const r=await fetch('/api/builds',{method:'POST',headers:{...h,'Content-Type':'application/json'},body:JSON.stringify({brief:msg,title:msg.slice(0,60),type:'work',images:imgs,projectId:projectId||null,agentId:agentId||null})});
         const d=await r.json();
         if(!r.ok)throw new Error(d.error||'Work request failed');
         if(d.build?.id){await loadSessions();setActiveSid(d.build.id);}
       }else{
-        const r=await fetch('/api/builds/'+activeSid+'/message',{method:'POST',headers:{...h,'Content-Type':'application/json'},body:JSON.stringify({message:msg,images:imgs})});
+        const r=await fetch('/api/builds/'+activeSid+'/message',{method:'POST',headers:{...h,'Content-Type':'application/json'},body:JSON.stringify({message:msg,images:imgs,agentId:agentId||null})});
         const d=await r.json().catch(()=>({}));
         if(!r.ok)throw new Error(d.error||'Message failed');
       }
@@ -4270,9 +6354,26 @@ function WorkTab({c,mob,aFN="Bloomie"}){
     if(!clarify||!activeSid)return;
     try{
       const h=await getAuthHeaders();
-      await fetch('/api/builds/'+activeSid+'/clarify',{method:'POST',headers:{...h,'Content-Type':'application/json'},body:JSON.stringify({answer,clarify_id:clarify.id})});
+      const r=await fetch('/api/builds/'+activeSid+'/clarify',{method:'POST',headers:{...h,'Content-Type':'application/json'},body:JSON.stringify({answer,clarify_id:clarify.id,agentId:agentId||null})});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok)throw new Error(d.error||'Could not submit your answer');
       setClarify(null);
-    }catch{}
+      setTimeout(()=>loadDetail(activeSid),500);
+    }catch(e){setLoadError(e.message||'Could not submit your answer');}
+  };
+
+  const startFreshWork=()=>{
+    setActiveSid(null);setSession(null);setMsgs([]);setChecklist([]);setClarify(null);
+    setShowWorkPlusMenu(false);
+  };
+  const takeWorkScreenshot=async()=>{
+    try{
+      const r=await fetch('/api/browser/screenshot',{cache:'no-store'});
+      const d=await r.json();
+      if(!r.ok||!d.screenshot)throw new Error(d.error||'No live browser screenshot is available');
+      setPendingImgs(p=>[...p,{name:'screenshot.jpg',type:'image/jpeg',data:'data:image/jpeg;base64,'+d.screenshot}]);
+    }catch(e){setLoadError(e.message||'Could not take a screenshot');}
+    setShowWorkPlusMenu(false);
   };
 
   const sc=(s)=>s==='complete'?'#22c55e':s==='building'||s==='in_progress'?'#F4A261':s==='error'?'#ef4444':'#60a5fa';
@@ -4280,8 +6381,9 @@ function WorkTab({c,mob,aFN="Bloomie"}){
 
   return(
     <div style={{display:'flex',height:'100%',overflow:'hidden'}}>
+      <ManagedWorkspaceStyles/>
       {/* ── Session list sidebar ── */}
-      {!mob&&(
+      {false&&!mob&&(
         <div style={{width:260,borderRight:'1px solid '+c.ln,background:c.cd,display:'flex',flexDirection:'column',flexShrink:0}}>
           <div style={{padding:'14px 12px 10px',borderBottom:'1px solid '+c.ln,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
             <span style={{fontSize:13,fontWeight:700,color:c.tx}}>Work Sessions</span>
@@ -4294,7 +6396,10 @@ function WorkTab({c,mob,aFN="Bloomie"}){
                 <span style={{width:8,height:8,borderRadius:'50%',background:sc(s.status),flexShrink:0}}/>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:12,fontWeight:600,color:c.tx,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{s.title||'Untitled'}</div>
-                  <div style={{fontSize:10,color:c.so,marginTop:2}}>{sl(s.status)}</div>
+                  <div style={{fontSize:10,color:c.so,marginTop:2,display:'flex',alignItems:'center',gap:5}}>
+                    <span>{sl(s.status)}</span>
+                    {s.type==='build'&&<span style={{padding:'1px 5px',borderRadius:5,background:c.ac+'18',color:c.ac,fontWeight:700}}>BUILD</span>}
+                  </div>
                 </div>
               </button>
             ))}
@@ -4304,25 +6409,58 @@ function WorkTab({c,mob,aFN="Bloomie"}){
 
       {/* ── Main panel ── */}
       <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',background:c.bg}}>
+        {mob&&(
+          <div style={{padding:'8px 12px',borderBottom:'1px solid '+c.ln,background:c.cd,display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
+            <select value={activeSid||''} onChange={e=>setActiveSid(e.target.value||null)} style={{flex:1,minWidth:0,padding:'7px 9px',borderRadius:8,border:'1px solid '+c.ln,background:c.sf,color:c.tx,fontSize:13}}>
+              <option value="">New Work session</option>
+              {sessions.map(s=><option key={s.id} value={s.id}>{s.title||'Untitled'} — {sl(s.status)}</option>)}
+            </select>
+            <button onClick={()=>{setActiveSid(null);setSession(null);setMsgs([]);setChecklist([]);setClarify(null);}} style={{padding:'7px 11px',borderRadius:8,border:'none',background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',fontSize:12,fontWeight:700}}>+ New</button>
+            <button onClick={()=>{setWorkspaceTab('live');setMobileWorkspaceOpen(true);}} aria-label="Open Work live workspace" title="Live, Browser, and Files" style={{width:34,height:34,borderRadius:9,border:'1px solid '+c.ln,background:c.sf,color:c.tx,fontSize:16,fontWeight:800,cursor:'pointer'}}>▣</button>
+          </div>
+        )}
+        {loadError&&(
+          <div style={{margin:'10px 14px 0',padding:'9px 12px',borderRadius:10,border:'1px solid rgba(239,68,68,.35)',background:'rgba(239,68,68,.1)',color:'#ef4444',fontSize:12,display:'flex',alignItems:'center',gap:8}}>
+            <span style={{flex:1}}>{loadError}</span>
+            <button onClick={activeSid?()=>loadDetail(activeSid):loadSessions} style={{border:'none',background:'transparent',color:'#ef4444',fontWeight:700,cursor:'pointer'}}>Retry</button>
+          </div>
+        )}
         {/* Empty state */}
         {!activeSid&&(
           <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:16,padding:32}}>
-            <div style={{fontSize:44}}>🤖</div>
+            <Face sz={64} agent={agent}/>
             <div style={{fontSize:17,fontWeight:700,color:c.tx}}>Work Sessions</div>
             <div style={{fontSize:13,color:c.so,textAlign:'center',maxWidth:380,lineHeight:1.6}}>Type your task below and {aFN} will get started — live checklist, real-time progress, and built-in Q&amp;A when she needs your input.</div>
+            <select value={projectId} onChange={e=>setProjectId(e.target.value)} style={{width:'min(100%,380px)',padding:'10px 12px',borderRadius:10,border:'1px solid '+c.ln,background:c.cd,color:c.tx,fontSize:13}}>
+              <option value="">No project</option>
+              {projects.map(project=><option key={project.id} value={project.id}>{project.name}</option>)}
+            </select>
           </div>
         )}
 
         {/* Session detail */}
         {activeSid&&session&&(
           <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
-            <div style={{padding:'12px 20px',borderBottom:'1px solid '+c.ln,background:c.cd,display:'flex',alignItems:'center',gap:10,flexShrink:0}}>
+            <div className="managed-session-header" style={{padding:'12px 20px',borderBottom:'1px solid '+c.ln,background:c.cd,display:'flex',alignItems:'center',gap:10,flexShrink:0}}>
+              <Face sz={34} agent={agent}/>
               <span style={{width:10,height:10,borderRadius:'50%',background:sc(session.status),animation:session.status==='building'?'pulse 1.5s ease infinite':'none'}}/>
-              <span style={{fontSize:14,fontWeight:700,color:c.tx,flex:1}}>{session.title||'Work Session'}</span>
-              <span style={{fontSize:11,padding:'3px 10px',borderRadius:20,background:sc(session.status)+'22',color:sc(session.status),fontWeight:700}}>{sl(session.status)}</span>
+              <span style={{fontSize:14,fontWeight:700,color:c.tx,flex:1,minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{aFN} · {session.title||'Work Session'}{session.type==='build'?' · Build':''}</span>
+              {session.project_id&&<span style={{fontSize:10,padding:'4px 7px',borderRadius:7,background:c.ac+'15',color:c.ac,fontWeight:700,whiteSpace:'nowrap',maxWidth:140,overflow:'hidden',textOverflow:'ellipsis'}}>📁 {projects.find(project=>project.id===session.project_id)?.name||'Project'}</span>}
+              {mob&&<>
+                <button onClick={()=>{setWorkspaceTab('live');setMobileWorkspaceOpen(true);}} style={{padding:'7px 9px',borderRadius:9,border:'1px solid '+c.ln,background:c.sf,color:c.tx,fontSize:11,fontWeight:700,cursor:'pointer'}}>Live</button>
+                <button onClick={()=>{setWorkspaceTab('browser');setBrowserMode('docked');setMobileWorkspaceOpen(true);}} style={{padding:'7px 9px',borderRadius:9,border:'1px solid '+c.ln,background:c.sf,color:c.tx,fontSize:11,fontWeight:700,cursor:'pointer'}}>Browser</button>
+                <button onClick={()=>{setWorkspaceTab('files');setMobileWorkspaceOpen(true);}} style={{padding:'7px 9px',borderRadius:9,border:'1px solid '+c.ln,background:c.sf,color:c.tx,fontSize:11,fontWeight:700,cursor:'pointer'}}>Files</button>
+              </>}
+              {!mob&&<>
+                <span style={{fontSize:11,padding:'3px 10px',borderRadius:20,background:sc(session.status)+'22',color:sc(session.status),fontWeight:700}}>{sl(session.status)}</span>
+                {!workspaceOpen&&<button onClick={()=>setWorkspaceOpen(true)} aria-label="Show Work workspace" style={{display:'flex',alignItems:'center',gap:6,padding:'6px 10px',borderRadius:8,border:'1px solid '+c.ln,background:c.sf,color:c.tx,fontSize:11,fontWeight:700,cursor:'pointer'}}>
+                  <span style={{width:7,height:7,borderRadius:'50%',background:c.ac}}/> Live · Browser · Files
+                </button>}
+              </>}
             </div>
 
-            <div style={{flex:1,overflowY:'auto',padding:20,display:'flex',flexDirection:'column',gap:14}}>
+            <div style={{flex:1,overflowY:'auto'}}>
+              <div className="managed-thread">
               {/* Clarify prompt */}
               {clarify&&(
                 <div style={{background:'linear-gradient(135deg,#1a0a2e,#2d1b4e)',borderRadius:14,border:'1px solid rgba(244,162,97,0.3)',padding:18}}>
@@ -4358,19 +6496,12 @@ function WorkTab({c,mob,aFN="Bloomie"}){
                 </div>
               )}
 
-              {/* Live log */}
-              <div style={{background:c.cd,borderRadius:14,border:'1px solid '+c.ln,padding:16,flex:1}}>
-                <div style={{fontSize:11,fontWeight:700,color:c.so,textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:12}}>Live Log</div>
-                {msgs.length===0?(
-                  <div style={{color:c.so,fontSize:12,textAlign:'center',padding:'24px 0'}}>{session.status==='queued'?'Queued — starting soon…':'Waiting for progress…'}</div>
-                ):(
-                  <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                    {msgs.map((m,i)=>(
-                      <div key={i} style={{fontSize:12,color:m.metadata?.source==='managed-website-agent'?c.ac:c.tx,lineHeight:1.5,padding:'6px 10px',borderRadius:8,background:c.sf}}>{m.content}</div>
-                    ))}
-                    <div ref={logRef}/>
-                  </div>
-                )}
+              <ExecutionCommandCards c={c} sessionId={activeSid} source="work"/>
+
+              {msgs.length===0
+                ?<div style={{color:c.so,fontSize:13,textAlign:'center',padding:'32px 0'}}>{session.status==='queued'?'Queued — starting soon…':'Waiting for progress…'}</div>
+                :msgs.map((m,i)=><ManagedMessage key={m.id||i} message={m} c={c} aFN={aFN} agent={agent} user={user}/>)}
+              <div ref={logRef}/>
               </div>
             </div>
           </div>
@@ -4399,9 +6530,31 @@ function WorkTab({c,mob,aFN="Bloomie"}){
             ))}
           </div>
         )}
-        <div style={{borderTop:'1px solid '+c.ln,padding:'10px 14px',background:c.cd,flexShrink:0}}>
+        <div className="managed-composer" style={{borderTop:'1px solid '+c.ln,background:c.cd,flexShrink:0}}>
           <div style={{display:'flex',gap:6,alignItems:'flex-end',padding:'8px 10px',borderRadius:16,border:'1.5px solid '+c.ln,background:c.bg}}>
-            <button onClick={()=>imgRef.current?.click()} style={{width:30,height:30,borderRadius:8,border:'none',background:'none',color:c.tx2,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,flexShrink:0}} title="Attach file">&#x1F4CE;</button>
+            <div style={{position:'relative',flexShrink:0}}>
+              <button onClick={()=>setShowWorkPlusMenu(open=>!open)} style={{width:30,height:30,borderRadius:8,border:'none',background:showWorkPlusMenu?c.sf:'none',color:showWorkPlusMenu?c.ac:c.tx2,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20}} title="Add">+</button>
+              {showWorkPlusMenu&&<>
+                <div onClick={()=>setShowWorkPlusMenu(false)} style={{position:'fixed',inset:0,zIndex:998}}/>
+                <div data-testid="work-plus-menu" style={{position:'absolute',bottom:40,left:0,zIndex:999,width:260,borderRadius:14,border:'1px solid '+c.ln,background:c.cd,boxShadow:'0 8px 32px rgba(0,0,0,.25)',overflow:'hidden',padding:'6px 0'}}>
+                  <div style={{padding:'6px 14px 4px',fontSize:11,fontWeight:700,color:c.fa,letterSpacing:'.06em',textTransform:'uppercase'}}>Files</div>
+                  {[
+                    {icon:'📎',label:'Add files or photos',action:()=>{imgRef.current?.click();setShowWorkPlusMenu(false);}},
+                    {icon:'△',label:'Choose from Google Drive',action:()=>{setWorkDriveOpen(true);setShowWorkPlusMenu(false);}},
+                    {icon:'▣',label:'Take a screenshot',action:takeWorkScreenshot},
+                  ].map(item=><button key={item.label} onClick={item.action} style={{width:'100%',display:'flex',alignItems:'center',gap:12,padding:'9px 14px',border:'none',background:'transparent',cursor:'pointer',color:c.tx,fontSize:13,textAlign:'left'}}><span style={{color:c.so,width:18}}>{item.icon}</span>{item.label}</button>)}
+                  <div style={{height:1,background:c.ln,margin:'4px 0'}}/>
+                  <div style={{padding:'6px 14px 4px',fontSize:11,fontWeight:700,color:c.fa,letterSpacing:'.06em',textTransform:'uppercase'}}>Start</div>
+                  {[
+                    {label:'Build a website',sub:'Starts coding work',action:()=>{startFreshWork();setChatInput('Build a website: ');}},
+                    {label:'New work task',sub:'Starts a new Work session',action:startFreshWork},
+                  ].map(item=><button key={item.label} onClick={item.action} style={{width:'100%',display:'flex',alignItems:'center',gap:12,padding:'9px 14px',border:'none',background:'transparent',cursor:'pointer',color:c.tx,fontSize:13,textAlign:'left'}}><span style={{width:28,height:28,borderRadius:8,background:'linear-gradient(135deg,#F4A261,#E76F8B)',display:'grid',placeItems:'center',color:'#fff'}}>+</span><span><span style={{display:'block',fontWeight:600}}>{item.label}</span><span style={{display:'block',fontSize:11,color:c.so,marginTop:1}}>{item.sub}</span></span></button>)}
+                  <div style={{height:1,background:c.ln,margin:'4px 0'}}/>
+                  <div style={{padding:'6px 14px 4px',fontSize:11,fontWeight:700,color:c.fa,letterSpacing:'.06em',textTransform:'uppercase'}}>Connectors</div>
+                  <button onClick={()=>{setShowWorkPlusMenu(false);onNavigate?.('customize');}} style={{width:'100%',padding:'9px 14px',border:'none',background:'transparent',cursor:'pointer',textAlign:'left',fontSize:13,fontWeight:700,color:c.ac}}>Manage connectors →</button>
+                </div>
+              </>}
+            </div>
             <textarea value={chatInput} onChange={e=>setChatInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat();}}} placeholder={activeSid?`Message ${aFN}\u2026`:`Describe your task and ${aFN} will get started\u2026`} rows={1} style={{flex:1,padding:'4px 0',border:'none',background:'transparent',color:c.tx,fontSize:13,fontFamily:'inherit',resize:'none',outline:'none',lineHeight:1.4,maxHeight:120,overflowY:'auto'}}/>
             <button onClick={sendChat} disabled={(!chatInput.trim()&&!pendingImgs.length)||chatSending} style={{width:32,height:32,borderRadius:10,border:'none',background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',opacity:(chatInput.trim()||pendingImgs.length)&&!chatSending?1:0.5,flexShrink:0}}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg>
@@ -4409,6 +6562,44 @@ function WorkTab({c,mob,aFN="Bloomie"}){
           </div>
         </div>
       </div>
+      {!mob&&workspaceOpen&&(
+        <ResizablePanel c={c} defaultWidth={430} minWidth={300} maxWidth={800}>
+          <WorkWorkspacePanel
+            c={c}
+            mob={false}
+            tab={workspaceTab}
+            setTab={setWorkspaceTab}
+            sessionId={activeSid}
+            setActiveArtifact={setActiveArtifact}
+            aFN={aFN}
+            agentId={agentId}
+            agent={agent}
+            browserMode={browserMode}
+            setBrowserMode={mode=>setBrowserMode(mode==='hidden'?'docked':mode)}
+            lastAgentText={msgs.filter(message=>message.role==='assistant').slice(-1)[0]?.content||''}
+            onClose={()=>setWorkspaceOpen(false)}
+          />
+        </ResizablePanel>
+      )}
+      {mob&&mobileWorkspaceOpen&&(
+        <WorkWorkspacePanel
+          c={c}
+          mob
+          tab={workspaceTab}
+          setTab={setWorkspaceTab}
+          sessionId={activeSid}
+          setActiveArtifact={setActiveArtifact}
+          aFN={aFN}
+          agentId={agentId}
+          agent={agent}
+          browserMode={browserMode}
+          setBrowserMode={mode=>mode==='hidden'?setMobileWorkspaceOpen(false):setBrowserMode(mode)}
+          lastAgentText={msgs.filter(message=>message.role==='assistant').slice(-1)[0]?.content||''}
+          onClose={()=>setMobileWorkspaceOpen(false)}
+        />
+      )}
+      {activeArtifact&&<div style={{position:'fixed',inset:0,zIndex:9100,background:c.bg,display:'flex'}}><ArtifactPane art={activeArtifact} c={c} onClose={()=>setActiveArtifact(null)} onRequestChanges={()=>setActiveArtifact(null)}/></div>}
+      {workDriveOpen&&<GoogleDrivePicker c={c} multiple onClose={()=>setWorkDriveOpen(false)} onSelect={file=>setPendingImgs(p=>[...p,{name:file.name,type:file.type,data:`data:${file.type};base64,${file.data}`,source:'google_drive'}])}/>}
     </div>
   );
 }
@@ -4420,8 +6611,122 @@ function WorkTab({c,mob,aFN="Bloomie"}){
 // BUILD TAB — Claude Code-style conversation + artifact preview
 // Left: build list  |  Center: conversation thread + chat bar  |  Right: artifact
 // ══════════════════════════════════════════════════════════════════════════════
+function ProjectWorkspacePage({c,mob,project,onBack,onProjectUpdate,onOpenChat,onOpenWork}){
+  const [workspace,setWorkspace]=useState(null);
+  const [loading,setLoading]=useState(true);
+  const [saving,setSaving]=useState(false);
+  const [settings,setSettings]=useState({
+    repositoryOwner:project.repository_owner||'',
+    repositoryName:project.repository_name||'',
+    repositoryDefaultBranch:project.repository_default_branch||'',
+    vercelProjectId:project.vercel_project_id||'',
+    workspaceInstructions:project.workspace_instructions||'',
+  });
+
+  const load=async()=>{
+    setLoading(true);
+    try{
+      const h=await getAuthHeaders();
+      const r=await fetch(`/api/projects/${project.id}/workspace`,{headers:h});
+      const d=await r.json();
+      if(r.ok)setWorkspace(d);
+    }catch(e){console.error('Project workspace load failed',e);}
+    setLoading(false);
+  };
+  useEffect(()=>{load();},[project.id]);
+
+  const save=async()=>{
+    setSaving(true);
+    try{
+      const h=await getAuthHeaders();
+      const r=await fetch(`/api/projects/${project.id}`,{method:'PATCH',headers:{...h,'Content-Type':'application/json'},body:JSON.stringify(settings)});
+      const d=await r.json();
+      if(r.ok&&d.project){onProjectUpdate(d.project);await load();}
+    }catch(e){console.error('Project settings save failed',e);}
+    setSaving(false);
+  };
+  const summary=workspace?.summary||{};
+  const card={padding:mob?14:18,borderRadius:14,border:'1px solid '+c.ln,background:c.cd};
+  const field={width:'100%',padding:'9px 11px',borderRadius:9,border:'1px solid '+c.ln,background:c.inp,color:c.tx,fontSize:mob?16:13,fontFamily:'inherit'};
+
+  return <div style={{height:'100%',overflowY:'auto',padding:mob?'12px 12px 80px':'20px 24px 60px',background:c.bg}}>
+    <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:18}}>
+      <button onClick={onBack} style={{width:36,height:36,borderRadius:9,border:'1px solid '+c.ln,background:c.cd,color:c.tx,cursor:'pointer'}}>←</button>
+      <div style={{flex:1,minWidth:0}}>
+        <h1 style={{fontSize:mob?20:24,fontWeight:700,color:c.tx,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{project.name}</h1>
+        <div style={{fontSize:12,color:c.so,marginTop:2}}>{project.description||'Project workspace'}</div>
+      </div>
+      <button onClick={()=>onOpenWork(null)} style={{padding:'9px 14px',borderRadius:9,border:'none',background:c.gradient,color:'#fff',fontSize:12,fontWeight:700,cursor:'pointer'}}>+ Work</button>
+    </div>
+
+    <div style={{display:'grid',gridTemplateColumns:mob?'repeat(2,1fr)':'repeat(5,1fr)',gap:8,marginBottom:14}}>
+      {[['Chats',summary.conversations||0],['Work',summary.workSessions||0],['Running',summary.running||0],['Artifacts',summary.artifacts||0],['Deployments',summary.deployments||0]].map(([label,value])=>
+        <div key={label} style={{...card,padding:12}}><div style={{fontSize:20,fontWeight:800,color:c.tx}}>{value}</div><div style={{fontSize:10,color:c.so,textTransform:'uppercase',letterSpacing:.5}}>{label}</div></div>
+      )}
+    </div>
+
+    <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'minmax(280px, .8fr) minmax(0, 1.6fr)',gap:14,alignItems:'start'}}>
+      <div style={{display:'flex',flexDirection:'column',gap:14}}>
+        <div style={card}>
+          <div style={{fontSize:13,fontWeight:700,color:c.tx,marginBottom:12}}>Project workspace settings</div>
+          {[['GitHub owner','repositoryOwner'],['Repository','repositoryName'],['Base branch','repositoryDefaultBranch'],['Vercel project','vercelProjectId']].map(([label,key])=>
+            <label key={key} style={{display:'block',fontSize:11,color:c.so,marginBottom:10}}>{label}<input value={settings[key]} onChange={e=>setSettings(s=>({...s,[key]:e.target.value}))} placeholder={key==='repositoryDefaultBranch'?'main':''} style={{...field,marginTop:5}}/></label>
+          )}
+          <label style={{display:'block',fontSize:11,color:c.so}}>Persistent instructions<textarea value={settings.workspaceInstructions} onChange={e=>setSettings(s=>({...s,workspaceInstructions:e.target.value}))} rows={4} style={{...field,marginTop:5,resize:'vertical'}}/></label>
+          <button onClick={save} disabled={saving} style={{width:'100%',padding:'9px',marginTop:10,borderRadius:9,border:'none',background:c.ac,color:'#fff',fontSize:12,fontWeight:700,cursor:saving?'wait':'pointer'}}>{saving?'Saving…':'Save workspace'}</button>
+        </div>
+
+        <div style={card}>
+          <div style={{fontSize:13,fontWeight:700,color:c.tx,marginBottom:10}}>Conversations</div>
+          {(workspace?.conversations||[]).length===0?<div style={{fontSize:12,color:c.so}}>No Project chats yet.</div>:(workspace.conversations||[]).slice(0,8).map(chat=>
+            <button key={chat.id} onClick={()=>onOpenChat(chat.id)} style={{width:'100%',padding:'9px 0',border:'none',borderTop:'1px solid '+c.ln,background:'transparent',color:c.tx,textAlign:'left',fontSize:12,cursor:'pointer'}}>{chat.title||'Untitled chat'}<span style={{float:'right',color:c.fa}}>Open →</span></button>
+          )}
+        </div>
+      </div>
+
+      <div style={{display:'flex',flexDirection:'column',gap:14}}>
+        <div style={card}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}><div style={{fontSize:13,fontWeight:700,color:c.tx}}>Work sessions</div><button onClick={load} style={{border:'none',background:'transparent',color:c.ac,cursor:'pointer',fontSize:12}}>Refresh</button></div>
+          {loading?<div style={{padding:24,textAlign:'center',color:c.so,fontSize:12}}>Loading workspace…</div>:(workspace?.workSessions||[]).length===0?<div style={{padding:24,textAlign:'center',color:c.so,fontSize:12}}>No Work sessions yet. Start one from this Project.</div>:(workspace.workSessions||[]).map(work=>{
+            const todo=work.checkpoint?.todos||[];
+            const passed=todo.filter(item=>item.status==='completed').length;
+            const repo=work.repository?`${work.repository.owner}/${work.repository.name}`:null;
+            const deployUrl=work.deployment?.url ? (String(work.deployment.url).startsWith('http')?work.deployment.url:`https://${work.deployment.url}`) : work.output_url;
+            return <div key={work.id} style={{padding:'13px 0',borderTop:'1px solid '+c.ln}}>
+              <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                <span style={{width:8,height:8,borderRadius:'50%',background:work.status==='complete'?c.gr:['building','queued'].includes(work.status)?c.ac:'#ef4444'}}/>
+                <div style={{flex:1,minWidth:0,fontSize:13,fontWeight:700,color:c.tx,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{work.title}</div>
+                <span style={{fontSize:10,color:c.so}}>{work.status}</span>
+                <button onClick={()=>onOpenWork(work.id)} style={{padding:'5px 8px',borderRadius:7,border:'1px solid '+c.ln,background:c.sf,color:c.ac,fontSize:10,fontWeight:700,cursor:'pointer'}}>Open →</button>
+              </div>
+              <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:7,fontSize:10,color:c.so}}>
+                {repo&&<span>◫ {repo}</span>}
+                {(work.branch||work.repository?.baseBranch)&&<span>⑂ {work.branch||work.repository.baseBranch}</span>}
+                {todo.length>0&&<span>✓ {passed}/{todo.length} checks</span>}
+                {work.commit&&<span>● {String(work.commit).slice(0,7)}</span>}
+                {work.artifacts?.length>0&&<span>▣ {work.artifacts.length} artifacts</span>}
+                {deployUrl&&<a href={deployUrl} target="_blank" rel="noopener" style={{color:c.ac,textDecoration:'none'}}>↗ deployment</a>}
+              </div>
+              {work.checkpoint?.current_step&&<div style={{fontSize:11,color:c.so,marginTop:7,lineHeight:1.4}}>Current: {work.checkpoint.current_step}</div>}
+              {work.checkpoint?.last_error&&<div style={{fontSize:11,color:'#ef4444',marginTop:6}}>{work.checkpoint.last_error}</div>}
+            </div>;
+          })}
+        </div>
+
+        <div style={card}>
+          <div style={{fontSize:13,fontWeight:700,color:c.tx,marginBottom:10}}>Artifacts</div>
+          {(workspace?.artifacts||[]).length===0?<div style={{fontSize:12,color:c.so}}>Files created by Project Work sessions appear here.</div>:<div style={{display:'grid',gridTemplateColumns:mob?'1fr':'repeat(2,minmax(0,1fr))',gap:8}}>{workspace.artifacts.map(artifact=>
+            <a key={artifact.id} href={`/api/files/download/${artifact.id}`} style={{padding:10,borderRadius:10,border:'1px solid '+c.ln,background:c.sf,textDecoration:'none',color:c.tx,fontSize:12,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>▣ {artifact.name}</a>
+          )}</div>}
+        </div>
+      </div>
+    </div>
+  </div>;
+}
+
 function BuildTab({c,mob,aFN="Bloomie"}){
   const [builds,setBuilds]=useState([]);
+  const [loadError,setLoadError]=useState('');
   const [activeId,setActiveId]=useState(null);
   const [build,setBuild]=useState(null);
   const [msgs,setMsgs]=useState([]);
@@ -4430,6 +6735,7 @@ function BuildTab({c,mob,aFN="Bloomie"}){
   const [chatInput,setChatInput]=useState('');
   const [chatSending,setChatSending]=useState(false);
   const [pendingImgs,setPendingImgs]=useState([]);
+  const [activeArtifact,setActiveArtifact]=useState(null);
   const pollRef=useRef(null);
   const logRef=useRef(null);
   const imgRef=useRef(null);
@@ -4447,12 +6753,14 @@ function BuildTab({c,mob,aFN="Bloomie"}){
 
   const loadBuilds=async()=>{
     try{
+      setLoadError('');
       const h=await getAuthHeaders();
       const r=await fetch('/api/builds?type=build',{headers:h});
       const d=await r.json();
+      if(!r.ok)throw new Error(d.error||`Build list failed (${r.status})`);
       setBuilds(d.builds||[]);
       if(!activeId&&d.builds?.length){setActiveId(d.builds[0].id);}
-    }catch(e){console.error(e);}
+    }catch(e){console.error(e);setLoadError(e.message||'Could not load builds');}
   };
 
   const loadDetail=async(id)=>{
@@ -4460,11 +6768,17 @@ function BuildTab({c,mob,aFN="Bloomie"}){
       const h=await getAuthHeaders();
       const r=await fetch('/api/builds/'+id,{headers:h});
       const d=await r.json();
+      if(!r.ok)throw new Error(d.error||`Build failed to load (${r.status})`);
+      setLoadError('');
       setBuild(d.build||null);
       setMsgs(d.messages||[]);
       setChecklist(d.progress||[]);
       setClarify(d.clarify||null);
-    }catch(e){console.error(e);}
+      if(d.build?.status==='complete'||d.build?.status==='error'){
+        clearInterval(pollRef.current);
+        setBuilds(p=>p.map(b=>b.id===d.build.id?{...b,...d.build}:b));
+      }
+    }catch(e){console.error(e);setLoadError(e.message||'Could not load this build');}
   };
 
   const sendChat=async()=>{
@@ -4495,9 +6809,11 @@ function BuildTab({c,mob,aFN="Bloomie"}){
     setMsgs(p=>[...p,{role:'user',content:ans,ts:Date.now()}]);
     try{
       const h=await getAuthHeaders();
-      await fetch('/api/builds/'+activeId+'/clarify',{method:'POST',headers:{...h,'Content-Type':'application/json'},body:JSON.stringify({answer:ans,clarify_id:clarify?.id})});
+      const r=await fetch('/api/builds/'+activeId+'/clarify',{method:'POST',headers:{...h,'Content-Type':'application/json'},body:JSON.stringify({answer:ans,clarify_id:clarify?.id})});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok)throw new Error(d.error||'Could not submit your answer');
       setTimeout(()=>loadDetail(activeId),1000);
-    }catch(e){console.error(e);}
+    }catch(e){console.error(e);setLoadError(e.message||'Could not submit your answer');}
     finally{setChatSending(false);}
   };
 
@@ -4513,15 +6829,16 @@ function BuildTab({c,mob,aFN="Bloomie"}){
   // Render a single message (agent or user)
   const renderMsg=(m,i)=>{
     const isUser=m.role==='user';
+    const attachments=m.images||m.files||[];
     if(isUser){
       return(
         <div key={i} style={{display:'flex',flexDirection:'column',alignItems:'flex-end',marginBottom:12}}>
-          {m.images&&m.images.length>0&&(
+          {attachments.length>0&&(
             <div style={{display:'flex',gap:6,marginBottom:6,flexWrap:'wrap',justifyContent:'flex-end'}}>
-              {m.images.map((img,j)=>(
-                img.type&&img.type.startsWith('image/')
+              {attachments.map((img,j)=>(
+                img.type&&img.type.startsWith('image/')&&img.data
                   ?<img key={j} src={img.data} style={{maxWidth:180,maxHeight:120,borderRadius:8,objectFit:'cover'}}/>
-                  :<div key={j} style={{padding:'4px 10px',borderRadius:8,background:c.cd,border:'1px solid '+c.ln,fontSize:12,color:c.tx2}}>📄 {img.name}</div>
+                  :<div key={j} style={{padding:'4px 10px',borderRadius:8,background:c.cd,border:'1px solid '+c.ln,fontSize:12,color:c.tx2}}>{img.type?.startsWith('image/')?'🖼️':'📄'} {img.name}</div>
               ))}
             </div>
           )}
@@ -4591,9 +6908,10 @@ function BuildTab({c,mob,aFN="Bloomie"}){
 
   return(
     <div style={{display:'flex',height:'100%',overflow:'hidden'}}>
+      <ManagedWorkspaceStyles/>
 
       {/* ── Sidebar: build list ── */}
-      <div style={{width:mob?200:260,borderRight:'1px solid '+c.ln,display:'flex',flexDirection:'column',background:c.cd,flexShrink:0}}>
+      {!mob&&<div style={{width:260,borderRight:'1px solid '+c.ln,display:'flex',flexDirection:'column',background:c.cd,flexShrink:0}}>
         <div style={{padding:'14px 16px 10px',borderBottom:'1px solid '+c.ln,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
           <span style={{fontSize:13,fontWeight:600,color:c.tx}}>Builds</span>
           <button onClick={()=>{setActiveId(null);setBuild(null);setMsgs([]);setChecklist([]);}} style={{fontSize:11,padding:'3px 10px',borderRadius:8,border:'1px solid '+c.ln,background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',cursor:'pointer'}}>+ New</button>
@@ -4610,10 +6928,25 @@ function BuildTab({c,mob,aFN="Bloomie"}){
             </div>
           ))}
         </div>
-      </div>
+      </div>}
 
       {/* ── Main panel: conversation + chat bar ── */}
       <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',background:c.bg,minWidth:0}}>
+        {mob&&(
+          <div style={{padding:'8px 12px',borderBottom:'1px solid '+c.ln,background:c.cd,display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
+            <select value={activeId||''} onChange={e=>setActiveId(e.target.value||null)} style={{flex:1,minWidth:0,padding:'7px 9px',borderRadius:8,border:'1px solid '+c.ln,background:c.sf,color:c.tx,fontSize:13}}>
+              <option value="">New Build</option>
+              {builds.map(b=><option key={b.id} value={b.id}>{b.title||b.brief||'Untitled'} — {b.status||'pending'}</option>)}
+            </select>
+            <button onClick={()=>{setActiveId(null);setBuild(null);setMsgs([]);setChecklist([]);setClarify(null);}} style={{padding:'7px 11px',borderRadius:8,border:'none',background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',fontSize:12,fontWeight:700}}>+ New</button>
+          </div>
+        )}
+        {loadError&&(
+          <div style={{margin:'10px 14px 0',padding:'9px 12px',borderRadius:10,border:'1px solid rgba(239,68,68,.35)',background:'rgba(239,68,68,.1)',color:'#ef4444',fontSize:12,display:'flex',alignItems:'center',gap:8}}>
+            <span style={{flex:1}}>{loadError}</span>
+            <button onClick={activeId?()=>loadDetail(activeId):loadBuilds} style={{border:'none',background:'transparent',color:'#ef4444',fontWeight:700,cursor:'pointer'}}>Retry</button>
+          </div>
+        )}
 
         {!activeId&&(
           <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:12,padding:40}}>
@@ -4626,10 +6959,13 @@ function BuildTab({c,mob,aFN="Bloomie"}){
         {activeId&&build&&(
           <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
             {/* Header */}
-            <div style={{padding:'12px 16px',borderBottom:'1px solid '+c.ln,flexShrink:0}}>
+            <div className="managed-session-header" style={{padding:'12px 16px',borderBottom:'1px solid '+c.ln,flexShrink:0}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-                <span style={{fontSize:14,fontWeight:600,color:c.tx,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:'60%'}}>{build.title||build.brief||'Build in progress'}</span>
-                <span style={{fontSize:12,fontWeight:600,color:statusColor,textTransform:'capitalize'}}>{build.status||'pending'}</span>
+                <span style={{fontSize:14,fontWeight:600,color:c.tx,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1,minWidth:0}}>{build.title||build.brief||'Build in progress'}</span>
+                <div style={{display:'flex',alignItems:'center',gap:8,marginLeft:10}}>
+                  <ManagedArtifacts sessionId={activeId} c={c} mob={mob} onOpen={setActiveArtifact}/>
+                  {!mob&&<span style={{fontSize:12,fontWeight:600,color:statusColor,textTransform:'capitalize'}}>{build.status||'pending'}</span>}
+                </div>
               </div>
               <div style={{display:'flex',gap:4}}>
                 {phases.map((ph,pi)=>{
@@ -4649,7 +6985,8 @@ function BuildTab({c,mob,aFN="Bloomie"}){
               {build.output_url&&<div style={{marginTop:6}}><a href={build.output_url} target="_blank" rel="noopener noreferrer" style={{fontSize:11,color:'#F4A261',textDecoration:'none'}}>&#x1F517; Open preview ↗</a></div>}
             </div>
             {/* Conversation thread */}
-            <div style={{flex:1,overflowY:'auto',padding:'16px',display:'flex',flexDirection:'column'}}>
+            <div style={{flex:1,overflowY:'auto'}}>
+              <div className="managed-thread">
               {checklist.length>0&&(
                 <div style={{marginBottom:14,padding:'12px 14px',borderRadius:12,background:c.cd,border:'1px solid '+c.ln}}>
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,marginBottom:10}}>
@@ -4674,7 +7011,7 @@ function BuildTab({c,mob,aFN="Bloomie"}){
                 </div>
               )}
               {msgs.length===0&&<div style={{textAlign:'center',color:c.tx2,fontSize:13,marginTop:40}}>Waiting for {aFN} to start...</div>}
-              {msgs.map((m,i)=>renderMsg(m,i))}
+              {msgs.map((m,i)=><ManagedMessage key={m.id||i} message={m} c={c} aFN={aFN}/>)}
               {clarify&&(
                 <div style={{margin:'8px 0',padding:'12px 16px',borderRadius:12,background:'linear-gradient(135deg,rgba(244,162,97,0.14),rgba(231,111,139,0.14))',border:'1px solid rgba(244,162,97,0.3)'}}>
                   <div style={{fontSize:13,fontWeight:500,color:'#F4A261',marginBottom:8}}>&#x2753; {aFN} needs clarification</div>
@@ -4695,6 +7032,7 @@ function BuildTab({c,mob,aFN="Bloomie"}){
                 </div>
               )}
               <div ref={logRef}/>
+              </div>
             </div>
           </div>
         )}
@@ -4726,7 +7064,7 @@ function BuildTab({c,mob,aFN="Bloomie"}){
         )}
 
         {/* Chat bar — always at bottom of main column */}
-        <div style={{borderTop:'1px solid '+c.ln,padding:'10px 14px',background:c.cd,flexShrink:0}}>
+        <div className="managed-composer" style={{borderTop:'1px solid '+c.ln,background:c.cd,flexShrink:0}}>
           <div style={{display:'flex',gap:6,alignItems:'flex-end',padding:'8px 10px',borderRadius:16,border:'1.5px solid '+c.ln,background:c.bg}}>
             <button onClick={()=>imgRef.current?.click()} style={{width:30,height:30,borderRadius:8,border:'none',background:'none',color:c.tx2,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,flexShrink:0}} title="Attach file">&#x1F4CE;</button>
             <textarea value={chatInput} onChange={e=>setChatInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat();}}} placeholder={activeId?`Message ${aFN}\u2026`:`Describe what you want to build\u2026`} rows={1} style={{flex:1,padding:'4px 0',border:'none',background:'transparent',color:c.tx,fontSize:13,fontFamily:'inherit',resize:'none',outline:'none',lineHeight:1.4,maxHeight:120,overflowY:'auto'}}/>
@@ -4738,8 +7076,8 @@ function BuildTab({c,mob,aFN="Bloomie"}){
       </div>
 
       {/* ── Artifact preview panel (right column, conditional) ── */}
-      {(latestHtml||build?.output_url)&&activeId&&(
-        <div style={{width:440,borderLeft:'1px solid '+c.ln,display:'flex',flexDirection:'column',background:c.cd,flexShrink:0}}>
+      {!mob&&(latestHtml||build?.output_url)&&activeId&&(
+        <div className="managed-desktop-artifact" style={{width:440,borderLeft:'1px solid '+c.ln,display:'flex',flexDirection:'column',background:c.cd,flexShrink:0}}>
           <div style={{padding:'10px 14px',borderBottom:'1px solid '+c.ln,display:'flex',justifyContent:'space-between',alignItems:'center',flexShrink:0}}>
             <span style={{fontSize:12,fontWeight:600,color:c.tx}}>Artifact Preview</span>
             {(build?.output_url||latestHtml)&&(
@@ -4752,21 +7090,53 @@ function BuildTab({c,mob,aFN="Bloomie"}){
           }
         </div>
       )}
+      {activeArtifact&&<div style={{position:'fixed',inset:0,zIndex:9100,background:c.bg,display:'flex'}}><ArtifactPane art={activeArtifact} c={c} onClose={()=>setActiveArtifact(null)} onRequestChanges={()=>setActiveArtifact(null)}/></div>}
 
     </div>
   );
 }
 
-function App({ authUser }) {
+function App({ authUser, passwordRecovery = false }) {
+  const isDesktopShell = Boolean(window.bloomDesktop?.isDesktop);
+  const [desktopBridgeReady,setDesktopBridgeReady]=useState(false);
+  const [activeWorkSessionId,setActiveWorkSessionId]=useState(null);
+  const [newWorkSessionNonce,setNewWorkSessionNonce]=useState(0);
+  const [newWorkProjectId,setNewWorkProjectId]=useState('');
+  useEffect(()=>{
+    if(!isDesktopShell)return;
+    let active=true;
+    const check=async()=>{
+      try{
+        const status=await window.bloomDesktop.getStatus();
+        if(active)setDesktopBridgeReady(Boolean(status?.running));
+      }catch{
+        if(active)setDesktopBridgeReady(false);
+      }
+    };
+    check();
+    const timer=setInterval(check,5000);
+    return()=>{active=false;clearInterval(timer);};
+  },[isDesktopShell]);
   const W=useW();
   const mob=W<768;
+  // Three responsive tiers: phone, compact laptop/tablet, and full desktop.
+  // Compact layouts preserve chat width by collapsing secondary navigation/panels.
+  const compact=W<1200;
   const [dark,setDark]=useState(true);
-  const c=mk(dark);
+  const c=useMemo(()=>mk(dark),[dark]);
 
   const sse=useSSE();
   const agentOnline=useAgentOnline();
   const {crmUrl,contactsUrl}=useCRMLink();
-  const {messages,setMessages,send,sendFiles,sendFilesEncoded,loading,workingStatus,sessions,currentSessionId,newSession,loadSession,deleteSession,fetchSessions,stopSarah,sid,agents,currentAgentId,currentAgent,switchAgent}=useSarahChat();
+  const {messages,setMessages,send,sendFiles,sendFilesEncoded,loading,workingStatus,sessions,setSessions,currentSessionId,newSession,loadSession,deleteSession,fetchSessions,stopSarah,sid,agents,currentAgentId,currentAgent,switchAgent}=useSarahChat();
+  const [readStateVersion,setReadStateVersion]=useState(0);
+  useEffect(()=>{
+    const refresh=()=>setReadStateVersion(value=>value+1);
+    window.addEventListener('bloomie-read-state-changed',refresh);
+    window.addEventListener('storage',refresh);
+    return()=>{window.removeEventListener('bloomie-read-state-changed',refresh);window.removeEventListener('storage',refresh);};
+  },[]);
+  useEffect(()=>{seedConversationReads('chat',sessions,3);setReadStateVersion(value=>value+1);},[sessions]);
   const currentAgentIdRef=useRef(currentAgentId);
   const voiceTranscriptSeenRef=useRef(new Set());
   const voiceRecognitionRef=useRef(null);
@@ -4985,7 +7355,17 @@ function App({ authUser }) {
     setConfSending(false);
   };
 
-  const [pg,setPg]=useState("chat");
+  const [pg,setPg]=useState(()=>{
+    if(passwordRecovery || new URLSearchParams(window.location.search).get("reset")==="1") return "settings";
+    if(window.location.pathname.startsWith("/book")) return "book";
+    return window.location.pathname.startsWith("/projects")?"projects":"chat";
+  });
+  useEffect(()=>{
+    if(pg!=='chat'||!currentSessionId)return;
+    const active=sessions.find(session=>session.id===currentSessionId);
+    markConversationRead('chat',currentSessionId,active?.updated_at||Date.now());
+  },[pg,currentSessionId,messages.length,sessions]);
+  const [mobileMoreOpen,setMobileMoreOpen]=useState(false);
   const [tx,setTx]=useState("");
   const [isNew,setNew]=useState(true);
   const [vcRec,setVcRec]=useState(false);
@@ -4993,13 +7373,17 @@ function App({ authUser }) {
   const [showThinking,setShowThinking]=useState(false);
   const plusMenuRef=useRef(null);
   const [oauthToast,setOauthToast]=useState(null);
-  const [activeConnectors,setActiveConnectors]=useState({ghl:true});
+  const [activeConnectors,setActiveConnectors]=useState({});
   const [connectorCatalog,setConnectorCatalog]=useState({});
   const [ghlConnected,setGhlConnected]=useState(null); // null=checking, true=ok, false=not connected
   const [showGhlBanner,setShowGhlBanner]=useState(false);
   const [ghlPit,setGhlPit]=useState('');
   const [ghlLocId,setGhlLocId]=useState('');
   const [ghlSaving,setGhlSaving]=useState(false);
+  const [showHeygenConnect,setShowHeygenConnect]=useState(false);
+  const [heygenApiKey,setHeygenApiKey]=useState('');
+  const [heygenSaving,setHeygenSaving]=useState(false);
+  const [heygenError,setHeygenError]=useState('');
   const [convaiStarting,setConvaiStarting]=useState(false);
   const [convaiError,setConvaiError]=useState('');
   const appendVoiceTranscript=useCallback((payload)=>{
@@ -5052,13 +7436,14 @@ function App({ authUser }) {
   });
 
   // Extracted so it can be called both on mount and after OAuth success
-  const loadActiveConnectors = () => {
+  const loadActiveConnectors = async () => {
     // Backend resolves org from JWT — no need to send orgId from frontend
-    fetch('/api/integrations/list')
+    const headers = await getAuthHeaders().catch(() => ({}));
+    fetch('/api/integrations/list', { headers })
       .then(r=>r.ok?r.json():null)
       .then(data=>{
         if(data?.connectors){
-          const map={ghl:true};
+          const map={};
           const catalog={};
           data.connectors.forEach(c=>{
             catalog[c.slug]=c;
@@ -5073,7 +7458,7 @@ function App({ authUser }) {
           .then(r=>r.ok?r.json():null)
           .then(data=>{
             if(data?.connectors){
-              const map={ghl:true};
+              const map={};
               data.connectors.forEach(c=>{ map[c.slug]=true; });
               setActiveConnectors(map);
             }
@@ -5121,13 +7506,112 @@ function App({ authUser }) {
     'google-drive':'google',
     zoom:'zoom',
     shopify:'shopify',
+    'uber-eats':'uber-eats',
+    github:'github',
+    vercel:'vercel',
   }[slug]);
+
+  const connectorIcon = (domain) => (
+    <img src={`https://www.google.com/s2/favicons?domain=${domain}&sz=64`} width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />
+  );
+
+  const connectorUiMeta = {
+    ghl:{cat:"CRM & Communication",domain:"gohighlevel.com",desc:"Contacts, pipelines, SMS, email, automation"},
+    salesforce:{cat:"CRM & Communication",domain:"salesforce.com",desc:"CRM, deals, leads, accounts, reports"},
+    hubspot:{cat:"CRM & Communication",domain:"hubspot.com",desc:"Marketing, sales, service hub"},
+    gmail:{cat:"Email & Calendar",domain:"gmail.com",desc:"Read, send, and manage email"},
+    'google-calendar':{cat:"Email & Calendar",domain:"calendar.google.com",desc:"Events, scheduling, availability"},
+    zoom:{cat:"Email & Calendar",domain:"zoom.us",desc:"Meetings, recordings, transcripts"},
+    instagram:{cat:"Social Media",domain:"instagram.com",desc:"Posts, stories, DMs, analytics"},
+    tiktok:{cat:"Social Media",domain:"tiktok.com",desc:"Videos, analytics, scheduling"},
+    linkedin:{cat:"Social Media",domain:"linkedin.com",desc:"Posts, connections, outreach"},
+    facebook:{cat:"Social Media",domain:"facebook.com",desc:"Pages, posts, ads"},
+    'google-drive':{cat:"Storage & Productivity",domain:"drive.google.com",desc:"Files, docs, sheets, slides"},
+    notion:{cat:"Storage & Productivity",domain:"notion.so",desc:"Docs, databases, wikis"},
+    slack:{cat:"Storage & Productivity",domain:"slack.com",desc:"Channels, messages, files"},
+    airtable:{cat:"Storage & Productivity",domain:"airtable.com",desc:"Databases, views, automations"},
+    canva:{cat:"Storage & Productivity",domain:"canva.com",desc:"Designs, brand kits, exports"},
+    shopify:{cat:"E-Commerce & Billing",domain:"shopify.com",desc:"Orders, products, inventory"},
+    stripe:{cat:"E-Commerce & Billing",domain:"stripe.com",desc:"Payments, subscriptions, invoices"},
+    'uber-eats':{cat:"Food & Delivery",domain:"ubereats.com",desc:"Tenant food account, menus, carts"},
+    github:{cat:"Development",domain:"github.com",desc:"Repositories, branches, files, and commits"},
+    vercel:{cat:"Development",domain:"vercel.com",desc:"Projects, deployments, teams, and domains"},
+    heygen:{cat:"Creative & Video",domain:"heygen.com",desc:"Tenant avatars, voices, and AI video generation"},
+    n8n:{cat:"Automation",domain:"n8n.io",desc:"Workflows, triggers, automations"},
+    zapier:{cat:"Automation",domain:"zapier.com",desc:"App integrations, zaps"},
+    bloomshield:{cat:"BLOOM",domain:null,desc:"IP protection, blockchain registry"},
+  };
+
+  const connectorCategoryLabels = {
+    crm:"CRM & Communication",
+    email:"Email & Calendar",
+    calendar:"Email & Calendar",
+    social:"Social Media",
+    storage:"Storage & Productivity",
+    productivity:"Storage & Productivity",
+    ecommerce:"E-Commerce & Billing",
+    custom:"Automation",
+  };
+
+  const baseConnectorSections = [
+    {cat:"CRM & Communication",items:["ghl","salesforce","hubspot"]},
+    {cat:"Email & Calendar",items:["gmail","google-calendar","zoom"]},
+    {cat:"Social Media",items:["instagram","tiktok","linkedin","facebook"]},
+    {cat:"Storage & Productivity",items:["google-drive","notion","slack","airtable","canva"]},
+    {cat:"E-Commerce & Billing",items:["shopify","stripe"]},
+    {cat:"Food & Delivery",items:["uber-eats"]},
+    {cat:"Automation",items:["n8n","zapier"]},
+    {cat:"Development",items:["github","vercel"]},
+    {cat:"Creative & Video",items:["heygen"]},
+    {cat:"BLOOM",items:["bloomshield"]},
+  ];
+
+  const buildConnectorItem = (slug, catalog = {}) => {
+    const meta = connectorUiMeta[slug] || {};
+    const name = catalog.name || meta.name || slug.split("-").map(s=>s.charAt(0).toUpperCase()+s.slice(1)).join(" ");
+    const domain = meta.domain || `${slug}.com`;
+    return {
+      name,
+      slug,
+      icon: slug==="bloomshield"
+        ? <img src="/favicon.ico" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />
+        : connectorIcon(domain),
+      desc: meta.desc || catalog.docsUrl || "Connect tenant account",
+      connected: !!catalog.connected,
+    };
+  };
+
+  const connectorSections = (() => {
+    const sections = baseConnectorSections.map(section => ({
+      cat: section.cat,
+      items: section.items.map(slug => buildConnectorItem(slug, connectorCatalog[slug] || {})),
+    }));
+    const seen = new Set(sections.flatMap(section => section.items.map(item => item.slug)));
+    Object.values(connectorCatalog).forEach(catalog => {
+      if (!catalog?.slug || seen.has(catalog.slug)) return;
+      const cat = connectorUiMeta[catalog.slug]?.cat || connectorCategoryLabels[catalog.category] || "Automation";
+      let section = sections.find(s => s.cat === cat);
+      if (!section) {
+        section = { cat, items: [] };
+        sections.push(section);
+      }
+      section.items.push(buildConnectorItem(catalog.slug, catalog));
+      seen.add(catalog.slug);
+    });
+    return sections.filter(section => section.items.length);
+  })();
 
   const connectConnector=async item=>{
     if(item.slug==="ghl"){
       setShowGhlBanner(true);
       setOauthToast({type:'success',msg:'Add your GoHighLevel token in the banner above.'});
       setTimeout(()=>setOauthToast(null),3500);
+      return;
+    }
+    if(item.slug==="heygen"){
+      setHeygenError('');
+      setHeygenApiKey('');
+      setShowHeygenConnect(true);
       return;
     }
 
@@ -5154,6 +7638,24 @@ function App({ authUser }) {
       });
       const d=await r.json();
       if(!r.ok||!d.authUrl) throw new Error(d.error||'Could not start connector.');
+      if(d.connectionMode==="browser_handoff"){
+        const uberWindow=window.open(d.authUrl,'_blank','noopener,noreferrer');
+        if(!uberWindow) throw new Error('Allow pop-ups so Bloomie can open Uber Eats for sign-in.');
+        const ready=window.confirm('Uber Eats opened in a new tab. Sign in to your account there, then return here and click OK. Bloomie will never store your Uber password or payment details.');
+        if(!ready) return;
+        const readyRes=await fetch('/api/integrations/uber-eats/browser-ready',{
+          method:'POST',
+          headers:{...h,'Content-Type':'application/json'},
+          body:'{}'
+        });
+        const readyData=await readyRes.json();
+        if(!readyRes.ok||!readyData.connected) throw new Error(readyData.error||'Could not confirm the Uber Eats browser session.');
+        setActiveConnectors(p=>({...p,'uber-eats':true}));
+        setOauthToast({type:'success',msg:'Uber Eats browser is ready for this organization.'});
+        setTimeout(()=>setOauthToast(null),4500);
+        loadActiveConnectors();
+        return;
+      }
       window.location.href=d.authUrl;
     }catch(err){
       setOauthToast({type:'error',msg:err.message||'Connector failed to start.'});
@@ -5161,10 +7663,37 @@ function App({ authUser }) {
     }
   };
 
+  const connectHeygen=async()=>{
+    if(!heygenApiKey.trim())return;
+    setHeygenSaving(true);
+    setHeygenError('');
+    try{
+      const h=await getAuthHeaders();
+      const r=await fetch('/api/integrations/heygen/connect',{
+        method:'POST',
+        headers:{...h,'Content-Type':'application/json'},
+        body:JSON.stringify({apiKey:heygenApiKey.trim()})
+      });
+      const d=await r.json();
+      if(!r.ok||!d.success) throw new Error(d.error||'Could not connect HeyGen.');
+      setActiveConnectors(p=>({...p,heygen:true}));
+      setShowHeygenConnect(false);
+      setHeygenApiKey('');
+      setOauthToast({type:'success',msg:'HeyGen connected for this organization!'});
+      setTimeout(()=>setOauthToast(null),4000);
+      loadActiveConnectors();
+    }catch(err){
+      setHeygenError(err.message||'Could not connect HeyGen.');
+    }finally{
+      setHeygenSaving(false);
+    }
+  };
+
   const disconnectConnector=async item=>{
     try{
       const platform=connectorPlatform(item.slug)||item.slug;
-      await fetch(`/api/integrations/${platform}/disconnect`,{method:'POST'});
+      const h=await getAuthHeaders();
+      await fetch(`/api/integrations/${platform}/disconnect`,{method:'POST',headers:h});
       setActiveConnectors(p=>{
         const next={...p};
         if(platform==="google"){
@@ -5225,11 +7754,11 @@ function App({ authUser }) {
     }
   };
   
-  // Fetch projects when Projects page is opened
+  // Fetch projects wherever Chat or Work needs project organization.
   useEffect(()=>{
-    if(pg==="projects" && projects.length===0 && !loadingProjects){
+    if((pg==="projects"||pg==="chat"||pg==="work") && projects.length===0 && !loadingProjects){
       setLoadingProjects(true);
-      fetch('/api/projects')
+      getAuthHeaders().then(h=>fetch('/api/projects',{headers:h}))
         .then(r=>r.json())
         .then(data=>{
           if(data.success){
@@ -5241,10 +7770,17 @@ function App({ authUser }) {
     }
   },[pg]);
   
-  const [scrM,setScrM]=useState("docked");
+  const [scrM,setScrM]=useState(compact?"hidden":"docked");
   const [rightTab,setRightTab]=useState("live"); // "live" | "browser" | "artifact"
   const [activeArtifact,setActiveArtifact]=useState(null); // {name, content, fileId}
   const [chatLightbox,setChatLightbox]=useState(null);
+  // Keep Markdown component identities stable across health, SSE, and session
+  // title updates. Recreating them remounts native media elements and resets
+  // active playback back to 0:00.
+  const chatMarkdownComponents=useMemo(
+    ()=>createChatMarkdownComponents(c,setChatLightbox),
+    [c,setChatLightbox]
+  );
 
   // Auto-open Files panel when Sarah creates an artifact
   useEffect(()=>{
@@ -5254,9 +7790,24 @@ function App({ authUser }) {
       setTimeout(()=>setRightTab("artifact"),600);
     }
   },[messages]);
-  const [sbO,setSbO]=useState(!mob?"full":"closed");
+  const [sbO,setSbO]=useState(mob?"closed":compact?"mini":"full");
+  useEffect(()=>{
+    if(compact){
+      setScrM("hidden");
+      setSbO(current=>current==="full"?"mini":current);
+    }
+  },[compact]);
   const [openChatMenu,setOpenChatMenu]=useState(null); // Track which chat's menu is open
+  const [projectPickerChat,setProjectPickerChat]=useState(null);
+  const [expandedProjects,setExpandedProjects]=useState(()=>new Set());
   const [stab,setStab]=useState("General");
+  useEffect(()=>{
+    if(!passwordRecovery) return;
+    setPg("settings");
+    setStab("General");
+    window.history.replaceState({}, "", window.location.pathname);
+    requestAnimationFrame(()=>document.querySelector('[data-testid="password-change-panel"]')?.scrollIntoView({block:"center"}));
+  },[passwordRecovery]);
   const [tgEnabled,setTgEnabled]=useState(false);
   const [tgLoading,setTgLoading]=useState(false);
   const [questionLedContent,setQuestionLedContent]=useState({blog:false,email:false,video:false});
@@ -5464,6 +8015,8 @@ function App({ authUser }) {
   },[meOrgName]);
   const [files,setFiles]=useState([]);
   const [filesLoading,setFilesLoading]=useState(false);
+  const [filesPage,setFilesPage]=useState(1);
+  const [filesTotal,setFilesTotal]=useState(0);
   const [filesSearch,setFilesSearch]=useState('');
   const [filesSort,setFilesSort]=useState('newest'); // 'newest','oldest','name'
   const [filesTypeFilter,setFilesTypeFilter]=useState('all'); // 'all','html','image','markdown','code','document'
@@ -5482,7 +8035,7 @@ function App({ authUser }) {
   };
 
   // Clear files immediately when switching agents (prevents stale data flash)
-  useEffect(()=>{ setFiles([]); setFilesRefresh(r=>r+1); },[currentAgentId]);
+  useEffect(()=>{ setFiles([]); setFilesPage(1); setFilesRefresh(r=>r+1); },[currentAgentId]);
   const [pageEditor,setPageEditor]=useState(null); // {fileId, name, content} — GrapesJS editor
   const [editMode,setEditMode]=useState(false);
   const [editContent,setEditContent]=useState('');
@@ -5508,20 +8061,21 @@ function App({ authUser }) {
     if(pg!=="artifacts") return;
     setFilesLoading(true);
     const url = conferenceMode
-      ? "/api/files/artifacts?limit=500"
-      : currentAgentId ? `/api/files/artifacts?limit=500&agentId=${currentAgentId}` : "/api/files/artifacts?limit=500";
+      ? `/api/files/artifacts?limit=20&page=${filesPage}`
+      : currentAgentId ? `/api/files/artifacts?limit=20&page=${filesPage}&agentId=${currentAgentId}` : `/api/files/artifacts?limit=20&page=${filesPage}`;
     // Send auth headers so server resolves correct org from JWT — critical for multi-tenant
     getAuthHeaders().then(headers => {
       fetch(url, { headers })
         .then(r=>r.ok?r.json():null)
-        .then(d=>{ setFiles(d?.artifacts||[]); })
+        .then(d=>{ setFiles(d?.artifacts||[]); setFilesTotal(d?.total||0); })
         .catch(()=>{})
         .finally(()=>setFilesLoading(false));
     });
-  },[pg,filesRefresh,currentAgentId,conferenceMode]);
+  },[pg,filesRefresh,currentAgentId,conferenceMode,filesPage]);
   const btm=useRef(null);
   const fRef=useRef(null);
   const [pendingFiles,setPendingFiles]=useState([]);
+  const [drivePickerOpen,setDrivePickerOpen]=useState(false);
   const chatScrollRef=useRef(null);
   const [showScrollDown,setShowScrollDown]=useState(false);
   const handleChatScroll=()=>{const el=chatScrollRef.current;if(!el)return;setShowScrollDown(el.scrollHeight-el.scrollTop-el.clientHeight>120);};
@@ -5599,7 +8153,12 @@ function App({ authUser }) {
   };
 
   const doSend=async()=>{
-    if((!tx.trim()&&pendingFiles.length===0)||loading) return;
+    if(!tx.trim()&&pendingFiles.length===0) return;
+    if(loading&&pendingFiles.length>0) {
+      setOauthToast({type:'error',msg:'Let the current step finish before queuing a file. Text instructions can be queued now.'});
+      setTimeout(()=>setOauthToast(null),3500);
+      return;
+    }
     const text=tx.trim(); setTx(""); setNew(false);
     const activeProjectId = selectedProject?.id || null;
     if(pendingFiles.length > 0) {
@@ -5797,7 +8356,6 @@ function App({ authUser }) {
       <circle cx="50" cy="50" r="10" fill={active?c.tx:c.so} opacity="0.5"/>
     </svg>
   );
-
   const navTabs=[
     {k:"bloomie",l:"Bloomie",icon:BloomieIcon},
     {k:"monitor",l:"Status",icon:StatusIcon},
@@ -5805,16 +8363,33 @@ function App({ authUser }) {
     {k:"activity",l:"Activity",icon:ActivityIcon},
     {k:"mobile",l:"Mobile",icon:CallsIcon},
   ];
-  const composerPages = new Set(["chat", "work", "build"]);
+  const composerPages = new Set(["chat", "work"]);
   const supportLauncherBottom = composerPages.has(pg)
     ? (mob ? 176 : 140)
     : (mob ? 96 : 80);
+  const standaloneBookCreator = window.location.pathname.startsWith('/book-creator');
+
+  if(standaloneBookCreator)return(
+    <div style={{height:'100dvh',minHeight:0,width:'100%',overflow:'hidden',display:'flex',flexDirection:'column',background:c.bg,fontFamily:"'Inter',system-ui,-apple-system,sans-serif",color:c.tx}}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');*{box-sizing:border-box;margin:0;padding:0}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}@keyframes processingSweep{0%{background-position:180% 0}100%{background-position:-40% 0}}::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:${c.ln};border-radius:10px}`}</style>
+      <header style={{height:64,flexShrink:0,padding:mob?'10px 14px':'10px 24px',display:'flex',alignItems:'center',gap:11,borderBottom:'1px solid '+c.ln,background:c.cd}}>
+        <div style={{width:38,height:38,borderRadius:11,display:'grid',placeItems:'center',background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',fontWeight:900,fontSize:18}}>B</div>
+        <div style={{flex:1,minWidth:0}}><div style={{fontSize:15,fontWeight:800,color:c.tx}}>Bloomie Book Creator</div><div style={{fontSize:10,color:c.so}}>From idea to finished manuscript</div></div>
+        <a href="/" style={{padding:'8px 11px',borderRadius:9,border:'1px solid '+c.ln,background:c.sf,color:c.so,fontSize:11,fontWeight:700,textDecoration:'none'}}>Bloomie Staffing</a>
+        <button onClick={()=>supabase.auth.signOut()} style={{padding:'8px 11px',borderRadius:9,border:'1px solid '+c.ln,background:c.sf,color:c.so,fontSize:11,fontWeight:700,cursor:'pointer'}}>Sign out</button>
+      </header>
+      <main style={{flex:1,minHeight:0}}>
+        <BookWorkspace c={c} mob={mob} aFN={aFN} agentId={currentAgentId} standalone onOpenChat={()=>{}}/>
+      </main>
+    </div>
+  );
 
   return(
-    <div style={{minHeight:"100vh",background:c.bg,fontFamily:"'Inter',system-ui,-apple-system,sans-serif",color:c.tx}}>
+    <div style={{height:"100dvh",minHeight:0,width:"100%",maxWidth:"100vw",overflow:"hidden",display:"flex",flexDirection:"column",background:c.bg,fontFamily:"'Inter',system-ui,-apple-system,sans-serif",color:c.tx}}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
         @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+        @keyframes processingSweep{0%{background-position:180% 0}100%{background-position:-40% 0}}
         @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
 @keyframes bounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-6px)}}
         @keyframes pop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
@@ -5864,54 +8439,79 @@ function App({ authUser }) {
       }}/>
 
       {/* ── HEADER — exact Jaden layout ── */}
-      <div style={{padding:mob?"8px 12px":"10px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",background:c.cd,borderBottom:"1px solid "+c.ln,position:"sticky",top:0,zIndex:60,gap:8,paddingTop:"max(10px, calc(10px + env(safe-area-inset-top)))"}}>
-        <div style={{display:"flex",alignItems:"center",gap:mob?6:10}}>
-          {pg==="chat"&&<button onClick={()=>setSbO(sbO==="full"?"mini":sbO==="mini"?"closed":"full")} style={{width:32,height:32,borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,color:c.so,flexShrink:0}}>☰</button>}
+      <div style={{width:"100%",maxWidth:"100vw",overflow:"visible",padding:mob?"8px 10px":"10px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",background:c.cd,borderBottom:"1px solid "+c.ln,position:"relative",zIndex:60,flexShrink:0,gap:mob?4:8,paddingTop:mob?"max(24px, env(safe-area-inset-top))":"10px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:mob?4:10,flexShrink:0}}>
+          {(pg==="chat"||pg==="work")&&<button onClick={()=>setSbO(sbO==="full"?"mini":sbO==="mini"?"closed":"full")} aria-label="Open conversations menu" title="Conversations menu" style={{width:mob?44:36,height:mob?44:36,borderRadius:mob?11:9,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:c.so,flexShrink:0}}>
+            <svg width={mob?26:21} height={mob?26:21} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={mob?2.6:2.2} strokeLinecap="round" aria-hidden="true">
+              <line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/>
+            </svg>
+          </button>}
           <div style={{cursor:"pointer",display:"flex",alignItems:"center",gap:mob?4:8}} onClick={()=>setPg("chat")}>
             <Bloom sz={mob?28:32} glow/>
-            {!mob&&<span style={{fontSize:16,fontWeight:700,color:c.tx}}>Bloomie</span>}
-            {!mob&&<span style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:6,background:"#E76F8B20",color:"#E76F8B",letterSpacing:0.5}}>BETA</span>}
+            {!compact&&<span style={{fontSize:16,fontWeight:700,color:c.tx}}>Bloomie</span>}
+            {!compact&&<span style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:6,background:"#E76F8B20",color:"#E76F8B",letterSpacing:0.5}}>BETA</span>}
           </div>
         </div>
 
-        <div style={{display:"flex",alignItems:"center",gap:mob?6:12,flexWrap:"nowrap"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:12,flexWrap:"nowrap",flex:mob?1:"initial",minWidth:0,overflow:"hidden"}}>
+          {!compact&&<>
           <div style={{display:"flex",gap:mob?2:4,background:c.sf,padding:3,borderRadius:10}}>
             {navTabs.map(t=>(
-              <button key={t.k} onClick={()=>{setPg(t.k);if(t.k==="activity")loadActivity();if(t.k==="profile")loadProfile();}} style={{padding:mob?"7px 10px":"7px 14px",borderRadius:8,border:"none",cursor:"pointer",fontSize:12,fontWeight:600,background:pg===t.k?c.cd:"transparent",color:pg===t.k?c.tx:c.so,boxShadow:pg===t.k?"0 1px 4px rgba(0,0,0,.06)":"none",display:"flex",alignItems:"center",gap:6,transition:"all .15s"}}>
+              <button key={t.k} onClick={()=>{setPg(t.k);if(t.k==="activity")loadActivity();if(t.k==="profile")loadProfile();}} style={{padding:mob?"7px":"7px 14px",borderRadius:8,border:"none",cursor:"pointer",fontSize:12,fontWeight:600,background:pg===t.k?c.cd:"transparent",color:pg===t.k?c.tx:c.so,boxShadow:pg===t.k?"0 1px 4px rgba(0,0,0,.06)":"none",display:"flex",alignItems:"center",gap:6,transition:"all .15s",flexShrink:0}}>
                 <t.icon active={pg===t.k} sz={14}/>
                 {!mob&&<span>{t.l}</span>}
               </button>
             ))}
           </div>
-          <div style={{display:"flex",alignItems:"center",gap:6,padding:"4px 10px",borderRadius:12,background:connected?c.gf:"#fef2f2",border:"1px solid "+(connected?c.gr+"30":"#fecaca")}}>
+          <div title={connected?"Connected":"Offline"} style={{display:"flex",alignItems:"center",gap:mob?0:6,padding:mob?"8px":"4px 10px",borderRadius:12,background:connected?c.gf:"#fef2f2",border:"1px solid "+(connected?c.gr+"30":"#fecaca"),flexShrink:0}}>
             <span style={{width:6,height:6,borderRadius:"50%",background:connected?c.gr:"#ef4444",animation:connected?"pulse 1.5s ease infinite":"none"}}/>
-            <span style={{fontSize:10,fontWeight:600,color:connected?c.gr:"#dc2626"}}>{connected?"Connected":"Offline"}</span>
+            {!mob&&<span style={{fontSize:10,fontWeight:600,color:connected?c.gr:"#dc2626"}}>{connected?"Connected":"Offline"}</span>}
           </div>
-          <a href={`https://app.gohighlevel.com`} target="_blank" rel="noopener" style={{display:"flex",alignItems:"center",gap:5,padding:"4px 10px",borderRadius:8,border:"1.5px solid transparent",backgroundImage:"linear-gradient("+c.cd+","+c.cd+"), linear-gradient(135deg,#F4A261,#E76F8B)",backgroundOrigin:"border-box",backgroundClip:"padding-box, border-box",fontSize:10,fontWeight:700,textDecoration:"none",cursor:"pointer",background:c.cd}}>
+          {isDesktopShell&&!compact&&<div title={desktopBridgeReady?"Native browser and computer controls are ready":"Desktop shell is connected; native controls are reconnecting"} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 10px",borderRadius:12,background:desktopBridgeReady?"#ecfdf5":"#fff7ed",border:"1px solid "+(desktopBridgeReady?"#86efac":"#fed7aa"),flexShrink:0}}>
+            <span style={{width:6,height:6,borderRadius:"50%",background:desktopBridgeReady?"#22c55e":"#f59e0b"}}/>
+            <span style={{fontSize:10,fontWeight:700,color:desktopBridgeReady?"#15803d":"#c2410c"}}>{desktopBridgeReady?"Desktop ready":"Desktop reconnecting"}</span>
+          </div>}
+          <a href={`https://app.gohighlevel.com`} target="_blank" rel="noopener" title="Open BLOOM CRM" style={{display:"flex",alignItems:"center",gap:5,padding:mob?"8px":"4px 10px",borderRadius:8,border:"1.5px solid transparent",backgroundImage:"linear-gradient("+c.cd+","+c.cd+"), linear-gradient(135deg,#F4A261,#E76F8B)",backgroundOrigin:"border-box",backgroundClip:"padding-box, border-box",fontSize:10,fontWeight:700,textDecoration:"none",cursor:"pointer",background:c.cd,flexShrink:0}}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="url(#crmGrad)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <defs><linearGradient id="crmGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#F4A261"/><stop offset="100%" stopColor="#E76F8B"/></linearGradient></defs>
               <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
             </svg>
-            <span style={{background:"linear-gradient(135deg,#F4A261,#E76F8B)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",backgroundClip:"text"}}>BLOOM CRM</span>
+            {!mob&&<span style={{background:"linear-gradient(135deg,#F4A261,#E76F8B)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",backgroundClip:"text"}}>BLOOM CRM</span>}
           </a>
+          </>}
+          {compact&&<div title={connected?"Connected":"Offline"} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 9px",borderRadius:12,background:connected?c.gf:"#fef2f2",border:"1px solid "+(connected?c.gr+"30":"#fecaca")}}>
+            <span style={{width:7,height:7,borderRadius:"50%",background:connected?c.gr:"#ef4444",animation:connected?"pulse 1.5s ease infinite":"none"}}/>
+            <span style={{fontSize:11,fontWeight:600,color:connected?c.gr:"#dc2626"}}>{connected?"Online":"Offline"}</span>
+          </div>}
         </div>
 
-        <div style={{display:"flex",alignItems:"center",gap:8,position:"relative"}}>
-          {scrM==="hidden"&&<button onClick={()=>{setRightTab("live");setScrM("docked");}} style={{height:32,padding:"0 10px",borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:12,fontWeight:700,color:c.so,display:"flex",alignItems:"center",gap:6}} title="Show Sarah Live">
+        <div style={{display:"flex",alignItems:"center",gap:mob?4:8,position:"relative",flexShrink:0}}>
+          {compact&&<button title="More navigation" aria-label="More navigation" aria-expanded={mobileMoreOpen} onClick={()=>setMobileMoreOpen(v=>!v)} style={{height:32,padding:"0 10px",borderRadius:8,border:"1px solid "+c.ln,background:mobileMoreOpen?c.sf:c.cd,cursor:"pointer",fontSize:12,fontWeight:700,color:c.tx,display:"flex",alignItems:"center",gap:5,flexShrink:0}}>
+            <span aria-hidden="true">☰</span> More
+          </button>}
+          {scrM==="hidden"&&<button onClick={()=>{setRightTab("live");setScrM("docked");}} style={{height:32,padding:"0 10px",borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:12,fontWeight:700,color:c.so,display:"flex",alignItems:"center",gap:6}} title={`Show ${aFN} Live`}>
             <span style={{width:7,height:7,borderRadius:"50%",background:c.ac,animation:"pulse 1.5s ease infinite"}}/>
             Live
           </button>}
-          <div style={{width:36,height:36,borderRadius:"50%",background:userImg?"transparent":"linear-gradient(135deg,#F4A261,#E76F8B)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,color:"#fff",overflow:"hidden"}}>{userImg?<img src={userImg} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>:meInitial}</div>
+          <div style={{width:mob?32:36,height:mob?32:36,borderRadius:"50%",background:userImg?"transparent":"linear-gradient(135deg,#F4A261,#E76F8B)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,color:"#fff",overflow:"hidden",flexShrink:0}}>{userImg?<img src={userImg} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>:meInitial}</div>
         </div>
+        {compact&&mobileMoreOpen&&<>
+          <div onClick={()=>setMobileMoreOpen(false)} style={{position:"fixed",inset:0,zIndex:61}}/>
+          <div role="menu" aria-label="Bloomie navigation" style={{position:"absolute",top:"calc(100% + 6px)",right:10,left:10,zIndex:62,padding:8,borderRadius:14,border:"1px solid "+c.ln,background:c.cd,boxShadow:"0 12px 32px rgba(0,0,0,.28)",display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+            {navTabs.map(t=><button key={t.k} onClick={()=>{setPg(t.k);setMobileMoreOpen(false);if(t.k==="activity")loadActivity();if(t.k==="profile")loadProfile();}} style={{padding:"11px 12px",borderRadius:10,border:"none",background:pg===t.k?c.ac+"18":c.sf,color:c.tx,fontSize:13,fontWeight:600,textAlign:"left",display:"flex",alignItems:"center",gap:9}}><t.icon active={pg===t.k} sz={16}/>{t.l}</button>)}
+            <div title={connected?"Connected":"Offline"} style={{padding:"11px 12px",borderRadius:10,background:c.sf,color:connected?c.gr:"#dc2626",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:9}}><span style={{width:7,height:7,borderRadius:"50%",background:connected?c.gr:"#ef4444"}}/>{connected?"Connected":"Offline"}</div>
+            <a href="https://app.gohighlevel.com" target="_blank" rel="noopener" onClick={()=>setMobileMoreOpen(false)} style={{padding:"11px 12px",borderRadius:10,background:c.sf,color:c.tx,fontSize:13,fontWeight:600,textDecoration:"none",display:"flex",alignItems:"center",gap:9}}>↗ BLOOM CRM</a>
+          </div>
+        </>}
       </div>
 
-      {/* ── ROW 2 — Chat · Work · Build workspace tabs (centered) ── */}
-      <div style={{position:"sticky",top:52,zIndex:59,background:c.cd,borderBottom:"1px solid "+c.ln,display:"flex",justifyContent:"center",alignItems:"center",padding:"4px 0",gap:0}}>
+      {/* ── ROW 2 — one conversational surface and one execution surface ── */}
+      <div style={{position:"relative",zIndex:59,background:c.cd,borderBottom:"1px solid "+c.ln,display:"flex",justifyContent:"center",alignItems:"center",padding:"4px 0",gap:0,flexShrink:0}}>
         <div style={{display:"flex",gap:2,background:c.sf,padding:3,borderRadius:10}}>
           {[
             {k:"chat",l:"Chat"},
             {k:"work",l:"Work"},
-            {k:"build",l:"Build"},
+            {k:"book",l:"Book"},
           ].map(t=>(
             <button key={t.k} onClick={()=>setPg(t.k)} style={{padding:mob?"6px 16px":"6px 24px",borderRadius:8,border:"none",cursor:"pointer",fontSize:12,fontWeight:600,background:pg===t.k?c.cd:"transparent",color:pg===t.k?c.tx:c.so,boxShadow:pg===t.k?"0 1px 4px rgba(0,0,0,.06)":"none",transition:"all .15s",position:"relative"}}>
               {t.l}
@@ -5921,13 +8521,13 @@ function App({ authUser }) {
         </div>
       </div>
 
-      <div style={{display:"flex",position:"relative"}}>
-        {pg==="chat"&&sbO==="full"&&mob&&<div onClick={()=>setSbO("closed")} style={{position:"fixed",inset:0,top:52,background:"rgba(0,0,0,.3)",zIndex:45}}/>}
+      <div style={{display:"flex",position:"relative",flex:1,minHeight:0,overflow:"hidden"}}>
+        {(pg==="chat"||pg==="work")&&sbO==="full"&&compact&&<div onClick={()=>setSbO("closed")} style={{position:"absolute",inset:0,background:"rgba(0,0,0,.3)",zIndex:45}}/>}
 
         {/* ── SIDEBAR — session history like Claude (visible on all pages) ── */}
-        {sbOpen&&(
-          <div style={mob?{position:"fixed",top:52,left:0,bottom:0,zIndex:50}:{}}>
-            <div style={{width:sbO==="mini"?60:260,height:"calc(100vh - 52px)",background:c.cd,borderRight:"1px solid "+c.ln,display:"flex",flexDirection:"column",flexShrink:0,transition:"width .2s ease",overflow:"hidden"}}>
+        {sbOpen&&pg!=="book"&&(
+          <div style={compact?{position:"absolute",inset:"0 auto 0 0",zIndex:50}:{}}>
+            <div style={{width:sbO==="mini"?60:260,height:"100%",background:c.cd,borderRight:"1px solid "+c.ln,display:"flex",flexDirection:"column",flexShrink:0,transition:"width .2s ease",overflow:"hidden"}}>
 
               {/* MINI sidebar */}
               {sbO==="mini"&&(
@@ -5983,7 +8583,7 @@ function App({ authUser }) {
                   )}
 
                   {/* Agent identity card */}
-                  <div style={{padding:"12px 14px 8px",borderBottom:"1px solid "+c.ln,flexShrink:0}}>
+                  <div data-testid="sidebar-sticky-header" style={{padding:"12px 14px 8px",borderBottom:"1px solid "+c.ln,flexShrink:0}}>
                     <div onClick={()=>{loadProfile();setPg("profile");}} style={{padding:"10px 12px",borderRadius:12,background:c.sf,border:"1px solid "+c.ln,display:"flex",alignItems:"center",gap:10,marginBottom:10,cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=c.hv} onMouseLeave={e=>e.currentTarget.style.background=c.sf}>
                       <div style={{animation:"bloomieWiggle 3s ease-in-out infinite"}}><Face sz={34} agent={agent}/></div>
                       <div style={{flex:1,minWidth:0}}>
@@ -5995,10 +8595,18 @@ function App({ authUser }) {
                       </div>
                     </div>
                     <button
-                      onClick={()=>{setPg("chat");newSession();setNew(true);}}
+                      onClick={()=>{
+                        if(pg==="work"){
+                          setSelectedProject(null);
+                          setNewWorkProjectId('');
+                          setActiveWorkSessionId(null);
+                          setNewWorkSessionNonce(value=>value+1);
+                        }
+                        else{setSelectedProject(null);setPg("chat");newSession();setNew(true);}
+                      }}
                       style={{width:"100%",padding:"9px 0",borderRadius:10,border:"1.5px dashed "+c.ln,background:"transparent",cursor:"pointer",fontSize:13,fontWeight:600,color:c.so,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}
                     >
-                      <span style={{fontSize:16}}>+</span> New chat
+                      <span style={{fontSize:16}}>+</span> {pg==="work"?"New Work session":"New chat"}
                     </button>
 
                     {/* Search conversations */}
@@ -6011,14 +8619,18 @@ function App({ authUser }) {
                           type="text"
                           value={searchQuery}
                           onChange={e=>setSearchQuery(e.target.value)}
-                          placeholder="Search"
+                          placeholder={pg==="work"?"Search Work sessions":"Search"}
                           style={{width:"100%",padding:"8px 10px 8px 36px",borderRadius:8,border:"1px solid "+c.ln,background:c.inp,color:c.tx,fontSize:13,fontFamily:"inherit",outline:"none"}}
                           onFocus={e=>e.currentTarget.style.borderColor=c.ac}
                           onBlur={e=>e.currentTarget.style.borderColor=c.ln}
                         />
                       </div>
                     </div>
+                  </div>
 
+                  {/* Menu links, Projects, and Recent Chats share the scroll
+                      surface. Agent identity, New Chat, and Search stay fixed. */}
+                  <div data-testid="sidebar-scroll-region" style={{flex:1,minHeight:0,overflowY:"auto",overflowX:"hidden",WebkitOverflowScrolling:"touch",touchAction:"pan-y",overscrollBehaviorY:"contain"}}>
                     {/* Sidebar navigation menu */}
                     <div style={{padding:"4px 0",marginBottom:8,borderBottom:"1px solid "+c.ln}}>
                       <button onClick={()=>{setPg("customize");if(window.innerWidth<768)setSbO("closed");}} style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"none",cursor:"pointer",background:pg==="customize"?c.sf:"transparent",color:pg==="customize"?c.tx:c.so,fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:10,transition:"background .15s"}} onMouseEnter={e=>{ if(pg!=="customize") e.currentTarget.style.background=c.hv; }} onMouseLeave={e=>{ if(pg!=="customize") e.currentTarget.style.background="transparent"; }}>
@@ -6037,6 +8649,10 @@ function App({ authUser }) {
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                         <span>Files</span>
                       </button>
+                      <button onClick={()=>{setPg("references");if(window.innerWidth<768)setSbO("closed");}} style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"none",cursor:"pointer",background:pg==="references"?c.sf:"transparent",color:pg==="references"?c.tx:c.so,fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:10,transition:"background .15s"}} onMouseEnter={e=>{ if(pg!=="references") e.currentTarget.style.background=c.hv; }} onMouseLeave={e=>{ if(pg!=="references") e.currentTarget.style.background="transparent"; }}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M4 19.5V5a2 2 0 0 1 2-2h14v14H6.5A2.5 2.5 0 0 0 4 19.5z"/></svg>
+                        <span>References</span>
+                      </button>
                       <button onClick={()=>{setPg("dispatch");if(window.innerWidth<768)setSbO("closed");}} style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"none",cursor:"pointer",background:pg==="dispatch"?c.sf:"transparent",color:pg==="dispatch"?c.tx:c.so,fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:10,transition:"background .15s"}} onMouseEnter={e=>{ if(pg!=="dispatch") e.currentTarget.style.background=c.hv; }} onMouseLeave={e=>{ if(pg!=="dispatch") e.currentTarget.style.background="transparent"; }}>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2C9.8 2 8 3.8 8 6s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4z"/><path d="M12 14c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4z"/><path d="M2 12c0-2.2 1.8-4 4-4s4 1.8 4 4-1.8 4-4 4-4-1.8-4-4z"/><path d="M14 12c0-2.2 1.8-4 4-4s4 1.8 4 4-1.8 4-4 4-4-1.8-4-4z"/></svg>
                         <span>Dispatch</span>
@@ -6046,11 +8662,10 @@ function App({ authUser }) {
                         <span>Mobile</span>
                       </button>
                     </div>
-                  </div>
 
                   {/* Session list - only show on Chat page */}
                   {pg==="chat"&&(
-                  <div style={{flex:1,overflowY:"auto",padding:"8px 8px"}}>
+                  <div style={{padding:"8px 8px"}}>
                     {conferenceMode?(
                       /* Conference mode: show conference sessions */
                       confSessionsList.length===0?(
@@ -6081,18 +8696,47 @@ function App({ authUser }) {
                       })
                     ):(
                     /* Individual mode: show agent sessions */
-                    sessions.filter(s=>{
+                    <>
+                    {projects.length>0&&<div style={{padding:"2px 2px 8px",borderBottom:"1px solid "+c.ln,marginBottom:8}}>
+                      <div style={{padding:"4px 8px 6px",fontSize:10,fontWeight:700,color:c.fa,textTransform:"uppercase",letterSpacing:".6px"}}>Projects</div>
+                      {projects.map(project=>{
+                        const expanded=expandedProjects.has(project.id);
+                        const projectChats=sessions.filter(session=>session.project_id===project.id);
+                        return <div key={project.id} style={{marginBottom:2}}>
+                          <button onClick={()=>setExpandedProjects(current=>{const next=new Set(current);expanded?next.delete(project.id):next.add(project.id);return next;})} style={{width:"100%",padding:"8px 9px",borderRadius:8,border:"none",background:selectedProject?.id===project.id?c.ac+"12":"transparent",color:c.tx,cursor:"pointer",display:"flex",alignItems:"center",gap:8,textAlign:"left"}}>
+                            <span style={{fontSize:11,color:c.so,transform:expanded?"rotate(90deg)":"none",transition:"transform .15s"}}>▶</span>
+                            <span style={{fontSize:15}}>📁</span>
+                            <span style={{fontSize:13,fontWeight:600,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{project.name}</span>
+                            <span style={{fontSize:10,color:c.fa}}>{projectChats.length}</span>
+                          </button>
+                          {expanded&&<div style={{paddingLeft:22}}>
+                            {projectChats.map(chat=>{
+                              const active=currentSessionId===chat.id;
+                              const unread=!active&&isConversationUnread('chat',chat);
+                              return <button key={chat.id} onClick={()=>{setSelectedProject(project);loadSession(chat.id);setNew(false);if(mob)setSbO("closed");}} style={{width:"100%",padding:"7px 9px",borderRadius:7,border:"none",background:active?c.ac+"12":"transparent",color:active?c.ac:c.so,textAlign:"left",fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",gap:7}}>
+                                <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{chat.title||"New conversation"}</span>
+                                {unread&&<span aria-label="Unread message" title="Unread" style={{width:8,height:8,borderRadius:"50%",background:"#3b82f6",boxShadow:"0 0 0 2px rgba(59,130,246,.15)",flexShrink:0}}/>}
+                              </button>;
+                            })}
+                            <button onClick={()=>{setSelectedProject(project);newSession();setNew(true);if(mob)setSbO("closed");}} style={{width:"100%",padding:"7px 9px",borderRadius:7,border:"none",background:"transparent",color:c.ac,textAlign:"left",fontSize:11,fontWeight:600,cursor:"pointer"}}>+ New chat in project</button>
+                          </div>}
+                        </div>;
+                      })}
+                    </div>}
+                    <div style={{padding:"2px 8px 6px",fontSize:10,fontWeight:700,color:c.fa,textTransform:"uppercase",letterSpacing:".6px"}}>Recent Chats</div>
+                    {sessions.filter(s=>!s.project_id).filter(s=>{
                       if(!searchQuery.trim()) return true;
-                      const title = s.title || "New conversation";
+                      const title = cleanChatTitle(s.title);
                       return title.toLowerCase().includes(searchQuery.toLowerCase());
                     }).length===0?(
-                      <div style={{padding:"20px 8px",textAlign:"center",fontSize:11,color:c.fa}}>{searchQuery.trim()?"No chats found":"No chats yet"}</div>
-                    ):sessions.filter(s=>{
+                      <div style={{padding:"20px 8px",textAlign:"center",fontSize:11,color:c.fa}}>{searchQuery.trim()?"No chats found":"No unfiled chats"}</div>
+                    ):sessions.filter(s=>!s.project_id).filter(s=>{
                       if(!searchQuery.trim()) return true;
-                      const title = s.title || "New conversation";
+                      const title = cleanChatTitle(s.title);
                       return title.toLowerCase().includes(searchQuery.toLowerCase());
                     }).map(s=>{
                       const isActive = currentSessionId===s.id;
+                      const unread = !isActive&&isConversationUnread('chat',s);
                       const title = s.title || "New conversation";
                       const when = new Date(s.updated_at);
                       const now = new Date();
@@ -6111,7 +8755,11 @@ function App({ authUser }) {
                             onMouseEnter={e=>{ if(!isActive) e.currentTarget.style.background=c.hv; }}
                             onMouseLeave={e=>{ if(!isActive) e.currentTarget.style.background="transparent"; }}
                           >
-                            <div style={{fontSize:15,fontWeight:isActive?600:500,color:isActive?c.ac:c.tx,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",paddingRight:30}}>{title}</div>
+                            <div style={{fontSize:15,fontWeight:isActive||unread?600:500,color:isActive?c.ac:c.tx,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",paddingRight:30,display:"flex",alignItems:"center",gap:8}}>
+                              {/form\s+submission/i.test(title)&&<span title="Form submission" style={{display:"inline-flex",color:c.ac,flexShrink:0}}><AppMenuIcon name="form" size={16}/></span>}
+                              <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{title}</span>
+                              {unread&&<span aria-label="Unread message" title="Unread" style={{width:8,height:8,borderRadius:"50%",background:"#3b82f6",boxShadow:"0 0 0 2px rgba(59,130,246,.15)",flexShrink:0}}/>}
+                            </div>
                             <div style={{fontSize:10,color:c.fa,marginTop:2,display:"flex",gap:6}}>
                               <span>{timeLabel}</span>
                               {s.message_count>0&&<span>· {Math.floor(s.message_count/2)} msg{s.message_count>2?"s":""}</span>}
@@ -6136,39 +8784,43 @@ function App({ authUser }) {
                                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={c.tx} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                                   Rename
                                 </button>
-                                <button onClick={async()=>{
-                                  setOpenChatMenu(null);
+                                <button onClick={()=>{
                                   if(projects.length===0){
                                     setOauthToast({type:'error',msg:'No projects yet — create one first'}); setTimeout(()=>setOauthToast(null),4000);
                                     return;
                                   }
-                                  // Show project selection
-                                  const projList=projects.map((p,i)=>`${i+1}. ${p.name}`).join('\n');
-                                  const choice=prompt(`Add this chat to which project?\n\n${projList}\n\nEnter number (1-${projects.length}):`);
-                                  if(!choice) return;
-                                  const idx=parseInt(choice)-1;
-                                  if(idx<0||idx>=projects.length){setOauthToast({type:'error',msg:'Invalid choice'}); setTimeout(()=>setOauthToast(null),3000);return;}
-                                  const selectedProj=projects[idx];
-                                  try{
-                                    const res=await fetch(`/api/projects/${selectedProj.id}/conversations`,{
-                                      method:'PATCH',
-                                      headers:{'Content-Type':'application/json'},
-                                      body:JSON.stringify({action:'add',sessionIds:[s.id]})
-                                    });
-                                    const data=await res.json();
-                                    if(data.success){
-                                      setOauthToast({type:'success',msg:`Added to "${selectedProj.name}"`}); setTimeout(()=>setOauthToast(null),3000);
-                                      fetchSessions(); // Refresh to show project assignment
-                                    }else{
-                                      setOauthToast({type:'error',msg:'Failed: '+(data.error||'Unknown error')}); setTimeout(()=>setOauthToast(null),4000);
-                                    }
-                                  }catch(err){
-                                    setOauthToast({type:'error',msg:'Error: '+err.message}); setTimeout(()=>setOauthToast(null),4000);
-                                  }
+                                  setProjectPickerChat(projectPickerChat===s.id?null:s.id);
                                 }} style={{width:"100%",textAlign:"left",padding:"8px 12px",borderRadius:6,border:"none",background:"transparent",cursor:"pointer",fontSize:13,color:c.tx,display:"flex",alignItems:"center",gap:8}} onMouseEnter={e=>e.currentTarget.style.background=c.hv} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={c.tx} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-                                  Add to project
+                                  {s.project_id?'Move to project':'Add to project'} <span style={{marginLeft:"auto"}}>›</span>
                                 </button>
+                                {projectPickerChat===s.id&&<div style={{margin:"2px 4px 5px",padding:4,borderRadius:7,background:c.sf,border:"1px solid "+c.ln}}>
+                                  {projects.map(project=><button key={project.id} onClick={async()=>{
+                                    try{
+                                      const h=await getAuthHeaders();
+                                      const res=await fetch(`/api/projects/${project.id}/conversations`,{method:'PATCH',headers:{...h,'Content-Type':'application/json'},body:JSON.stringify({action:'add',sessionIds:[s.id]})});
+                                      const data=await res.json();
+                                      if(!res.ok||!data.success)throw new Error(data.error||'Move failed');
+                                      setSessions(list=>list.map(chat=>chat.id===s.id?{...chat,project_id:project.id}:chat));
+                                      setExpandedProjects(current=>new Set([...current,project.id]));
+                                      setOpenChatMenu(null);setProjectPickerChat(null);
+                                      setOauthToast({type:'success',msg:`Moved to "${project.name}"`});setTimeout(()=>setOauthToast(null),3000);
+                                    }catch(err){setOauthToast({type:'error',msg:err.message});setTimeout(()=>setOauthToast(null),4000);}
+                                  }} style={{width:"100%",padding:"7px 8px",border:"none",borderRadius:6,background:s.project_id===project.id?c.ac+"15":"transparent",color:c.tx,textAlign:"left",fontSize:12,cursor:"pointer"}}>📁 {project.name}{s.project_id===project.id?' ✓':''}</button>)}
+                                  {s.project_id&&<button onClick={async()=>{
+                                    const project=projects.find(project=>project.id===s.project_id);
+                                    if(!project)return;
+                                    try{
+                                      const h=await getAuthHeaders();
+                                      const res=await fetch(`/api/projects/${project.id}/conversations`,{method:'PATCH',headers:{...h,'Content-Type':'application/json'},body:JSON.stringify({action:'remove',sessionIds:[s.id]})});
+                                      const data=await res.json();
+                                      if(!res.ok||!data.success)throw new Error(data.error||'Remove failed');
+                                      setSessions(list=>list.map(chat=>chat.id===s.id?{...chat,project_id:null}:chat));
+                                      setOpenChatMenu(null);setProjectPickerChat(null);
+                                      setOauthToast({type:'success',msg:'Moved to Recent Chats'});setTimeout(()=>setOauthToast(null),3000);
+                                    }catch(err){setOauthToast({type:'error',msg:err.message});setTimeout(()=>setOauthToast(null),4000);}
+                                  }} style={{width:"100%",padding:"7px 8px",border:"none",borderTop:"1px solid "+c.ln,background:"transparent",color:c.so,textAlign:"left",fontSize:12,cursor:"pointer"}}>Remove from project</button>}
+                                </div>}
                                 <button onClick={()=>{setOpenChatMenu(null);if(confirm('Delete this conversation?'))deleteSession(s.id);}} style={{width:"100%",textAlign:"left",padding:"8px 12px",borderRadius:6,border:"none",background:"transparent",cursor:"pointer",fontSize:13,color:"#ef4444",display:"flex",alignItems:"center",gap:8}} onMouseEnter={e=>e.currentTarget.style.background=c.hv} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                                   Delete
@@ -6178,10 +8830,30 @@ function App({ authUser }) {
                           )}
                         </div>
                       );
-                    })
+                    })}
+                    </>
                     )}
                   </div>
                   )}
+                  {pg==="work"&&(
+                    <WorkSessionsSidebar
+                      c={c}
+                      agentId={currentAgentId}
+                      activeId={activeWorkSessionId}
+                      onSelect={(id,projectId)=>{
+                        setActiveWorkSessionId(id);
+                        setSelectedProject(projectId?projects.find(project=>project.id===projectId)||null:null);
+                        if(mob)setSbO("closed");
+                      }}
+                      projects={projects}
+                      onProjectChange={(id,projectId)=>{
+                        if(activeWorkSessionId!==id)return;
+                        setSelectedProject(projectId?projects.find(project=>project.id===projectId)||null:null);
+                      }}
+                      searchQuery={searchQuery}
+                    />
+                  )}
+                  </div>
 
                   {/* Bottom — Kimberly expandable menu */}
                   <div style={{padding:"10px 14px",borderTop:"1px solid "+c.ln,flexShrink:0,position:"relative"}}>
@@ -6201,16 +8873,17 @@ function App({ authUser }) {
                     {umO&&(
                       <div style={{position:"absolute",bottom:"100%",left:14,right:14,background:c.cd,border:"1px solid "+c.ln,borderRadius:12,boxShadow:"0 -8px 24px rgba(0,0,0,.15)",overflow:"hidden",marginBottom:4,zIndex:70}}>
                         {[
-                          {ic:"🏢",l:"Business Profile",fn:()=>{setPg("business");setUmO(false);}},
-                          {ic:"💳",l:"Billing",fn:()=>{setPg("billing");setUmO(false);}},
-                          {ic:"🧠",l:"Skills",fn:()=>{setPg("skills");setUmO(false);}},
-                          {ic:"⚙️",l:"Settings",fn:()=>{setPg("settings");setUmO(false);}},
-                          {ic:"🔧",l:"Developer Mode",fn:()=>setUmO(false)},
-                          {ic:dark?"☀️":"🌙",l:dark?"Light Mode":"Dark Mode",fn:()=>{setDark(!dark);setUmO(false);}},
-                          {ic:"🚪",l:"Log out",fn:async()=>{setUmO(false);await supabase.auth.signOut();}},
+                          {ic:"business",l:"Business Profile",fn:()=>{setPg("business");setUmO(false);}},
+                          {ic:"billing",l:"Billing",fn:()=>{setPg("billing");setUmO(false);}},
+                          {ic:"desktop",l:"Download Desktop App",fn:()=>{setPg("dispatch");setUmO(false);}},
+                          {ic:"skills",l:"Skills",fn:()=>{setPg("skills");setUmO(false);}},
+                          {ic:"settings",l:"Settings",fn:()=>{setPg("settings");setUmO(false);}},
+                          {ic:"developer",l:"Developer Mode",fn:()=>setUmO(false)},
+                          {ic:dark?"light":"dark",l:dark?"Light Mode":"Dark Mode",fn:()=>{setDark(!dark);setUmO(false);}},
+                          {ic:"logout",l:"Log out",fn:async()=>{setUmO(false);await supabase.auth.signOut();}},
                         ].map((item,i,arr)=>(
                           <button key={i} onClick={item.fn} style={{width:"100%",textAlign:"left",padding:"11px 14px",border:"none",cursor:"pointer",background:"transparent",fontSize:13,color:i===arr.length-1?"#ef4444":c.tx,display:"flex",alignItems:"center",gap:10,borderBottom:i<arr.length-1?"1px solid "+c.ln+"60":"none"}} onMouseEnter={e=>e.currentTarget.style.background=c.hv} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                            <span style={{fontSize:15}}>{item.ic}</span>{item.l}
+                            <span style={{display:"inline-flex",color:i===arr.length-1?"#ef4444":"currentColor",flexShrink:0}}><AppMenuIcon name={item.ic} size={17}/></span>{item.l}
                           </button>
                         ))}
                       </div>
@@ -6223,7 +8896,7 @@ function App({ authUser }) {
         )}
 
         {/* ── MAIN CONTENT ── */}
-        <div style={{flex:1,minWidth:0,height:"calc(100dvh - 104px)",overflow:(pg==="chat"||pg==="work"||pg==="build")?"hidden":"auto"}}>
+        <div style={{flex:1,minWidth:0,minHeight:0,height:"100%",overflow:(pg==="chat"||pg==="work")?"hidden":"auto"}}>
 
           {/* ══ CHAT ══ */}
           {pg==="chat"&&conferenceMode&&(
@@ -6313,7 +8986,7 @@ function App({ authUser }) {
                   {!mob&&scrM==="hidden"&&(
                     <button onClick={()=>{setRightTab("live");setScrM("docked");}} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:12,fontWeight:700,color:c.so,flexShrink:0,transition:"background .15s,color .15s"}} onMouseEnter={e=>{e.currentTarget.style.background=c.sf;e.currentTarget.style.color=c.tx;}} onMouseLeave={e=>{e.currentTarget.style.background=c.cd;e.currentTarget.style.color=c.so;}}>
                       <span style={{width:7,height:7,borderRadius:"50%",background:c.ac,animation:"pulse 1.5s ease infinite"}}/>
-                      Sarah Live
+                      {aFN} Live
                     </button>
                   )}
                 </div>
@@ -6340,6 +9013,7 @@ function App({ authUser }) {
                                 <div style={{padding:"6px 14px 4px",fontSize:11,fontWeight:700,color:c.fa,letterSpacing:"0.06em",textTransform:"uppercase"}}>Files</div>
                                 {[
                                   {icon:<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>, label:"Add files or photos", action:()=>{fRef.current?.click();setShowPlusMenu(false);}},
+                                  {icon:<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 2l4.5 7.8H7.5L12 2z"/><path d="M7.5 9.8L3 17.5h9l-4.5-7.7z"/><path d="M16.5 9.8L12 17.5h9l-4.5-7.7z"/></svg>, label:"Choose from Google Drive", action:()=>{setDrivePickerOpen(true);setShowPlusMenu(false);}},
                                   {icon:<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>, label:"Take a screenshot", action:takeScreenshot},
                                 ].map((item,i)=>(
                                   <button key={i} onClick={item.action} style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"9px 14px",border:"none",background:"transparent",cursor:"pointer",color:c.tx,fontSize:13,textAlign:"left",transition:"background .12s"}} onMouseEnter={e=>e.currentTarget.style.background=c.hv} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
@@ -6350,7 +9024,7 @@ function App({ authUser }) {
                                 <div style={{height:1,background:c.ln,margin:"4px 0"}}/>
                                 <div style={{padding:"6px 14px 4px",fontSize:11,fontWeight:700,color:c.fa,letterSpacing:"0.06em",textTransform:"uppercase"}}>Start</div>
                                 {[
-                                  {icon:<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>, label:"Build a website", sub:"Goes to Build tab", action:()=>{setPg("build");setShowPlusMenu(false);}},
+                                  {icon:<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>, label:"Build a website", sub:"Starts coding work", action:()=>{setPg("work");setShowPlusMenu(false);}},
                                   {icon:<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="9" y="1" width="6" height="13" rx="3"/><path d="M4 10a8 8 0 0 0 16 0"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>, label:"New work task", sub:"Goes to Work tab", action:()=>{setPg("work");setShowPlusMenu(false);}},
                                 ].map((item,i)=>(
                                   <button key={i} onClick={item.action} style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"9px 14px",border:"none",background:"transparent",cursor:"pointer",color:c.tx,fontSize:13,textAlign:"left",transition:"background .12s"}} onMouseEnter={e=>e.currentTarget.style.background=c.hv} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
@@ -6372,11 +9046,7 @@ function App({ authUser }) {
                           {voiceActive&&<span style={{position:"absolute",inset:-4,borderRadius:14,border:"2px solid "+c.ac,animation:"pulse 1.2s ease infinite",opacity:0.4}}/>}
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={voiceActive?c.ac:c.so} strokeWidth="2" strokeLinecap="round"><rect x="9" y="1" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0014 0"/><path d="M12 17v4M8 21h8"/></svg>
                         </button>
-                        {loading?(
-                          <button onClick={stopSarah} style={{width:36,height:36,borderRadius:10,border:"none",cursor:"pointer",background:"rgba(234,67,53,0.15)",color:"#ea4335",fontSize:14,fontWeight:700,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:2}} title={"Stop "+aFN}>■</button>
-                        ):(
-                          <button onClick={doSend} disabled={!tx.trim()} style={{width:36,height:36,borderRadius:10,border:"none",cursor:tx.trim()?"pointer":"not-allowed",background:tx.trim()?"linear-gradient(135deg,#F4A261,#E76F8B)":"transparent",color:tx.trim()?"#fff":c.fa,fontSize:16,fontWeight:700,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:2}}>➜</button>
-                        )}
+                        <button onClick={doSend} disabled={!tx.trim()} title={loading?"Queue this message":"Send"} style={{width:36,height:36,borderRadius:10,border:"none",cursor:tx.trim()?"pointer":"not-allowed",background:tx.trim()?"linear-gradient(135deg,#F4A261,#E76F8B)":"transparent",color:tx.trim()?"#fff":c.fa,fontSize:16,fontWeight:700,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:2}}>➜</button>
                       </div>
                     </div>
                     <div style={{display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap"}}>
@@ -6389,16 +9059,26 @@ function App({ authUser }) {
               ):(
                 <>
                   <div style={{flex:1,minHeight:0,display:"flex",minWidth:0,position:"relative"}}>
-                    <div ref={chatScrollRef} onScroll={handleChatScroll} style={{flex:1,minWidth:0,overflowY:"auto",overflowX:"hidden",background:c.bg,padding:mob?"14px 12px":"18px 24px",transition:"padding .25s ease"}}>
-                      {messages.map((m)=>{
+                    <div data-testid="chat-message-scroll" ref={chatScrollRef} onScroll={handleChatScroll} style={{flex:1,minWidth:0,minHeight:0,overflowY:"auto",overflowX:"hidden",WebkitOverflowScrolling:"touch",touchAction:"pan-y",overscrollBehaviorY:"contain",background:c.bg,padding:mob?"14px 12px":"18px 24px",transition:"padding .25s ease"}}>
+                      {messages.map((m,messageIndex)=>{
                         const cards=m.b?parseMessageCards(m.t):[];
+                        const uberEatsResults=m.b?parseUberEatsResults(m.t):null;
                         const displayText=m.b?cleanMessageText(m.t):m.t;
                         const clarifyData=m.clarification||(m.b?parseClarification(m.t):null);
+                        const currentMediaReady=m.b&&(/\/api\/public\/video\//i.test(m.t||"")||/!\[[^\]]*\]\(https?:\/\/[^)]+\.(?:png|jpe?g|webp)/i.test(m.t||""));
+                        const pendingMediaKind=m.b&&!currentMediaReady&&/still pending|pending verification|rendering|generating|generation in progress/i.test(m.t||"")
+                          ? requestedMediaKind(m.t)||(/bloom_studio/i.test(m.t||"")?"video":null)
+                          : null;
+                        const laterMediaReady=messages.slice(messageIndex+1).some(next=>next.b&&(/\/api\/public\/video\//i.test(next.t||"")||/!\[[^\]]*\]\(https?:\/\/[^)]+\.(?:png|jpe?g|webp)/i.test(next.t||"")));
+                        // Processing messages are temporary UI state. Once a
+                        // finished deliverable arrives, replace the placeholder
+                        // instead of leaving it stacked above the real media.
+                        if(pendingMediaKind&&laterMediaReady) return null;
                         return (
                         <div key={m.id} style={{display:"flex",justifyContent:m.b?"flex-start":"flex-end",marginBottom:16,flexDirection:"column",alignItems:m.b?"flex-start":"flex-end"}}>
                           <div style={{display:"flex",justifyContent:m.b?"flex-start":"flex-end",width:"100%"}}>
                             {m.b&&<div style={{marginRight:8,marginTop:2,flexShrink:0}}><Face sz={mob?26:28} agent={agent}/></div>}
-                            <div style={{maxWidth:mob?"88%":"75%",padding:"10px 14px",fontSize:mob?13:14,lineHeight:1.6,color:m.b?c.tx:"#fff",borderRadius:m.b?"4px 16px 16px 16px":"16px 4px 16px 16px",background:m.b?c.cd:"linear-gradient(135deg,#F4A261,#E76F8B)",border:m.b?"1px solid "+c.ln:"none",wordBreak:"break-word",overflowWrap:"anywhere",boxShadow:m.b?"none":"0 2px 8px rgba(244,162,97,0.25)"}}>
+                            <div style={{maxWidth:mob?(m.b?"calc(100% - 36px)":"92%"):"75%",minWidth:0,padding:"10px 14px",fontSize:mob?13:14,lineHeight:1.6,color:m.b?c.tx:"#fff",borderRadius:m.b?"4px 16px 16px 16px":"16px 4px 16px 16px",background:m.b?c.cd:"linear-gradient(135deg,#F4A261,#E76F8B)",border:m.b?"1px solid "+c.ln:"none",wordBreak:"break-word",overflowWrap:"anywhere",boxShadow:m.b?"none":"0 2px 8px rgba(244,162,97,0.25)"}}>
                               {/* File previews */}
                               {m.files&&m.files.length>0&&(
                                 <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:m.t?8:4}}>
@@ -6412,33 +9092,14 @@ function App({ authUser }) {
                                   ))}
                                 </div>
                               )}
+                              {pendingMediaKind&&!laterMediaReady&&<MediaProcessingCard kind={pendingMediaKind} c={c}/>}
                               {displayText&&(m.b?(
                                 <div className="sarah-msg" style={{fontSize:15,lineHeight:1.65,color:c.tx}}>
                                   <ReactMarkdown
                                     remarkPlugins={[remarkGfm]}
-                                    components={{
-                                      h1:({children})=><div style={{fontSize:17,fontWeight:700,margin:"18px 0 8px",color:c.tx}}>{children}</div>,
-                                      h2:({children})=><div style={{fontSize:15,fontWeight:700,margin:"16px 0 6px",color:c.tx}}>{children}</div>,
-                                      h3:({children})=><div style={{fontSize:14,fontWeight:700,margin:"14px 0 6px",color:c.tx}}>{children}</div>,
-                                      p:({children})=><div style={{margin:"8px 0"}}>{children}</div>,
-                                      strong:({children})=><strong>{children}</strong>,
-                                      em:({children})=><em>{children}</em>,
-                                      ul:({children})=><div style={{margin:"6px 0",paddingLeft:4}}>{children}</div>,
-                                      ol:({children})=><div style={{margin:"6px 0",paddingLeft:4}}>{children}</div>,
-                                      li:({children,index,ordered})=><div style={{display:"flex",gap:8,margin:"3px 0"}}><span style={{color:c.ac,flexShrink:0}}>{ordered?`${(index||0)+1}.`:"•"}</span><span>{children}</span></div>,
-                                      img:({src,alt})=><img src={src} alt={alt} onClick={()=>setChatLightbox({src,alt:alt||''})} style={{maxWidth:"100%",height:"auto",borderRadius:8,margin:"10px 0",display:"block",cursor:"zoom-in"}}/>,
-                                      code:({inline,className,children})=>{
-                                        if(inline) return <code style={{background:c.bg,border:"1px solid "+c.ln,padding:"1px 6px",borderRadius:4,fontSize:"12.5px",fontFamily:"ui-monospace,SFMono-Regular,Menlo,monospace"}}>{children}</code>;
-                                        return <pre style={{background:c.bg,border:"1px solid "+c.ln,borderRadius:8,padding:"12px 16px",margin:"10px 0",overflowX:"auto",fontSize:"12.5px",lineHeight:1.5,fontFamily:"ui-monospace,SFMono-Regular,Menlo,monospace"}}><code>{children}</code></pre>;
-                                      },
-                                      hr:()=><hr style={{border:"none",borderTop:"1px solid "+c.ln,margin:"16px 0"}}/>,
-                                      a:({href,children})=><a href={href} target="_blank" rel="noopener noreferrer" style={{color:c.ac,textDecoration:"underline"}}>{children}</a>,
-                                      table:({children})=><div style={{overflowX:"auto",margin:"10px 0"}}><table style={{borderCollapse:"collapse",width:"100%",fontSize:13}}>{children}</table></div>,
-                                      th:({children})=><th style={{border:"1px solid "+c.ln,padding:"6px 10px",fontWeight:600,textAlign:"left",background:c.sf}}>{children}</th>,
-                                      td:({children})=><td style={{border:"1px solid "+c.ln,padding:"6px 10px"}}>{children}</td>,
-                                      blockquote:({children})=><div style={{borderLeft:"3px solid "+c.ac,paddingLeft:12,margin:"10px 0",color:c.so}}>{children}</div>,
-                                    }}
+                                    components={chatMarkdownComponents}
                                   >{displayText}</ReactMarkdown>
+                                  {uberEatsResults&&<UberEatsResultsCard results={uberEatsResults} c={c}/>}
                                 </div>
                               ):(
                                 <div style={{fontSize:14,lineHeight:1.65}}>{displayText}</div>
@@ -6481,8 +9142,14 @@ function App({ authUser }) {
                       {loading&&(
                         <div style={{display:"flex",justifyContent:"flex-start",marginBottom:14,alignItems:"flex-end",gap:8}}>
                           <div style={{marginRight:0,marginTop:2}}><Face sz={28} agent={agent}/></div>
-                          <div style={{flex:1}}>
-                            <div style={{padding:"14px 18px",borderRadius:"6px 18px 18px 18px",background:c.cd,border:"1px solid "+c.ln,minWidth:160}}>
+                          <div style={{
+                            flex:requestedMediaKind([...messages].reverse().find(item=>!item.b)?.t||"")?"0 1 456px":"1",
+                            width:requestedMediaKind([...messages].reverse().find(item=>!item.b)?.t||"")?"min(calc(100% - 76px), 456px)":"auto",
+                            maxWidth:requestedMediaKind([...messages].reverse().find(item=>!item.b)?.t||"")?456:"none",
+                            minWidth:0
+                          }}>
+                            <div style={{padding:"14px 18px",borderRadius:"6px 18px 18px 18px",background:c.cd,border:"1px solid "+c.ln,minWidth:0}}>
+                              {requestedMediaKind([...messages].reverse().find(item=>!item.b)?.t||"")&&<MediaProcessingCard kind={requestedMediaKind([...messages].reverse().find(item=>!item.b)?.t||"")} c={c}/>}
                               {workingStatus==="Thinking..."?(
                                 /* Casual chat — gentle thinking indicator */
                                 <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -6497,10 +9164,7 @@ function App({ authUser }) {
                                     <span style={{fontSize:13,fontWeight:600,color:c.tx}}>{aFN} is working</span>
                                   </div>
                                   <div style={{fontSize:11,color:c.so,lineHeight:1.5}}>
-                                    <div style={{display:"flex",alignItems:"center",gap:6}}>
-                                      Loading...
-                                      <span>{workingStatus||"Processing..."}</span>
-                                    </div>
+                                    <LiveProgressNarration c={c} sessionId={sid.current}/>
                                   </div>
                                 </>
                               )}
@@ -6509,7 +9173,8 @@ function App({ authUser }) {
                           <button onClick={stopSarah} title={"Stop "+aFN} style={{width:32,height:32,borderRadius:8,border:"1px solid "+c.ln,background:c.cd,cursor:"pointer",fontSize:14,color:"#ea4335",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"background .15s"}} onMouseEnter={e=>e.currentTarget.style.background="rgba(234,67,53,0.1)"} onMouseLeave={e=>e.currentTarget.style.background=c.cd}>■</button>
                         </div>
                       )}
-                      {showThinking && <ThinkingPanel c={c} sessionId={sid.current} isOpen={showThinking} onClose={()=>setShowThinking(false)}/>}
+                      <ExecutionCommandCards c={c} sessionId={sid.current} source="chat"/>
+                      {showThinking && <ThinkingPanel c={c} sessionId={sid.current} isOpen={showThinking} onClose={()=>setShowThinking(false)} agentName={agent.nm}/>}
                       <div ref={btm}/>
                     </div>
                     {showScrollDown&&(
@@ -6517,7 +9182,7 @@ function App({ authUser }) {
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={c.so} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
                       </button>
                     )}
-                    {!mob&&scrM!=="hidden"&&(
+                    {!compact&&scrM!=="hidden"&&(
                       <ResizablePanel c={c} defaultWidth={480} minWidth={280} maxWidth={800}>
                         <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
                           {/* ── Right panel tabs ── */}
@@ -6626,7 +9291,7 @@ function App({ authUser }) {
                                 <div style={{height:1,background:c.ln,margin:"4px 0"}}/>
                                 <div style={{padding:"6px 14px 4px",fontSize:11,fontWeight:700,color:c.fa,letterSpacing:"0.06em",textTransform:"uppercase"}}>Start</div>
                                 {[
-                                  {icon:<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>, label:"Build a website", sub:"Goes to Build tab", action:()=>{setPg("build");setShowPlusMenu(false);}},
+                                  {icon:<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>, label:"Build a website", sub:"Starts coding work", action:()=>{setPg("work");setShowPlusMenu(false);}},
                                   {icon:<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="9" y="1" width="6" height="13" rx="3"/><path d="M4 10a8 8 0 0 0 16 0"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>, label:"New work task", sub:"Goes to Work tab", action:()=>{setPg("work");setShowPlusMenu(false);}},
                                 ].map((item,i)=>(
                                   <button key={i} onClick={item.action} style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"9px 14px",border:"none",background:"transparent",cursor:"pointer",color:c.tx,fontSize:13,textAlign:"left",transition:"background .12s"}} onMouseEnter={e=>e.currentTarget.style.background=c.hv} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
@@ -6677,11 +9342,7 @@ function App({ authUser }) {
                           {voiceActive&&<span style={{position:"absolute",inset:-3,borderRadius:12,border:"2px solid "+c.ac,animation:"pulse 1.2s ease infinite",opacity:0.4}}/>}
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={voiceActive?c.ac:c.so} strokeWidth="2" strokeLinecap="round"><rect x="9" y="1" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0014 0"/><path d="M12 17v4M8 21h8"/></svg>
                         </button>
-                        {loading?(
-                          <button onClick={stopSarah} style={{width:36,height:36,borderRadius:10,border:"none",cursor:"pointer",background:"rgba(234,67,53,0.15)",color:"#ea4335",fontSize:13,fontWeight:700,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:2}} title="Stop">■</button>
-                        ):(
-                          <button onClick={doSend} disabled={!tx.trim()&&pendingFiles.length===0} style={{width:36,height:36,borderRadius:10,border:"none",cursor:(tx.trim()||pendingFiles.length>0)?"pointer":"not-allowed",background:(tx.trim()||pendingFiles.length>0)?"linear-gradient(135deg,#F4A261,#E76F8B)":"transparent",color:(tx.trim()||pendingFiles.length>0)?"#fff":c.fa,fontSize:16,fontWeight:700,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:2}}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
-                        )}
+                        <button onClick={doSend} disabled={!tx.trim()&&pendingFiles.length===0} title={loading?"Queue this message":"Send"} style={{width:36,height:36,borderRadius:10,border:"none",cursor:(tx.trim()||pendingFiles.length>0)?"pointer":"not-allowed",background:(tx.trim()||pendingFiles.length>0)?"linear-gradient(135deg,#F4A261,#E76F8B)":"transparent",color:(tx.trim()||pendingFiles.length>0)?"#fff":c.fa,fontSize:16,fontWeight:700,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:2}}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
                       </div>
                   </div>
                 </>
@@ -6691,7 +9352,7 @@ function App({ authUser }) {
 
           {/* ══ BLOOMIE ADMIN ══ */}
           {pg==="bloomie"&&(
-            <BloomieAdmin c={c} mob={mob}/>
+            <BloomieAdmin c={c} mob={mob} agentId={currentAgentId} agentName={aFN} projectId={selectedProject?.id||null} onOpenBrandKit={()=>setPg("business")}/>
           )}
 
           {/* ══ MONITOR — Sarah's functional cards, Jaden's visual style ══ */}
@@ -7528,13 +10189,13 @@ function App({ authUser }) {
 
           {/* ══ FILES — Approved deliverables library ══ */}
           {pg==="artifacts"&&(
-            <div style={{padding:mob?"16px 12px 40px":"20px 20px 40px",maxWidth:1000,margin:"0 auto"}}>
+            <div style={{padding:mob?"16px 12px 40px":"20px 20px 40px",width:"100%",maxWidth:1000,minWidth:0,overflowX:"hidden",boxSizing:"border-box",margin:"0 auto"}}>
               <div style={{marginBottom:16,display:"flex",flexDirection:mob?"column":"row",gap:12,alignItems:mob?"stretch":"center",justifyContent:"space-between"}}>
                 <div>
                   <h1 style={{fontSize:mob?20:24,fontWeight:700,color:c.tx,marginBottom:4}}>Files & Deliverables</h1>
                   <p style={{fontSize:13,color:c.so}}>{conferenceMode?'All content from your team':'All content '+aFN+' has created for you'}</p>
                 </div>
-                <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",width:mob?"100%":"auto",minWidth:0}}>
                   <input value={filesSearch||''} onChange={e=>setFilesSearch(e.target.value)} placeholder="Search files..." style={{padding:"8px 14px",borderRadius:10,border:"1.5px solid "+c.ln,fontSize:13,fontFamily:"inherit",background:c.inp,color:c.tx,width:mob?"100%":180}}/>
                   <select value={filesTypeFilter} onChange={e=>setFilesTypeFilter(e.target.value)} style={{padding:"8px 10px",borderRadius:10,border:"1.5px solid "+c.ln,fontSize:12,fontFamily:"inherit",background:c.inp,color:c.tx,cursor:"pointer"}}>
                     <option value="all">All Types</option>
@@ -7560,7 +10221,7 @@ function App({ authUser }) {
                   <div style={{fontSize:13}}>Ask {aFN} to create content — blog posts, email campaigns, SOPs, reports — and they'll appear here.</div>
                 </div>
               ) : (
-                <div style={{display:"grid",gridTemplateColumns:mob?"1fr":"repeat(auto-fill, minmax(280px, 1fr))",gap:14}}>
+                <div style={{display:"grid",gridTemplateColumns:mob?"minmax(0, 1fr)":"repeat(auto-fill, minmax(280px, 1fr))",gap:14,width:"100%",minWidth:0,overflow:"hidden"}}>
                   {files.filter(f=>{
                     if(filesSearch&&!f.name?.toLowerCase().includes(filesSearch.toLowerCase())&&!f.description?.toLowerCase().includes(filesSearch.toLowerCase())) return false;
                     if(filesTypeFilter!=='all'){
@@ -7582,7 +10243,7 @@ function App({ authUser }) {
                     const sizeStr=f.fileSize>1048576?`${(f.fileSize/1048576).toFixed(1)}MB`:f.fileSize>1024?`${(f.fileSize/1024).toFixed(1)}KB`:`${f.fileSize||0}B`;
                     const date=f.approvedAt?new Date(f.approvedAt).toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'';
                     return (
-                      <div key={f.fileId} style={{background:c.cd,borderRadius:14,border:"1px solid "+c.ln,transition:"border-color .15s"}}
+                      <div key={f.fileId} style={{width:"100%",maxWidth:"100%",minWidth:0,overflow:"hidden",background:c.cd,borderRadius:14,border:"1px solid "+c.ln,transition:"border-color .15s"}}
                         onMouseEnter={e=>e.currentTarget.style.borderColor=isBinaryArtifactName(f.name)?c.gr:c.ac}
                         onMouseLeave={e=>e.currentTarget.style.borderColor=c.ln}>
                         {/* Preview area */}
@@ -7607,7 +10268,14 @@ function App({ authUser }) {
                             }catch{setPreviewFile({name:f.name,content:'Failed to load preview',fileId:f.fileId});}
                           }}>
                           {f.fileType==='image' ? (
-                            <img src={f.storagePath||`/api/files/preview/${f.fileId}`} alt={f.name} style={{width:"100%",height:"100%",objectFit:"cover",cursor:"zoom-in"}}/>
+                            <img
+                              src={`/api/files/thumbnail/${f.fileId}`}
+                              alt={f.name}
+                              loading="lazy"
+                              decoding="async"
+                              fetchPriority="low"
+                              style={{width:"100%",height:"100%",objectFit:"cover",cursor:"zoom-in"}}
+                            />
                           ) : ext==='html' ? (
                             /* Website preview — scaled iframe thumbnail */
                             f.content ? (
@@ -7669,7 +10337,7 @@ function App({ authUser }) {
                           <div style={{position:"absolute",top:8,right:8,padding:"3px 8px",borderRadius:6,background:"rgba(0,0,0,0.5)",color:"#fff",fontSize:10,fontWeight:600}}>{ext.toUpperCase()}</div>
                         </div>
                         {/* Info */}
-                        <div style={{padding:"12px 14px 14px"}}>
+                        <div style={{padding:"12px 14px 14px",minWidth:0,overflow:"hidden"}}>
                           <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
                             <div style={{fontSize:13,fontWeight:600,color:c.tx,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{f.name}</div>
                             <span style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:4,background:f.status==='approved'?"rgba(52,168,83,0.15)":"rgba(244,162,97,0.15)",color:f.status==='approved'?c.gr:c.ac}}>{f.status==='approved'?'APPROVED':'PENDING'}</span>
@@ -7708,12 +10376,50 @@ function App({ authUser }) {
                   })}
                 </div>
               )}
+              {!filesLoading&&filesTotal>20&&(
+                <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10,marginTop:18,flexWrap:"wrap"}}>
+                  <button
+                    onClick={()=>setFilesPage(p=>Math.max(1,p-1))}
+                    disabled={filesPage<=1}
+                    style={{padding:"8px 14px",borderRadius:9,border:"1px solid "+c.ln,background:c.cd,color:filesPage<=1?c.fa:c.tx,cursor:filesPage<=1?"default":"pointer",fontFamily:"inherit",fontWeight:600}}
+                  >Previous</button>
+                  <span style={{fontSize:12,color:c.so,fontWeight:600}}>Page {filesPage} of {Math.max(1,Math.ceil(filesTotal/20))}</span>
+                  <button
+                    onClick={()=>setFilesPage(p=>Math.min(Math.ceil(filesTotal/20),p+1))}
+                    disabled={filesPage>=Math.ceil(filesTotal/20)}
+                    style={{padding:"8px 14px",borderRadius:9,border:"1px solid "+c.ln,background:c.cd,color:filesPage>=Math.ceil(filesTotal/20)?c.fa:c.tx,cursor:filesPage>=Math.ceil(filesTotal/20)?"default":"pointer",fontFamily:"inherit",fontWeight:600}}
+                  >Next</button>
+                </div>
+              )}
             </div>
           )}
 
           {/* ══ PROJECTS — Organize conversations into projects ══ */}
           {pg==="projects"&&(
             selectedProject?(
+              <>
+              <ProjectWorkspacePage
+                c={c}
+                mob={mob}
+                project={selectedProject}
+                onBack={()=>{setSelectedProject(null);setProjectConversations([]);}}
+                onProjectUpdate={updated=>{
+                  setSelectedProject(updated);
+                  setProjects(list=>list.map(project=>project.id===updated.id?{...project,...updated}:project));
+                }}
+                onOpenChat={id=>{loadSession(id);setPg("chat");}}
+                onOpenWork={workId=>{
+                  if(workId){
+                    setActiveWorkSessionId(workId);
+                  }else{
+                    setNewWorkProjectId(selectedProject.id);
+                    setActiveWorkSessionId(null);
+                    setNewWorkSessionNonce(value=>value+1);
+                  }
+                  setPg("work");
+                }}
+              />
+              {false&&(
               /* Project Detail View - Chat Workspace */
               <div style={{display:"flex",flexDirection:"column",height:"100%",overflow:"hidden"}}>
                 {/* Header with back button */}
@@ -7775,7 +10481,7 @@ function App({ authUser }) {
                                   <Face sz={30} agent={agent}/>
                                   <div style={{flex:1}}>
                                     <div style={{fontSize:13,fontWeight:600,color:c.tx,marginBottom:4}}>{agent.nm}</div>
-                                    <div style={{fontSize:15,color:c.tx,lineHeight:1.5}}><ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.t}</ReactMarkdown></div>
+                                    <div style={{fontSize:15,color:c.tx,lineHeight:1.5}}><ReactMarkdown remarkPlugins={[remarkGfm]} components={{a:({href,children})=><MarkdownMediaLink href={href} color={c.ac}>{children}</MarkdownMediaLink>,img:({src,alt})=><MarkdownInlineImage src={src} alt={alt}/>}}>{msg.t}</ReactMarkdown></div>
                                   </div>
                                 </>
                               )}
@@ -7803,6 +10509,8 @@ function App({ authUser }) {
                   </div>
                 </div>
               </div>
+              )}
+              </>
             ):(
             /* Project List View */
             <div style={{padding:mob?"16px 12px 40px":"32px 40px 60px",maxWidth:1200,margin:"0 auto"}}>
@@ -7847,7 +10555,7 @@ function App({ authUser }) {
                           {new Date(proj.updated_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
                         </div>
                         <div style={{fontSize:11,color:c.fa}}>
-                          {(typeof proj.conversation_count === 'number' ? proj.conversation_count : 0)} {((typeof proj.conversation_count === 'number' ? proj.conversation_count : 0)===1)?'chat':'chats'}
+                          {(proj.conversation_count||0)} chats · {(proj.work_session_count||0)} Work
                         </div>
                       </div>
                     </div>
@@ -7907,9 +10615,10 @@ function App({ authUser }) {
                             return;
                           }
                           try {
+                            const h=await getAuthHeaders();
                             const res=await fetch('/api/projects',{
                               method:'POST',
-                              headers:{'Content-Type':'application/json'},
+                              headers:{...h,'Content-Type':'application/json'},
                               body:JSON.stringify({name:newProjectName.trim(),description:newProjectDesc.trim()||''})
                             });
                             const data=await res.json();
@@ -7940,7 +10649,7 @@ function App({ authUser }) {
 
           {/* ══ CUSTOMIZE — Connectors & Skills ══ */}
           {pg==="customize"&&(
-            <div style={{padding:mob?"16px 12px 40px":"32px 40px 60px",maxWidth:960,margin:"0 auto"}}>
+            <div style={{padding:mob?"16px 12px 40px":"32px 40px 60px",maxWidth:960,margin:"0 auto",width:"100%",minWidth:0,boxSizing:"border-box",overflowX:"hidden"}}>
               <div style={{marginBottom:32}}>
                 <h1 style={{fontSize:mob?24:32,fontWeight:700,color:c.tx,marginBottom:8}}>Customize</h1>
                 <p style={{fontSize:14,color:c.so}}>Connect the tools {aFN} can use — they'll have access to them automatically in every conversation.</p>
@@ -7952,54 +10661,19 @@ function App({ authUser }) {
                   <div style={{fontSize:16,fontWeight:700,color:c.tx}}>Your Connectors</div>
                   <div style={{fontSize:12,color:c.so}}>Connect once — {aFN} uses them automatically</div>
                 </div>
-                {[
-                  {cat:"CRM & Communication",items:[
-                    {name:"GoHighLevel",slug:"ghl",icon:<img src="https://www.google.com/s2/favicons?domain=gohighlevel.com&sz=64" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Contacts, pipelines, SMS, email, automation",connected:true},
-                    {name:"Salesforce",slug:"salesforce",icon:<img src="https://www.google.com/s2/favicons?domain=salesforce.com&sz=64" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"CRM, deals, leads, accounts, reports"},
-                    {name:"HubSpot",slug:"hubspot",icon:<img src="https://www.google.com/s2/favicons?domain=hubspot.com&sz=64" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Marketing, sales, service hub"},
-                  ]},
-                  {cat:"Email & Calendar",items:[
-                    {name:"Gmail",slug:"gmail",icon:<img src="https://www.google.com/s2/favicons?domain=gmail.com&sz=64" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Read, send, and manage email"},
-                    {name:"Google Calendar",slug:"google-calendar",icon:<img src="https://www.google.com/s2/favicons?domain=calendar.google.com&sz=64" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Events, scheduling, availability"},
-                    {name:"Zoom",slug:"zoom",icon:<img src="https://www.google.com/s2/favicons?domain=zoom.us&sz=64" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Meetings, recordings, transcripts"},
-                  ]},
-                  {cat:"Social Media",items:[
-                    {name:"Instagram",slug:"instagram",icon:<img src="https://www.google.com/s2/favicons?domain=instagram.com&sz=64" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Posts, stories, DMs, analytics"},
-                    {name:"TikTok",slug:"tiktok",icon:<img src="https://www.google.com/s2/favicons?domain=tiktok.com&sz=64" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Videos, analytics, scheduling"},
-                    {name:"LinkedIn",slug:"linkedin",icon:<img src="https://www.google.com/s2/favicons?domain=linkedin.com&sz=64" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Posts, connections, outreach"},
-                    {name:"Facebook",slug:"facebook",icon:<img src="https://www.google.com/s2/favicons?domain=facebook.com&sz=64" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Pages, posts, ads"},
-                  ]},
-                  {cat:"Storage & Productivity",items:[
-                    {name:"Google Drive",slug:"google-drive",icon:<img src="https://www.google.com/s2/favicons?domain=drive.google.com&sz=64" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Files, docs, sheets, slides"},
-                    {name:"Notion",slug:"notion",icon:<img src="https://www.google.com/s2/favicons?domain=notion.so&sz=64" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Docs, databases, wikis"},
-                    {name:"Slack",slug:"slack",icon:<img src="https://www.google.com/s2/favicons?domain=slack.com&sz=64" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Channels, messages, files"},
-                    {name:"Airtable",slug:"airtable",icon:<img src="https://www.google.com/s2/favicons?domain=airtable.com&sz=64" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Databases, views, automations"},
-                    {name:"Canva",slug:"canva",icon:<img src="https://www.google.com/s2/favicons?domain=canva.com&sz=64" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Designs, brand kits, exports"},
-                  ]},
-                  {cat:"E-Commerce & Billing",items:[
-                    {name:"Shopify",slug:"shopify",icon:<img src="https://www.google.com/s2/favicons?domain=shopify.com&sz=64" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Orders, products, inventory"},
-                    {name:"Stripe",slug:"stripe",icon:<img src="https://www.google.com/s2/favicons?domain=stripe.com&sz=64" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Payments, subscriptions, invoices"},
-                  ]},
-                  {cat:"Automation",items:[
-                    {name:"n8n",slug:"n8n",icon:<img src="https://www.google.com/s2/favicons?domain=n8n.io&sz=64" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"Workflows, triggers, automations"},
-                    {name:"Zapier",slug:"zapier",icon:<img src="https://www.google.com/s2/favicons?domain=zapier.com&sz=64" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"App integrations, zaps"},
-                  ]},
-                  {cat:"BLOOM",items:[
-                    {name:"BLOOMSHIELD",slug:"bloomshield",icon:<img src="/favicon.ico" width="24" height="24" style={{borderRadius:4,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}} />,desc:"IP protection, blockchain registry"},
-                  ]},
-                ].map(({cat,items})=>(
+                {connectorSections.map(({cat,items})=>(
                   <div key={cat} style={{marginBottom:28}}>
                     <div style={{fontSize:11,fontWeight:700,color:c.fa,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:10}}>{cat}</div>
-                    <div style={{display:"grid",gridTemplateColumns:mob?"1fr":"repeat(auto-fill,minmax(280px,1fr))",gap:10}}>
-                      {items.map(item=>{ const isConn=!!(activeConnectors[item.slug]); const catalog=connectorCatalog[item.slug]||{}; const isSupported=item.slug==="ghl"||!!connectorPlatform(item.slug)||catalog.supported; return (
-                        <div key={item.slug} style={{display:"flex",alignItems:"center",gap:14,padding:"14px 16px",borderRadius:12,border:"1.5px solid "+(isConn?c.ac+"55":c.ln),background:isConn?c.ac+"08":c.cd,transition:"all .2s"}} onMouseEnter={e=>{if(!isConn)e.currentTarget.style.borderColor=c.ac+"44";}} onMouseLeave={e=>{if(!isConn)e.currentTarget.style.borderColor=isConn?c.ac+"55":c.ln;}}>
+                    <div style={{display:"grid",gridTemplateColumns:mob?"minmax(0,1fr)":"repeat(auto-fill,minmax(280px,1fr))",gap:10,minWidth:0,width:"100%"}}>
+                      {items.map(item=>{ const isConn=!!(activeConnectors[item.slug]); const catalog=connectorCatalog[item.slug]||{}; const isSupported=item.slug==="ghl"||item.slug==="heygen"||!!connectorPlatform(item.slug)||catalog.supported; return (
+                        <div key={item.slug} style={{display:"flex",alignItems:"center",gap:mob?10:14,padding:mob?"12px 12px":"14px 16px",borderRadius:12,border:"1.5px solid "+(isConn?c.ac+"55":c.ln),background:isConn?c.ac+"08":c.cd,transition:"all .2s",width:"100%",minWidth:0,maxWidth:"100%",boxSizing:"border-box",overflow:"hidden"}} onMouseEnter={e=>{if(!isConn)e.currentTarget.style.borderColor=c.ac+"44";}} onMouseLeave={e=>{if(!isConn)e.currentTarget.style.borderColor=isConn?c.ac+"55":c.ln;}}>
                           <div style={{width:40,height:40,borderRadius:10,background:isConn?"linear-gradient(135deg,#F4A261,#E76F8B)":c.sf,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,color:isConn?"#fff":c.so,overflow:"hidden"}}>{item.icon}</div>
                           <div style={{flex:1,minWidth:0}}>
                             <div style={{fontSize:13,fontWeight:700,color:c.tx,marginBottom:2}}>{item.name}</div>
                             <div style={{fontSize:11,color:c.so,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{item.desc}</div>
                           </div>
                           {isConn?(
-                            <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4,flexShrink:0}}>
+                            <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4,flexShrink:0,maxWidth:mob?72:"none"}}>
                               <div style={{fontSize:10,fontWeight:700,color:c.ac,background:c.ac+"18",padding:"2px 8px",borderRadius:20}}>Connected</div>
                               <button onClick={e=>{e.stopPropagation();disconnectConnector(item);}} style={{fontSize:10,color:c.fa,background:"none",border:"none",cursor:"pointer",padding:"2px 4px"}}>Disconnect</button>
                             </div>
@@ -8017,6 +10691,41 @@ function App({ authUser }) {
                   </div>
                 ))}
               </div>
+
+              {showHeygenConnect&&(
+                <div role="dialog" aria-modal="true" aria-label="Connect HeyGen" style={{position:"fixed",inset:0,zIndex:3000,background:"rgba(0,0,0,.72)",display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>!heygenSaving&&setShowHeygenConnect(false)}>
+                  <div style={{width:"100%",maxWidth:460,borderRadius:18,border:"1px solid "+c.ln,background:c.cd,padding:22,boxShadow:"0 24px 80px rgba(0,0,0,.5)"}} onClick={e=>e.stopPropagation()}>
+                    <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}>
+                      <div style={{width:42,height:42,borderRadius:11,background:c.sf,display:"flex",alignItems:"center",justifyContent:"center"}}>{connectorIcon("heygen.com")}</div>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:17,fontWeight:750,color:c.tx}}>Connect HeyGen</div>
+                        <div style={{fontSize:12,color:c.so,marginTop:2}}>This key belongs only to your organization.</div>
+                      </div>
+                      <button aria-label="Close" onClick={()=>setShowHeygenConnect(false)} disabled={heygenSaving} style={{border:"none",background:"transparent",color:c.so,fontSize:24,cursor:"pointer"}}>×</button>
+                    </div>
+                    <label style={{display:"block",fontSize:12,fontWeight:700,color:c.tx,marginBottom:7}}>HeyGen API key</label>
+                    <input
+                      type="text"
+                      name="heygen-tenant-api-key"
+                      autoComplete="new-password"
+                      data-lpignore="true"
+                      data-1p-ignore="true"
+                      spellCheck="false"
+                      value={heygenApiKey}
+                      onChange={e=>setHeygenApiKey(e.target.value)}
+                      onKeyDown={e=>{if(e.key==="Enter"&&!heygenSaving)connectHeygen();}}
+                      placeholder="Paste your HeyGen API key"
+                      style={{width:"100%",boxSizing:"border-box",padding:"12px 13px",borderRadius:10,border:"1px solid "+(heygenError?"#ef6464":c.ln),background:c.sf,color:c.tx,fontSize:14,outline:"none",WebkitTextSecurity:"disc"}}
+                    />
+                    <div style={{fontSize:11,color:c.so,lineHeight:1.45,marginTop:8}}>Find it in HeyGen under Settings → API. Bloomie validates it before saving and Sarah uses it only for this signed-in organization.</div>
+                    {heygenError&&<div style={{fontSize:12,color:"#ef6464",marginTop:10}}>{heygenError}</div>}
+                    <div style={{display:"flex",justifyContent:"flex-end",gap:9,marginTop:20}}>
+                      <button onClick={()=>setShowHeygenConnect(false)} disabled={heygenSaving} style={{padding:"9px 15px",borderRadius:9,border:"1px solid "+c.ln,background:"transparent",color:c.tx,cursor:"pointer"}}>Cancel</button>
+                      <button onClick={connectHeygen} disabled={heygenSaving||!heygenApiKey.trim()} style={{padding:"9px 16px",borderRadius:9,border:"none",background:"linear-gradient(135deg,#F4A261,#E76F8B)",color:"#fff",fontWeight:700,cursor:heygenSaving?"wait":"pointer",opacity:heygenApiKey.trim()?1:.65}}>{heygenSaving?"Checking…":"Connect HeyGen"}</button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* ── SKILLS ── */}
               <div style={{borderTop:"1px solid "+c.ln,paddingTop:28}}>
@@ -8115,7 +10824,7 @@ function App({ authUser }) {
                       </div>
                       <div style={{marginBottom:28}}>
                         <div style={{fontSize:14,fontWeight:700,color:c.tx,marginBottom:10}}>Change Password</div>
-                        <PwChangePanel c={c}/>
+                        <PwChangePanel c={c} recoveryMode={passwordRecovery}/>
                       </div>
                       <div style={{marginBottom:28}}>
                         <div style={{fontSize:14,fontWeight:700,color:c.tx,marginBottom:10}}>Bloomie OS — AI Model</div>
@@ -8233,6 +10942,16 @@ function App({ authUser }) {
           )}
 
           {/* ══ DOCUMENTS ══ */}
+          {pg==="book"&&(
+            <BookWorkspace
+              c={c}
+              mob={mob}
+              aFN={aFN}
+              agentId={currentAgentId}
+              onOpenChat={id=>{loadSession(id);setPg("chat");}}
+            />
+          )}
+
           {pg==="docs"&&(
             <DocsPage c={c} mob={mob} aFN={aFN} agentId={currentAgentId}/>
           )}
@@ -8240,10 +10959,24 @@ function App({ authUser }) {
           {/* ══ BILLING ══ */}
           {pg==="billing"&&(<BillingPage c={c} mob={mob} aFN={aFN}/>)}
           {pg==="business"&&(<BusinessProfilePage c={c} mob={mob} userImg={userImg} setUserImg={setUserImg} meInitial={meInitial} aFN={aFN} chatLightbox={chatLightbox} setChatLightbox={setChatLightbox}/>)}
+          {pg==="references"&&(<ReferenceLibrary c={c} mob={mob} agentId={currentAgentId} agentName={aFN} projectId={selectedProject?.id||null} onOpenBrandKit={()=>setPg("business")}/>)}
+          {drivePickerOpen&&<GoogleDrivePicker c={c} multiple onClose={()=>setDrivePickerOpen(false)} onSelect={file=>setPendingFiles(prev=>[...prev,{name:file.name,type:file.type,base64:file.data,preview:file.type?.startsWith('image/')?`data:${file.type};base64,${file.data}`:null,source:'google_drive'}])}/>}
           {pg==="skills"&&(<SkillsPage c={c} mob={mob} aFN={aFN}/>)}
           {pg==="dispatch"&&(<DispatchPage c={c} mob={mob} currentAgent={currentAgent} agentImgUrl={agentImgUrl}/>)}
-          {pg==="work"&&(<WorkTab c={c} mob={mob} aFN={aFN}/>)}
-          {pg==="build"&&(<BuildTab c={c} mob={mob} aFN={aFN}/>)}
+          {pg==="work"&&(<WorkTab
+            c={c}
+            mob={mob}
+            aFN={aFN}
+            agentId={currentAgentId}
+            agent={agent}
+            user={{nm:meDisplayName||"You",img:userImg||null,grad:"linear-gradient(135deg,#F4A261,#E76F8B)"}}
+            initialProjectId={selectedProject?.id||""}
+            requestedSessionId={activeWorkSessionId}
+            newSessionNonce={newWorkSessionNonce}
+            newSessionProjectId={newWorkProjectId}
+            onActiveSessionChange={setActiveWorkSessionId}
+            onNavigate={setPg}
+          />)}
           {pg==="mobile"&&(
             <div style={{padding:mob?"20px 16px 60px":"32px 40px 60px",maxWidth:680,margin:"0 auto"}}>
 

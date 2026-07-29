@@ -9,6 +9,7 @@ import { executeWebSearchTool, webSearchToolDefinitions } from '../tools/web-sea
 import { executeImageTool, imageToolDefinitions } from '../tools/image-tools.js';
 import { executeScrapeTools, scrapeToolDefinitions } from '../tools/scrape-tools.js';
 import { executeGmailTool, gmailToolDefinitions } from '../tools/gmail-tools.js';
+import { executeDeveloperTool, developerToolDefinitions } from '../tools/developer-tools.js';
 import { subAgentSystem, SUB_AGENTS } from '../agents/sub-agent-system.js';
 import { contextManager } from '../context/context-manager.js';
 import { ModelFormatter, modelSelector } from '../context/model-formatter.js';
@@ -20,6 +21,48 @@ import { appendProgress, getProgressText } from './progress-log.js';
 import { exec as _exec } from 'child_process';
 import { promisify } from 'util';
 import { readFileSync, existsSync } from 'fs';
+import { buildSharedExecutionContract } from '../orchestrator/agent-experience.js';
+import { buildCompletionNudge, evaluateCompletionContract } from '../orchestrator/completion-contract.js';
+
+async function buildWorkReferenceContext(task, agentConfig, context = {}) {
+  try {
+    const { createClient } = await import('@supabase/supabase-js');
+    const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const orgId = context.orgId || context.organizationId || agentConfig?.organizationId || agentConfig?.organization_id;
+    const agentId = agentConfig?.agentId || agentConfig?.id;
+    if (!orgId || !agentId) return '';
+    const { data, error } = await sb
+      .from('user_settings')
+      .select('value')
+      .eq('organization_id', orgId)
+      .eq('key', 'reference_library')
+      .maybeSingle();
+    if (error) throw error;
+    const taskText = String(task || '').toLowerCase();
+    const categories = new Set(['knowledge']);
+    if (/\b(write|writing|blog|article|email|script|document|tone|voice|style)\b/.test(taskText)) categories.add('writing_style');
+    if (/\b(image|photo|portrait|headshot|avatar|heygen|video|visual)\b/.test(taskText)) {
+      categories.add('identity'); categories.add('heygen'); categories.add('brand');
+    }
+    if (/\b(brand|logo|colors?|fonts?|design)\b/.test(taskText)) categories.add('brand');
+    if (context.projectId) categories.add('project');
+    const references = (Array.isArray(data?.value) ? data.value : [])
+      .filter(ref => ref.status === 'active' && categories.has(ref.category))
+      .filter(ref =>
+        ref.scope === 'organization' ||
+        (ref.scope === 'agent' && ref.agent_id === agentId) ||
+        (context.projectId && ref.scope === 'project' && ref.project_id === context.projectId)
+      )
+      .slice(0, 12);
+    if (!references.length) return '';
+    return `\n\n## Approved Reference Library
+Use these task-relevant sources. Identity references belong only to ${agentConfig.name}. Writing samples guide style but are not factual authority.
+${references.map((ref, index) => `${index + 1}. [${ref.category}] ${ref.title}${ref.description ? ` — ${ref.description}` : ''}${ref.storage_url ? `\nSource URL: ${ref.storage_url}` : ''}${ref.extracted_text ? `\nExcerpt:\n${ref.extracted_text.slice(0, 6000)}` : ''}`).join('\n\n')}`;
+  } catch (error) {
+    logger.warn('Work reference context skipped', { error: error.message });
+    return '';
+  }
+}
 
 const _execAsync = promisify(_exec);
 
@@ -70,6 +113,27 @@ const PRE_ACTION_SUPPRESSED_TOOLS = new Set([
 ]);
 
 const SCHEDULED_TASK_MAX_IMAGE_GENERATIONS = Number(process.env.SCHEDULED_TASK_MAX_IMAGE_GENERATIONS || 4);
+const MAX_COMPLETION_CONTRACT_NUDGES = 3;
+
+export function classifyExecutionTask(task, context = {}) {
+  const text = `${task} ${context.taskName || ''} ${context.taskType || ''}`.toLowerCase();
+  const declaredTaskType = String(context.taskType || '').trim().toLowerCase();
+
+  // Put developer work before broad research/audit matching. A request such as
+  // "audit the repo, edit the website, and deploy to Vercel" must receive the
+  // focused GitHub/Vercel toolset rather than every tool in the system.
+  if (/\b(github|repository|repo|branch|commit|codebase|source code|vercel|deployment|deploy|website|landing page)\b/.test(text)
+      && /\b(inspect|audit|edit|change|fix|update|implement|add|remove|create|build|deploy|publish|verify|test)\b/.test(text)) {
+    return 'developer';
+  }
+  if (/blog|article|geo.?optimized|seo.?post|write.*post/.test(text)) return 'blog';
+  if (/social|instagram|facebook|linkedin|twitter|tiktok/.test(text)) return 'social';
+  if (/email|newsletter|campaign|drip|outreach/.test(text)) return 'email';
+  if (declaredTaskType === 'crm') return 'followup';
+  if (/follow.?up|nurture|check.?in|overdue|re.?engage/.test(text)) return 'followup';
+  if (/research|scrape|analyze|report|audit|competitor/.test(text)) return 'research';
+  return null;
+}
 
 /**
  * Main agentic execution engine
@@ -141,6 +205,8 @@ export class AgentExecutor {
     this.scheduledImageGenerations = 0;
     this.scheduledBlogRepairAttempts = 0;
     this.unfinishedPlanNudges = 0;
+    this.completionContractNudges = 0;
+    this.forceFinalEvidenceTurn = false;
     this._currentTaskText = task || '';
     this._currentTaskName = context.taskName || '';
     this._currentRawTaskType = context.taskType || '';
@@ -163,6 +229,7 @@ export class AgentExecutor {
     this._currentTaskType = this._classifyTaskType(task, context);
     this._isScheduledTask = context.trigger === 'scheduled';
     this._currentOrgId = context.orgId || context.organizationId || null;
+    this._currentSessionId = context.sessionId || null;
     logger.info('Task classified for tool filtering', {
       taskType: this._currentTaskType,
       isScheduled: this._isScheduledTask,
@@ -193,6 +260,7 @@ export class AgentExecutor {
     try {
       // Load agent configuration and build system prompt
       const agentConfig = await loadAgentConfig(this.agentId);
+      this._agentConfig = agentConfig;
 
       let systemPrompt;
       if (context.trigger === 'chat') {
@@ -202,6 +270,7 @@ export class AgentExecutor {
       } else {
         // Use agentic execution prompt for heartbeat/tasks
         systemPrompt = await this.buildSystemPrompt(agentConfig, { ...context, instruction: task });
+        systemPrompt += await buildWorkReferenceContext(task, agentConfig, context);
         logger.info('Using agentic execution prompt for task');
       }
 
@@ -240,11 +309,27 @@ Use the available tools to complete this task. Work step by step and explain you
       let currentTurn = 0;
       let status = EXECUTION_STATUS.RUNNING;
       let finalResult = null;
+      const defaultMaxTurns = this._isScheduledTask
+        ? (this._currentTaskType === 'blog' ? 24 : 12)
+        : 100;
+      const configuredMaxTurns = this._isScheduledTask
+        ? process.env.SCHEDULED_TASK_MAX_TURNS
+        : null;
+      const maxTurns = Math.min(
+        Math.max(Number(context.maxTurns || configuredMaxTurns || defaultMaxTurns), 3),
+        200
+      );
 
       // Claude Code's nO pattern: while (response has tool_use) { execute → feed back → get next response }
       while (status === EXECUTION_STATUS.RUNNING) {
         currentTurn++;
         this.currentTurn = currentTurn;
+        if (currentTurn > maxTurns) {
+          status = EXECUTION_STATUS.FAILED;
+          finalResult = { error: `Execution exceeded ${maxTurns} turns without reaching verified completion.` };
+          logger.error('Execution stopped at configured maximum turns', { maxTurns });
+          break;
+        }
 
         // Safety valve warning at 50 turns, but DON'T stop the loop (Claude Code behavior)
         if (currentTurn === this.safetyValveThreshold) {
@@ -262,6 +347,17 @@ Use the available tools to complete this task. Work step by step and explain you
 
           // Claude Code loop logic: continue while response has tool_use
           if (turnResult.hasToolUse) {
+            const completionEvaluation = evaluateCompletionContract(
+              task,
+              this.toolExecutionHistory.map(entry => ({ name: entry.tool })),
+              this.toolExecutionHistory.map(entry => entry.result)
+            );
+            if (completionEvaluation.required && completionEvaluation.complete) {
+              status = EXECUTION_STATUS.COMPLETED;
+              finalResult = this.buildVerifiedCompletionSummary();
+              logger.info('Completion contract satisfied; ending from verified tool receipts');
+              break;
+            }
             // Check for infinite loop: same tool + args called 3 times in a row
             if (this.detectInfiniteLoop()) {
               logger.error('Infinite loop detected: same tool called 3 times with same parameters');
@@ -289,6 +385,35 @@ Use the available tools to complete this task. Work step by step and explain you
                 unfinishedPlanNudges: this.unfinishedPlanNudges
               });
               continue;
+            }
+            const completionEvaluation = evaluateCompletionContract(
+              task,
+              this.toolExecutionHistory.map(entry => ({ name: entry.tool })),
+              this.toolExecutionHistory.map(entry => entry.result)
+            );
+            if (completionEvaluation.required && !completionEvaluation.complete) {
+              if (this.completionContractNudges < MAX_COMPLETION_CONTRACT_NUDGES) {
+                this.completionContractNudges += 1;
+                await this.contextManager.addConversationTurn(
+                  'user',
+                  buildCompletionNudge(completionEvaluation),
+                  { type: 'completion_contract', priority: 10 }
+                );
+                logger.warn('Completion contract missing required proof; continuing', {
+                  turn: currentTurn,
+                  nudge: this.completionContractNudges,
+                  missing: completionEvaluation.missing.map(item => item.id)
+                });
+                continue;
+              }
+              status = EXECUTION_STATUS.FAILED;
+              finalResult = {
+                error: `Required completion evidence was not produced: ${completionEvaluation.missing.map(item => item.description).join(', ')}`
+              };
+              logger.error('Completion contract remained unsatisfied after retries', {
+                missing: completionEvaluation.missing.map(item => item.id)
+              });
+              break;
             }
             // Claude responded with text only (no tool_use) - natural completion
             status = EXECUTION_STATUS.COMPLETED;
@@ -470,16 +595,22 @@ Use the available tools to complete this task. Work step by step and explain you
     // Gemini 2.5 Flash with mode:'AUTO' responds text-only instead of calling tools.
     // Setting mode:'ANY' forces it to call at least one tool. Keep forcing after
     // the plan is written until a non-planning tool has actually been attempted.
-    const scheduledBlogNextTools = this.getScheduledBlogNextToolSet();
+    const scheduledRequiredNextTools = this.getScheduledRequiredNextToolSet();
     const forceToolUse = this._isScheduledTask &&
       !this.isTextOnlyScheduledTask() &&
       (
         !this.hasSubstantiveToolUse() ||
         this.needsScheduledOwnerNotification() ||
-        !!scheduledBlogNextTools
+        !!scheduledRequiredNextTools
       ) &&
       toolDefs.length > 0;
-    const maxTokens = this._isScheduledTask && this._currentTaskType === 'blog' ? 8000 : 4000;
+    const maxTokens = this._isScheduledTask
+      ? (
+          this._currentTaskType === 'blog'
+            ? Number(process.env.SCHEDULED_BLOG_MAX_OUTPUT_TOKENS || 4096)
+            : Number(process.env.SCHEDULED_TASK_MAX_OUTPUT_TOKENS || 2048)
+        )
+      : 4000;
 
     // Use unified callModel — handles all providers + automatic failover
     const result = await callModel(model, {
@@ -565,6 +696,38 @@ Use the available tools to complete this task. Work step by step and explain you
       const verificationQueue = [];
 
       for (const block of toolUseBlocks) {
+        if (this._currentTaskType === 'developer' &&
+            NON_SUBSTANTIVE_TOOLS.has(block.name) &&
+            this.hasPlanningToolAttempt()) {
+          const replacement = this.getDeveloperPlanningReplacement();
+          if (replacement) {
+            logger.warn('Replacing repeated developer planning call with required discovery action', {
+              originalTool: block.name,
+              replacementTool: replacement.name,
+            });
+            block.name = replacement.name;
+            block.input = replacement.input;
+          }
+        }
+
+        // Some OpenRouter models can hallucinate a previously seen TodoWrite
+        // call even when scheduled-task tools no longer advertise it. For an
+        // explicit research URL, translate that stale planning call into the
+        // requested fetch so the schedule performs work instead of looping.
+        if (this._isScheduledTask &&
+            NON_SUBSTANTIVE_TOOLS.has(block.name) &&
+            this._currentTaskType === 'research') {
+          const requestedUrl = String(this._currentTaskText || '').match(/https?:\/\/[^\s)>"']+/i)?.[0];
+          if (requestedUrl) {
+            logger.warn('Replacing hallucinated scheduled planning call with requested web fetch', {
+              originalTool: block.name,
+              requestedUrl
+            });
+            block.name = 'web_fetch';
+            block.input = { url: requestedUrl };
+          }
+        }
+
         this.currentStep++;
 
         // Broadcast tool execution start
@@ -752,9 +915,21 @@ Use the available tools to complete this task. Work step by step and explain you
    */
   async executeTool(toolName, parameters, options = {}) {
     try {
-      const scheduledBlogNextTools = this.getScheduledBlogNextToolSet();
-      if (scheduledBlogNextTools && !scheduledBlogNextTools.has(toolName)) {
-        const requiredTools = Array.from(scheduledBlogNextTools);
+      if (developerToolDefinitions[toolName]) {
+        return await executeDeveloperTool(
+          toolName,
+          parameters,
+          options.orgId || this._currentOrgId || null,
+          {
+            sessionId: options.sessionId || this._currentSessionId || null,
+            agentId: this.agentId,
+            agentName: this._agentConfig?.name || 'Bloomie AI Employee',
+          }
+        );
+      }
+      const scheduledRequiredNextTools = this.getScheduledRequiredNextToolSet();
+      if (scheduledRequiredNextTools && !scheduledRequiredNextTools.has(toolName)) {
+        const requiredTools = Array.from(scheduledRequiredNextTools);
         return {
           success: false,
           error: `Scheduled blog workflow requires ${requiredTools.join(' or ')} next. ${toolName} is disabled for this step.`,
@@ -789,7 +964,14 @@ Use the available tools to complete this task. Work step by step and explain you
       });
 
       // Use enhanced executor with retry logic and performance monitoring
-      const result = await enhancedExecutor.executeTool(toolName, parameters, {
+      const identityParameters = {
+        ...parameters,
+        _agentId: this.agentId,
+        _agentName: this._agentConfig?.name || 'Bloomie AI Employee',
+        _organizationId: options.orgId || this._currentOrgId || null,
+        _sessionId: options.sessionId || this._currentSessionId || null,
+      };
+      const result = await enhancedExecutor.executeTool(toolName, identityParameters, {
         timeout: options.timeout || 30000,
         retryOnFailure: options.retryOnFailure !== false,
         orgId: options.orgId || this._currentOrgId || null,
@@ -890,6 +1072,7 @@ Use the available tools to complete this task. Work step by step and explain you
    * to avoid overwhelming the model with 99 tools (Gemini stops calling tools when overloaded)
    */
   formatToolsForClaude(taskType = null) {
+    if (this.forceFinalEvidenceTurn) return [];
     if (this.isTextOnlyScheduledTask()) {
       logger.info('Formatted tools for text-only scheduled task', {
         taskType: this._currentRawTaskType || this._currentTaskType || 'custom',
@@ -965,6 +1148,21 @@ Use the available tools to complete this task. Work step by step and explain you
         'bloom_todo_write', 'bloom_log_decision', 'bloom_log_observation',
         'bloom_escalate_issue',
       ],
+      developer: [
+        // Focused tenant-scoped repository and deployment discovery
+        'github_list_repositories', 'github_get_repository', 'github_list_branches',
+        'github_list_files', 'github_search_code', 'github_get_file', 'github_put_file',
+        'vercel_list_projects', 'vercel_list_deployments',
+        'vercel_create_deployment', 'vercel_wait_for_deployment',
+        // Server-side coding workspace for multi-file changes and verification
+        'coding_workspace_prepare', 'coding_workspace_list_files', 'coding_workspace_read_file',
+        'coding_workspace_write_file', 'coding_workspace_replace_text',
+        'coding_workspace_run_command', 'coding_workspace_run_checks',
+        'coding_workspace_diff', 'coding_workspace_commit',
+        // Planning, progress, and browser proof
+        'bloom_todo_write', 'bloom_log_decision', 'bloom_log_observation',
+        'bloom_escalate_issue', 'browser_task', 'browser_screenshot',
+      ],
     };
 
     // Determine task type from stored context if not explicitly provided
@@ -974,7 +1172,7 @@ Use the available tools to complete this task. Work step by step and explain you
     const allowedTools = effectiveTaskType && TASK_TOOL_MAP[effectiveTaskType]
       ? new Set(TASK_TOOL_MAP[effectiveTaskType])
       : null;
-    const scheduledBlogNextTools = this.getScheduledBlogNextToolSet();
+      const scheduledRequiredNextTools = this.getScheduledRequiredNextToolSet();
 
     const claudeTools = [];
     const allToolSources = [
@@ -985,6 +1183,7 @@ Use the available tools to complete this task. Work step by step and explain you
       imageToolDefinitions,
       scrapeToolDefinitions,
       gmailToolDefinitions,
+      developerToolDefinitions,
     ];
 
     for (const toolSource of allToolSources) {
@@ -996,8 +1195,9 @@ Use the available tools to complete this task. Work step by step and explain you
         // After a scheduled task has attempted its plan, hide internal paperwork
         // tools until at least one real external/action tool is attempted.
         if (this.shouldSuppressPlanningToolsForScheduledTask(toolName)) continue;
+        if (this.shouldSuppressConsecutivePlanningTools(toolName)) continue;
         if (this.shouldSuppressRepeatedBlogImageTool(toolName)) continue;
-        if (scheduledBlogNextTools && !scheduledBlogNextTools.has(toolName)) continue;
+        if (scheduledRequiredNextTools && !scheduledRequiredNextTools.has(toolName)) continue;
 
         // If filtering is active, only include allowed tools
         if (allowedTools && !allowedTools.has(toolName)) continue;
@@ -1009,16 +1209,22 @@ Use the available tools to complete this task. Work step by step and explain you
       }
     }
 
+    // Final name-based guard. Tool collections are assembled from several
+    // registries, so enforce the scheduled-task contract on the normalized
+    // definitions as well as on their registry keys.
+    const finalTools = this._isScheduledTask
+      ? claudeTools.filter(tool => !this.shouldSuppressPlanningToolsForScheduledTask(tool.name))
+      : claudeTools;
+
     logger.info('Formatted tools for LLM', {
       taskType: effectiveTaskType || 'all',
-      toolCount: claudeTools.length,
+      toolCount: finalTools.length,
       filtered: !!allowedTools,
-      suppressedPlanningTools: this._isScheduledTask &&
-        (!!this.currentPlan || this.hasPlanningToolAttempt()) &&
-        !this.hasSubstantiveToolUse()
+      suppressedPlanningTools: this._isScheduledTask,
+      toolNames: this._isScheduledTask ? finalTools.map(tool => tool.name) : undefined
     });
 
-    return claudeTools;
+    return finalTools;
   }
 
   /**
@@ -1059,6 +1265,7 @@ Use the available tools to complete this task. Work step by step and explain you
         { keywords: ['social', 'instagram', 'facebook', 'linkedin'], skill: 'social-media' },
         { keywords: ['flyer', 'poster', 'brochure'], skill: 'flyer-generation' },
         { keywords: ['website', 'landing page'], skill: 'website-creation' },
+        { keywords: ['hyperframes', 'motion graphic', 'html animation', 'seekable animation', 'animated composition', 'logo sting', 'lower third', 'title card', 'product launch video', 'faceless explainer', 'beat-synced video'], skill: 'hyperframes' },
       ];
 
       for (const mapping of skillMap) {
@@ -1095,6 +1302,8 @@ Use the available tools to complete this task. Work step by step and explain you
 - **Autonomy Level**: Level ${agentConfig.currentAutonomyLevel}
 - **Organization**: ${orgName}
 
+${buildSharedExecutionContract(agentConfig, context?.trigger === 'scheduled' ? 'scheduled' : 'work')}
+
 ## EXECUTION DISCIPLINE (MANDATORY — READ CAREFULLY)
 
 You follow a strict 5-step execution protocol. This is not optional.
@@ -1122,8 +1331,8 @@ Every step MUST include:
 Do NOT include a separate "Verify" step — verification happens WITHIN each step. When the last real step completes, the task is done.
 
 ### Step 3: EXECUTE (One step at a time)
-- Mark the current step \`in_progress\` via \`bloom_todo_write\` BEFORE starting it
-- Execute ONLY that one step
+- After the initial plan, immediately execute the first substantive action tool
+- Continue through dependent action tools without rewriting the plan between every call
 - Only ONE step may be \`in_progress\` at any time
 - NEVER skip ahead or batch-complete steps
 
@@ -1132,10 +1341,12 @@ After executing a step, VERIFY it actually worked:
 - **api_check**: Query the target system (GHL, database) to confirm the change exists
 - **result_check**: Inspect the tool's return value for expected data
 - **llm_judgment**: Evaluate content quality against the success criteria
-Then update the plan via \`bloom_todo_write\`:
+At a material milestone, update the plan once via \`bloom_todo_write\`:
 - If verified: set \`status: 'completed'\`, \`verified: true\`, \`verification_evidence: '...'\`
 - If NOT verified: set \`status: 'failed'\`, \`verified: false\`, \`failure_reason: '...'\`
 - If failed: you may retry up to 2 times (increment \`retry_count\`), then escalate
+- A plan update is progress bookkeeping, not execution. Never call
+  \`bloom_todo_write\` twice consecutively; an action tool must run between updates.
 
 ### Step 5: COMPLETE
 The task is complete when ALL steps in your plan have \`verified: true\`.
@@ -1151,6 +1362,7 @@ Do NOT say "TASK COMPLETED" until all steps are verified.
 
 ## Available Tools
 - **GHL Tools**: GoHighLevel CRM API (limited by autonomy level)
+- **Developer Tools**: Tenant-authorized GitHub repository metadata, branches, directory listings, code search, file reads/writes, plus Vercel projects and deployments
 - **Planning Tools**: bloom_todo_write, bloom_clarify, bloom_create_task
 - **Logging Tools**: bloom_log_decision, bloom_log_observation
 - **Escalation Tools**: bloom_escalate_issue
@@ -1160,6 +1372,9 @@ Do NOT say "TASK COMPLETED" until all steps are verified.
 - **Gmail Tools**: gmail_check_inbox (check emails), gmail_read_message (read full email), gmail_send_email (send emails)
 - **Document Tools**: bloom_create_document (save documents/artifacts for Kimberly to review in the dashboard), bloom_list_documents, bloom_update_document
 - **Image Tools**: image_generate (create images via AI)
+
+## Technical Investigation
+Repository structure, default branches, file paths, frameworks, and deployment states are facts you must discover with tools—not questions for Kimberly. Before changing code, inspect repository metadata, list branches and root files, read the package manifest, traverse the relevant source directories, and search code when a path is unknown. Never assume main, master, or index.html. Ask Kimberly only after discovery tools are exhausted, and include the exact checks and errors.
 
 ## Site Credentials
 Kimberly has saved login credentials for certain websites in the dashboard. When a task requires a logged-in site (Quora, Reddit, LinkedIn, etc.), use \`browser_list_sites\` to check which sites have credentials, then call \`browser_task\` with \`siteName\` (example: \`browser_task({ siteName: "reddit", task: "find questions about AI employees" })\`). Login and work must happen in the same browser_task session. Use \`browser_login\` only as a quick login test, not as a prerequisite for later browser_task calls.
@@ -1266,19 +1481,7 @@ Remember: Plan first. Execute one step. Verify it worked. Then move on.`;
    * Returns a category key that maps to TASK_TOOL_MAP in formatToolsForClaude()
    */
   _classifyTaskType(task, context = {}) {
-    const text = `${task} ${context.taskName || ''} ${context.taskType || ''}`.toLowerCase();
-
-    if (/blog|article|geo.?optimized|seo.?post|write.*post/.test(text)) return 'blog';
-    if (/social|instagram|facebook|linkedin|twitter|tiktok/.test(text)) return 'social';
-    if (/email|newsletter|campaign|drip|outreach/.test(text)) return 'email';
-    if (/follow.?up|nurture|check.?in|overdue|re.?engage/.test(text)) return 'followup';
-    if (/research|scrape|analyze|report|audit|competitor/.test(text)) return 'research';
-
-    // For chat or unclassifiable tasks, return null (all tools)
-    if (context.trigger === 'chat') return null;
-
-    // Default scheduled tasks to null too — only filter when we're confident
-    return null;
+    return classifyExecutionTask(task, context);
   }
 
   /**
@@ -1292,7 +1495,14 @@ Remember: Plan first. Execute one step. Verify it worked. Then move on.`;
         agentId: this.agentId
       });
 
-      const result = await subAgentSystem.delegateTask(task, context, preferredAgent);
+      const parentProfile = await loadAgentConfig(this.agentId);
+      const result = await subAgentSystem.delegateTask(task, {
+        ...context,
+        parentAgentId: parentProfile.agentId,
+        parentAgentName: parentProfile.name,
+        parentAgentRole: parentProfile.role,
+        orgName: parentProfile.config?.orgName || parentProfile.client || 'the current organization',
+      }, preferredAgent);
 
       // Add delegation to tool execution history
       this.toolExecutionHistory.push({
@@ -1368,7 +1578,7 @@ Remember: Plan first. Execute one step. Verify it worked. Then move on.`;
   hasSubstantiveToolUse() {
     return this.toolExecutionHistory.some(entry => {
       const name = entry?.tool || entry?.name || entry?.toolName;
-      return name && !NON_SUBSTANTIVE_TOOLS.has(name);
+      return name && !PRE_ACTION_SUPPRESSED_TOOLS.has(name);
     });
   }
 
@@ -1391,6 +1601,157 @@ Remember: Plan first. Execute one step. Verify it worked. Then move on.`;
       const name = entry?.tool || entry?.name || entry?.toolName;
       return name === toolName && entry?.result?.success === true;
     });
+  }
+
+  getSuccessfulToolResult(toolName) {
+    return [...this.toolExecutionHistory].reverse().find(entry => {
+      const name = entry?.tool || entry?.name || entry?.toolName;
+      return name === toolName && entry?.result?.success === true;
+    })?.result || null;
+  }
+
+  buildVerifiedCompletionSummary() {
+    const lines = ['TASK COMPLETED', '', 'Verified evidence:'];
+    const repository = this.getSuccessfulToolResult('github_get_repository')?.repository;
+    if (repository?.fullName) {
+      lines.push(`- Repository: ${repository.fullName}`);
+      if (repository.defaultBranch) lines.push(`- Branch: ${repository.defaultBranch}`);
+    }
+    const write = this.getSuccessfulToolResult('coding_workspace_write_file');
+    if (write?.file?.path) lines.push(`- File: ${write.file.path}`);
+    const commit = this.getSuccessfulToolResult('coding_workspace_commit');
+    if (commit?.commit) lines.push(`- Commit: ${commit.commit}`);
+    if (commit?.url) lines.push(`- Commit URL: ${commit.url}`);
+    const deployment = this.getSuccessfulToolResult('vercel_wait_for_deployment')
+      || this.getSuccessfulToolResult('vercel_create_deployment');
+    const deploymentId = deployment?.deploymentId || deployment?.id || deployment?.deployment?.id;
+    const deploymentState = deployment?.status || deployment?.state
+      || deployment?.deployment?.state || deployment?.deployment?.readyState;
+    const deploymentUrl = deployment?.url || deployment?.deployment?.url;
+    if (deploymentId) lines.push(`- Deployment: ${deploymentId}`);
+    if (deploymentState) lines.push(`- Deployment state: ${String(deploymentState).toUpperCase()}`);
+    if (deploymentUrl) {
+      const url = /^https?:\/\//i.test(deploymentUrl) ? deploymentUrl : `https://${deploymentUrl}`;
+      lines.push(`- Preview URL: ${url}`);
+    }
+    return lines.join('\n');
+  }
+
+  getDeveloperPlanningReplacement() {
+    if (!this.hasToolAttempt('github_list_repositories')) {
+      return { name: 'github_list_repositories', input: {} };
+    }
+    if (!this.hasToolAttempt('vercel_list_projects')) {
+      return { name: 'vercel_list_projects', input: {} };
+    }
+
+    const repositories = this.getSuccessfulToolResult('github_list_repositories')?.repositories || [];
+    const taskSlug = String(this._currentTaskText || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '');
+    const candidate = repositories
+      .map(repository => {
+        const [owner, repo] = String(repository.fullName || '').split('/');
+        const repoSlug = String(repo || '').toLowerCase();
+        const tokens = repoSlug.split(/[-_]+/).filter(token => token.length > 2);
+        const score = (taskSlug.includes(repoSlug) ? 100 : 0) +
+          tokens.filter(token => taskSlug.includes(token)).length;
+        return { owner, repo, score };
+      })
+      .filter(candidate => candidate.owner && candidate.repo && candidate.score > 0)
+      .sort((a, b) => b.score - a.score)[0];
+
+    if (!candidate) return null;
+    if (!this.hasToolAttempt('github_get_repository')) {
+      return {
+        name: 'github_get_repository',
+        input: { owner: candidate.owner, repo: candidate.repo },
+      };
+    }
+    if (!this.hasToolAttempt('github_list_files')) {
+      const defaultBranch = this.getSuccessfulToolResult('github_get_repository')?.repository?.defaultBranch;
+      return {
+        name: 'github_list_files',
+        input: {
+          owner: candidate.owner,
+          repo: candidate.repo,
+          path: '',
+          ...(defaultBranch ? { ref: defaultBranch } : {}),
+        },
+      };
+    }
+
+    const repository = this.getSuccessfulToolResult('github_get_repository')?.repository || {};
+    const owner = candidate.owner;
+    const repo = candidate.repo;
+    const branch = repository.defaultBranch || 'main';
+    if (!this.hasToolAttempt('coding_workspace_prepare')) {
+      return { name: 'coding_workspace_prepare', input: { owner, repo, ref: branch } };
+    }
+
+    const exactFile = this.extractExactDeveloperFileInstruction();
+    if (!exactFile) return null;
+    if (!this.hasToolAttempt('coding_workspace_write_file')) {
+      return {
+        name: 'coding_workspace_write_file',
+        input: { owner, repo, path: exactFile.path, content: exactFile.content },
+      };
+    }
+    if (!this.hasToolAttempt('coding_workspace_read_file')) {
+      return {
+        name: 'coding_workspace_read_file',
+        input: { owner, repo, path: exactFile.path },
+      };
+    }
+    if (!this.hasToolAttempt('coding_workspace_diff')) {
+      return { name: 'coding_workspace_diff', input: { owner, repo } };
+    }
+
+    const commitMessage = String(this._currentTaskText || '')
+      .match(/commit with message\s+["“]([^"”]+)["”]/i)?.[1];
+    if (commitMessage && !this.hasToolAttempt('coding_workspace_commit')) {
+      return {
+        name: 'coding_workspace_commit',
+        input: { owner, repo, branch, message: commitMessage },
+      };
+    }
+
+    const projects = this.getSuccessfulToolResult('vercel_list_projects')?.projects || [];
+    const project = projects.find(item => String(item.name || '').toLowerCase() === repo.toLowerCase())
+      || projects.find(item => repo.toLowerCase().includes(String(item.name || '').toLowerCase()));
+    if (project && /\bpreview deployment\b/i.test(String(this._currentTaskText || '')) &&
+        !this.hasToolAttempt('vercel_create_deployment')) {
+      return {
+        name: 'vercel_create_deployment',
+        input: { name: project.name, repo: `${owner}/${repo}`, ref: branch, target: 'preview' },
+      };
+    }
+
+    const deployment = this.getSuccessfulToolResult('vercel_create_deployment') || {};
+    if (Object.keys(deployment).length > 0 && !this.hasToolAttempt('vercel_wait_for_deployment')) {
+      const deploymentId = deployment.deploymentId || deployment.id;
+      return {
+        name: 'vercel_wait_for_deployment',
+        input: {
+          ...(deploymentId
+            ? { deploymentId }
+            : { projectId: project?.id || project?.name }),
+          timeoutSeconds: 180,
+          pollIntervalSeconds: 10,
+        },
+      };
+    }
+    return null;
+  }
+
+  extractExactDeveloperFileInstruction() {
+    const task = String(this._currentTaskText || '');
+    const path = task.match(/\b([a-zA-Z0-9_.-]+(?:\/[a-zA-Z0-9_.-]+)+)\b/)?.[1];
+    const contentMatch = task.match(/exact content must be:\s*\n([\s\S]*?)(?=\n\s*\d+\.\s|\n\s*commit with message|\n\s*create a preview|\n\s*do not alter|$)/i);
+    if (!path || !contentMatch) return null;
+    const content = contentMatch[1].trim();
+    return content ? { path, content } : null;
   }
 
   isScheduledEmailCheckInComplete() {
@@ -1422,8 +1783,26 @@ Remember: Plan first. Execute one step. Verify it worked. Then move on.`;
     if (this.needsScheduledOwnerNotification()) {
       return PRE_ACTION_SUPPRESSED_TOOLS.has(toolName);
     }
-    if (!this._isScheduledTask || (!this.currentPlan && !this.hasPlanningToolAttempt()) || this.hasSubstantiveToolUse()) return false;
-    return PRE_ACTION_SUPPRESSED_TOOLS.has(toolName);
+    if (!this._isScheduledTask) return false;
+    if (this.isExplicitlyReadOnlyScheduledTask()) {
+      return PRE_ACTION_SUPPRESSED_TOOLS.has(toolName);
+    }
+    // Scheduled work already has a persisted task definition and the scheduler
+    // validates its substantive tool evidence. Exposing TodoWrite here lets
+    // smaller models spend the whole execution rewriting a duplicate plan.
+    // Keep planning/logging available in Chat and Work, but remove it from
+    // scheduled runs from the first turn onward.
+    return (this.hasSubstantiveToolUse() ? NON_SUBSTANTIVE_TOOLS : PRE_ACTION_SUPPRESSED_TOOLS).has(toolName);
+  }
+
+  shouldSuppressConsecutivePlanningTools(toolName) {
+    if (this._isScheduledTask || !NON_SUBSTANTIVE_TOOLS.has(toolName)) return false;
+    const lastEntry = this.toolExecutionHistory[this.toolExecutionHistory.length - 1];
+    const lastName = lastEntry?.tool || lastEntry?.name || lastEntry?.toolName;
+    // Chat/Work may publish progress between actions, but never allow two
+    // planning-only turns in a row. The next model turn must use a substantive
+    // tool, after which planning tools become available again.
+    return Boolean(lastName && NON_SUBSTANTIVE_TOOLS.has(lastName));
   }
 
   shouldSuppressRepeatedBlogImageTool(toolName) {
@@ -1437,11 +1816,49 @@ Remember: Plan first. Execute one step. Verify it worked. Then move on.`;
     if (!this._isScheduledTask || this._currentTaskType !== 'blog') return null;
     if (this.hasSuccessfulToolAttempt('publish_artifact')) {
       if (!this.hasSuccessfulToolAttempt('web_fetch')) return new Set(['web_fetch']);
-      return null;
+      // The publish and live-page verification are the terminal actions. Give
+      // the model a tool-free turn so it must report the evidence instead of
+      // publishing or fetching the same page again.
+      return new Set();
     }
     if (this.hasSuccessfulToolAttempt('create_artifact')) return new Set(['publish_artifact']);
     if (this.hasSuccessfulToolAttempt('image_generate')) return new Set(['create_artifact']);
     return null;
+  }
+
+  getScheduledResearchNextToolSet() {
+    if (!this._isScheduledTask || this._currentTaskType !== 'research') return null;
+    const taskText = `${this._currentTaskName || ''} ${this._currentTaskText || ''}`.toLowerCase();
+    const requiresSavedDocument = /(?:save|create|compile)[\s\S]{0,80}(?:artifact|document|briefing|report|drafts)/i.test(taskText);
+    const researchTools = ['web_search', 'web_fetch', 'browser_task'];
+    const researchComplete = researchTools.some(toolName => this.hasSuccessfulToolAttempt(toolName));
+    if (!researchComplete) return null;
+    if (requiresSavedDocument && !this.hasSuccessfulToolAttempt('bloom_create_document')) {
+      return new Set(['bloom_create_document']);
+    }
+    // Research evidence exists (and any requested document has been saved).
+    // A tool-free final turn prevents repeated fetch/search loops.
+    return new Set();
+  }
+
+  getScheduledRequiredNextToolSet() {
+    const workflowSet = this.getScheduledBlogNextToolSet() || this.getScheduledResearchNextToolSet();
+    if (workflowSet) return workflowSet;
+
+    if (this.isExplicitlyReadOnlyScheduledTask() && this.hasSubstantiveToolUse()) {
+      // A successful read receipt is terminal for an explicitly read-only
+      // probe. Remove tools on the following turn so Gemini reports evidence
+      // instead of repeating the same lookup until loop detection.
+      return new Set();
+    }
+    return null;
+  }
+
+  isExplicitlyReadOnlyScheduledTask() {
+    if (!this._isScheduledTask) return false;
+    const taskText = `${this._currentTaskName || ''} ${this._currentTaskText || ''}`.toLowerCase();
+    return /\bread[- ]only\b/.test(taskText) ||
+      /do not (?:create|update|send|notify|publish|schedule|delete)/.test(taskText);
   }
 
   shouldRepairScheduledBlogTemplateFailure(toolName, toolResult = {}) {
@@ -1471,6 +1888,11 @@ Remember: Plan first. Execute one step. Verify it worked. Then move on.`;
   }
 
   shouldContinueAfterUnfinishedPlan(textResponse, currentTurn) {
+    if (this.forceFinalEvidenceTurn) return false;
+    // Scheduled runs are validated from their real tool history by the outer
+    // scheduler. Once an action tool has run, do not trap the worker in plan
+    // bookkeeping just because the model omitted a final todo-state rewrite.
+    if (this._isScheduledTask && this.hasSubstantiveToolUse()) return false;
     const unfinished = this.getUnfinishedPlanSteps();
     if (unfinished.length === 0 || this.allStepsPassing) return false;
     if (this.unfinishedPlanNudges >= 3) return false;

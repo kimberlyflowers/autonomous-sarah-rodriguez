@@ -8,6 +8,10 @@ import { trustGate } from '../trust/trust-gate.js';
 
 const logger = createLogger('system-monitor');
 
+export function isToolPerformanceHealthy(totalExecutions, successRate, threshold) {
+  return Number(totalExecutions || 0) === 0 || Number(successRate || 0) >= Number(threshold || 0);
+}
+
 /**
  * System Health Status
  */
@@ -91,19 +95,29 @@ export class SystemMonitor {
       name: 'Tool Performance',
       check: async () => {
         const stats = enhancedExecutor.getPerformanceStats();
+        const hasSamples = stats.totalExecutions > 0;
         return {
-          healthy: stats.overallSuccessRate >= this.thresholds.toolSuccessRate,
+          // A freshly deployed process has no in-memory tool samples yet.
+          // "No data" is neutral, not a 0% critical failure.
+          healthy: isToolPerformanceHealthy(
+            stats.totalExecutions,
+            stats.overallSuccessRate,
+            this.thresholds.toolSuccessRate
+          ),
           metrics: {
             successRate: stats.overallSuccessRate,
             averageTime: stats.averageExecutionTime,
-            totalExecutions: stats.totalExecutions
+            totalExecutions: stats.totalExecutions,
+            sampleStatus: hasSamples ? 'measured' : 'no_samples'
           },
-          message: `Tool success rate: ${Math.round(stats.overallSuccessRate * 100)}%`
+          message: hasSamples
+            ? `Tool success rate: ${Math.round(stats.overallSuccessRate * 100)}%`
+            : 'Tool performance: awaiting first execution sample'
         };
       },
       critical: true,
       autoHeal: async (result) => {
-        if (result.metrics.successRate < 0.8) {
+        if (result.metrics.totalExecutions > 0 && result.metrics.successRate < 0.8) {
           // Reset metrics and clear failed tool cache
           enhancedExecutor.clearMetrics();
           return 'Reset tool performance metrics';
@@ -259,32 +273,37 @@ export class SystemMonitor {
    */
   startMonitoring() {
     // Health checks
-    setInterval(() => {
+    const healthTimer = setInterval(() => {
       this.runHealthChecks().catch(error => {
         logger.error('Health check cycle failed:', error);
       });
     }, this.healthCheckInterval);
 
     // Metrics collection
-    setInterval(() => {
+    const metricsTimer = setInterval(() => {
       this.collectMetrics().catch(error => {
         logger.error('Metrics collection failed:', error);
       });
     }, this.metricsInterval);
 
     // Cleanup old data
-    setInterval(() => {
+    const cleanupTimer = setInterval(() => {
       this.cleanupOldData().catch(error => {
         logger.error('Cleanup cycle failed:', error);
       });
     }, this.cleanupInterval);
 
     // Run initial health check
-    setTimeout(() => {
+    const initialTimer = setTimeout(() => {
       this.runHealthChecks().catch(error => {
         logger.error('Initial health check failed:', error);
       });
     }, 5000);
+    // Monitoring should not keep tests, CLI checks, or graceful shutdown alive.
+    healthTimer.unref?.();
+    metricsTimer.unref?.();
+    cleanupTimer.unref?.();
+    initialTimer.unref?.();
   }
 
   /**

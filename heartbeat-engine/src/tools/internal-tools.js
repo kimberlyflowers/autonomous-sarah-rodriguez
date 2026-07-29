@@ -226,8 +226,8 @@ async function supabaseQueryShim(supabase, sql, params) {
       verification_status: params[3] || 'unverified',
       all_steps_passing: params[4] === true,
       last_verified_at: params[5] || null,
-      agent_id: 'c3000000-0000-0000-0000-000000000003',
-      organization_id: process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001',
+      agent_id: params[6] || 'c3000000-0000-0000-0000-000000000003',
+      organization_id: params[7] || process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001',
       updated_at: new Date().toISOString()
     };
 
@@ -278,7 +278,7 @@ export const internalToolDefinitions = {
   // PLANNING TOOLS
   bloom_create_task: {
     name: "bloom_create_task",
-    description: "Create a new task in Sarah's planning system for tracking work",
+    description: "Create a new task in the current Bloomie's planning system for tracking work",
     parameters: {
       type: "object",
       properties: {
@@ -298,7 +298,7 @@ export const internalToolDefinitions = {
 
   bloom_list_tasks: {
     name: "bloom_list_tasks",
-    description: "List Sarah's current tasks with filtering options",
+    description: "List the current Bloomie's tasks with filtering options",
     parameters: {
       type: "object",
       properties: {
@@ -338,11 +338,12 @@ export const internalToolDefinitions = {
 
 ## MANDATORY RULES (Cowork Discipline):
 1. You MUST call this BEFORE executing any multi-step task — no exceptions.
-2. Mark a step 'in_progress' BEFORE starting it.
+2. After the initial plan, call the substantive action tool immediately.
 3. Only ONE step may be 'in_progress' at a time.
 4. NEVER batch-complete steps — complete them one at a time.
 5. Mark 'completed' ONLY after verification confirms success.
 6. Do NOT include a separate 'Verify' step — verify WITHIN each step. When the last real step completes, the task is done.
+7. NEVER call this tool twice consecutively. Update it only after a material action or verification result.
 
 ## VERIFICATION RULES (Ralph Pattern):
 - Every step MUST have success_criteria describing what "done" looks like.
@@ -455,10 +456,10 @@ ONLY skip when:
 
   bloom_escalate: {
     name: "bloom_escalate",
-    description: `File a tech support ticket to escalate a system issue to Cowork or Kimberly for fixing.
+    description: `File a tech support ticket to escalate a system issue to Codex or Kimberly for fixing.
 Use this when you encounter: tool failures, broken integrations, unexpected errors, tasks that keep failing, or anything that needs a human or Cowork to intervene and fix.
 
-This writes a ticket to the BLOOM tech queue where Cowork can pick it up and resolve it.
+This writes a ticket to the BLOOM tech queue where Codex can pick it up and resolve it.
 
 WHEN TO USE:
 - A tool keeps returning errors after 1-2 retries
@@ -1074,7 +1075,7 @@ export const internalToolExecutors = {
       return {
         success: true,
         ticket_id: data.id,
-        message: `Ticket filed (${params.severity}): "${params.title}" — Cowork has been notified and will investigate.`,
+        message: `Ticket filed (${params.severity}): "${params.title}" — Codex support can retrieve it from the BLOOM ticket queue.`,
         ticket: data
       };
 
@@ -1455,6 +1456,11 @@ export const internalToolExecutors = {
     try {
       const pool = await getPool();
       const { v4: uuidv4 } = await import('uuid');
+      params.steps = Array.isArray(params.steps)
+        ? params.steps
+        : Array.isArray(params.plan)
+          ? params.plan
+          : [];
 
       // Create task_plans table if it doesn't exist
       await pool.query(`
@@ -1474,7 +1480,11 @@ export const internalToolExecutors = {
         );
       `);
 
-      const taskId = params.task_id || uuidv4();
+      // task_plans.session_id is a foreign key to the real chat session.
+      // Prefer that authenticated session when available. Scheduled/background
+      // work has no chat session and safely falls back to the existing
+      // in-memory plan instead of inventing a foreign-key value.
+      const taskId = params._sessionId || params.task_id || uuidv4();
 
       // Validate Cowork discipline: only one step in_progress at a time
       const inProgressSteps = params.steps.filter(s => s.status === 'in_progress');
@@ -1514,10 +1524,39 @@ export const internalToolExecutors = {
       const verificationStatus = allStepsPassing ? 'all_passing' :
         params.steps.some(s => s.verified === true) ? 'partial' : 'unverified';
 
+      if (!params._sessionId) {
+        const completed = params.steps.filter(s => s.status === 'completed').length;
+        const verified = params.steps.filter(s => s.verified === true).length;
+        const failed = params.steps.filter(s => s.status === 'failed').length;
+        const pending = params.steps.filter(s => s.status === 'pending').length;
+        logger.info('Using in-memory task plan for background execution without a chat session', {
+          taskId,
+          agentId: params._agentId || null,
+          organizationId: params._organizationId || null,
+        });
+        return {
+          success: true,
+          persisted: false,
+          task_id: taskId,
+          title: params.title || 'Task Plan',
+          steps: params.steps,
+          verification_status: verificationStatus,
+          all_steps_passing: allStepsPassing,
+          progress: { total: params.steps.length, completed, verified, failed, pending },
+          message: `Plan "${params.title || 'Task Plan'}" kept in memory: ${verified}/${params.steps.length} verified passing${allStepsPassing ? ' — ALL PASSING ✅' : ''}`,
+          currentState: {
+            title: params.title || 'Task Plan',
+            steps: params.steps,
+            verification_status: verificationStatus,
+            all_steps_passing: allStepsPassing,
+          },
+        };
+      }
+
       // Insert or update the entire plan
       const upsertResult = await pool.query(`
-        INSERT INTO task_plans (task_id, title, steps, verification_status, all_steps_passing, last_verified_at)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO task_plans (task_id, title, steps, verification_status, all_steps_passing, last_verified_at, agent_id, organization_id)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         ON CONFLICT (task_id)
         DO UPDATE SET
           title = EXCLUDED.title,
@@ -1533,7 +1572,9 @@ export const internalToolExecutors = {
         JSON.stringify(params.steps),
         verificationStatus,
         allStepsPassing,
-        allStepsPassing ? new Date().toISOString() : null
+        allStepsPassing ? new Date().toISOString() : null,
+        params._agentId || 'c3000000-0000-0000-0000-000000000003',
+        params._organizationId || process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001'
       ]);
 
       const plan = upsertResult.rows[0];

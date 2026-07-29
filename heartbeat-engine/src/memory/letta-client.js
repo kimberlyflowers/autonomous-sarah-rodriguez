@@ -8,20 +8,22 @@ const logger = createLogger('letta');
 
 class LettaClient {
   constructor() {
-    this.baseUrl = process.env.LETTA_SERVER_URL || 'http://letta-server.railway.internal:8283';
+    this.baseUrl = String(process.env.LETTA_SERVER_URL || '').trim() || null;
+    this.remoteConfigured = Boolean(this.baseUrl);
     this.isAvailable = false;
+    this.fallbackNoticeLogged = false;
 
     // Create axios instance
-    this.client = axios.create({
+    this.client = this.remoteConfigured ? axios.create({
       baseURL: this.baseUrl,
       timeout: 30000, // 30 second timeout
       headers: {
         'Content-Type': 'application/json'
       }
-    });
+    }) : null;
 
     // Add interceptors for logging
-    this.client.interceptors.response.use(
+    this.client?.interceptors.response.use(
       response => {
         logger.debug('Letta API Success', {
           method: response.config.method,
@@ -31,7 +33,7 @@ class LettaClient {
         return response;
       },
       error => {
-        logger.error('Letta API Error', {
+        logger.debug('Letta remote request unavailable', {
           method: error.config?.method,
           url: error.config?.url,
           status: error.response?.status,
@@ -44,6 +46,11 @@ class LettaClient {
 
   // Test connection to Letta server
   async testConnection() {
+    if (!this.remoteConfigured) {
+      this.isAvailable = false;
+      logger.info('Letta remote memory is not configured; fallback memory is active');
+      return false;
+    }
     try {
       const response = await this.client.get('/health');
       this.isAvailable = response.status === 200;
@@ -51,7 +58,7 @@ class LettaClient {
       return true;
     } catch (error) {
       this.isAvailable = false;
-      logger.warn('❌ Letta connection test failed:', error.message);
+      logger.info('Letta remote memory unavailable; fallback memory is active');
       return false;
     }
   }
@@ -59,7 +66,10 @@ class LettaClient {
   // Get relevant memory for current context
   async getRelevantMemory(context) {
     if (!this.isAvailable) {
-      logger.warn('Letta not available, using fallback memory');
+      if (!this.fallbackNoticeLogged) {
+        logger.info('Using fallback memory because remote Letta is unavailable');
+        this.fallbackNoticeLogged = true;
+      }
       return await this.getFallbackMemory(context);
     }
 
@@ -108,7 +118,6 @@ class LettaClient {
   // Store memory from current cycle
   async storeMemory(memoryData) {
     if (!this.isAvailable) {
-      logger.warn('Letta not available, storing in fallback');
       return await this.storeFallbackMemory(memoryData);
     }
 
@@ -222,7 +231,7 @@ class LettaClient {
   // Store human feedback for learning
   async storeFeedback(feedbackData) {
     if (!this.isAvailable) {
-      logger.warn('Letta not available for feedback storage');
+      logger.debug('Skipping remote feedback storage; fallback memory mode is active');
       return;
     }
 

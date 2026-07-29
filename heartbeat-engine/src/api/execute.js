@@ -325,7 +325,7 @@ router.delete('/cleanup', (req, res) => {
 });
 
 // Cleanup old executions periodically
-setInterval(() => {
+const executionCleanupTimer = setInterval(() => {
   const cutoff = Date.now() - (24 * 60 * 60 * 1000); // 24 hours
   let cleaned = 0;
 
@@ -340,5 +340,6 @@ setInterval(() => {
     logger.info(`Auto-cleaned ${cleaned} old executions`);
   }
 }, 60 * 60 * 1000); // Run every hour
+executionCleanupTimer.unref?.();
 
 export default router;

@@ -27,7 +27,7 @@ function setupSSE(res) {
 }
 
 // Send event to all connected clients
-function broadcastToClients(eventType, data = {}) {
+export function broadcastToClients(eventType, data = {}) {
   const message = JSON.stringify({
     type: eventType,
     timestamp: new Date().toISOString(),

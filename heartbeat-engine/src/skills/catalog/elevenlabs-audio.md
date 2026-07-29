@@ -43,11 +43,11 @@ Use these saved voices for character consistency unless Kimberly explicitly asks
   - delivery: warm conversationalist, sincere, emotionally aware, calm but persuasive
   - default model/settings: `eleven_v3`, `stability: 0.45`, `similarity_boost: 0.85`, `style: 0.32-0.40`, `use_speaker_boost: true`, `speed: 0.95`
 - **Marcus Chen**
-  - approved voice: Chris - Charming, Down-to-Earth
-  - `voice_id`: `iP95p4xoKVk53GoZ742B`
-  - delivery: grounded, natural, warm, trustworthy, advisor-like, not announcer-y
+  - approved voice: Marcus - custom Voice Design audition 3
+  - `voice_id`: `1v53PppvjkU7sq1pKTPg`
+  - delivery: mature deep baritone, grounded, refined, quietly authoritative, warm, trustworthy, advisor-like, not announcer-y
   - default model/settings: `eleven_v3`, `stability: 0.45`, `similarity_boost: 0.85`, `style: 0.32`, `use_speaker_boost: true`, `speed: 0.95`
-  - approved audition file: `/Users/kimberlyflowersmini2/Documents/Codex/2026-05-08/ok-the-omibrandkit-github-website-needs/generated-audio/marcus-voice-auditions/marcus-audition-chris.mp3`
+  - approved audition file: `/Users/kimberlyflowersmini2/Documents/Codex/2026-07-18/we-built-this-but-i-need/audio/marcus-voice-design/marcus-audition-3.mp3`
 
 ## Script Cleanup Rules
 

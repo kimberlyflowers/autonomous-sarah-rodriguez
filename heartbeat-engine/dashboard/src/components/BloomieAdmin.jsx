@@ -1,10 +1,17 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import ReferenceLibrary from "./ReferenceLibrary.jsx";
+import { supabase } from "../supabase.js";
 
 const BLOOMIE_API = "https://njfhzabmaxhfzekbzpzz.supabase.co/functions/v1/bloomie-chat";
 const SUPABASE_URL = "https://njfhzabmaxhfzekbzpzz.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5qZmh6YWJtYXhoZnpla2J6cHp6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4MjYwMjMsImV4cCI6MjA4ODQwMjAyM30.QPTQhnlfZtmfQVm75GqG0Oazmyb7USjYBdLEy_G-iqU";
 
 const hdrs = { "Content-Type": "application/json", apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` };
+
+async function tenantHeaders() {
+  const { data: { session } } = await supabase.auth.getSession();
+  return { "Content-Type": "application/json", ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}) };
+}
 
 function timeAgo(d) {
   const s = Math.floor((Date.now() - new Date(d).getTime()) / 1000);
@@ -26,6 +33,7 @@ function Inbox({ c, mob }) {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
   const [reply, setReply] = useState("");
+  const [cannedAnswers, setCannedAnswers] = useState([]);
   const [sending, setSending] = useState(false);
   const bottomRef = useRef(null);
   const pollRef = useRef(null);
@@ -48,6 +56,14 @@ function Inbox({ c, mob }) {
     pollRef.current = setInterval(fetchChats, 8000);
     return () => clearInterval(pollRef.current);
   }, [fetchChats]);
+
+  useEffect(() => {
+    tenantHeaders()
+      .then(headers => fetch('/api/bloomie-admin/support-answers', { headers }))
+      .then(response => response.json())
+      .then(payload => setCannedAnswers(payload.answers || []))
+      .catch(() => setCannedAnswers([]));
+  }, []);
 
   // When a chat is selected, refresh it for latest messages
   const openChat = async (chat) => {
@@ -167,6 +183,12 @@ function Inbox({ c, mob }) {
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
             Reply as Bloomie
           </div>
+          {cannedAnswers.length > 0 && (
+            <select defaultValue="" onChange={e => { const answer = cannedAnswers.find(item => item.id === e.target.value); if (answer) setReply(answer.answer); e.target.value = ""; }} style={{ width: "100%", marginBottom: 7, padding: "8px 10px", borderRadius: 8, border: "1px solid " + c.ln, background: c.inp, color: c.tx, fontSize: 12 }}>
+              <option value="">Insert a support answer…</option>
+              {cannedAnswers.map(answer => <option key={answer.id} value={answer.id}>{answer.question}</option>)}
+            </select>
+          )}
           <div style={{ display: "flex", gap: 6 }}>
             <input
               value={reply}
@@ -251,11 +273,12 @@ function TicketManager({ c, mob }) {
   const fetchTickets = async () => {
     setLoading(true);
     try {
-      let url = `${SUPABASE_URL}/rest/v1/bloomie_tickets?order=created_at.desc&limit=100`;
-      if (filter !== "all") url += `&status=eq.${filter}`;
-      const r = await fetch(url, { headers: hdrs });
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = session ? { Authorization: `Bearer ${session.access_token}` } : {};
+      const url = `/api/bloomie-admin/tickets${filter !== "all" ? `?status=${encodeURIComponent(filter)}` : ""}`;
+      const r = await fetch(url, { headers });
       const d = await r.json();
-      setTickets(Array.isArray(d) ? d : []);
+      setTickets(Array.isArray(d.tickets) ? d.tickets : []);
     } catch { setTickets([]); }
     setLoading(false);
   };
@@ -263,9 +286,11 @@ function TicketManager({ c, mob }) {
   useEffect(() => { fetchTickets(); }, [filter]);
 
   const updateTicket = async (id, updates) => {
-    await fetch(`${SUPABASE_URL}/rest/v1/bloomie_tickets?id=eq.${id}`, {
+    const { data: { session } } = await supabase.auth.getSession();
+    const headers = { "Content-Type": "application/json", ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}) };
+    await fetch(`/api/bloomie-admin/tickets/${id}`, {
       method: "PATCH",
-      headers: { ...hdrs, Prefer: "return=representation" },
+      headers,
       body: JSON.stringify(updates),
     });
     fetchTickets();
@@ -388,18 +413,21 @@ function TicketManager({ c, mob }) {
 /* ═══════════════════════════════════════════════════════════════
    KNOWLEDGE BASE MANAGER
    ═══════════════════════════════════════════════════════════════ */
-function KBManager({ c, mob }) {
+function SupportAnswerManager({ c, mob }) {
   const [articles, setArticles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({ question: "", answer: "", category: "", keywords: "" });
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
 
   const fetchArticles = async () => {
     setLoading(true);
     try {
-      const r = await fetch(`${SUPABASE_URL}/rest/v1/bloomie_kb?order=hit_count.desc,created_at.desc&limit=200`, { headers: hdrs });
+      const r = await fetch('/api/bloomie-admin/support-answers', { headers: await tenantHeaders() });
       const d = await r.json();
-      setArticles(Array.isArray(d) ? d : []);
+      if (!r.ok) throw new Error(d.error || 'Could not load support answers');
+      setArticles(Array.isArray(d.answers) ? d.answers : []);
     } catch { setArticles([]); }
     setLoading(false);
   };
@@ -410,39 +438,59 @@ function KBManager({ c, mob }) {
 
   const saveArticle = async () => {
     if (!form.question.trim() || !form.answer.trim()) return;
+    setSaving(true);
+    setError("");
     const payload = {
       question: form.question.trim(),
       answer: form.answer.trim(),
       category: form.category.trim() || "general",
       keywords: form.keywords.split(",").map((k) => k.trim()).filter(Boolean),
     };
-    if (editing) {
-      await fetch(`${SUPABASE_URL}/rest/v1/bloomie_kb?id=eq.${editing}`, { method: "PATCH", headers: { ...hdrs, Prefer: "return=representation" }, body: JSON.stringify(payload) });
-    } else {
-      await fetch(`${SUPABASE_URL}/rest/v1/bloomie_kb`, { method: "POST", headers: { ...hdrs, Prefer: "return=representation" }, body: JSON.stringify(payload) });
+    try {
+      const r = await fetch(editing ? `/api/bloomie-admin/support-answers/${editing}` : '/api/bloomie-admin/support-answers', {
+        method: editing ? "PATCH" : "POST",
+        headers: await tenantHeaders(),
+        body: JSON.stringify(payload),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Could not save support answer');
+      resetForm();
+      await fetchArticles();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
     }
-    resetForm();
-    fetchArticles();
   };
 
   const deleteArticle = async (id) => {
     if (!confirm("Delete this KB article?")) return;
-    await fetch(`${SUPABASE_URL}/rest/v1/bloomie_kb?id=eq.${id}`, { method: "DELETE", headers: hdrs });
+    await fetch(`/api/bloomie-admin/support-answers/${id}`, { method: "DELETE", headers: await tenantHeaders() });
     fetchArticles();
   };
 
   const startEdit = (a) => {
     setEditing(a.id);
     setForm({ question: a.question || "", answer: a.answer || "", category: a.category || "", keywords: (a.keywords || []).join(", ") });
-    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const syncGhl = async article => {
+    setError("");
+    const r = await fetch(`/api/bloomie-admin/support-answers/${article.id}/sync-ghl`, { method: "POST", headers: await tenantHeaders(), body: '{}' });
+    const d = await r.json();
+    if (!r.ok) return setError(d.error || 'Could not sync this answer to GHL');
+    setArticles(prev => prev.map(item => item.id === article.id ? d.answer : item));
   };
 
   const inputStyle = { width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid " + c.ln, background: c.inp, color: c.tx, fontSize: 13, outline: "none", fontFamily: "inherit" };
 
   return (
     <div style={{ padding: mob ? 12 : 20 }}>
+      <div style={{ padding: "12px 14px", borderRadius: 12, background: c.ac + "10", border: "1px solid " + c.ac + "35", marginBottom: 14, color: c.so, fontSize: 12, lineHeight: 1.55 }}>
+        Customer-facing answers used by the public Bloomie support assistant. Private client facts, policies, and files belong in <strong style={{ color: c.tx }}>Tenant Knowledge</strong>.
+      </div>
       <div style={{ padding: 16, borderRadius: 14, background: c.cd, border: "1px solid " + c.ln, marginBottom: 20 }}>
-        <div style={{ fontSize: 14, fontWeight: 700, color: c.tx, marginBottom: 12 }}>{editing ? "Edit Article" : "Add New KB Article"}</div>
+        <div style={{ fontSize: 14, fontWeight: 700, color: c.tx, marginBottom: 12 }}>Add Support Answer</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <input value={form.question} onChange={(e) => setForm({ ...form, question: e.target.value })} placeholder="Question (e.g., How much does Bloomie cost?)" style={inputStyle} />
           <textarea value={form.answer} onChange={(e) => setForm({ ...form, answer: e.target.value })} placeholder="Answer..." rows={4} style={{ ...inputStyle, resize: "vertical" }} />
@@ -451,14 +499,14 @@ function KBManager({ c, mob }) {
             <input value={form.keywords} onChange={(e) => setForm({ ...form, keywords: e.target.value })} placeholder="Keywords (comma-separated)" style={inputStyle} />
           </div>
           <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={saveArticle} disabled={!form.question.trim() || !form.answer.trim()}
+            <button onClick={saveArticle} disabled={saving || !form.question.trim() || !form.answer.trim()}
               style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: form.question.trim() && form.answer.trim() ? "linear-gradient(135deg,#F4A261,#E76F8B)" : c.ln, color: "#fff", fontSize: 12, fontWeight: 600, cursor: form.question.trim() && form.answer.trim() ? "pointer" : "default" }}>
-              {editing ? "Update Article" : "Add Article"}
+              {saving ? "Saving…" : "Add Answer"}
             </button>
-            {editing && <button onClick={resetForm} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid " + c.ln, background: c.cd, color: c.so, fontSize: 12, cursor: "pointer" }}>Cancel</button>}
           </div>
         </div>
       </div>
+      {error && <div role="alert" style={{ color: "#ef4444", fontSize: 12, marginBottom: 12 }}>{error}</div>}
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
         <div style={{ fontSize: 14, fontWeight: 700, color: c.tx }}>{articles.length} Articles</div>
@@ -470,7 +518,7 @@ function KBManager({ c, mob }) {
       ) : articles.length === 0 ? (
         <div style={{ textAlign: "center", padding: 40 }}>
           <div style={{ fontSize: 14, fontWeight: 600, color: c.tx, marginBottom: 4 }}>No KB articles yet</div>
-          <div style={{ fontSize: 12, color: c.so }}>Add articles above to train Bloomie on your FAQs</div>
+          <div style={{ fontSize: 12, color: c.so }}>Add approved answers for the public support assistant.</div>
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -484,9 +532,11 @@ function KBManager({ c, mob }) {
                     {a.category && <span style={{ padding: "2px 7px", borderRadius: 5, fontSize: 10, fontWeight: 600, background: c.ac + "15", color: c.ac }}>{a.category}</span>}
                     <span style={{ fontSize: 10, color: c.so }}>{a.hit_count || 0} hits</span>
                     {(a.keywords || []).slice(0, 3).map((k, i) => <span key={i} style={{ padding: "2px 6px", borderRadius: 4, fontSize: 10, background: c.sf, color: c.so }}>{k}</span>)}
+                    {a.ghl_sync_status === "synced" && <span style={{ fontSize: 10, color: c.gr, fontWeight: 700 }}>GHL synced</span>}
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                  <button onClick={() => syncGhl(a)} title="Sync to GHL Knowledge Base" style={{ minWidth: 30, height: 30, padding: "0 7px", borderRadius: 6, border: "1px solid " + c.ln, background: c.cd, color: a.ghl_sync_status === "synced" ? c.gr : c.ac, cursor: "pointer", fontSize: 10, fontWeight: 800 }}>GHL</button>
                   <button onClick={() => startEdit(a)} style={{ width: 30, height: 30, borderRadius: 6, border: "1px solid " + c.ln, background: c.cd, color: c.so, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
                   </button>
@@ -499,6 +549,29 @@ function KBManager({ c, mob }) {
           ))}
         </div>
       )}
+      {editing && (
+        <div role="dialog" aria-modal="true" aria-label="Edit support answer" style={{ position: "fixed", inset: 0, zIndex: 10050, background: "rgba(0,0,0,.58)", display: "grid", placeItems: "center", padding: 16 }} onMouseDown={e => e.target === e.currentTarget && resetForm()}>
+          <div style={{ width: "min(620px,100%)", maxHeight: "88dvh", overflowY: "auto", padding: mob ? 16 : 20, borderRadius: 16, background: c.cd, border: "1px solid " + c.ln, boxShadow: "0 24px 70px rgba(0,0,0,.4)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 14 }}>
+              <div><div style={{ fontSize: 17, fontWeight: 800, color: c.tx }}>Edit Support Answer</div><div style={{ fontSize: 11, color: c.so, marginTop: 2 }}>Changes become available to Bloomie immediately; sync again to update GHL.</div></div>
+              <button onClick={resetForm} aria-label="Close editor" style={{ border: "none", background: "transparent", color: c.so, fontSize: 22, cursor: "pointer" }}>×</button>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <input value={form.question} onChange={e => setForm({ ...form, question: e.target.value })} placeholder="Question" style={inputStyle} autoFocus />
+              <textarea value={form.answer} onChange={e => setForm({ ...form, answer: e.target.value })} placeholder="Answer" rows={7} style={{ ...inputStyle, resize: "vertical" }} />
+              <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: 10 }}>
+                <input value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} placeholder="Category" style={inputStyle} />
+                <input value={form.keywords} onChange={e => setForm({ ...form, keywords: e.target.value })} placeholder="Keywords" style={inputStyle} />
+              </div>
+              {error && <div role="alert" style={{ color: "#ef4444", fontSize: 12 }}>{error}</div>}
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                <button onClick={resetForm} style={{ padding: "9px 14px", borderRadius: 8, border: "1px solid " + c.ln, background: c.cd, color: c.so, cursor: "pointer" }}>Cancel</button>
+                <button onClick={saveArticle} disabled={saving || !form.question.trim() || !form.answer.trim()} style={{ padding: "9px 16px", borderRadius: 8, border: "none", background: "linear-gradient(135deg,#F4A261,#E76F8B)", color: "#fff", fontWeight: 700, cursor: "pointer" }}>{saving ? "Saving…" : "Save Changes"}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -506,13 +579,14 @@ function KBManager({ c, mob }) {
 /* ═══════════════════════════════════════════════════════════════
    BLOOMIE ADMIN — Main container with sub-tabs
    ═══════════════════════════════════════════════════════════════ */
-export default function BloomieAdmin({ c, mob }) {
+export default function BloomieAdmin({ c, mob, agentId = null, agentName = "this Bloomie", projectId = null, onOpenBrandKit = null }) {
   const [tab, setTab] = useState("inbox");
 
   const tabs = [
     { k: "inbox", l: "Inbox", icon: "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" },
     { k: "tickets", l: "Tickets", icon: "M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2M9 5h6" },
-    { k: "kb", l: "Knowledge Base", icon: "M4 19.5A2.5 2.5 0 0 1 6.5 17H20M4 19.5V5a2 2 0 0 1 2-2h14v14H6.5A2.5 2.5 0 0 0 4 19.5z" },
+    { k: "knowledge", l: "Tenant Knowledge", icon: "M4 19.5A2.5 2.5 0 0 1 6.5 17H20M4 19.5V5a2 2 0 0 1 2-2h14v14H6.5A2.5 2.5 0 0 0 4 19.5z" },
+    { k: "support", l: "Support Answers", icon: "M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a10.2 10.2 0 0 1-4-.8L3 20l1.3-3.5A7.2 7.2 0 0 1 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" },
   ];
 
   return (
@@ -531,12 +605,12 @@ export default function BloomieAdmin({ c, mob }) {
           </div>
           <div>
             <h1 style={{ fontSize: mob ? 18 : 20, fontWeight: 700, color: c.tx, margin: 0 }}>Bloomie</h1>
-            <p style={{ fontSize: 12, color: c.so, margin: 0 }}>Visitor chats, tickets & knowledge base</p>
+            <p style={{ fontSize: 12, color: c.so, margin: 0 }}>Visitor support and private tenant knowledge</p>
           </div>
         </div>
         <div style={{ display: "flex", gap: 4 }}>
           {tabs.map((t) => (
-            <button key={t.k} onClick={() => setTab(t.k)}
+            <button key={t.k} onClick={() => setTab(t.k)} title={t.l} aria-label={t.l}
               style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: "8px 8px 0 0", border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, background: tab === t.k ? c.bg : "transparent", color: tab === t.k ? c.tx : c.so, borderBottom: tab === t.k ? "2px solid " + c.ac : "2px solid transparent" }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={t.icon} /></svg>
               {!mob && t.l}
@@ -549,7 +623,20 @@ export default function BloomieAdmin({ c, mob }) {
       <div style={{ flex: 1, overflow: tab === "inbox" ? "hidden" : "auto", background: c.bg }}>
         {tab === "inbox" && <Inbox c={c} mob={mob} />}
         {tab === "tickets" && <TicketManager c={c} mob={mob} />}
-        {tab === "kb" && <KBManager c={c} mob={mob} />}
+        {tab === "knowledge" && <ReferenceLibrary
+          c={c}
+          mob={mob}
+          agentId={agentId}
+          agentName={agentName}
+          projectId={projectId}
+          onOpenBrandKit={onOpenBrandKit}
+          defaultCategory="knowledge"
+          defaultScope="organization"
+          initialFilter="all"
+          title="Tenant Knowledge"
+          description="Private client policies, services, procedures, and source documents available to every Bloomie in this tenant."
+        />}
+        {tab === "support" && <SupportAnswerManager c={c} mob={mob} />}
       </div>
     </div>
   );

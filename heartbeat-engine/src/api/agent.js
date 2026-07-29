@@ -1,6 +1,7 @@
 // BLOOM Agent API — profile, scheduled tasks, connected tools
 // ⚡ MIGRATED: scheduled_tasks + agent_profile now read/write Supabase (not Railway Postgres)
 import { Router } from 'express';
+import { buildNewAgentStandingInstructions } from '../orchestrator/agent-experience.js';
 import { createLogger } from '../logging/logger.js';
 import { validateAgentAccess, getUserOrgId as getOrgFromJWT, extractUserId as extractUserFromJWT } from './org-boundary.js';
 
@@ -303,21 +304,7 @@ router.post('/create', async (req, res) => {
     const slug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
     // Default standing instructions if none provided
-    const defaultInstructions = `You are ${name}, an autonomous AI employee (a "Bloomie") built and deployed by BLOOM Ecosystem.
-
-Every heartbeat cycle, you should:
-1. Check for new client inquiries and respond within scope
-2. Check for overdue follow-ups and send reminders
-3. Check for upcoming calendar events and prepare reminders
-4. Check for any tasks assigned to you and work on them
-5. Monitor email for anything requiring attention
-
-You operate within your current autonomy level. If something exceeds your scope,
-escalate to your manager with your analysis, what you have already checked, and your
-recommendation. Never guess — if unsure, escalate.
-
-Log everything: what you did, what you chose not to do (and why), and what you
-escalated. Your logs are how trust is built.`;
+    const defaultInstructions = buildNewAgentStandingInstructions(name, role);
 
     const { data, error } = await supabase
       .from('agents')
@@ -848,27 +835,53 @@ router.post('/signup', async (req, res) => {
     const { randomUUID } = await import('crypto');
 
     // 1. Create auth user in Supabase Auth
+    const normalizedEmail = email.trim().toLowerCase();
     const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-      email: email.trim().toLowerCase(),
+      email: normalizedEmail,
       password: password,
       email_confirm: true, // auto-confirm for now
       user_metadata: { full_name: fullName?.trim() || '' }
     });
 
+    let userId = authData?.user?.id || null;
+    let authUserCreated = !authError && !!userId;
     if (authError) {
-      logger.error('Signup auth error', { error: authError.message });
-      return res.status(400).json({ error: authError.message });
+      // A previous onboarding attempt may have created Auth successfully and
+      // then failed before the organization transaction completed. Verify the
+      // submitted password before resuming that orphaned account.
+      const { createClient } = await import('@supabase/supabase-js');
+      const anonClient = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY, {
+        auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+      });
+      const { data: recoveredAuth, error: recoveryError } = await anonClient.auth.signInWithPassword({
+        email: normalizedEmail,
+        password
+      });
+      if (recoveryError || !recoveredAuth?.user?.id) {
+        logger.warn('Signup email already registered and recovery authentication failed', { email: normalizedEmail });
+        return res.status(400).json({ error: 'This email already has an account. Sign in or use Forgot password.' });
+      }
+      userId = recoveredAuth.user.id;
+      const { data: existingMembership } = await supabase
+        .from('organization_members')
+        .select('organization_id')
+        .eq('user_id', userId)
+        .limit(1)
+        .maybeSingle();
+      if (existingMembership?.organization_id) {
+        return res.status(409).json({ error: 'This account is already set up. Please sign in.' });
+      }
+      logger.info('Resuming verified partial signup', { userId: userId.slice(0, 8), email: normalizedEmail });
+    } else {
+      logger.info('Auth user created', { userId: userId.slice(0, 8), email: normalizedEmail });
     }
-
-    const userId = authData.user.id;
-    logger.info('Auth user created', { userId: userId.slice(0, 8), email: email.trim() });
 
     // 2. Create user profile in public.users
     const { error: userError } = await supabase
       .from('users')
       .insert({
         id: userId,
-        email: email.trim().toLowerCase(),
+        email: normalizedEmail,
         full_name: fullName?.trim() || '',
         timezone: 'America/Chicago',
         created_at: new Date().toISOString(),
@@ -887,7 +900,7 @@ router.post('/signup', async (req, res) => {
         slug: orgSlug,
         plan: 'starter',
         industry: industry?.trim() || null,
-        owner_email: email.trim().toLowerCase(),
+        owner_email: normalizedEmail,
         owner_name: fullName?.trim() || '',
         bloomshield_connected: true,
         bloomshield_auto_created: true,
@@ -897,6 +910,11 @@ router.post('/signup', async (req, res) => {
 
     if (orgError) {
       logger.error('Org creation error', { error: orgError.message });
+      if (authUserCreated) {
+        await supabase.from('users').delete().eq('id', userId);
+        await supabase.auth.admin.deleteUser(userId);
+        logger.warn('Rolled back auth user after organization creation failure', { userId: userId.slice(0, 8) });
+      }
       return res.status(500).json({ error: 'Failed to create organization: ' + orgError.message });
     }
 
@@ -943,7 +961,7 @@ router.post('/signup', async (req, res) => {
 
     return res.json({
       success: true,
-      user: { id: userId, email: email.trim() },
+      user: { id: userId, email: normalizedEmail },
       organization: { id: orgId, name: organizationName.trim(), slug: orgSlug },
       agent: { id: agentId, name: agentName, role: agentRole }
     });

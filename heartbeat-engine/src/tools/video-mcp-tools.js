@@ -6,6 +6,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { createLogger } from '../logging/logger.js';
+import { createClient } from '@supabase/supabase-js';
 
 const logger = createLogger('video-mcp-tools');
 
@@ -59,6 +60,49 @@ function checkTierAccess(toolName, planTier = 'free') {
       ? `🔒 **AI Video Generation** requires the **${upsell.plan}** add-on (${upsell.price}).\n\n${upsell.pitch}\n\nUpgrade anytime at bloomiestaffing.com/upgrade.`
       : `🔒 This video feature requires an upgraded plan. Visit bloomiestaffing.com/upgrade.`,
   };
+}
+
+const BILLING_TO_VIDEO_TIER = {
+  enterprise: 'video_pro',
+  pro: 'video_creator',
+  video_pro: 'video_pro',
+  video_creator: 'video_creator',
+  standard: 'free',
+  starter: 'free',
+  free: 'free',
+};
+
+/**
+ * Resolve video access from the authenticated organization record.
+ * Never trust a model-supplied plan_tier for authorization.
+ */
+export async function resolveVideoPlanTier(organizationId, dependencies = {}) {
+  if (!organizationId) return 'free';
+
+  const client = dependencies.supabase || (
+    process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY
+      ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
+          auth: { persistSession: false },
+        })
+      : null
+  );
+  if (!client) return 'free';
+
+  const { data, error } = await client
+    .from('organizations')
+    .select('plan')
+    .eq('id', organizationId)
+    .maybeSingle();
+
+  if (error) {
+    logger.warn('Unable to resolve organization video entitlement', {
+      organizationId,
+      error: error.message,
+    });
+    return 'free';
+  }
+
+  return BILLING_TO_VIDEO_TIER[String(data?.plan || 'free').toLowerCase()] || 'free';
 }
 
 // ── Plan summary for check_access ──────────────────────────────────────────
@@ -118,7 +162,7 @@ async function getRunPodClient() {
 
 export async function executeVideoMCPTool(toolName, toolInput) {
   const startTime = Date.now();
-  const planTier = toolInput.plan_tier || 'free';
+  const planTier = await resolveVideoPlanTier(toolInput.org_id);
 
   logger.info(`Executing video tool: ${toolName}`, { planTier, org: toolInput.org_id });
 

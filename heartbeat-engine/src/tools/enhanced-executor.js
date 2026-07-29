@@ -278,7 +278,7 @@ export class EnhancedToolExecutor {
         orgId: execution.options?.orgId || execution.options?.organizationId || null,
         agentId: execution.options?.agentId || this.agentId
       });
-    } else if (execution.toolName.startsWith('web_')) {
+    } else if (execution.toolName.startsWith('web_') || execution.toolName === 'uber_eats_search') {
       result = await executeWebSearchTool(execution.toolName, execution.parameters);
     } else if (execution.toolName.startsWith('image_')) {
       result = await executeImageTool(execution.toolName, execution.parameters);

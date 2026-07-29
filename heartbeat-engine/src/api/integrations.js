@@ -5,6 +5,7 @@
 import { Router } from 'express';
 import { createLogger } from '../logging/logger.js';
 import { getUserOrgId, extractUserId } from './org-boundary.js';
+import crypto from 'crypto';
 
 const router = Router();
 const logger = createLogger('integrations-api');
@@ -17,12 +18,37 @@ function normalizeBaseUrl(url) {
   return normalized.replace(/\/+$/, '');
 }
 
-const OAUTH_BASE_URL = normalizeBaseUrl(
-  process.env.GOOGLE_OAUTH_REDIRECT_BASE_URL ||
-  process.env.OAUTH_BASE_URL ||
-  process.env.BLOOM_API_URL
-) || APP_URL;
-const API_BASE = `${OAUTH_BASE_URL}/api/integrations`;
+function oauthBaseUrl(platform) {
+  // Preserve Google's previously registered Railway callback, while all new
+  // tenant connectors use Bloomie's public application URL.
+  if (platform === 'google' && process.env.GOOGLE_OAUTH_REDIRECT_BASE_URL) {
+    return normalizeBaseUrl(process.env.GOOGLE_OAUTH_REDIRECT_BASE_URL);
+  }
+  return normalizeBaseUrl(process.env.OAUTH_BASE_URL || process.env.BLOOM_APP_URL || process.env.BLOOM_API_URL) || APP_URL;
+}
+
+function encodeOAuthState(payload) {
+  const secret = process.env.OAUTH_STATE_SECRET;
+  if (!secret) throw new Error('OAUTH_STATE_SECRET is not configured');
+  const encoded = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const signature = crypto.createHmac('sha256', secret).update(encoded).digest('base64url');
+  return `${encoded}.${signature}`;
+}
+
+function decodeOAuthState(value) {
+  const secret = process.env.OAUTH_STATE_SECRET;
+  if (!secret) throw new Error('OAUTH_STATE_SECRET is not configured');
+  const [encoded, signature] = String(value || '').split('.');
+  if (!encoded || !signature) throw new Error('Invalid OAuth state');
+  const expected = crypto.createHmac('sha256', secret).update(encoded).digest();
+  const received = Buffer.from(signature, 'base64url');
+  if (received.length !== expected.length || !crypto.timingSafeEqual(received, expected)) {
+    throw new Error('Invalid OAuth state signature');
+  }
+  const payload = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8'));
+  if (!payload.ts || Date.now() - payload.ts > 15 * 60 * 1000) throw new Error('Expired OAuth state');
+  return payload;
+}
 
 // ── Supabase client (lazy singleton) ──
 let _supabase = null;
@@ -83,6 +109,28 @@ const PLATFORMS = {
     envClientSecret: 'SHOPIFY_CLIENT_SECRET',
     connectorSlugs: ['shopify'],
     requiresShopDomain: true,
+  },
+  github: {
+    name: 'GitHub',
+    authUrl: 'https://github.com/login/oauth/authorize',
+    tokenUrl: 'https://github.com/login/oauth/access_token',
+    scopes: ['repo', 'read:user', 'user:email'],
+    extraParams: {},
+    envClientId: 'GITHUB_CLIENT_ID',
+    envClientSecret: 'GITHUB_CLIENT_SECRET',
+    connectorSlugs: ['github'],
+    tokenResponseFormat: 'json',
+  },
+  vercel: {
+    name: 'Vercel',
+    authUrl: 'https://vercel.com/integrations/{slug}/new',
+    tokenUrl: 'https://api.vercel.com/v2/oauth/access_token',
+    scopes: [],
+    extraParams: {},
+    envClientId: 'VERCEL_CLIENT_ID',
+    envClientSecret: 'VERCEL_CLIENT_SECRET',
+    envIntegrationSlug: 'VERCEL_INTEGRATION_SLUG',
+    connectorSlugs: ['vercel'],
   },
 };
 
@@ -165,7 +213,10 @@ async function exchangeCodeForToken(platform, code, redirectUri, options = {}) {
     client_secret: clientSecret,
   };
 
-  const headers = { 'Content-Type': 'application/x-www-form-urlencoded' };
+  const headers = {
+    'Content-Type': 'application/x-www-form-urlencoded',
+    ...(cfg.tokenResponseFormat === 'json' ? { Accept: 'application/json' } : {}),
+  };
 
   // Some providers (Zoom) require HTTP Basic auth instead of body params
   if (cfg.tokenAuthMethod === 'basic') {
@@ -269,8 +320,8 @@ async function storeTokens(platform, tokenData, orgId, userId) {
         refresh_token: refreshToken,
         token_expires_at: expiresAt,
         granted_scopes: cfg.scopes,
-        external_account_id: tokenData.shopDomain || null,
-        external_account_name: tokenData.shopDomain || null,
+        external_account_id: tokenData.external_account_id || tokenData.team_id || tokenData.shopDomain || null,
+        external_account_name: tokenData.external_account_name || tokenData.user_id || tokenData.team_id || tokenData.shopDomain || null,
         status: 'active',
         last_error: null,
         connected_at: new Date().toISOString(),
@@ -313,16 +364,14 @@ function buildProviderAuthUrl(platform, orgId, userId, options = {}) {
     throw new Error(`${cfg.name} client ID not configured. Set ${cfg.envClientId} in Railway env vars.`);
   }
 
-  const redirectUri = `${API_BASE}/${normalizedPlatform}/callback`;
-  const state = Buffer.from(
-    JSON.stringify({
+  const redirectUri = `${oauthBaseUrl(normalizedPlatform)}/api/integrations/${normalizedPlatform}/callback`;
+  const state = encodeOAuthState({
       orgId,
       userId,
       platform: normalizedPlatform,
       shopDomain: cfg.shopDomain || null,
       ts: Date.now(),
-    })
-  ).toString('base64url');
+  });
 
   const params = new URLSearchParams({
     client_id: clientId,
@@ -334,6 +383,14 @@ function buildProviderAuthUrl(platform, orgId, userId, options = {}) {
 
   if (cfg.scopes?.length) {
     params.set('scope', cfg.scopes.join(cfg.scopeSeparator || ' '));
+  }
+
+  if (normalizedPlatform === 'vercel') {
+    const slug = process.env[cfg.envIntegrationSlug];
+    if (!slug) throw new Error(`Vercel integration slug not configured. Set ${cfg.envIntegrationSlug} in Railway env vars.`);
+    params.delete('client_id');
+    params.delete('response_type');
+    return { authUrl: `https://vercel.com/integrations/${encodeURIComponent(slug)}/new?${params.toString()}`, platform: normalizedPlatform, cfg };
   }
 
   return { authUrl: `${cfg.authUrl}?${params.toString()}`, platform: normalizedPlatform, cfg };
@@ -375,8 +432,9 @@ router.get('/list', withAuth, async (req, res) => {
       docsUrl: c.docs_url,
       connected: !!connectedMap[c.id],
       comingSoon: COMING_SOON_SLUGS.has(c.slug),
-      supported: !!PLATFORMS[platformKey(c.slug)] || c.slug === 'ghl',
+      supported: !!PLATFORMS[platformKey(c.slug)] || c.slug === 'ghl' || c.slug === 'heygen' || c.slug === 'uber-eats',
       platform: platformKey(c.slug),
+      connectionMode: c.slug === 'uber-eats' ? 'browser_handoff' : 'oauth',
       requiresShopDomain: !!PLATFORMS[platformKey(c.slug)]?.requiresShopDomain,
       connectedAt: connectedMap[c.id]?.connected_at || null,
       externalAccount: connectedMap[c.id]?.external_account_name || null,
@@ -386,6 +444,118 @@ router.get('/list', withAuth, async (req, res) => {
   } catch (error) {
     logger.error('Failed to list connectors', { error: error.message });
     res.status(500).json({ error: 'Failed to load connectors' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════════
+// Uber Eats — customer discovery + authenticated browser checkout.
+//
+// Uber's Eats Marketplace OAuth scopes are merchant-facing. They do not let
+// an eater build or pay for a consumer order. Bloomie therefore records only
+// that this tenant prepared its own authenticated browser session. Passwords,
+// cookies, addresses, and payment data remain in that browser.
+// ════════════════════════════════════════════════════════════════
+router.post('/uber-eats/start', withAuth, async (_req, res) => {
+  res.json({
+    success: true,
+    platform: 'uber-eats',
+    name: 'Uber Eats',
+    connectionMode: 'browser_handoff',
+    authUrl: 'https://www.ubereats.com/',
+    message: 'Sign in to your own Uber Eats account in the opened browser, then return to Bloomie and confirm that the browser is ready.',
+  });
+});
+
+router.post('/uber-eats/browser-ready', withAuth, async (req, res) => {
+  try {
+    const supabase = await getSupabase();
+    const { data: connector, error: connectorError } = await supabase
+      .from('connectors')
+      .select('id')
+      .eq('slug', 'uber-eats')
+      .single();
+    if (connectorError || !connector) throw new Error('Uber Eats connector is not installed');
+
+    const now = new Date().toISOString();
+    const { error } = await supabase
+      .from('user_connectors')
+      .upsert({
+        connector_id: connector.id,
+        organization_id: req.orgId,
+        connected_by: req.userId,
+        access_token: null,
+        refresh_token: null,
+        granted_scopes: [],
+        external_account_name: 'Tenant browser session',
+        status: 'active',
+        last_error: null,
+        connected_at: now,
+        updated_at: now,
+      }, { onConflict: 'connector_id,organization_id' });
+    if (error) throw error;
+
+    logger.info('Uber Eats browser handoff marked ready', { org: req.orgId.slice(0, 8) });
+    res.json({ success: true, connected: true, connectionMode: 'browser_handoff' });
+  } catch (error) {
+    logger.error('Uber Eats browser readiness failed', { error: error.message });
+    res.status(500).json({ error: 'Could not save Uber Eats browser readiness.' });
+  }
+});
+
+router.get('/uber-eats/status', withAuth, async (req, res) => {
+  try {
+    const supabase = await getSupabase();
+    const { data: connector } = await supabase
+      .from('connectors')
+      .select('id')
+      .eq('slug', 'uber-eats')
+      .maybeSingle();
+    if (!connector) return res.json({ connected: false, connectionMode: 'browser_handoff' });
+
+    const { data } = await supabase
+      .from('user_connectors')
+      .select('connected_at, external_account_name')
+      .eq('connector_id', connector.id)
+      .eq('organization_id', req.orgId)
+      .eq('status', 'active')
+      .maybeSingle();
+    res.json({
+      connected: !!data,
+      connectionMode: 'browser_handoff',
+      connectedAt: data?.connected_at || null,
+      externalAccount: data?.external_account_name || null,
+    });
+  } catch (error) {
+    logger.error('Uber Eats status failed', { error: error.message });
+    res.json({ connected: false, connectionMode: 'browser_handoff' });
+  }
+});
+
+router.post('/uber-eats/disconnect', withAuth, async (req, res) => {
+  try {
+    const supabase = await getSupabase();
+    const { data: connector } = await supabase
+      .from('connectors')
+      .select('id')
+      .eq('slug', 'uber-eats')
+      .maybeSingle();
+    if (connector) {
+      const { error } = await supabase
+        .from('user_connectors')
+        .update({
+          status: 'inactive',
+          access_token: null,
+          refresh_token: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('connector_id', connector.id)
+        .eq('organization_id', req.orgId);
+      if (error) throw error;
+    }
+    res.json({ success: true, disconnected: true });
+  } catch (error) {
+    logger.error('Uber Eats disconnect failed', { error: error.message });
+    res.status(500).json({ error: 'Uber Eats disconnect failed.' });
   }
 });
 
@@ -490,6 +660,108 @@ router.post('/ghl/disconnect', withAuth, async (req, res) => {
 });
 
 // ════════════════════════════════════════════════════════════════
+// HeyGen — tenant API key connector
+// HeyGen recommends API keys for automation. Each organization stores and
+// uses its own key; no shared Railway credential is used for generation.
+// ════════════════════════════════════════════════════════════════
+async function getConnectorRowBySlug(slug) {
+  const supabase = await getSupabase();
+  const { data, error } = await supabase
+    .from('connectors')
+    .select('id, name, slug')
+    .eq('slug', slug)
+    .single();
+  if (error || !data) throw new Error(`${slug} connector is not installed`);
+  return data;
+}
+
+router.get('/heygen/status', withAuth, async (req, res) => {
+  try {
+    const supabase = await getSupabase();
+    const connector = await getConnectorRowBySlug('heygen');
+    const { data } = await supabase
+      .from('user_connectors')
+      .select('id, connected_at, external_account_name')
+      .eq('connector_id', connector.id)
+      .eq('organization_id', req.orgId)
+      .eq('status', 'active')
+      .maybeSingle();
+    res.json({
+      connected: !!data,
+      connectedAt: data?.connected_at || null,
+      externalAccount: data?.external_account_name || null,
+    });
+  } catch (error) {
+    logger.error('HeyGen status check failed', { error: error.message });
+    res.json({ connected: false });
+  }
+});
+
+router.post('/heygen/connect', withAuth, async (req, res) => {
+  try {
+    const apiKey = String(req.body?.apiKey || '').trim();
+    if (apiKey.length < 16 || /\s/.test(apiKey)) {
+      return res.status(400).json({ error: 'Enter a valid HeyGen API key.' });
+    }
+
+    // Validate before saving. A private avatar listing is read-only and proves
+    // the credential belongs to an API-enabled HeyGen account.
+    const validation = await fetch('https://api.heygen.com/v3/avatars?ownership=private&limit=1', {
+      headers: { Accept: 'application/json', 'x-api-key': apiKey },
+    });
+    if (!validation.ok) {
+      const detail = await validation.text();
+      return res.status(400).json({
+        error: validation.status === 401 || validation.status === 403
+          ? 'HeyGen rejected this API key. Copy a current key from your HeyGen account.'
+          : `HeyGen connection check failed (${validation.status}): ${detail.slice(0, 240)}`,
+      });
+    }
+
+    const supabase = await getSupabase();
+    const connector = await getConnectorRowBySlug('heygen');
+    const now = new Date().toISOString();
+    const { error } = await supabase
+      .from('user_connectors')
+      .upsert({
+        connector_id: connector.id,
+        organization_id: req.orgId,
+        connected_by: req.userId,
+        api_key: apiKey,
+        external_account_name: 'HeyGen account',
+        status: 'active',
+        last_error: null,
+        connected_at: now,
+        updated_at: now,
+      }, { onConflict: 'connector_id,organization_id' });
+    if (error) throw error;
+
+    logger.info('HeyGen tenant connection saved', { org: req.orgId.slice(0, 8) });
+    res.json({ success: true, connected: true });
+  } catch (error) {
+    logger.error('HeyGen connect failed', { error: error.message });
+    res.status(500).json({ error: 'Failed to connect HeyGen.' });
+  }
+});
+
+router.post('/heygen/disconnect', withAuth, async (req, res) => {
+  try {
+    const supabase = await getSupabase();
+    const connector = await getConnectorRowBySlug('heygen');
+    const { error } = await supabase
+      .from('user_connectors')
+      .update({ status: 'inactive', api_key: null, updated_at: new Date().toISOString() })
+      .eq('connector_id', connector.id)
+      .eq('organization_id', req.orgId);
+    if (error) throw error;
+    res.json({ success: true, disconnected: true });
+  } catch (error) {
+    logger.error('HeyGen disconnect failed', { error: error.message });
+    res.status(500).json({ error: 'HeyGen disconnect failed.' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════════
 // GET /api/integrations/:platform/status
 // Returns connection status for the platform for the current org.
 // ════════════════════════════════════════════════════════════════
@@ -590,7 +862,7 @@ router.get('/:platform/callback', async (req, res) => {
     let orgId, userId, shopDomain, platform;
     if (state) {
       try {
-        const decoded = JSON.parse(Buffer.from(state, 'base64url').toString('utf8'));
+        const decoded = decodeOAuthState(state);
         orgId = decoded.orgId;
         userId = decoded.userId;
         shopDomain = decoded.shopDomain || null;
@@ -616,9 +888,25 @@ router.get('/:platform/callback', async (req, res) => {
 
     if (!orgId) return res.redirect(`${APP_URL}?oauth_error=missing_org&platform=${platform}`);
 
-    const redirectUri = `${API_BASE}/${platform}/callback`;
+    const redirectUri = `${oauthBaseUrl(platform)}/api/integrations/${platform}/callback`;
     const tokenData = await exchangeCodeForToken(platform, code, redirectUri, { shopDomain });
     if (shopDomain) tokenData.shopDomain = shopDomain;
+    if (platform === 'github') {
+      const profileResponse = await fetch('https://api.github.com/user', {
+        headers: {
+          Accept: 'application/vnd.github+json',
+          Authorization: `Bearer ${tokenData.access_token}`,
+          'X-GitHub-Api-Version': '2022-11-28',
+        },
+      });
+      if (!profileResponse.ok) throw new Error(`GitHub identity validation failed: ${profileResponse.status}`);
+      const profile = await profileResponse.json();
+      tokenData.external_account_id = String(profile.id);
+      tokenData.external_account_name = profile.login;
+    } else if (platform === 'vercel') {
+      tokenData.external_account_id = tokenData.team_id || tokenData.user_id || null;
+      tokenData.external_account_name = tokenData.team_id || tokenData.user_id || 'Vercel account';
+    }
     await storeTokens(platform, tokenData, orgId, userId);
 
     logger.info(`✅ OAuth connected: ${platform}`, {

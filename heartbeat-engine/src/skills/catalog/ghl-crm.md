@@ -1,6 +1,9 @@
 ---
 name: ghl-crm
 description: "Manage GoHighLevel CRM operations: contacts, conversations, emails, SMS, pipelines, calendars, campaigns, and workflows. Use this skill whenever the task involves CRM work, contact management, sending messages, managing pipelines, booking appointments, running campaigns, or any GoHighLevel operation. Also triggers for 'CRM', 'contact', 'lead', 'pipeline', 'follow up', 'send email', 'send SMS', 'book appointment', 'campaign', 'GHL', 'GoHighLevel', 'automation', or any customer relationship management task. This Bloomie has direct API access to the client's GHL sub-account."
+version: 2.0.0
+workflow_type: tenant_crm
+required_tools: [ghl_search_contacts, ghl_get_contact, ghl_send_message]
 ---
 
 # GoHighLevel CRM Operations — AI Employee Standard

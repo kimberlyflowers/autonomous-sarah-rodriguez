@@ -190,23 +190,40 @@ Rules for text in images:
 
 ## ASPECT RATIO + SIZE RULES
 
-Always match size to use case:
+Always match the native generation ratio and output size to the request. Do not
+generate at one shape and manufacture another shape afterward.
 
-| Use Case | Size Parameter | Target Dimensions |
-|----------|---------------|-------------------|
-| Instagram feed | 1024x1024 | 1080x1080 |
-| Instagram story | 1024x1536 | 1080x1920 |
-| YouTube thumbnail | 1536x1024 | 1280x720 |
-| Facebook post | 1536x1024 | 1200x630 |
-| Facebook cover | 1536x1024 | 820x312 |
-| LinkedIn post | 1536x1024 | 1200x627 |
-| Website hero | 1536x1024 | 1920x1080 or 1200x630 |
-| Blog featured | 1536x1024 | 1200x630 |
-| Flyer (portrait) | 1024x1536 | actual print size |
-| Product photo | 1024x1024 | 1080x1080 |
-| Profile/headshot | 1024x1024 | 800x800 |
+| Use Case | Native `aspect_ratio` | Target Dimensions |
+|----------|-----------------------|-------------------|
+| Instagram feed | `1:1` | 1080x1080 |
+| Instagram story | `9:16` | 1080x1920 |
+| YouTube thumbnail | `16:9` | 1280x720 |
+| Facebook post | nearest supported ratio | 1200x630 |
+| Facebook cover | nearest supported wide ratio | 820x312 |
+| LinkedIn post | nearest supported ratio | 1200x627 |
+| Website hero | `16:9` | 1920x1080 |
+| Blog featured | nearest supported ratio | 1200x630 |
+| Flyer (portrait) | requested print ratio | actual print size |
+| Product photo | `1:1` | 1080x1080 |
+| Profile/headshot | `1:1` | 800x800 |
 
-**Always set `target_width` and `target_height`** for platform-specific images. The base `size` picks the closest aspect ratio for generation, then it gets resized to exact dimensions.
+**Always set `aspect_ratio`, `target_width`, and `target_height`** for
+platform-specific images. The image provider must compose at `aspect_ratio`.
+Exact pixel resizing may scale the completed image, but it must not crop it.
+
+### No-crop policy
+
+- Never set `allow_crop: true` unless the user explicitly asks to crop.
+- Do not use cropping as an aspect-ratio conversion.
+- If the provider returns the wrong ratio, preserve the full composition with a
+  non-destructive fit and report the mismatch.
+- For portraits, explicitly describe the framing: full hair and head, visible
+  headroom, shoulders or torso as requested, and all important props inside the
+  frame.
+- A phrase such as "hair visible" describes composition. It is not a request to
+  open a browser, create a screenshot, or produce a verification artifact.
+- Deliver the generated public image inline in chat. Never expose base64 or
+  screenshot data as a link.
 
 ---
 
@@ -230,7 +247,7 @@ Add: "High-contrast, saturated colors. Dramatic lighting with strong highlights 
 
 ## COMMON MISTAKES THE AGENT MAKES
 
-1. **Using "auto" engine** → Always specify `gpt` or `gemini` based on use case
+1. **Using "auto" engine** → Explicitly use `openrouter` when it is configured as primary; use `gemini` for specific Nano Banana/reference-image behavior
 2. **Forgetting lighting** → Lighting is 50% of image quality. ALWAYS specify it.
 3. **Keyword lists instead of narrative** → Write full descriptive paragraphs
 4. **Not specifying camera/lens** → Without this, the AI defaults to "digital art" look
@@ -240,6 +257,8 @@ Add: "High-contrast, saturated colors. Dramatic lighting with strong highlights 
 8. **No mood/quality anchors** → End every prompt with "Professional [type] photography. [Mood]. [Quality level]."
 9. **Asking the image model to render long text** → Keep it to 5 words. Use HTML overlay for more.
 10. **Not using reference images for consistency** → When generating multiple images for the same project, always pass `reference_image_url` from the first image.
+11. **Cropping to repair the aspect ratio** → Pass the desired native `aspect_ratio` to the provider. Never crop unless the user explicitly requested a crop.
+12. **Confusing composition words with browser verification** → "Visible hair" and "full head visible" belong in the image prompt, not a screenshot workflow.
 
 ---
 
@@ -252,6 +271,9 @@ Before calling `image_generate`:
 - [ ] Lighting explicitly specified (type, direction, mood)
 - [ ] Camera + lens specified for photorealistic shots
 - [ ] Size and target dimensions set for the platform
+- [ ] Native `aspect_ratio` matches the requested output
+- [ ] `allow_crop` is omitted or false unless the user explicitly asked for cropping
+- [ ] Important subject details and props are intentionally inside the frame
 - [ ] Style defaults to photorealistic unless user asked otherwise
 - [ ] Text (if any) is 5 words or fewer with exact quotes, font, and placement
 - [ ] Mood/quality anchor at the end of the prompt

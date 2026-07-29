@@ -9,12 +9,12 @@ const logger = createLogger('browser-tools');
 const BROWSER_AGENT_URL = process.env.BROWSER_AGENT_URL || 'http://sweet-nature.railway.internal:8080';
 const BROWSER_AGENT_SECRET = process.env.BROWSER_AGENT_SECRET || '';
 
-function getBrowserBlockEvidence(data = {}) {
+export function getBrowserBlockEvidence(data = {}) {
   const finalUrl = data.url_final || '';
   const resultText = String(data.result || '');
   const evidence = [];
 
-  if (/js_challenge=1|solution=|jsc_orig_r=|captcha|challenge/i.test(finalUrl)) {
+  if (/js_challenge=1|solution=|jsc_orig_r=|captcha|challenge|google\.[^/]+\/sorry\//i.test(finalUrl)) {
     evidence.push(`Final URL shows an anti-bot challenge: ${finalUrl}`);
   }
   if (/blocked|network security|captcha|2fa|verify|challenge|unable to access/i.test(resultText)) {
@@ -119,6 +119,9 @@ export const browserToolExecutors = {
       const rawSiteName = params.siteName || params.site || params.site_key || params.siteKey;
       let task = params.task;
       let url = params.url || undefined;
+      const isUberTask = /ubereats\.com|uber eats/i.test(`${url || ''} ${task || ''}`);
+      const maxSteps = Math.min(Number(params.max_steps || (isUberTask ? 12 : 25)), 100);
+      const timeoutMs = Math.max(1000, Number(process.env.BROWSER_TASK_TIMEOUT_MS || 120000));
 
       if (rawSiteName) {
         const siteName = String(rawSiteName).toLowerCase();
@@ -140,7 +143,8 @@ export const browserToolExecutors = {
         task: String(params.task || '').substring(0, 100),
         url: url || 'none',
         credentialSite: rawSiteName || 'none',
-        maxSteps: params.max_steps || 25
+        maxSteps,
+        timeoutMs,
       });
 
       const response = await fetch(`${BROWSER_AGENT_URL}/browse`, {
@@ -149,9 +153,10 @@ export const browserToolExecutors = {
         body: JSON.stringify({
           task,
           url,
-          max_steps: params.max_steps || 25,
+          max_steps: maxSteps,
           secret: BROWSER_AGENT_SECRET,
         }),
+        signal: AbortSignal.timeout(timeoutMs),
       });
 
       if (!response.ok) {
@@ -200,7 +205,8 @@ export const browserToolExecutors = {
                           data.tier_used === 'cloud' ? '(via cloud browser - anti-detect)' : '';
 
         return {
-          success: true,
+          success: !blockEvidence,
+          error: blockEvidence ? `Browser access blocked: ${blockEvidence}` : undefined,
           requested_url: params.url || 'none',
           result: data.result,
           steps_taken: data.steps_taken,
@@ -225,10 +231,16 @@ export const browserToolExecutors = {
 
     } catch (error) {
       logger.error('Browser task execution failed:', error);
+      const timedOut = error?.name === 'TimeoutError' || /timed out|timeout/i.test(String(error?.message || ''));
       return {
         success: false,
-        error: error.message,
-        message: `Browser task failed: ${error.message}`
+        blocked: timedOut,
+        error: timedOut
+          ? 'Browser task timed out before producing a verified result.'
+          : error.message,
+        message: timedOut
+          ? 'Browser task stopped after reaching its execution deadline. Connect BLOOM Desktop for a real-browser retry when the site blocks server automation.'
+          : `Browser task failed: ${error.message}`
       };
     }
   },
@@ -387,6 +399,8 @@ export const browserToolExecutors = {
 
         return {
           success: true,
+          currentUrl: params.url,
+          screenshot: true,
           screenshot_base64: data.screenshot_base64,
           message: `Screenshot captured for ${params.url}`
         };

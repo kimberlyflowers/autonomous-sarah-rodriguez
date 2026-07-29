@@ -39,8 +39,13 @@ import opsMcpRoutes from './api/ops-mcp.js';
 import ghlMcpProxyRoutes from './api/ghl-mcp-proxy.js';  // GHL MCP Proxy — injects PIT auth headers before forwarding to GHL official MCP
 import websiteMcpRoutes from './api/website-mcp.js';
 import { executeGHLTool } from './tools/ghl-tools.js';
-import buildsRoutes from './api/builds.js';    // BLOOM Website MCP — layout blueprints, bloom_clarify, task_progress
+import buildsRoutes, { recoverDurableWorkSessions } from './api/builds.js';    // BLOOM Website MCP — layout blueprints, bloom_clarify, task_progress
 import integrationRoutes from './api/integrations.js';
+import referenceRoutes from './api/references.js';
+import bloomieAdminRoutes from './api/bloomie-admin.js';
+import billingRoutes, { handleWhopWebhook } from './api/billing.js';
+import booksRoutes from './api/books.js';
+import { startBloomStudioContinuationWorker } from './tools/bloom-studio-tools.js';
 import cookieParser from 'cookie-parser';
 
 import { createClient } from '@supabase/supabase-js';
@@ -66,11 +71,14 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://fonts.googleapis.com", "https://cdnjs.cloudflare.com", "https://link.msgsndr.com", "https://widgets.leadconnectorhq.com", "https://www.googletagmanager.com", "https://stcdn.leadconnectorhq.com", "https://services.leadconnectorhq.com"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://fonts.googleapis.com", "https://cdnjs.cloudflare.com", "https://link.msgsndr.com", "https://widgets.leadconnectorhq.com", "https://www.googletagmanager.com", "https://stcdn.leadconnectorhq.com", "https://services.leadconnectorhq.com", "https://js.whop.com"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://fonts.bunny.net", "https://stcdn.leadconnectorhq.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com", "https://fonts.bunny.net", "https://stcdn.leadconnectorhq.com"],
       imgSrc: ["'self'", "data:", "blob:", "https:", "http:"],
-      mediaSrc: ["'self'", "blob:", "data:", "https://njfhzabmaxhfzekbzpzz.supabase.co"],
+      // Generated media can be delivered by tenant storage or the BLOOM Studio
+      // renderer. Keep external scripts locked down, but allow HTTPS media so
+      // completed chat deliverables can load in native browser players.
+      mediaSrc: ["'self'", "blob:", "data:", "https:"],
       connectSrc: ["'self'", "https:", "wss:", "https://www.google-analytics.com", "https://region1.google-analytics.com"],
       frameSrc: ["'self'", "blob:", "data:", "https://api.leadconnectorhq.com", "*"],
       frameAncestors: ["*"],
@@ -79,8 +87,11 @@ app.use(helmet({
 }));
 app.use(cors());
 app.use(cookieParser());
+app.post('/api/billing/webhook', express.raw({ type: 'application/json' }), handleWhopWebhook);
 app.use(express.json({ limit: '50mb' }));
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/billing', billingRoutes);
+app.use('/api/books', booksRoutes);
 
 // Increase max listeners — Winston registers listeners per logger instance,
 // and we have many route modules each calling createLogger() at load time.
@@ -126,7 +137,10 @@ app.get('/health', (req, res) => {
     status: 'healthy',
     timestamp: new Date().toISOString(),
     service: 'heartbeat-engine',
-    version: process.env.RAILWAY_GIT_COMMIT_SHA || process.env.RAILWAY_GIT_COMMIT || 'local',
+    version: process.env.RAILWAY_GIT_COMMIT_SHA
+      || process.env.RAILWAY_GIT_COMMIT
+      || process.env.RAILWAY_DEPLOYMENT_ID
+      || 'local',
     chatFastPath: 'greeting-v1',
     agent: {
       id: DEFAULT_AGENT_ID,
@@ -728,7 +742,7 @@ app.post('/webhook/ghl-inbound', async (req, res) => {
 });
 
 
-// ── BLOOM TECH-TICKET WEBHOOK (Supabase → Cowork) ─────────────────────────
+// ── BLOOM TECH-TICKET WEBHOOK (Supabase → Codex support queue) ─────────────
 // Fires on every INSERT into tech_tickets via pg_net trigger.
 // Validates shared secret, logs the ticket, and writes to action_log.
 app.post('/webhook/ticket', async (req, res) => {
@@ -819,6 +833,8 @@ app.use('/api/conference', conferenceRoutes);
 
 // OAuth connector routes — authorize, callback, disconnect, status, list
 app.use('/api/integrations', integrationRoutes);
+app.use('/api/references', referenceRoutes);
+app.use('/api/bloomie-admin', bloomieAdminRoutes);
 
 // ═══════════════════════════════════════════════════════════════
 // OPERATOR CHANNEL — admin-only message endpoint
@@ -1630,8 +1646,21 @@ app.get('/blog', async (req, res) => {
 });
 
 // ── /app path — backward compat: always serves React dashboard ──────────────
-app.use('/app', express.static(path.join(__dirname, '../dashboard/dist')));
+const dashboardStaticOptions = {
+  setHeaders(res, filePath) {
+    if (filePath.endsWith('index.html')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    } else if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    }
+  },
+};
+
+app.use('/app', express.static(path.join(__dirname, '../dashboard/dist'), dashboardStaticOptions));
 app.get('/app/*', (req, res) => {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
   res.sendFile(path.join(__dirname, '../dashboard/dist/index.html'));
 });
 
@@ -1684,7 +1713,7 @@ app.get('/assets/:filename.vtt', (req, res) => {
 
 app.use((req, res, next) => {
   if (req.hostname && req.hostname.startsWith('app.')) {
-    express.static(dashboardDist)(req, res, next);
+    express.static(dashboardDist, dashboardStaticOptions)(req, res, next);
   } else {
     express.static(landingPageDir)(req, res, next);
   }
@@ -1695,6 +1724,7 @@ app.get('*', (req, res) => {
     return res.status(404).json({ error: 'API endpoint not found' });
   }
   if (req.hostname && req.hostname.startsWith('app.')) {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.sendFile(path.join(dashboardDist, 'index.html'));
   } else {
     res.sendFile(path.join(landingPageDir, 'index.html'));
@@ -1710,6 +1740,16 @@ async function startHeartbeatEngine() {
       logger.info(`🌐 Heartbeat engine listening on port ${PORT}`);
       logger.info('✅ BLOOM Heartbeat Engine started - health endpoint ready');
     });
+
+    // Resume Work/Build rows that survived a process restart. The persisted
+    // execution checkpoint tells Sarah which verified step to continue from.
+    recoverDurableWorkSessions().catch(error => {
+      logger.warn('Durable Work recovery deferred', { error: error.message });
+    });
+    // Render providers often take several minutes. This durable watcher resumes
+    // saved Bloom Studio jobs after chat round exhaustion or a service restart,
+    // then delivers the finished video into the originating tenant/agent chat.
+    startBloomStudioContinuationWorker();
 
     // Auto-setup database if needed
     logger.info('🔧 Auto-setup: Ensuring database and schema exist...');
@@ -1742,8 +1782,7 @@ async function startHeartbeatEngine() {
     }
 
     if (!lettaOk) {
-      logger.warn('⚠️  Letta connection failed - memory will be limited to fallback');
-      logger.warn('   Agent will use database-only memory until Letta is available');
+      logger.info('Letta remote memory unavailable; database fallback memory is active');
     } else {
       logger.info('✅ Letta memory server connection successful');
     }
@@ -1967,6 +2006,11 @@ function isTextOnlyScheduledTask(task) {
   return /(?:smoke test|reply with exactly|respond with exactly|say exactly)/.test(text);
 }
 
+function explicitlyExcludesScheduledPublication(task) {
+  const text = `${task?.name || ''} ${task?.task_type || ''} ${task?.instruction || ''}`;
+  return /\b(?:do not|don't|dont|never|without)\b[^.\n]{0,160}\b(?:publish_artifact|publish|public|go live)\b/i.test(text);
+}
+
 function isScheduledTaskSubstantiveResult(result, task = null) {
   if (isTextOnlyScheduledTask(task)) {
     const text = typeof result === 'string'
@@ -1978,7 +2022,7 @@ function isScheduledTaskSubstantiveResult(result, task = null) {
   if (typeof result !== 'object' || !result) return Boolean(String(result || '').trim());
 
   const isBlogTask = `${task?.task_type || ''} ${task?.name || ''} ${task?.instruction || ''}`.toLowerCase().includes('blog');
-  if (isBlogTask) {
+  if (isBlogTask && !explicitlyExcludesScheduledPublication(task)) {
     const toolHistory = Array.isArray(result.toolHistory) ? result.toolHistory : [];
     const hasSuccessful = (toolName) => toolHistory.some((entry) => {
       const name = entry?.tool || entry?.name || entry?.toolName;
@@ -2001,7 +2045,7 @@ function isScheduledTaskSubstantiveResult(result, task = null) {
   return hasVerifiedPlan || substantiveTools.length > 0;
 }
 
-function getScheduledTaskFailureReason(result) {
+function getScheduledTaskFailureReason(result, task = null) {
   if (typeof result !== 'object' || !result) return null;
 
   const verification = result.verification || {};
@@ -2010,7 +2054,10 @@ function getScheduledTaskFailureReason(result) {
   if (hasVerifiedPlan) return null;
 
   const toolHistory = Array.isArray(result.toolHistory) ? result.toolHistory : [];
-  if (toolHistory.some((entry) => ['create_artifact', 'publish_artifact'].includes(entry?.tool || entry?.name || entry?.toolName))) {
+  if (
+    !explicitlyExcludesScheduledPublication(task) &&
+    toolHistory.some((entry) => ['create_artifact', 'publish_artifact'].includes(entry?.tool || entry?.name || entry?.toolName))
+  ) {
     const hasSuccessful = (toolName) => toolHistory.some((entry) => {
       const name = entry?.tool || entry?.name || entry?.toolName;
       return name === toolName && entry?.result?.success === true;
@@ -2025,9 +2072,14 @@ function getScheduledTaskFailureReason(result) {
     return name && !['bloom_todo_write', 'todo_write', 'bloom_clarify', 'bloom_log_decision', 'bloom_log_observation'].includes(name);
   });
 
-  const failedAction = nonPlanningTools.find((entry) => {
+  const failedAction = nonPlanningTools.find((entry, index) => {
+    const name = entry?.tool || entry?.name || entry?.toolName;
     const toolResult = entry?.result || {};
-    return toolResult.success === false || toolResult.error;
+    const wasRepairedLater = nonPlanningTools.slice(index + 1).some((later) => {
+      const laterName = later?.tool || later?.name || later?.toolName;
+      return laterName === name && later?.result?.success === true && !later?.result?.error;
+    });
+    return !wasRepairedLater && (toolResult.success === false || toolResult.error);
   });
   if (failedAction) {
     const name = failedAction.tool || failedAction.name || failedAction.toolName;
@@ -2229,16 +2281,18 @@ async function runScheduledTasks(agentConfig) {
 
       // Check inner result status — executor may return without throwing but still report failure
       const innerStatus = (typeof result === 'object') ? (result?.status || result?.error) : null;
-      if (innerStatus === 'failed' || (result?.error && !result?.response)) {
+      if (innerStatus === 'failed' || innerStatus === 'blocked' ||
+          result?.response === 'clarification_needed' ||
+          (result?.error && !result?.response)) {
         success = false;
         logger.error(`❌ Task inner failure: ${task.name}`, { innerStatus, error: result?.error });
       } else if (!isScheduledTaskSubstantiveResult(result, task)) {
         success = false;
         output = `Task finished without verified output. The executor returned ${innerStatus || 'no status'}, but it did not verify a plan or use any substantive non-planning tools.`;
         logger.warn(`⚠️ Task unverified: ${task.name}`, { innerStatus, toolsUsed: result?.toolsUsed, verification: result?.verification });
-      } else if (getScheduledTaskFailureReason(result)) {
+      } else if (getScheduledTaskFailureReason(result, task)) {
         success = false;
-        output = getScheduledTaskFailureReason(result);
+        output = getScheduledTaskFailureReason(result, task);
         logger.warn(`⚠️ Task action failed: ${task.name}`, { innerStatus, output });
       } else {
         success = true;

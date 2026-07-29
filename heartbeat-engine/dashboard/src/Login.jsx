@@ -45,8 +45,10 @@ const BLOOMIE_ROLES = [
   }
 ];
 
-export default function Login() {
-  const [mode, setMode] = useState('login'); // 'login' or 'signup'
+export default function Login({ product = 'bloomie', initialBookCheckout = false }) {
+  const isBookCreator = product === 'book_creator';
+  const isPurchasedBookAccess = isBookCreator && new URLSearchParams(window.location.search).get('purchase') === 'success';
+  const [mode, setMode] = useState(isPurchasedBookAccess ? 'signup' : 'login'); // 'login' or 'signup'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
@@ -61,6 +63,7 @@ export default function Login() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [forgotMode, setForgotMode] = useState(false);
+  const [bookCheckoutOpen, setBookCheckoutOpen] = useState(initialBookCheckout);
 
   const isCustomRole = selectedRoleIdx === BLOOMIE_ROLES.length - 1;
   const selectedRole = selectedRoleIdx >= 0 ? BLOOMIE_ROLES[selectedRoleIdx] : null;
@@ -87,7 +90,7 @@ export default function Login() {
     setError('');
     setSuccess('');
     const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
-      redirectTo: window.location.origin + '/?reset=1'
+      redirectTo: window.location.origin + '/reset-password'
     });
     setLoading(false);
     if (error) {
@@ -99,7 +102,7 @@ export default function Login() {
   };
 
   const handleSignup = async () => {
-    if (!email.trim() || !password.trim() || !orgName.trim() || !bloomieName.trim() || !effectiveTitle) return;
+    if (!email.trim() || !password.trim() || (isBookCreator ? !fullName.trim() : (!orgName.trim() || !bloomieName.trim() || !effectiveTitle))) return;
     if (password.length < 6) { setError('Password must be at least 6 characters'); return; }
     setLoading(true);
     setError('');
@@ -112,11 +115,13 @@ export default function Login() {
           email: email.trim().toLowerCase(),
           password,
           fullName: fullName.trim(),
-          organizationName: orgName.trim(),
-          industry: industry.trim() || undefined,
-          bloomieName: bloomieName.trim(),
-          bloomieRole: effectiveTitle,
-          bloomieJobDescription: effectiveFocus || undefined
+          organizationName: isBookCreator ? `${fullName.trim()}'s Book Workspace` : orgName.trim(),
+          industry: isBookCreator ? 'Publishing' : (industry.trim() || undefined),
+          bloomieName: isBookCreator ? 'BookMint' : bloomieName.trim(),
+          bloomieRole: isBookCreator ? 'Book Creation Specialist' : effectiveTitle,
+          bloomieJobDescription: isBookCreator
+            ? 'Help the user plan, write, revise, preview, format, and export complete books.'
+            : (effectiveFocus || undefined)
         })
       });
       const data = await res.json();
@@ -141,38 +146,82 @@ export default function Login() {
   };
 
   const accent = '#E76F8B';
-  const text = '#1a1a2e';
-  const sub = '#6b7280';
-  const border = '#e5e7eb';
+  const text = '#f5f5f5';
+  const sub = '#a1a1aa';
+  const border = '#303036';
 
-  const inputStyle = { padding:'12px 16px', borderRadius:10, border:`1.5px solid ${border}`, fontSize:15, color:text, outline:'none', background:'#fafafa', width:'100%', boxSizing:'border-box' };
-  const selectStyle = { ...inputStyle, appearance:'none', backgroundImage:'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 12 12\'%3E%3Cpath fill=\'%236b7280\' d=\'M6 8L1 3h10z\'/%3E%3C/svg%3E")', backgroundRepeat:'no-repeat', backgroundPosition:'right 14px center', paddingRight:36, cursor:'pointer' };
+  const inputStyle = { padding:'12px 16px', borderRadius:10, border:`1.5px solid ${border}`, fontSize:15, color:text, outline:'none', background:'#222225', colorScheme:'dark', width:'100%', boxSizing:'border-box' };
+  const selectStyle = { ...inputStyle, appearance:'none', backgroundImage:'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 12 12\'%3E%3Cpath fill=\'%23a1a1aa\' d=\'M6 8L1 3h10z\'/%3E%3C/svg%3E")', backgroundRepeat:'no-repeat', backgroundPosition:'right 14px center', paddingRight:36, cursor:'pointer' };
 
-  const signupValid = email.trim() && password.trim() && orgName.trim() && bloomieName.trim() && effectiveTitle;
+  const signupValid = isBookCreator
+    ? email.trim() && password.trim() && fullName.trim()
+    : email.trim() && password.trim() && orgName.trim() && bloomieName.trim() && effectiveTitle;
+  const isLogin = mode === 'login';
 
   return (
-    <div style={{ minHeight:'100vh', background:'#f7f7f8', display:'flex', alignItems:'center', justifyContent:'center', fontFamily:'-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif' }}>
-      <div style={{ background:'#ffffff', borderRadius:16, padding:'48px 40px', maxWidth:440, width:'100%', boxShadow:'0 4px 24px rgba(0,0,0,0.08)', border:`1px solid ${border}`, maxHeight:'90vh', overflowY:'auto' }}>
+    <div
+      data-testid="login-viewport"
+      style={{
+        height:'100dvh', minHeight:0, background:'radial-gradient(circle at 50% -10%,#2a2026 0,#141416 38%,#0d0d0f 75%)', display:'flex',
+        alignItems:'center', justifyContent:'center',
+        padding:isLogin ? 'clamp(12px, 2.5vh, 24px)' : 'clamp(12px, 2vh, 24px)',
+        boxSizing:'border-box', overflow:'hidden',
+        fontFamily:'-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif'
+      }}
+    >
+      <div
+        data-testid="login-card"
+        style={{
+          background:'#18181b', borderRadius:16,
+          padding:isLogin ? 'clamp(22px, 4.5vh, 42px) clamp(22px, 4vw, 40px)' : '40px',
+          maxWidth:440, width:'100%', boxSizing:'border-box',
+          boxShadow:'0 24px 70px rgba(0,0,0,.48)', border:`1px solid ${border}`,
+          maxHeight:isLogin ? '100%' : 'calc(100dvh - 24px)',
+          overflowY:isLogin ? 'visible' : 'auto',
+          scrollbarGutter:isLogin ? undefined : 'stable'
+        }}
+      >
 
-        <div style={{ textAlign:'center', marginBottom:32 }}>
-          <div style={{ width:48, height:48, borderRadius:12, background:`linear-gradient(135deg, #E76F8B, #F4A261)`, display:'inline-flex', alignItems:'center', justifyContent:'center', marginBottom:16 }}>
+        <div style={{ textAlign:'center', marginBottom:isLogin ? 'clamp(18px, 3vh, 28px)' : 32 }}>
+          <div style={{ width:48, height:48, borderRadius:12, background:`linear-gradient(135deg, #E76F8B, #F4A261)`, display:'inline-flex', alignItems:'center', justifyContent:'center', marginBottom:isLogin ? 'clamp(10px, 2vh, 16px)' : 16 }}>
             <span style={{ color:'#fff', fontSize:22, fontWeight:800 }}>B</span>
           </div>
-          <h1 style={{ margin:'0 0 4px', color:text, fontSize:24, fontWeight:800, letterSpacing:'-0.5px' }}>BLOOM</h1>
+          <h1 style={{ margin:'0 0 4px', color:text, fontSize:24, fontWeight:800, letterSpacing:'-0.5px' }}>{isBookCreator ? 'BLOOMIE BOOK CREATOR' : 'BLOOM'}</h1>
           <p style={{ margin:0, color:sub, fontSize:14 }}>
-            {mode === 'login' ? 'Sign in to your dashboard' : 'Create your account & get your Bloomie'}
+            {mode === 'login' ? `Sign in to your ${isBookCreator ? 'book workspace' : 'dashboard'}` : isBookCreator ? 'Create your Book Creator account' : 'Create your account & get your Bloomie'}
           </p>
         </div>
 
-        <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+        <div style={{ display:'flex', flexDirection:'column', gap:isLogin ? 'clamp(9px, 1.7vh, 12px)' : 12 }}>
+          {isPurchasedBookAccess && (
+            <div style={{ padding:'11px 13px', borderRadius:10, background:'rgba(16,185,129,.12)', border:'1px solid rgba(52,211,153,.32)', color:'#6ee7b7', fontSize:13, lineHeight:1.5, fontWeight:650 }}>
+              Purchase confirmed. Create your password with the same email address used at checkout.
+            </div>
+          )}
+          {isBookCreator && isLogin && (
+            <button
+              type="button"
+              onClick={() => setBookCheckoutOpen(true)}
+              style={{
+                padding:'13px 16px', borderRadius:10, border:'none',
+                background:'linear-gradient(135deg,#F4A261,#E76F8B)',
+                color:'#fff', fontSize:14, fontWeight:800, cursor:'pointer',
+                boxShadow:'0 8px 22px rgba(231,111,139,.24)'
+              }}
+            >
+              Get Book Creator — $37 once
+            </button>
+          )}
           {mode === 'signup' && (
             <>
               {/* ── YOUR INFO ── */}
               <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-                <label style={{ fontSize:13, fontWeight:600, color:text }}>Your name</label>
+                <label style={{ fontSize:13, fontWeight:600, color:text }}>Your name{isBookCreator ? ' *' : ''}</label>
                 <input type="text" value={fullName} onChange={e => setFullName(e.target.value)} placeholder="Jane Smith" style={inputStyle}
                   onFocus={e => e.target.style.borderColor = accent} onBlur={e => e.target.style.borderColor = border} />
               </div>
+              {!isBookCreator && (
+                <>
               <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
                 <label style={{ fontSize:13, fontWeight:600, color:text }}>Organization name *</label>
                 <input type="text" value={orgName} onChange={e => setOrgName(e.target.value)} placeholder="Acme Inc." style={inputStyle}
@@ -236,7 +285,7 @@ export default function Login() {
 
               {/* Show focus preview for preset roles */}
               {selectedRole && !isCustomRole && (
-                <div style={{ background:'#f8f6ff', border:`1px solid #e8e0f5`, borderRadius:10, padding:'12px 14px' }}>
+                <div style={{ background:'#211b24', border:`1px solid ${border}`, borderRadius:10, padding:'12px 14px' }}>
                   <p style={{ margin:'0 0 4px', fontSize:12, fontWeight:700, color:accent }}>
                     {bloomieName.trim() || 'Your Bloomie'}'s focus as {selectedRole.title}:
                   </p>
@@ -244,6 +293,8 @@ export default function Login() {
                     {selectedRole.focus.split('.').slice(0, 2).join('.') + '.'}
                   </p>
                 </div>
+              )}
+                </>
               )}
             </>
           )}
@@ -289,10 +340,10 @@ export default function Login() {
           )}
 
           {error && (
-            <p style={{ margin:0, color:'#ef4444', fontSize:13, padding:'8px 12px', background:'#fef2f2', borderRadius:8 }}>{error}</p>
+            <p style={{ margin:0, color:'#fca5a5', fontSize:13, padding:'8px 12px', background:'rgba(239,68,68,.12)', border:'1px solid rgba(239,68,68,.25)', borderRadius:8 }}>{error}</p>
           )}
           {success && (
-            <p style={{ margin:0, color:'#059669', fontSize:13, padding:'8px 12px', background:'#f0fdf4', borderRadius:8 }}>{success}</p>
+            <p style={{ margin:0, color:'#6ee7b7', fontSize:13, padding:'8px 12px', background:'rgba(16,185,129,.12)', border:'1px solid rgba(52,211,153,.25)', borderRadius:8 }}>{success}</p>
           )}
 
           <button
@@ -300,12 +351,14 @@ export default function Login() {
             disabled={loading || !email.trim() || !password.trim() || (mode === 'signup' && !signupValid)}
             style={{
               padding:'13px', borderRadius:10, border:'none',
-              background: (loading || !email.trim() || !password.trim() || (mode === 'signup' && !signupValid)) ? '#d1d5db' : `linear-gradient(135deg, #E76F8B, #F4A261)`,
+              background: (loading || !email.trim() || !password.trim() || (mode === 'signup' && !signupValid)) ? '#34343a' : `linear-gradient(135deg, #E76F8B, #F4A261)`,
               color:'#fff', fontSize:15, fontWeight:700,
               cursor: (loading || !email.trim() || !password.trim() || (mode === 'signup' && !signupValid)) ? 'not-allowed' : 'pointer', marginTop:4
             }}
           >
-            {loading ? (mode === 'login' ? 'Signing in...' : 'Creating your Bloomie...') : (mode === 'login' ? 'Sign in' : 'Create account & get your Bloomie')}
+            {loading
+              ? (mode === 'login' ? 'Signing in...' : (isBookCreator ? 'Creating your Book Creator account...' : 'Creating your Bloomie...'))
+              : (mode === 'login' ? 'Sign in' : (isBookCreator ? 'Create password & open Book Creator' : 'Create account & get your Bloomie'))}
           </button>
 
           <div style={{ textAlign:'center', marginTop:8 }}>
@@ -329,6 +382,32 @@ export default function Login() {
           </div>
         </div>
       </div>
+      {bookCheckoutOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Bloomie Book Creator checkout"
+          onClick={() => setBookCheckoutOpen(false)}
+          style={{position:'fixed',inset:0,zIndex:10000,background:'rgba(0,0,0,.78)',display:'flex',alignItems:'center',justifyContent:'center',padding:20}}
+        >
+          <div onClick={e=>e.stopPropagation()} style={{width:'100%',maxWidth:560,height:'min(780px,92dvh)',background:'#18181b',border:`1px solid ${border}`,borderRadius:18,display:'flex',flexDirection:'column',overflow:'hidden',boxShadow:'0 24px 80px rgba(0,0,0,.65)'}}>
+            <div style={{display:'flex',alignItems:'center',gap:12,padding:'14px 16px',borderBottom:`1px solid ${border}`}}>
+              <div style={{flex:1}}>
+                <div style={{fontSize:15,fontWeight:800,color:text}}>Bloomie Book Creator</div>
+                <div style={{fontSize:11,color:sub,marginTop:2}}>Secure one-time checkout powered by Whop</div>
+              </div>
+              <button aria-label="Close checkout" onClick={()=>setBookCheckoutOpen(false)} style={{width:34,height:34,borderRadius:9,border:`1px solid ${border}`,background:'#222225',color:text,cursor:'pointer',fontSize:19}}>×</button>
+            </div>
+            <div style={{flex:1,minHeight:0,overflowY:'auto',WebkitOverflowScrolling:'touch'}}>
+              <div
+                data-whop-checkout-plan-id="plan_SfN6obHBORCwM"
+                data-whop-checkout-return-url={`${window.location.origin}/book-creator?billing=success`}
+                style={{width:'100%',minHeight:'100%'}}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

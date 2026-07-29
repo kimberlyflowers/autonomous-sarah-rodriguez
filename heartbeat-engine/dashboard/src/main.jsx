@@ -3,20 +3,97 @@ import ReactDOM from 'react-dom/client';
 import App from './App.jsx';
 import MobileApp from './MobileApp.jsx';
 import Login from './Login.jsx';
+import PasswordReset from './PasswordReset.jsx';
 import { supabase } from './supabase.js';
 
 function Root() {
   const [user, setUser] = useState(undefined); // undefined = loading
-  const isMobileRoute = window.location.pathname.startsWith('/mobile');
+  const [passwordRecovery, setPasswordRecovery] = useState(
+    () => new URLSearchParams(window.location.search).get('reset') === '1'
+  );
+  const isMobileRoute = window.location.pathname.startsWith('/mobile')
+    || window.location.pathname.startsWith('/dispatch');
+  const isBookCreatorRoute = window.location.pathname.startsWith('/book-creator');
+  const isBookCheckoutRoute = window.location.pathname.startsWith('/book-creator/checkout');
+  const isPasswordResetRoute = window.location.pathname === '/reset-password'
+    || new URLSearchParams(window.location.search).get('reset') === '1';
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    let active = true;
+    const initializeSession = async () => {
+      if (window.bloomDesktop?.isDesktop) {
+        try {
+          const restored = await window.bloomDesktop.restoreSession();
+          if (restored?.success && restored.session?.access_token && restored.session?.refresh_token) {
+            await supabase.auth.setSession(restored.session);
+          }
+        } catch (error) {
+          console.warn('Desktop session restore skipped:', error?.message || error);
+        }
+      }
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (active) setUser(session?.user ?? null);
+      if (session && window.bloomDesktop?.isDesktop) {
+        window.bloomDesktop.registerSession(session).catch(() => {});
+      }
+    };
+    initializeSession();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY') setPasswordRecovery(true);
       setUser(session?.user ?? null);
+      if (session && window.bloomDesktop?.isDesktop) {
+        window.bloomDesktop.registerSession(session).catch(() => {});
+      } else if (event === 'SIGNED_OUT' && window.bloomDesktop?.isDesktop) {
+        window.bloomDesktop.clearSession().catch(() => {});
+      }
     });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-    });
-    return () => subscription.unsubscribe();
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  // The standalone Book Creator and the Book Studio inside Bloomie Staffing
+  // are two routes in this same bundle. Detect a newer Railway deployment so
+  // an already-open PWA/desktop tab cannot remain pinned to an older UI.
+  useEffect(() => {
+    let active = true;
+    let loadedVersion = null;
+
+    const checkForUpdate = async () => {
+      try {
+        const response = await fetch('/health', { cache: 'no-store' });
+        if (!response.ok) return;
+        const payload = await response.json();
+        const nextVersion = payload?.version;
+        if (!nextVersion || nextVersion === 'local') return;
+        if (loadedVersion && nextVersion !== loadedVersion && active) {
+          const url = new URL(window.location.href);
+          url.searchParams.set('_bloom_build', nextVersion.slice(0, 12));
+          window.location.replace(url.toString());
+          return;
+        }
+        loadedVersion = nextVersion;
+      } catch {
+        // A transient health-check failure should never interrupt active work.
+      }
+    };
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') checkForUpdate();
+    };
+    checkForUpdate();
+    const timer = window.setInterval(checkForUpdate, 60_000);
+    window.addEventListener('focus', checkForUpdate);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      window.removeEventListener('focus', checkForUpdate);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, []);
 
   if (user === undefined) {
@@ -28,12 +105,18 @@ function Root() {
     );
   }
 
+  if (isPasswordResetRoute) return <PasswordReset user={user} />;
+
   // Mobile route — has its own login screen
   if (isMobileRoute) return <MobileApp user={user} />;
 
+  // Public, directly addressable embedded checkout. This intentionally renders
+  // before the authenticated dashboard so full-access operators can test it.
+  if (isBookCheckoutRoute) return <Login product="book_creator" initialBookCheckout />;
+
   // Dashboard
-  if (!user) return <Login />;
-  return <App user={user} />;
+  if (!user) return <Login product={isBookCreatorRoute ? 'book_creator' : 'bloomie'} />;
+  return <App user={user} passwordRecovery={passwordRecovery} />;
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(

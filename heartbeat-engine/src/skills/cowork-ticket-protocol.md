@@ -1,13 +1,13 @@
-# BLOOM Autonomous Ticket Protocol
+# BLOOM Autonomous Ticket Protocol — Codex Support
 
-> This skill defines how Cowork (Claude) should handle incoming BLOOM tech tickets
+> This skill defines how Codex should handle incoming BLOOM tech tickets
 > that arrive via the Supabase webhook. Follow these rules exactly.
 
 ---
 
 ## Session Start Behavior
 
-When a Cowork session starts, **immediately check for open tickets**:
+When a Codex support session starts, **immediately check for open tickets**:
 
 1. Call `bloom_get_tickets` to list all tickets with `status = open`.
 2. If open tickets exist, triage them using the priority rules below.
@@ -60,7 +60,7 @@ For each ticket you work on:
 
 5. **Resolve** — call `bloom_resolve_ticket` with:
    - A clear `resolution` description of what was wrong and what you did
-   - Set `resolved_by` to `"cowork-claude"`
+   - Set `resolved_by` to `"codex"`
 
 6. **Log** — the webhook endpoint automatically logs to `action_log`, but add
    a follow-up log entry with the resolution details if the action_log table is

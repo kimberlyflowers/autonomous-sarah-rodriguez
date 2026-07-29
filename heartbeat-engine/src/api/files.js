@@ -13,6 +13,8 @@ import { validateAgentAccess, getAgentOrgId, getUserOrgId, extractUserId } from 
 
 const logger = createLogger('files-api');
 const router = Router();
+const thumbnailCache = new Map();
+const MAX_THUMBNAIL_CACHE_ITEMS = 100;
 
 const FILE_STORAGE = process.env.FILE_STORAGE_PATH || path.join(process.cwd(), 'bloom-files');
 if (!fs.existsSync(FILE_STORAGE)) fs.mkdirSync(FILE_STORAGE, { recursive: true });
@@ -159,7 +161,7 @@ async function refreshGoogleAccessToken(refreshToken, supabase, userConnRow, org
   return tokenData.access_token;
 }
 
-async function getGoogleDriveAccessToken(supabase, orgId) {
+export async function getGoogleDriveAccessToken(supabase, orgId) {
   const { data: connector, error: connectorErr } = await supabase
     .from('connectors')
     .select('id')
@@ -199,6 +201,95 @@ async function getGoogleDriveAccessToken(supabase, orgId) {
 
   return userConn.access_token;
 }
+
+const GOOGLE_NATIVE_EXPORTS = {
+  'application/vnd.google-apps.document': {
+    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    extension: '.docx',
+  },
+  'application/vnd.google-apps.spreadsheet': {
+    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    extension: '.xlsx',
+  },
+  'application/vnd.google-apps.presentation': {
+    mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    extension: '.pptx',
+  },
+};
+
+router.get('/google-drive/list', async (req, res) => {
+  try {
+    const orgId = await getUserOrgId(req);
+    if (!orgId) return res.status(401).json({ error: 'Authentication required' });
+    const accessToken = await getGoogleDriveAccessToken(sb(), orgId);
+    const params = new URLSearchParams({
+      pageSize: '40',
+      orderBy: 'modifiedTime desc',
+      fields: 'nextPageToken,files(id,name,mimeType,modifiedTime,size,iconLink,thumbnailLink,webViewLink)',
+      q: `trashed = false${req.query.q ? ` and name contains '${String(req.query.q).replace(/'/g, "\\'").slice(0, 80)}'` : ''}`,
+    });
+    if (req.query.pageToken) params.set('pageToken', String(req.query.pageToken));
+    const response = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload?.error?.message || `Google Drive list returned ${response.status}`);
+    res.json({
+      files: (payload.files || []).filter(file => file.mimeType !== 'application/vnd.google-apps.folder'),
+      nextPageToken: payload.nextPageToken || null,
+    });
+  } catch (error) {
+    res.status(error.code === 'GOOGLE_DRIVE_RECONNECT_REQUIRED' ? 401 : 500).json({
+      error: error.message || 'Could not browse Google Drive',
+      reconnectUrl: error.reconnectUrl || null,
+    });
+  }
+});
+
+router.get('/google-drive/:fileId/download', async (req, res) => {
+  try {
+    const orgId = await getUserOrgId(req);
+    if (!orgId) return res.status(401).json({ error: 'Authentication required' });
+    const accessToken = await getGoogleDriveAccessToken(sb(), orgId);
+    const metadataResponse = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(req.params.fileId)}?fields=id,name,mimeType,size,webViewLink`,
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    );
+    const metadata = await metadataResponse.json().catch(() => ({}));
+    if (!metadataResponse.ok) throw new Error(metadata?.error?.message || `Google Drive metadata returned ${metadataResponse.status}`);
+    const nativeExport = GOOGLE_NATIVE_EXPORTS[metadata.mimeType];
+    const contentUrl = nativeExport
+      ? `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(req.params.fileId)}/export?mimeType=${encodeURIComponent(nativeExport.mimeType)}`
+      : `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(req.params.fileId)}?alt=media`;
+    const contentResponse = await fetch(contentUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!contentResponse.ok) {
+      const message = await contentResponse.text();
+      throw new Error(`Google Drive download returned ${contentResponse.status}: ${message.slice(0, 300)}`);
+    }
+    const buffer = Buffer.from(await contentResponse.arrayBuffer());
+    if (buffer.length > 20 * 1024 * 1024) return res.status(413).json({ error: 'Google Drive files must be 20 MB or smaller' });
+    const originalName = String(metadata.name || 'Google Drive file');
+    const name = nativeExport && !originalName.toLowerCase().endsWith(nativeExport.extension)
+      ? `${originalName}${nativeExport.extension}`
+      : originalName;
+    res.json({
+      file: {
+        id: metadata.id,
+        name,
+        type: nativeExport?.mimeType || metadata.mimeType || contentResponse.headers.get('content-type') || 'application/octet-stream',
+        data: buffer.toString('base64'),
+        source: 'google_drive',
+        sourceUrl: metadata.webViewLink || null,
+        size: buffer.length,
+      },
+    });
+  } catch (error) {
+    res.status(error.code === 'GOOGLE_DRIVE_RECONNECT_REQUIRED' ? 401 : 500).json({
+      error: error.message || 'Could not download Google Drive file',
+      reconnectUrl: error.reconnectUrl || null,
+    });
+  }
+});
 
 async function artifactBuffer(file) {
   if (file.storage_path && isPublicUrl(file.storage_path)) {
@@ -543,7 +634,10 @@ async function queueBloomshield({ supabaseId, floralId, contentText, name, mimeT
 // ── LIST ARTIFACTS ───────────────────────────────────────────────────────────
 router.get('/artifacts', async (req, res) => {
   try {
-    const { status, limit = 500, sessionId, agentId } = req.query;
+    const { status, limit = 20, page = 1, sessionId, agentId, includeContent } = req.query;
+    const pageSize = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
+    const pageNumber = Math.max(parseInt(page, 10) || 1, 1);
+    const offset = (pageNumber - 1) * pageSize;
 
     // ── Org-boundary: if agentId specified, verify ownership ──
     if (agentId) {
@@ -556,17 +650,22 @@ router.get('/artifacts', async (req, res) => {
     const resolvedOrgId = await getUserOrgId(req) || ORG_ID();
 
     let query = supabase.from('artifacts')
-      .select('id, name, description, file_type, mime_type, file_size, storage_path, content, floral_id, published, slug, created_at, bloomshield_registered, session_id, agent_id')
+      .select(
+        includeContent === 'true'
+          ? 'id, name, description, file_type, mime_type, file_size, storage_path, content, floral_id, published, slug, created_at, bloomshield_registered, session_id, agent_id'
+          : 'id, name, description, file_type, mime_type, file_size, storage_path, floral_id, published, slug, created_at, bloomshield_registered, session_id, agent_id',
+        { count: 'exact' }
+      )
       .eq('organization_id', resolvedOrgId)  // Enforce org boundary on all artifact listings
       .order('created_at', { ascending: false })
-      .limit(parseInt(limit));
+      .range(offset, offset + pageSize - 1);
 
     // All artifacts are auto-approved now — no status filter needed unless explicitly requested
     if (status) query = query.eq('published', status === 'approved');
     if (sessionId) query = query.eq('session_id', sessionId);
     if (agentId) query = query.eq('agent_id', agentId);
 
-    const { data, error } = await query;
+    const { data, error, count } = await query;
     if (error) throw error;
 
     const artifacts = (data || []).map(r => ({
@@ -580,7 +679,7 @@ router.get('/artifacts', async (req, res) => {
       fileSize: r.file_size,
       status: 'approved',
       storagePath: r.storage_path,
-      content: (r.file_type === 'html' || r.file_type === 'markdown' || r.file_type === 'text' || r.file_type === 'code' || r.file_type === 'csv') ? (r.content || null) : null,
+      content: includeContent === 'true' && (r.file_type === 'html' || r.file_type === 'markdown' || r.file_type === 'text' || r.file_type === 'code' || r.file_type === 'csv') ? (r.content || null) : null,
       createdAt: r.created_at,
       approvedAt: r.created_at,  // alias for frontend date display/sorting
       slug: r.slug || null,
@@ -591,7 +690,13 @@ router.get('/artifacts', async (req, res) => {
       publishUrl: r.slug ? `/p/${r.slug}` : null
     }));
 
-    return res.json({ artifacts, total: artifacts.length });
+    return res.json({
+      artifacts,
+      total: count || 0,
+      page: pageNumber,
+      pageSize,
+      totalPages: Math.max(1, Math.ceil((count || 0) / pageSize))
+    });
   } catch (error) {
     logger.error('List artifacts error', { error: error.message });
     return res.status(500).json({ error: 'Failed to list artifacts' });
@@ -663,6 +768,49 @@ router.post('/google-import/:fileId', async (req, res) => {
       });
     }
     return res.status(500).json({ error: error.message || 'Google import failed' });
+  }
+});
+
+// ── LIGHTWEIGHT IMAGE THUMBNAIL ─────────────────────────────────────────────
+router.get('/thumbnail/:fileId', async (req, res) => {
+  try {
+    const { fileId } = req.params;
+    const cached = thumbnailCache.get(fileId);
+    if (cached) {
+      res.set('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
+      res.type('image/jpeg');
+      return res.send(cached);
+    }
+
+    const supabase = sb();
+    const { data: file, error } = await supabase.from('artifacts')
+      .select('file_type, mime_type, storage_path')
+      .eq('id', fileId)
+      .single();
+
+    if (error || !file || file.file_type !== 'image' || !file.storage_path) {
+      return res.status(404).json({ error: 'Image not available' });
+    }
+
+    const sourceResponse = await fetch(file.storage_path);
+    if (!sourceResponse.ok) throw new Error(`Image source returned ${sourceResponse.status}`);
+    const sourceBuffer = Buffer.from(await sourceResponse.arrayBuffer());
+    const Jimp = (await import('jimp')).default;
+    const image = await Jimp.read(sourceBuffer);
+    image.cover(640, 320).quality(72);
+    const thumbnail = await image.getBufferAsync(Jimp.MIME_JPEG);
+
+    if (thumbnailCache.size >= MAX_THUMBNAIL_CACHE_ITEMS) {
+      thumbnailCache.delete(thumbnailCache.keys().next().value);
+    }
+    thumbnailCache.set(fileId, thumbnail);
+
+    res.set('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
+    res.type('image/jpeg');
+    return res.send(thumbnail);
+  } catch (error) {
+    logger.warn('Thumbnail generation failed', { fileId: req.params.fileId, error: error.message });
+    return res.status(500).json({ error: 'Thumbnail unavailable' });
   }
 });
 
@@ -943,11 +1091,19 @@ router.put('/artifacts/:fileId', async (req, res) => {
     const { fileId } = req.params;
     const { content, name } = req.body;
     if (!content && !name) return res.status(400).json({ error: 'content or name required' });
+    const resolvedOrgId = await getUserOrgId(req);
+    if (!resolvedOrgId) return res.status(401).json({ error: 'Authentication required' });
     const supabase = sb();
     const updates = {};
     if (content !== undefined) { updates.content = content; updates.file_size = Buffer.byteLength(content, 'utf8'); }
     if (name) updates.name = name;
-    const { data, error } = await supabase.from('artifacts').update(updates).eq('id', fileId).select('id, name, file_size').single();
+    updates.updated_at = new Date().toISOString();
+    const { data, error } = await supabase.from('artifacts')
+      .update(updates)
+      .eq('id', fileId)
+      .eq('organization_id', resolvedOrgId)
+      .select('id, name, file_size, updated_at')
+      .single();
     if (error || !data) return res.status(404).json({ error: 'Artifact not found' });
     logger.info('Artifact content updated', { fileId, name: data.name });
     return res.json({ success: true, artifact: data });

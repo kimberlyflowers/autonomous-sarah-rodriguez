@@ -50,9 +50,22 @@ function parseSkillFile(filePath) {
     else if (descSingleMatch) description = descSingleMatch[1];
     else if (descPlainMatch) description = descPlainMatch[1];
     
+    const scalar = (key, fallback = '') => {
+      const match = frontmatter.match(new RegExp(`^${key}:\\s*(.+)$`, 'm'));
+      return match ? match[1].trim().replace(/^['"]|['"]$/g, '') : fallback;
+    };
+    const list = (key) => {
+      const value = scalar(key);
+      if (!value) return [];
+      return value.replace(/^\[|\]$/g, '').split(',').map(item => item.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
+    };
+
     return {
       name: nameMatch[1].trim(),
       description: description.trim(),
+      version: scalar('version', '1.0.0'),
+      workflowType: scalar('workflow_type', 'general'),
+      requiredTools: list('required_tools'),
       body,
       filePath,
     };
@@ -97,7 +110,7 @@ function loadSkillCatalog() {
 const TASK_TO_SKILL_MAP = {
   writing:  ['blog-content'],
   email:    ['email-marketing'],
-  coding:   ['website-creation'],
+  coding:   ['existing-site-engineering'],
   docx:     ['docx', 'professional-documents'],   // FIX: was 'docx-documents' — file declares name: 'docx'
   crm:      ['ghl-crm'],
   scraping: ['lead-scraper'],
@@ -110,13 +123,21 @@ const TASK_TO_SKILL_MAP = {
 
 // Additional keyword matching for more specific skill selection
 const KEYWORD_SKILL_MAP = [
+  { keywords: /\b(repository|repo|github|vercel|codebase|existing (?:site|website|app)|edit (?:the|my|our) (?:site|website|app)|fix (?:the|my|our) (?:site|website|app)|deploy(?:ment)?|branch|pull request)\b/i, skill: 'existing-site-engineering' },
   { keywords: /\b(powerpoint|pptx|slide deck|slides|presentation|pitch deck|keynote)\b/i, skill: 'pptx' },
   { keywords: /\b(blog|article|post|content marketing|seo)\b/i, skill: 'blog-content' },
   { keywords: /\b(email|newsletter|drip|sequence|subject line|sms)\b/i, skill: 'email-marketing' },
   { keywords: /\b(social|instagram|tiktok|facebook|linkedin|twitter|caption|hashtag)\b/i, skill: 'social-media' },
-  { keywords: /\b(contact|lead|crm|ghl|pipeline|deal|appointment|invoice|workflow)\b/i, skill: 'ghl-crm' },
+  // "workflow" by itself is common in engineering and skill instructions; it
+  // is not evidence that the user wants a CRM operation.
+  { keywords: /\b(contact|lead|crm|ghl|gohighlevel|pipeline|deal|appointment|invoice|customer relationship)\b/i, skill: 'ghl-crm' },
   { keywords: /\b(website|landing page|dashboard|component|ui|ux|frontend|html|react|web page|sales page|opt.?in page|mockup)\b/i, skill: 'website-creation' },
-  { keywords: /\b(document|report|memo|letter|word doc|docx|proposal|quarterly|grant|sop)\b/i, skill: 'professional-documents' },
+  { keywords: /\b(hyperframes|motion graphic|html animation|seekable animation|animated composition|logo sting|lower third|title card|product launch video|faceless explainer|beat.?synced video)\b/i, skill: 'hyperframes' },
+  { keywords: /\b(heygen|ai avatar|digital twin|talking avatar|avatar video|video of (herself|himself|themselves|myself))\b/i, skill: 'heygen-video' },
+  // Avoid selecting document creation merely because an operational request
+  // says "report the evidence". Generic report/document terms need a creation
+  // verb; strongly typed deliverables still match directly.
+  { keywords: /\b(memo|word doc|docx|proposal|quarterly report|grant|sop|handbook|one.?pager)\b|\b(create|draft|write|prepare|generate|make)\s+(?:a\s+|an\s+|the\s+)?(?:document|report|letter)\b/i, skill: 'professional-documents' },
   { keywords: /\b(lead|leads|prospect|prospects|scrape|directory|contact list|find emails|build a list|financial advisor|NAPFA|CFP|FINRA|RIA|chamber of commerce|lead generation|lead scraping)\b/i, skill: 'lead-scraper' },
   { keywords: /\b(refund|money back|cancel|cancellation|complaint|dissatisfied|unhappy|not what I paid|doesn't work|doesn't work|want my money|speak to a manager|charged me|billing issue|overcharged|rip.?off|scam|waste of money)\b/i, skill: 'refund-handler' },
   { keywords: /\b(graphic|thumbnail|youtube thumbnail|banner|cover image|cover photo|quote card|ad creative|promo image|social graphic|instagram graphic|carousel design|story graphic|header image|profile banner|pinterest pin|create a graphic|make a graphic|design a post|visual asset|marketing image)\b/i, skill: 'marketing-graphics' },
@@ -129,6 +150,7 @@ const KEYWORD_SKILL_MAP = [
   { keywords: /\b(schedule|scheduled task|recurring task|automate task|cron|run daily|run weekly|run every)\b/i, skill: 'task-scheduling' },
   { keywords: /\b(draft an email|compose an email|write an email|cold email|outbound email|email template|email copy)\b/i, skill: 'email-creator' },
   { keywords: /\b(elevenlabs|eleven labs|tts|text to speech|voiceover|voice over|audio script|generate audio|narration|ad read|voice id|voice settings)\b/i, skill: 'elevenlabs-audio' },
+  { keywords: /\b(uber eats|order (?:food|lunch|dinner)|food delivery|build (?:an? )?(?:food )?cart|uber ride|request (?:an? )?(?:uber|ride|car)|book (?:an? )?(?:uber|ride|car)|car service|ride estimate|schedule (?:an? )?(?:uber|ride))\b/i, skill: 'uber-concierge' },
 ];
 
 // ── Companion skills — auto-loaded alongside a primary skill ──────────────
@@ -138,8 +160,13 @@ const COMPANION_SKILL_MAP = {
   'marketing-graphics':  ['image-generation'],
   'flyer-generation':    ['image-generation'],
   'website-creation':    ['image-generation'],  // websites need hero images
+  'existing-site-engineering': ['frontend-design'],
   'social-media':        ['image-generation'],  // social posts often need graphics
 };
+
+function explicitlyExcludesCrmWork(instruction = '') {
+  return /\b(?:do not|don't|dont|never|without)\b[^.\n]{0,120}\b(?:create|update|send|delete|archive|tag|move)\b[^.\n]{0,80}\b(?:contact|crm|pipeline|opportunity|sms|text message)\b/i.test(instruction);
+}
 
 /**
  * Find matching skills for a task.
@@ -159,8 +186,18 @@ export function findSkills(taskType, instruction = '') {
   // 2. Match by keywords in instruction (more specific)
   for (const { keywords, skill } of KEYWORD_SKILL_MAP) {
     if (keywords.test(instruction)) {
+      if (skill === 'ghl-crm' && explicitlyExcludesCrmWork(instruction)) {
+        continue;
+      }
       matched.add(skill);
     }
+  }
+
+  // Existing codebases use an inspect/edit/test/deploy workflow. The new-site
+  // discovery gate is actively harmful there, so the specialized skill wins.
+  if (matched.has('existing-site-engineering')) {
+    matched.delete('website-creation');
+    matched.delete('image-generation');
   }
 
   // 3. Load companion skills — if X is matched, also load X's companions
@@ -308,7 +345,60 @@ export function getAllSkills() {
   return loadSkillCatalog().map(s => ({
     name: s.name,
     description: s.description,
+    version: s.version,
+    workflowType: s.workflowType,
+    requiredTools: s.requiredTools,
   }));
 }
 
-export default { findSkills, getSkillContext, getSkillContextForOrg, getSkillCatalogSummary, getAllSkills };
+export function validateSkillCatalog(availableToolNames = []) {
+  const available = new Set(availableToolNames);
+  return loadSkillCatalog().map(skill => ({
+    name: skill.name,
+    version: skill.version,
+    valid: Boolean(skill.description) && /^\d+\.\d+\.\d+$/.test(skill.version) &&
+      skill.requiredTools.every(tool => available.has(tool)),
+    missingTools: skill.requiredTools.filter(tool => !available.has(tool)),
+  }));
+}
+
+export function buildSkillExecutionPlan(taskType, instruction = '', availableToolNames = []) {
+  const available = new Set(availableToolNames);
+  const selected = findSkills(taskType, instruction);
+  const skills = selected.map(skill => {
+    const missingTools = skill.requiredTools.filter(tool => !available.has(tool));
+    return {
+      name: skill.name,
+      workflowType: skill.workflowType,
+      requiredTools: skill.requiredTools,
+      missingTools,
+      ready: missingTools.length === 0,
+    };
+  });
+  return {
+    required: skills.length > 0,
+    ready: skills.every(skill => skill.ready),
+    skills,
+    missingTools: [...new Set(skills.flatMap(skill => skill.missingTools))],
+  };
+}
+
+export function buildSkillExecutionContract(plan) {
+  if (!plan?.required) return '';
+  const lines = plan.skills.map(skill => {
+    const tools = skill.requiredTools.length ? ` Required tools: ${skill.requiredTools.join(', ')}.` : '';
+    const missing = skill.missingTools.length ? ` Missing tools: ${skill.missingTools.join(', ')}.` : '';
+    return `- ${skill.name} (${skill.ready ? 'ready' : 'not ready'}).${tools}${missing}`;
+  });
+  return `\n\n<skill_execution_contract>
+The following skills were selected deterministically for this request. Their full instructions in the prompt are mandatory:
+${lines.join('\n')}
+Do not substitute a generic workflow for a selected skill. Use the selected skill's required sequence and completion evidence. If a required tool is missing, do not claim the workflow ran; report the exact missing connector or tool after exhausting safe in-scope alternatives.
+</skill_execution_contract>`;
+}
+
+export function resetSkillCatalogForTests() {
+  _skills = null;
+}
+
+export default { findSkills, getSkillContext, getSkillContextForOrg, getSkillCatalogSummary, getAllSkills, validateSkillCatalog, buildSkillExecutionPlan, buildSkillExecutionContract };

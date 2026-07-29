@@ -1,10 +1,13 @@
 # BLOOM Heartbeat Engine — with Playwright browser automation
-FROM node:20-slim
+FROM node:22-slim
 
 # Install Playwright system dependencies + Chromium + Sharp image processing libs
 RUN apt-get update && apt-get install -y \
     chromium \
     chromium-driver \
+    unzip \
+    git \
+    ffmpeg \
     fonts-liberation \
     libatk-bridge2.0-0 \
     libatk1.0-0 \
@@ -29,6 +32,7 @@ RUN apt-get update && apt-get install -y \
 ENV PLAYWRIGHT_BROWSERS_PATH=/usr/bin
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 ENV CHROMIUM_PATH=/usr/bin/chromium
+ENV HYPERFRAMES_BROWSER_PATH=/usr/bin/chromium
 
 WORKDIR /app
 
@@ -58,6 +62,7 @@ WORKDIR /app
 
 # Copy skills catalog
 COPY skills/ ./skills/
+COPY hyperframes-templates/ ./hyperframes-templates/
 
 # Copy landing page (bloomiestaffing.com)
 COPY landing-page/ ./landing-page/

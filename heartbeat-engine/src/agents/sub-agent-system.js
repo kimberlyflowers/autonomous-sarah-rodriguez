@@ -233,7 +233,7 @@ ESCALATION PACKAGE:
  * Sub-Agent Executor - Handles delegation to specialized agents
  */
 export class SubAgentSystem {
-  constructor(parentAgentId = 'bloomie-sarah-rodriguez') {
+  constructor(parentAgentId = 'current-bloomie') {
     this.parentAgentId = parentAgentId;
     this.activeSubAgents = new Map();
   }
@@ -393,10 +393,17 @@ Remember: You are a specialized sub-agent with focused expertise. Leverage your 
       timeStyle: 'short'
     });
 
-    return `${agentConfig.systemPrompt}
+    const parentName = context?.parentAgentName || context?.agentName || 'the current Bloomie';
+    const parentRole = context?.parentAgentRole || context?.agentRole || 'AI Employee';
+    const orgName = context?.orgName || context?.organizationName || 'the current organization';
+    const identitySafePrompt = agentConfig.systemPrompt
+      .replaceAll('working for Sarah Rodriguez at BLOOM Ecosystem', `supporting ${parentName}, ${parentRole}, at ${orgName}`);
+
+    return `${identitySafePrompt}
 
 ## Current Context (${now}):
-You are operating as a specialized sub-agent under Sarah Rodriguez's coordination at BLOOM Ecosystem.
+You are operating as a specialized sub-agent under ${parentName}'s coordination at ${orgName}.
+Do not adopt Sarah Rodriguez's identity or any other Bloomie's identity. The parent agent is ${parentName}.
 
 ## Your Available Tools:
 ${agentConfig.tools.map(tool => `- ${tool}`).join('\n')}

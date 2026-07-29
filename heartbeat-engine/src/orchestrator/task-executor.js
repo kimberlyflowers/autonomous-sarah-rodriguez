@@ -2,6 +2,8 @@
 // ⚡ MIGRATED: scheduled_tasks + task_runs now read/write Supabase (not Railway Postgres)
 import { routeTask, executeSubAgent } from './router.js';
 import { createLogger } from '../logging/logger.js';
+import { loadAgentConfig } from '../config/agent-profile.js';
+import { reportFailureTicket } from '../support/ticket-reporter.js';
 
 const logger = createLogger('task-executor');
 
@@ -112,6 +114,7 @@ async function executeScheduledTask(supabase, task) {
 
   try {
     // 2. Load memory context for THIS agent (multi-tenant)
+    const agentProfile = await loadAgentConfig(agentId);
     const memoryContext = await loadMemoryContext(agentId);
 
     // 3. Route the task
@@ -125,7 +128,7 @@ async function executeScheduledTask(supabase, task) {
     }).eq('run_id', runId);
 
     // 4. Execute the sub-agent WITH skill injection (multi-tenant)
-    const result = await executeSubAgent(routing, { orgId, agentId });
+    const result = await executeSubAgent(routing, { orgId, agentId, agentProfile });
 
     // 5. Post-process — save files, log CRM actions
     const evidence = await postProcess(supabase, routing, result, task);
@@ -171,6 +174,23 @@ async function executeScheduledTask(supabase, task) {
 
     // Still bump next_run_at so we don't retry immediately
     await updateNextRun(supabase, task);
+
+    try {
+      await reportFailureTicket({
+        supabase,
+        title: `Scheduled task failed: ${task.name || task.task_id}`,
+        description: `A Bloomie scheduled task reached a terminal failure after its execution and verification steps.`,
+        error: error.message,
+        severity: 'high',
+        category: 'tool_failure',
+        agentId,
+        organizationId: orgId,
+        affectedTask: task.task_id,
+        source: 'scheduled_task',
+      });
+    } catch (ticketError) {
+      logger.error('Scheduled failure could not be reported to Codex', { taskId: task.task_id, error: ticketError.message });
+    }
 
     throw error;
   }

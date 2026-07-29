@@ -14,6 +14,32 @@ const BRAVE_BASE_URL = 'https://api.search.brave.com/res/v1';
  * Web search tool definitions
  */
 export const webSearchToolDefinitions = {
+  uber_eats_search: {
+    name: "uber_eats_search",
+    description: "Discover preliminary Uber Eats restaurant or dish candidates without opening the checkout browser. Requires the user's delivery address and a specific restaurant, cuisine, or dish query. Results are discovery-only: verify live availability, menu, fees, ETA, and total in the tenant's authenticated Uber Eats browser before building a cart.",
+    parameters: {
+      type: "object",
+      properties: {
+        address: {
+          type: "string",
+          description: "The delivery address the user explicitly provided. The search provider receives only a city/state/ZIP summary; the full street address stays in checkout context."
+        },
+        query: {
+          type: "string",
+          description: "A specific restaurant, cuisine, or dish such as Thai, sushi, pizza, or chicken sandwich."
+        },
+        count: { type: "integer", description: "Maximum candidates to return (default 8, max 12).", default: 8 },
+        delivery_time: { type: "string", enum: ["<30"], description: "Optional preference for delivery within 30 minutes." },
+        has_offers: { type: "boolean", description: "Set true only when the user asks for offers, deals, or promos." },
+        price_range: { type: "string", enum: ["$", "$$", "$$$", "$$$$"] },
+        rating: { type: "string", enum: ["3.5+", "4+", "4.5+"] }
+      },
+      required: ["address", "query"]
+    },
+    category: "web",
+    operation: "read"
+  },
+
   web_search: {
     name: "web_search",
     description: "Search the web for current information. Returns relevant results with titles, URLs, and descriptions. Use this to research topics, find current news, look up facts, verify information, or find resources. Always use this when you need information that might have changed since your training data.",
@@ -58,6 +84,60 @@ export const webSearchToolDefinitions = {
  * Web search executors
  */
 export const webSearchToolExecutors = {
+  uber_eats_search: async (params) => {
+    const address = String(params.address || '').trim();
+    const query = String(params.query || '').trim();
+    if (!address || !query) {
+      return { success: false, error: 'Uber Eats discovery requires both a delivery address and a specific restaurant, cuisine, or dish.' };
+    }
+
+    // Keep the street address inside checkout context. General discovery only
+    // needs city/state/ZIP; the live Uber session verifies the exact address.
+    const parts = address.split(',').map(part => part.trim()).filter(Boolean);
+    const zip = address.match(/\b\d{5}(?:-\d{4})?\b/)?.[0] || '';
+    const locality = parts.length >= 2 ? parts.slice(-2).join(', ') : (zip || 'the requested delivery area');
+    const count = Math.min(Math.max(Number(params.count || 8), 1), 12);
+    const filters = [
+      params.delivery_time === '<30' ? 'under 30 minutes' : '',
+      params.has_offers ? 'offers deals' : '',
+      params.price_range || '',
+      params.rating ? `${params.rating} rating` : '',
+    ].filter(Boolean).join(' ');
+    const discoveryQuery = `site:ubereats.com ${query} delivery ${locality} ${filters}`.trim();
+    const discovery = await webSearchToolExecutors.web_search({ query: discoveryQuery, count: Math.min(count * 2, 20) });
+    const candidates = (discovery.results || [])
+      .filter(result => {
+        try {
+          const host = new URL(result.url).hostname.toLowerCase();
+          return host === 'ubereats.com' || host.endsWith('.ubereats.com');
+        } catch {
+          return false;
+        }
+      })
+      .slice(0, count)
+      .map((result, index) => ({
+        rank: index + 1,
+        name: result.title,
+        url: result.url,
+        summary: result.description || '',
+      }));
+
+    return {
+      success: true,
+      source: discovery.source || 'web_discovery',
+      query,
+      addressSummary: locality,
+      preliminary: true,
+      candidates,
+      resultCount: candidates.length,
+      browserHandoffUrl: `https://www.ubereats.com/search?q=${encodeURIComponent(query)}`,
+      requiresLiveBrowserVerification: true,
+      message: candidates.length
+        ? `Found ${candidates.length} preliminary Uber Eats candidate(s). Open the authenticated Uber Eats browser to verify current availability, menu, fees, ETA, and total.`
+        : 'No reliable Uber Eats candidates were returned by direct discovery. Continue in the authenticated Uber Eats browser without claiming that nothing is available.',
+    };
+  },
+
   web_search: async (params) => {
     const query = params.query;
     const count = Math.min(params.count || 5, 20);

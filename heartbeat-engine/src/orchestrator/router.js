@@ -12,6 +12,7 @@ import { callModel, calculateCost } from '../llm/unified-client.js';
 import { getResolvedConfig } from '../config/admin-config.js';
 import { createLogger } from '../logging/logger.js';
 import { getSkillContextForOrg } from '../skills/skill-loader.js';
+import { buildSharedExecutionContract } from './agent-experience.js';
 
 const logger = createLogger('orchestrator-router');
 
@@ -270,7 +271,12 @@ export async function executeSubAgent(routing, context = {}) {
     subAgentUserPrompt || routing.instruction || '',
     context.orgId || FALLBACK_ORG_ID
   );
-  const systemWithSkills = (subAgentSystemPrompt || 'You are a helpful specialist.') + skillContext;
+  const systemWithSkills = [
+    context.agentProfile?.standingInstructions || '',
+    buildSharedExecutionContract(context.agentProfile || {}, 'scheduled'),
+    subAgentSystemPrompt || 'You are a helpful specialist.',
+    skillContext,
+  ].filter(Boolean).join('\n\n');
 
   logger.info('Executing sub-agent', {
     model,

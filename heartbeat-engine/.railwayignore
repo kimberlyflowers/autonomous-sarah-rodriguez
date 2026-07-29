@@ -1,0 +1,9 @@
+node_modules/
+dashboard/node_modules/
+output/
+test/
+landing-page/assets/
+.env
+.env.*
+*.log
+.DS_Store

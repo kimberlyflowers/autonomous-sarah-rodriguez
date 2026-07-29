@@ -160,7 +160,15 @@ async function getOrCreateAgentForOrg(orgId) {
 // Creates a Managed Agent session for this org and streams the build.
 // Progress posts go to the build's own chat session (chatSessionId), not conference.
 export async function runWebsiteBuild(brief, options = {}) {
-  const { orgId = null, chatSessionId = null, onEvent = null, buildId = null } = options;
+  const {
+    orgId = null,
+    chatSessionId = null,
+    onEvent = null,
+    buildId = null,
+    agentId: loadedAgentId = null,
+    agentName = 'the current Bloomie',
+    agentRole = 'AI Employee',
+  } = options;
 
   if (!orgId) {
     const err = new Error('orgId is required for website builds — cannot determine which GHL account to use');
@@ -169,7 +177,7 @@ export async function runWebsiteBuild(brief, options = {}) {
   }
 
   if (getBuildProviderMode() !== 'managed-agent') {
-    return runOpenRouterBuild(brief, { orgId, chatSessionId, buildId });
+    return runOpenRouterBuild(brief, { orgId, chatSessionId, buildId, agentId: loadedAgentId, agentName, agentRole });
   }
 
   const client = getClient();
@@ -181,9 +189,9 @@ export async function runWebsiteBuild(brief, options = {}) {
   }
 
   // Get or create this org's Managed Agent
-  let agentId, environmentId;
+  let managedAgentId, environmentId;
   try {
-    ({ agentId, environmentId } = await getOrCreateAgentForOrg(orgId));
+    ({ agentId: managedAgentId, environmentId } = await getOrCreateAgentForOrg(orgId));
   } catch (err) {
     logger.error('Failed to get/create agent for org', { orgId, error: err.message });
     err.useFallback = true;
@@ -192,7 +200,7 @@ export async function runWebsiteBuild(brief, options = {}) {
 
   // Create session
   const session = await client.beta.sessions.create({
-    agent: agentId,
+    agent: managedAgentId,
     environment_id: environmentId,
     title: `Website Build — ${new Date().toISOString().slice(0, 16)}`
   });
@@ -221,7 +229,13 @@ export async function runWebsiteBuild(brief, options = {}) {
     const stream = client.beta.sessions.events.stream(session.id);
 
     await client.beta.sessions.events.send(session.id, {
-      events: [{ type: 'user.message', content: [{ type: 'text', text: brief }] }]
+      events: [{
+        type: 'user.message',
+        content: [{
+          type: 'text',
+          text: `CURRENT BLOOMIE IDENTITY: ${agentName}, ${agentRole}. Use this identity for this session and never identify as Sarah Rodriguez unless that is the exact loaded name.\n\n${brief}`,
+        }],
+      }]
     });
 
     for await (const event of stream) {
@@ -260,7 +274,7 @@ export async function runWebsiteBuild(brief, options = {}) {
     logger.error('Website build failed', { sessionId: session.id, orgId, error: err.message });
     if (chatSessionId) {
       await postToBuildSession(chatSessionId,
-        `❌ **Website build encountered an issue:** ${err.message}\n\nFalling back to Sarah for this request.`
+        `❌ **Website build encountered an issue:** ${err.message}\n\nFalling back to ${agentName}'s main execution path for this request.`
       );
     }
     err.sessionId = session.id;
@@ -271,7 +285,14 @@ export async function runWebsiteBuild(brief, options = {}) {
   return { sessionId: session.id, output: finalOutput, toolCalls, status: 'complete' };
 }
 
-async function runOpenRouterBuild(brief, { orgId, chatSessionId, buildId } = {}) {
+async function runOpenRouterBuild(brief, {
+  orgId,
+  chatSessionId,
+  buildId,
+  agentId,
+  agentName = 'the current Bloomie',
+  agentRole = 'AI Employee',
+} = {}) {
   const model = getBuildModel();
   const sessionId = `openrouter-${buildId || Date.now()}`;
   logger.info('Starting OpenRouter build/work session', { orgId, chatSessionId, model });
@@ -281,7 +302,7 @@ async function runOpenRouterBuild(brief, { orgId, chatSessionId, buildId } = {})
   }
 
   const result = await callModel(model, {
-    system: `${getSystemPrompt()}\n\nYou are running inside Bloomie's Work/Build tab through an OpenRouter fallback that does not have file/artifact tools attached. Respond with clear progress and useful next steps. If the user asks for a website or build task, produce the complete HTML only if asked, but explicitly hand back to the main Sarah chat tool path to save it with create_artifact. Do not claim that an artifact, file, browser action, or deployment was created unless a tool actually performed it.`,
+    system: `${getSystemPrompt()}\n\nCURRENT BLOOMIE: ${agentName}, ${agentRole} (${agentId || 'agent id unavailable'}). Use this identity only; never identify as Sarah Rodriguez unless Sarah is the loaded agent.\n\nYou are running inside Bloomie's Work/Build tab through an OpenRouter fallback that does not have file/artifact tools attached. Respond with clear progress and useful next steps. If a request requires tools unavailable in this fallback, hand it back to the loaded Bloomie's main chat tool path. Do not claim that an artifact, file, browser action, or deployment was created unless a tool actually performed it.`,
     messages: [{ role: 'user', content: brief }],
     maxTokens: 1800,
     temperature: 0.3,
@@ -304,12 +325,18 @@ async function runOpenRouterBuild(brief, { orgId, chatSessionId, buildId } = {})
 }
 
 export async function continueWebsiteBuildSession(message, options = {}) {
-  const { orgId = null, chatSessionId = null } = options;
+  const {
+    orgId = null,
+    chatSessionId = null,
+    agentId = null,
+    agentName = 'the current Bloomie',
+    agentRole = 'AI Employee',
+  } = options;
   const model = getBuildModel();
   logger.info('Continuing OpenRouter build/work session', { orgId, chatSessionId, model });
 
   const result = await callModel(model, {
-    system: `${getSystemPrompt()}\n\nYou are continuing a Bloomie Work/Build tab conversation. Give a direct, useful answer and keep progress visible in the session log.`,
+    system: `${getSystemPrompt()}\n\nCURRENT BLOOMIE: ${agentName}, ${agentRole} (${agentId || 'agent id unavailable'}). Use this identity only. You are continuing a Bloomie Work/Build tab conversation. Give a direct, useful answer and keep progress visible in the session log.`,
     messages: [{ role: 'user', content: message }],
     maxTokens: 1800,
     temperature: 0.3,

@@ -1886,14 +1886,16 @@ export const ghlExecutors = {
   // POST /contacts/
   ghl_create_contact: async (params) => {
     const locationId = await resolveLocationId(params._orgId);
-    const { _orgId, ...contactData } = params;
-    return await callGHL('/contacts/', 'POST', { locationId, ...contactData }, {}, _orgId);
+    const contactData = omitInternalParams(params);
+    return await callGHL('/contacts/', 'POST', { locationId, ...contactData }, {}, params._orgId);
   },
 
   // PUT /contacts/{contactId}
   ghl_update_contact: async (params) => {
-    const { contactId, _orgId, ...updateData } = params;
-    return await callGHL(`/contacts/${contactId}`, 'PUT', updateData, {}, _orgId);
+    const { contactId } = params;
+    const updateData = omitInternalParams(params);
+    delete updateData.contactId;
+    return await callGHL(`/contacts/${contactId}`, 'PUT', updateData, {}, params._orgId);
   },
 
   // DELETE /contacts/{contactId}
@@ -2136,7 +2138,8 @@ export const ghlExecutors = {
       contactId: ownerContactId,
     };
     if (messageType === 'Email') {
-      payload.subject = params.urgency === 'urgent' ? '🚨 URGENT — Sarah Rodriguez Update' : '📋 Sarah Rodriguez Update';
+      const agentName = String(params._agentName || 'Bloomie AI Employee').replace(/[\r\n]/g, '').slice(0, 100);
+      payload.subject = params.urgency === 'urgent' ? `🚨 URGENT — ${agentName} Update` : `📋 ${agentName} Update`;
     }
 
     const result = await callGHL('/conversations/messages', 'POST', payload);

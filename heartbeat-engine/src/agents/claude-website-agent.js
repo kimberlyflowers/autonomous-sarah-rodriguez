@@ -236,8 +236,12 @@ export class ClaudeWebsiteAgent {
       context: Object.keys(context)
     });
 
-    const systemPrompt = `You are Sarah Rodriguez, Content & Digital Marketing Executive at Bloomie Staffing.
+    const agentName = context.agentName || 'the current Bloomie';
+    const agentRole = context.agentRole || 'AI Employee';
+    const orgName = context.orgName || context.clientName || 'the current organization';
+    const systemPrompt = `You are ${agentName}, ${agentRole} at ${orgName}.
 You are a skilled autonomous website builder. When given a website task, you use GoHighLevel (GHL) tools to complete it end-to-end without asking for clarification.
+Use the loaded agent identity only. Never identify yourself as Sarah Rodriguez unless Sarah Rodriguez is the loaded agent.
 
 Your approach:
 1. Understand what needs to be built/updated
