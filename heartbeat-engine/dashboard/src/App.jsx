@@ -4160,11 +4160,14 @@ const BOOK_BONUS_LIBRARY=[
   {id:'30-books-fast-start',title:'30 Books in 30 Days Fast-Start Blueprint',type:'Blueprint',url:'/assets/book-library/30-books-blueprint-complete.pdf',coverUrl:'/assets/book-library/30-books-in-30-days-cover.png'},
 ];
 
-const PdfFlipPage=forwardRef(function PdfFlipPage({pdf,pageNumber,pageWidth},ref){
+const PdfFlipPage=forwardRef(function PdfFlipPage({pdf,pageNumber,pageWidth,activePage},ref){
   const [pageImage,setPageImage]=useState('');
   const [failed,setFailed]=useState(false);
+  const shouldRender=pageNumber<=2||Math.abs(pageNumber-activePage)<=3;
   useEffect(()=>{
+    if(!shouldRender)return;
     let cancelled=false;
+    setFailed(false);
     (async()=>{
       try{
         const page=await pdf.getPage(pageNumber);
@@ -4181,9 +4184,9 @@ const PdfFlipPage=forwardRef(function PdfFlipPage({pdf,pageNumber,pageWidth},ref
       }catch{if(!cancelled)setFailed(true);}
     })();
     return()=>{cancelled=true;};
-  },[pdf,pageNumber,pageWidth]);
+  },[pdf,pageNumber,pageWidth,shouldRender]);
   return <div ref={ref} data-density={pageNumber===1?'hard':'soft'} className={`bloom-flip-page ${pageNumber===1?'bloom-flip-cover':''}`} style={{padding:0,background:'#fff',display:'grid',placeItems:'center',overflow:'hidden',boxShadow:'inset 0 0 0 1px rgba(20,20,24,.1)'}}>
-    {failed?<div style={{color:'#7b7b82',padding:20}}>Page could not be rendered.</div>:pageImage?<img src={pageImage} alt={`Page ${pageNumber}`} draggable="false" style={{display:'block',width:'100%',height:'100%',objectFit:'contain'}}/>:<div style={{color:'#7b7b82',fontSize:11}}>Rendering page {pageNumber}…</div>}
+    {failed?<div style={{color:'#7b7b82',padding:20}}>Page could not be rendered.</div>:pageImage?<img src={pageImage} alt={`Page ${pageNumber}`} draggable="false" style={{display:'block',width:'100%',height:'100%',objectFit:'contain'}}/>:<div style={{color:'#7b7b82',fontSize:11}}>{shouldRender?`Rendering page ${pageNumber}…`:`Page ${pageNumber}`}</div>}
   </div>;
 });
 
@@ -4223,8 +4226,8 @@ function LibraryBookReader({resource,onClose,onEdit,mob,c}){
           .stf__parent{margin:0 auto;overflow:hidden!important;clip-path:inset(0 round 3px);contain:paint}
           .stf__block{background:transparent!important}
         `}</style>
-        {error?<div style={{color:'#ef6464'}}>{error}</div>:!pdf?<div style={{color:c.so}}>Preparing page-turn preview…</div>:<HTMLFlipBook ref={flipRef} className="bloom-real-book" width={readerSize.width} height={readerSize.height} size="fixed" drawShadow autoSize={false} maxShadowOpacity={0.65} startZIndex={10} showCover mobileScrollSupport usePortrait={mob} swipeDistance={20} clickEventForward useMouseEvents flippingTime={1050} onFlip={event=>setPage(event.data+1)} style={{}}>
-          {Array.from({length:pdf.numPages},(_,index)=><PdfFlipPage key={index+1} pdf={pdf} pageNumber={index+1} pageWidth={readerSize.width}/>)}
+        {error?<div style={{color:'#ef6464'}}>{error}</div>:!pdf?<div style={{display:'grid',placeItems:'center',gap:12,color:c.so}}><img src={resource.coverUrl} alt={`${resource.title} cover`} style={{display:'block',width:mob?190:240,aspectRatio:'2 / 3',objectFit:'cover',borderRadius:8,boxShadow:'0 20px 48px rgba(0,0,0,.4)'}}/><span style={{fontSize:11}}>Preparing page-turn preview…</span></div>:<HTMLFlipBook ref={flipRef} className="bloom-real-book" width={readerSize.width} height={readerSize.height} size="fixed" drawShadow autoSize={false} maxShadowOpacity={0.65} startZIndex={10} showCover mobileScrollSupport usePortrait={mob} swipeDistance={20} clickEventForward useMouseEvents flippingTime={1050} onFlip={event=>setPage(event.data+1)} style={{}}>
+          {Array.from({length:pdf.numPages},(_,index)=><PdfFlipPage key={index+1} pdf={pdf} pageNumber={index+1} pageWidth={readerSize.width} activePage={page}/>)}
         </HTMLFlipBook>}
       </div>
       <div style={{padding:'11px 14px',borderTop:'1px solid '+c.ln,display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,flexWrap:'wrap'}}>
