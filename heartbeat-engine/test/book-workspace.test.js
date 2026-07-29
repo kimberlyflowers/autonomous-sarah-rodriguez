@@ -121,6 +121,12 @@ test('Book project includes a navigable reader and in-context section revisions'
   assert.match(dashboard, /data-testid="book-selection-editor"/);
   assert.match(dashboard, /BOOK PREVIEW SELECTION EDIT/);
   assert.match(dashboard, /Add image/);
+  assert.match(dashboard, /data-testid="book-audience-workflow-choice"/);
+  assert.match(dashboard, /Children's book/);
+  assert.match(dashboard, /illustration-plan\.md/);
+  assert.match(dashboard, /data-testid="book-preview-zoom-controls"/);
+  assert.match(dashboard, /Fit page/);
+  assert.match(dashboard, /Fit width/);
   assert.match(dashboard, /function BookSuiteIcon/);
   assert.match(dashboard, /<BookSuiteIcon name=\{item\.icon\}/);
   assert.doesNotMatch(dashboard, /label:'Home',icon:'⌂'/);

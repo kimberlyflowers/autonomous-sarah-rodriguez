@@ -4256,6 +4256,7 @@ function BookWorkspace({c,mob,aFN="Bloomie",agentId,onOpenChat,standalone=false}
   const [chapterPlanMode,setChapterPlanMode]=useState('auto');
   const [chapterPlan,setChapterPlan]=useState('');
   const [title,setTitle]=useState('');
+  const [bookAudience,setBookAudience]=useState('adult');
   const [bookType,setBookType]=useState('Business / self-help');
   const [reader,setReader]=useState('General audience');
   const [voice,setVoice]=useState('Conversational and encouraging');
@@ -4274,6 +4275,8 @@ function BookWorkspace({c,mob,aFN="Bloomie",agentId,onOpenChat,standalone=false}
   const [coverIsWrap,setCoverIsWrap]=useState(false);
   const flipBookRef=useRef(null);
   const [readerPageNumber,setReaderPageNumber]=useState(0);
+  const [readerZoom,setReaderZoom]=useState(1);
+  const [readerFit,setReaderFit]=useState('page');
   const [pageSelection,setPageSelection]=useState(null);
   const [selectionDraft,setSelectionDraft]=useState('');
   const [selectionEditing,setSelectionEditing]=useState(false);
@@ -4526,7 +4529,7 @@ function BookWorkspace({c,mob,aFN="Bloomie",agentId,onOpenChat,standalone=false}
       bookDescription.trim()&&`Book description: ${bookDescription.trim()}`,
       chapterPlanMode==='custom'&&chapterPlan.trim()&&`Requested chapter outline or chapter directions:\n${chapterPlan.trim()}`,
     ].filter(Boolean).join('\n');
-    const surpriseBrief=`Choose a timely, compelling ${bookType.toLowerCase()} concept for ${reader.toLowerCase()}. ${suppliedDirection||'Choose the strongest subject and reader transformation.'} Create the strongest marketable title, clear reader transformation, chapter structure, examples, and publishing description. Use the selected author profile and approved tenant references as the source of truth.`;
+    const surpriseBrief=`Choose a timely, compelling ${bookAudience==='children'?'children’s':'adult'} ${bookType.toLowerCase()} concept for ${reader.toLowerCase()}. ${suppliedDirection||'Choose the strongest subject and reader transformation.'} Create the strongest marketable title, clear reader transformation, structure, examples, and publishing description. Use the selected author profile and approved tenant references as the source of truth.`;
     const effectiveBrief=startMode==='surprise'?surpriseBrief:(suppliedDirection||brief.trim());
     if(!effectiveBrief)return;
     const sessionId=crypto.randomUUID();
@@ -4534,24 +4537,18 @@ function BookWorkspace({c,mob,aFN="Bloomie",agentId,onOpenChat,standalone=false}
     const project={id:sessionId,title:`📚 ${workingTitle}`,created_at:new Date().toISOString(),updated_at:new Date().toISOString()};
     setActive(project);setMessages([]);setArtifacts([]);setError('');setStatus('working');setView('project');setStage('outline');
     setProjects(current=>[project,...current]);
-    const approvedBrief=`DEDICATED BLOOMIE BOOK WORKSPACE REQUEST
+    const manuscriptWorkflow=bookAudience==='children'?`Create a polished 24–32 page children's picture-book manuscript appropriate for ${reader}. Target approximately 600–1,500 words unless the approved brief clearly calls for an early reader with a different length.
 
-Create a polished, complete manuscript of 10,000–10,800 measured words. This form is the user's approved creative brief, so do not pause for routine clarification. Make responsible editorial choices where details are not specified.
-
-Working title: ${workingTitle}
-Input mode: ${startMode==='surprise'?'surprise me':mode}
-${startMode==='surprise'?'Creative direction chosen by Bloomie':mode==='keyword'?'Keyword or topic':'Book description'}: ${effectiveBrief}
-Book type: ${bookType}
-Target reader: ${reader}
-Author voice: ${voice}
-Author profile: ${selectedAuthor?selectedAuthor.name:'No saved author selected'}
-Author biography: ${selectedAuthor?.biography||'Not provided'}
-Author voice direction: ${selectedAuthor?.voice_direction||voice}
-Approved author reference IDs: ${(selectedAuthor?.reference_ids||[]).join(', ')||'None'}
-Chapter planning: ${chapterPlanMode==='custom'&&chapterPlan.trim()?`Follow the user's requested chapter outline or chapter directions below unless a small editorial adjustment is required for coherence.\n${chapterPlan.trim()}`:'Create the strongest chapter structure for the approved topic and reader transformation.'}
-Core message: Derive one clear, useful promise from the approved topic or description.
-Starting point: Starting from scratch.
-Scope: Complete approximately 10,000-word manuscript plus supporting cover.
+Required workflow:
+1. Publish task_progress with these complete visible stages: Researching the approved brief; Planning the story and page turns; Writing page-by-page copy; Planning illustrations; Creating front and back matter; Assembling the KDP interiors; Creating the cover; Validating and packaging KDP uploads.
+2. Create outline.md with the story promise, age range, emotional arc, character notes, reading level, and page/spread plan.
+3. Save title, copyright, optional dedication, and each story spread as separate ordered Markdown artifacts. Use concise, read-aloud language, intentional page turns, age-appropriate vocabulary, and no filler chapters.
+4. For every story spread, include a separate illustration brief that preserves character appearance, wardrobe, setting, lighting, composition, and safe text area consistently. Do not place production notes inside the reader-facing prose.
+5. Create complete-manuscript.md in exact reading order, plus illustration-plan.md with one production-ready image prompt per spread.
+6. Create a KDP-ready 8.5 × 8.5 inch interior by default, with full-bleed planning, embedded fonts and images, 300 DPI artwork requirements, safe margins, and no crop marks/comments/placeholders.
+7. Generate a professional square children's-book cover with the main character, readable title, author name, and art direction consistent with the interior. Save back-cover copy and five discoverability keywords.
+8. Create kdp-package-checklist.md recording age range, measured word count, page count, trim, bleed, safe margins, embedded fonts, image resolution, title/author match, cover status, and required KDP preview checks.
+9. Continue through tool calls and verification until the page manuscript, illustration plan, cover, interior PDF, and checklist exist. Report the measured word count and real files inline when complete.`:`Create a polished, complete manuscript of 10,000–10,800 measured words. This form is the user's approved creative brief, so do not pause for routine clarification. Make responsible editorial choices where details are not specified.
 
 Required workflow:
 1. Publish task_progress with these complete visible stages: Researching the approved brief; Building the outline; Creating front matter; Writing and saving body chapters; Creating back matter; Assembling the KDP interiors; Creating the cover; Validating and packaging KDP uploads.
@@ -4565,6 +4562,27 @@ Required workflow:
 9. Generate a professional 2:3 portrait front cover that fits this specific genre and audience. Do not use placeholder art. Save back-cover/book-description copy and five discoverability keywords with the project. A full print wrap must be calculated only after the final page count and paper choice are known.
 10. Create kdp-package-checklist.md recording the final title and author match, body word count, trim size, bleed choice, page count, gutter/margins, embedded fonts, image resolution, TOC/heading validation, eBook DOCX, print PDF, cover status, and preview still required in Kindle Previewer and KDP Print Previewer.
 11. Continue through tool calls and verification until the deliverables exist. Never report completion below 10,000 measured body words or while any required KDP package file is missing. Report the exact verified body word count and real files inline when complete.`;
+    const approvedBrief=`DEDICATED BLOOMIE BOOK WORKSPACE REQUEST
+
+This form is the user's approved creative brief, so do not pause for routine clarification. Make responsible editorial choices where details are not specified.
+
+Working title: ${workingTitle}
+Input mode: ${startMode==='surprise'?'surprise me':mode}
+${startMode==='surprise'?'Creative direction chosen by Bloomie':mode==='keyword'?'Keyword or topic':'Book description'}: ${effectiveBrief}
+Book audience workflow: ${bookAudience==='children'?"Children's book":"Adult book"}
+Book type: ${bookType}
+Target reader: ${reader}
+Author voice: ${voice}
+Author profile: ${selectedAuthor?selectedAuthor.name:'No saved author selected'}
+Author biography: ${selectedAuthor?.biography||'Not provided'}
+Author voice direction: ${selectedAuthor?.voice_direction||voice}
+Approved author reference IDs: ${(selectedAuthor?.reference_ids||[]).join(', ')||'None'}
+Chapter planning: ${chapterPlanMode==='custom'&&chapterPlan.trim()?`Follow the user's requested chapter outline or chapter directions below unless a small editorial adjustment is required for coherence.\n${chapterPlan.trim()}`:'Create the strongest chapter structure for the approved topic and reader transformation.'}
+Core message: Derive one clear, useful promise from the approved topic or description.
+Starting point: Starting from scratch.
+Scope: ${bookAudience==='children'?"Complete children's page manuscript, illustration plan, cover, and KDP package.":'Complete approximately 10,000-word manuscript plus supporting cover.'}
+
+${manuscriptWorkflow}`;
     let pollTimer;
     try{
       pollTimer=setInterval(async()=>{
@@ -5095,10 +5113,14 @@ Import the attached manuscript into this Book Studio project. Preserve the autho
               <div style={{fontSize:10,fontWeight:900,color:c.ac,letterSpacing:'.1em',marginBottom:8}}>CHOOSE THE FEEL</div>
               <h2 style={{fontSize:mob?23:29,lineHeight:1.15,color:c.tx,margin:'0 0 8px'}}>Pick what feels closest.</h2>
               <p style={{fontSize:12,color:c.so,lineHeight:1.6,margin:'0 0 18px'}}>No publishing knowledge needed. Bloomie turns these choices into the complete creative brief.</p>
+              <div style={{fontSize:11,fontWeight:850,color:c.tx,marginBottom:8}}>Who is the book for?</div>
+              <div data-testid="book-audience-workflow-choice" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:18}}>
+                {[['adult','Adult book','Long-form chapters, front matter, and a 10,000-word KDP manuscript.'],['children',"Children's book",'Age-based page turns, concise read-aloud copy, and an illustration plan.']].map(([key,label,description])=><button key={key} type="button" onClick={()=>{setBookAudience(key);if(key==='children'){setBookType("Children's picture book");setReader('Ages 4–8');}else{setBookType('Business / self-help');setReader('General audience');}}} aria-pressed={bookAudience===key} style={{padding:'12px',borderRadius:12,border:'1px solid '+(bookAudience===key?c.ac:c.ln),background:bookAudience===key?'linear-gradient(135deg,rgba(244,162,97,.13),rgba(231,111,139,.13))':c.sf,color:c.tx,textAlign:'left',cursor:'pointer'}}><strong style={{display:'block',fontSize:12,color:bookAudience===key?c.ac:c.tx}}>{label}</strong><span style={{display:'block',fontSize:9,lineHeight:1.45,color:c.so,marginTop:4}}>{description}</span></button>)}
+              </div>
               <div style={{fontSize:11,fontWeight:850,color:c.tx,marginBottom:8}}>Book style</div>
-              <div style={{display:'flex',gap:7,flexWrap:'wrap',marginBottom:18}}>{['Business / self-help','Memoir / personal story','Faith-based / devotional','Educational','Fiction / creative'].map(option=><button key={option} onClick={()=>setBookType(option)} style={{padding:'9px 11px',borderRadius:18,border:'1px solid '+(bookType===option?c.ac:c.ln),background:bookType===option?c.ac+'15':c.sf,color:bookType===option?c.ac:c.so,fontSize:10,fontWeight:750,cursor:'pointer'}}>{option.replace(' / ',' + ')}</button>)}</div>
+              <div style={{display:'flex',gap:7,flexWrap:'wrap',marginBottom:18}}>{(bookAudience==='children'?["Children's picture book",'Early reader','Educational story','Faith-based story','Bedtime story']:['Business / self-help','Memoir / personal story','Faith-based / devotional','Educational','Fiction / creative']).map(option=><button key={option} onClick={()=>setBookType(option)} style={{padding:'9px 11px',borderRadius:18,border:'1px solid '+(bookType===option?c.ac:c.ln),background:bookType===option?c.ac+'15':c.sf,color:bookType===option?c.ac:c.so,fontSize:10,fontWeight:750,cursor:'pointer'}}>{option.replace(' / ',' + ')}</button>)}</div>
               <div style={{fontSize:11,fontWeight:850,color:c.tx,marginBottom:8}}>Who should love it?</div>
-              <div style={{display:'flex',gap:7,flexWrap:'wrap',marginBottom:18}}>{['General audience','Business owners','Parents and families','Faith community','Students and learners'].map(option=><button key={option} onClick={()=>setReader(option)} style={{padding:'9px 11px',borderRadius:18,border:'1px solid '+(reader===option?c.ac:c.ln),background:reader===option?c.ac+'15':c.sf,color:reader===option?c.ac:c.so,fontSize:10,fontWeight:750,cursor:'pointer'}}>{option}</button>)}</div>
+              <div style={{display:'flex',gap:7,flexWrap:'wrap',marginBottom:18}}>{(bookAudience==='children'?['Ages 2–4','Ages 4–8','Ages 6–9','Ages 8–12']:['General audience','Business owners','Parents and families','Faith community','Students and learners']).map(option=><button key={option} onClick={()=>setReader(option)} style={{padding:'9px 11px',borderRadius:18,border:'1px solid '+(reader===option?c.ac:c.ln),background:reader===option?c.ac+'15':c.sf,color:reader===option?c.ac:c.so,fontSize:10,fontWeight:750,cursor:'pointer'}}>{option}</button>)}</div>
               <div style={{fontSize:11,fontWeight:850,color:c.tx,marginBottom:8}}>How should it sound?</div>
               <div style={{display:'grid',gridTemplateColumns:mob?'1fr 1fr':'repeat(2,1fr)',gap:8}}>{['Conversational and encouraging','Authoritative and practical','Inspirational and uplifting','Raw and personal'].map(option=><button key={option} onClick={()=>setVoice(option)} style={{padding:'11px',borderRadius:11,border:'1px solid '+(voice===option?c.ac:c.ln),background:voice===option?c.ac+'15':c.sf,color:voice===option?c.ac:c.so,fontSize:10,fontWeight:750,cursor:'pointer'}}>{option}</button>)}</div>
             </>}
@@ -5118,7 +5140,7 @@ Import the attached manuscript into this Book Studio project. Preserve the autho
               <h2 style={{fontSize:mob?23:29,lineHeight:1.15,color:c.tx,margin:'0 0 8px'}}>Bloomie has enough to begin.</h2>
               <p style={{fontSize:12,color:c.so,lineHeight:1.6,margin:'0 0 18px'}}>Review the simple choices below. The title, outline, chapters, cover, and files will be built and shown live.</p>
               <div style={{padding:16,borderRadius:14,background:c.sf,border:'1px solid '+c.ln,display:'grid',gap:11,marginBottom:14}}>
-                {[['Topic',topic||'Bloomie will choose'],['Title',title||'Bloomie will create it'],['Description',bookDescription||'Bloomie will develop the reader transformation'],['Chapter plan',chapterPlanMode==='custom'&&chapterPlan.trim()?chapterPlan:'Bloomie will create the outline'],['Style',bookType],['Reader',reader],['Voice',voice],['Author',authors.find(author=>author.id===selectedAuthorId)?.name||authorForm.name||`Your ${aFN}`]].map(([label,value])=><div key={label} style={{display:'flex',justifyContent:'space-between',gap:14,fontSize:11}}><span style={{color:c.so}}>{label}</span><strong style={{color:c.tx,textAlign:'right',maxWidth:'68%',whiteSpace:'pre-wrap'}}>{value}</strong></div>)}
+                {[['Workflow',bookAudience==='children'?"Children's book":'Adult book'],['Topic',topic||'Bloomie will choose'],['Title',title||'Bloomie will create it'],['Description',bookDescription||'Bloomie will develop the reader transformation'],['Chapter plan',chapterPlanMode==='custom'&&chapterPlan.trim()?chapterPlan:'Bloomie will create the outline'],['Style',bookType],['Reader',reader],['Voice',voice],['Author',authors.find(author=>author.id===selectedAuthorId)?.name||authorForm.name||`Your ${aFN}`]].map(([label,value])=><div key={label} style={{display:'flex',justifyContent:'space-between',gap:14,fontSize:11}}><span style={{color:c.so}}>{label}</span><strong style={{color:c.tx,textAlign:'right',maxWidth:'68%',whiteSpace:'pre-wrap'}}>{value}</strong></div>)}
               </div>
               {authorForm.headshot&&<div style={{display:'flex',alignItems:'center',gap:9,padding:'9px 11px',borderRadius:10,background:c.sf,border:'1px solid '+c.ln,fontSize:10,color:c.so}}><span style={{width:30,height:30,borderRadius:9,background:c.ac+'20',display:'grid',placeItems:'center',color:c.ac,fontWeight:900}}>✓</span><span>Author picture ready: <strong style={{color:c.tx}}>{authorForm.headshot.name}</strong></span></div>}
             </>}
@@ -5316,14 +5338,21 @@ Import the attached manuscript into this Book Studio project. Preserve the autho
                 .stf__block{background:transparent!important}
               `}</style>
               <img src={coverPreviewUrl} alt="" onLoad={e=>setCoverIsWrap(e.currentTarget.naturalWidth/e.currentTarget.naturalHeight>1.15)} style={{display:'none'}}/>
-              <div data-testid="real-book-page-flip" style={{width:'100%',maxWidth:mob?344:840,height:mob?500:640,margin:'0 auto',display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden',padding:mob?'10px 0':'20px',boxSizing:'border-box'}}>
+              <div data-testid="book-preview-zoom-controls" style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6,marginBottom:10,flexWrap:'wrap'}}>
+                <button type="button" aria-label="Zoom out" onClick={()=>{setReaderFit('custom');setReaderZoom(value=>Math.max(.6,Number((value-.1).toFixed(2))));}} disabled={readerZoom<=.6} style={{padding:'7px 10px',borderRadius:8,border:'1px solid '+c.ln,background:c.sf,color:c.tx,cursor:readerZoom<=.6?'not-allowed':'pointer'}}>−</button>
+                <span style={{minWidth:46,textAlign:'center',fontSize:10,fontWeight:800,color:c.so}}>{Math.round(readerZoom*100)}%</span>
+                <button type="button" aria-label="Zoom in" onClick={()=>{setReaderFit('custom');setReaderZoom(value=>Math.min(1.5,Number((value+.1).toFixed(2))));}} disabled={readerZoom>=1.5} style={{padding:'7px 10px',borderRadius:8,border:'1px solid '+c.ln,background:c.sf,color:c.tx,cursor:readerZoom>=1.5?'not-allowed':'pointer'}}>+</button>
+                <button type="button" aria-pressed={readerFit==='page'} onClick={()=>{setReaderFit('page');setReaderZoom(mob ? 0.88 : 1);}} style={{padding:'7px 10px',borderRadius:8,border:'1px solid '+(readerFit==='page'?c.ac:c.ln),background:readerFit==='page'?c.ac+'15':c.sf,color:readerFit==='page'?c.ac:c.tx,fontSize:10,fontWeight:800,cursor:'pointer'}}>Fit page</button>
+                <button type="button" aria-pressed={readerFit==='width'} onClick={()=>{setReaderFit('width');setReaderZoom(mob?1:1.05);}} style={{padding:'7px 10px',borderRadius:8,border:'1px solid '+(readerFit==='width'?c.ac:c.ln),background:readerFit==='width'?c.ac+'15':c.sf,color:readerFit==='width'?c.ac:c.tx,fontSize:10,fontWeight:800,cursor:'pointer'}}>Fit width</button>
+              </div>
+              <div data-testid="real-book-page-flip" style={{width:'100%',maxWidth:mob?344:840,height:mob?520:660,margin:'0 auto',display:'flex',alignItems:readerZoom>1?'flex-start':'center',justifyContent:readerZoom>1?'flex-start':'center',overflow:'auto',padding:mob?'10px 0':'20px',boxSizing:'border-box'}}>
                 <HTMLFlipBook
-                  key={`${active.id}-${readerPages.length}-${coverArtifact?.fileId||coverArtifact?.name||'no-cover'}`}
+                  key={`${active.id}-${readerPages.length}-${coverArtifact?.fileId||coverArtifact?.name||'no-cover'}-${readerZoom}`}
                   ref={flipBookRef}
                   className="bloom-real-book"
                   style={{}}
-                  width={mob?320:400}
-                  height={mob?480:600}
+                  width={Math.round((mob?320:400)*readerZoom)}
+                  height={Math.round((mob?480:600)*readerZoom)}
                   size="fixed"
                   drawShadow
                   flippingTime={1050}
@@ -5341,6 +5370,7 @@ Import the attached manuscript into this Book Studio project. Preserve the autho
                   {readerPages.map(page=><BookFlipPage key={page.key} page={page} coverUrl={coverPreviewUrl} coverIsWrap={coverIsWrap} bookDescription={bookDescription} onEditCover={()=>setStage('publish')} onSelectText={capturePageSelection}/>)}
                 </HTMLFlipBook>
               </div>
+              <div style={{marginTop:8,textAlign:'center',fontSize:10,color:c.so}}>Highlight text, then right-click for AI and manual editing options.</div>
               <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:10,marginTop:16,flexWrap:'wrap'}}>
                 <button aria-label="Turn to previous page" onClick={()=>flipBookRef.current?.pageFlip()?.flipPrev('bottom')} disabled={readerPageNumber<=0} style={{padding:'9px 14px',borderRadius:9,border:'1px solid '+c.ln,background:c.sf,color:c.tx,cursor:readerPageNumber<=0?'not-allowed':'pointer',opacity:readerPageNumber<=0?0.45:1}}>← Turn back</button>
                 <span style={{minWidth:170,textAlign:'center',fontSize:11,color:c.so}}>{readerPages[readerPageNumber]?.kind==='front'?'Front cover':readerPages[readerPageNumber]?.kind==='back'?'Back cover':`Page${!mob&&readerPages[readerPageNumber+1]?.kind==='content'?'s':''} ${readerPages[readerPageNumber]?.displayNumber||1}${!mob&&readerPages[readerPageNumber+1]?.kind==='content'?`–${readerPages[readerPageNumber+1].displayNumber}`:''} of ${totalBookPages}`}</span>
