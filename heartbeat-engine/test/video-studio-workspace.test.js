@@ -18,4 +18,6 @@ test('Video workspace uses a tenant session bridge and opens characters', () => 
   assert.match(serverSource, /getUserOrgId\(req\)/);
   assert.match(serverSource, /\/api\/auth\/internal-session/);
   assert.match(serverSource, /BLOOM_STUDIO_API_KEY/);
+  assert.match(serverSource, /BLOOM_STUDIO_PRIMARY_TENANT \|\| 'kimberly'/);
+  assert.match(serverSource, /organizationId === primaryBloomieOrgId/);
 });

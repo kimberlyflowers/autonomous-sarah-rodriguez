@@ -6,6 +6,7 @@ const router = express.Router();
 const studioOrigin = String(
   process.env.BLOOM_STUDIO_URL || 'https://lovely-wonder-production-3c61.up.railway.app'
 ).replace(/\/$/, '');
+const primaryBloomieOrgId = process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001';
 
 router.post('/session', async (req, res) => {
   try {
@@ -28,11 +29,17 @@ router.post('/session', async (req, res) => {
 
     const internalKey = process.env.BLOOM_STUDIO_API_KEY;
     if (!internalKey) return res.status(503).json({ error: 'Bloom Studio sign-in is not configured' });
+    // Preserve the original BLOOM Studio workspace for the primary Bloomie
+    // tenant so its existing characters, assets, and library remain visible.
+    // Every other organization continues to receive its own isolated workspace.
+    const studioTenantId = organizationId === primaryBloomieOrgId
+      ? (process.env.BLOOM_STUDIO_PRIMARY_TENANT || 'kimberly')
+      : organizationId;
     const response = await fetch(`${studioOrigin}/api/auth/internal-session`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-API-Key': internalKey },
       body: JSON.stringify({
-        tenantId: organizationId,
+        tenantId: studioTenantId,
         tenantName: organization?.name || 'Bloomie workspace'
       })
     });
