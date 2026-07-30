@@ -127,6 +127,12 @@ test('Book project includes a navigable reader and in-context section revisions'
   assert.match(dashboard, /data-testid="book-preview-zoom-controls"/);
   assert.match(dashboard, /Fit page/);
   assert.match(dashboard, /Fit width/);
+  assert.match(dashboard, /data-testid="book-preview-fullscreen"/);
+  assert.match(dashboard, /requestFullscreen/);
+  assert.match(dashboard, /fullscreenchange/);
+  assert.match(dashboard, /showPageCorners/);
+  assert.match(dashboard, /disableFlipByClick=\{false\}/);
+  assert.match(dashboard, /overflow:visible!important/);
   assert.match(dashboard, /function bookBlockLayoutCost/);
   assert.match(dashboard, /layoutBudget=118/);
   assert.match(dashboard, /balancedPageCount/);

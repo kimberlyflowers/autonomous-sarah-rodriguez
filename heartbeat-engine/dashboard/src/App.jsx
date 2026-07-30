@@ -4259,11 +4259,11 @@ function LibraryBookReader({resource,onClose,onEdit,mob,c}){
       </div>
       <div style={{flex:1,minHeight:0,display:'grid',placeItems:'center',padding:mob?'8px 4px':'18px',overflow:'hidden',background:'#15161b'}}>
         <style>{`
-          .bloom-real-book{margin:0 auto!important;filter:drop-shadow(0 22px 26px rgba(0,0,0,.3));overflow:hidden!important;clip-path:inset(0 round 3px);contain:paint}
+          .bloom-real-book{margin:0 auto!important;filter:drop-shadow(0 22px 26px rgba(0,0,0,.3));overflow:visible!important}
           .bloom-flip-page{position:relative;box-sizing:border-box;width:100%;height:100%;overflow:hidden;background:#fffdf8;color:#26231f;border:1px solid rgba(83,68,47,.2)}
           .bloom-flip-page:before{content:"";position:absolute;z-index:2;top:0;bottom:0;width:18px;right:0;background:linear-gradient(90deg,transparent,rgba(45,35,25,.1));pointer-events:none}
           .bloom-flip-cover:before{display:none}
-          .stf__parent{margin:0 auto;overflow:hidden!important;clip-path:inset(0 round 3px);contain:paint}
+          .stf__parent{margin:0 auto;overflow:visible!important}
           .stf__block{background:transparent!important}
         `}</style>
         {error?<div style={{color:'#ef6464'}}>{error}</div>:!pdf?<div style={{display:'grid',placeItems:'center',gap:12,color:c.so}}><img src={resource.coverUrl} alt={`${resource.title} cover`} style={{display:'block',width:mob?190:240,aspectRatio:'2 / 3',objectFit:'cover',borderRadius:8,boxShadow:'0 20px 48px rgba(0,0,0,.4)'}}/><span style={{fontSize:11}}>Preparing page-turn preview…</span></div>:<HTMLFlipBook ref={flipRef} className="bloom-real-book" width={readerSize.width} height={readerSize.height} size="fixed" drawShadow autoSize={false} maxShadowOpacity={0.65} startZIndex={10} showCover mobileScrollSupport usePortrait={mob} swipeDistance={20} clickEventForward useMouseEvents flippingTime={1050} onFlip={event=>setPage(event.data+1)} style={{}}>
@@ -4317,9 +4317,12 @@ function BookWorkspace({c,mob,aFN="Bloomie",agentId,onOpenChat,standalone=false}
   const [readerEdge,setReaderEdge]=useState('front');
   const [coverIsWrap,setCoverIsWrap]=useState(false);
   const flipBookRef=useRef(null);
+  const bookPreviewRef=useRef(null);
+  const readerViewportRef=useRef(null);
   const [readerPageNumber,setReaderPageNumber]=useState(0);
   const [readerZoom,setReaderZoom]=useState(1);
   const [readerFit,setReaderFit]=useState('page');
+  const [readerFullscreen,setReaderFullscreen]=useState(false);
   const [pageSelection,setPageSelection]=useState(null);
   const [selectionDraft,setSelectionDraft]=useState('');
   const [selectionEditing,setSelectionEditing]=useState(false);
@@ -4385,6 +4388,51 @@ function BookWorkspace({c,mob,aFN="Bloomie",agentId,onOpenChat,standalone=false}
     }else if(page?.kind==='front')setReaderEdge('front');
     else if(page?.kind==='back')setReaderEdge('back');
   },[readerPages]);
+  const applyReaderFit=useCallback(mode=>{
+    const viewport=readerViewportRef.current;
+    const availableWidth=Math.max(280,(viewport?.clientWidth||window.innerWidth)-(mob?12:28));
+    const availableHeight=Math.max(350,(viewport?.clientHeight||window.innerHeight)-(mob?12:28));
+    const bookWidth=mob?320:800;
+    const bookHeight=mob?480:600;
+    const next=mode==='width'
+      ?availableWidth/bookWidth
+      :Math.min(availableWidth/bookWidth,availableHeight/bookHeight);
+    setReaderZoom(current=>{
+      const fitted=Math.max(.6,Math.min(1.5,Number(next.toFixed(2))));
+      return current===fitted?current:fitted;
+    });
+  },[mob]);
+  const toggleReaderFullscreen=useCallback(async()=>{
+    const preview=bookPreviewRef.current;
+    if(readerFullscreen){
+      if(document.fullscreenElement&&document.exitFullscreen){
+        try{await document.exitFullscreen();}catch{}
+      }
+      setReaderFullscreen(false);
+      return;
+    }
+    setReaderFullscreen(true);
+    if(preview?.requestFullscreen){
+      try{await preview.requestFullscreen();}catch{}
+    }
+  },[readerFullscreen]);
+  useEffect(()=>{
+    const syncFullscreen=()=>{
+      if(document.fullscreenElement===bookPreviewRef.current)setReaderFullscreen(true);
+      else if(document.fullscreenElement===null)setReaderFullscreen(false);
+    };
+    document.addEventListener('fullscreenchange',syncFullscreen);
+    return()=>document.removeEventListener('fullscreenchange',syncFullscreen);
+  },[]);
+  useEffect(()=>{
+    if(stage!=='preview'||directEditing||readerFit==='custom')return;
+    let frame=window.requestAnimationFrame(()=>applyReaderFit(readerFit));
+    const resize=()=>{window.cancelAnimationFrame(frame);frame=window.requestAnimationFrame(()=>applyReaderFit(readerFit));};
+    window.addEventListener('resize',resize);
+    const observer=typeof ResizeObserver!=='undefined'&&readerViewportRef.current?new ResizeObserver(resize):null;
+    observer?.observe(readerViewportRef.current);
+    return()=>{window.cancelAnimationFrame(frame);window.removeEventListener('resize',resize);observer?.disconnect();};
+  },[stage,directEditing,readerFit,readerFullscreen,applyReaderFit]);
   const capturePageSelection=useCallback((page,event,force=false)=>{
     const text=window.getSelection()?.toString().trim()||'';
     if(!text){if(force)setPageSelection(null);return;}
@@ -5318,7 +5366,7 @@ Import the attached manuscript into this Book Studio project. Preserve the autho
           </div>}
           {stage==='outline'&&<div style={{marginBottom:18,padding:mob?18:26,borderRadius:14,border:'1px solid '+c.ln,background:c.sf,minHeight:260}}>{outlineArtifact?<ReactMarkdown remarkPlugins={[remarkGfm]}>{outlineArtifact.content||''}</ReactMarkdown>:<div style={{textAlign:'center',paddingTop:55,color:c.so}}><div style={{fontSize:22,marginBottom:9}}>☷</div><strong style={{color:c.tx}}>Building the outline</strong><div style={{fontSize:11,marginTop:6}}>The table of contents and chapter plan will appear here as soon as {aFN} saves it.</div></div>}</div>}
           {stage==='chapters'&&<div style={{marginBottom:18}}><div style={{fontSize:12,fontWeight:750,color:c.so,marginBottom:8}}>Book sections</div>{bookProof.sections.length>0?<div style={{display:'grid',gap:8}}>{bookProof.sections.map((file,index)=><button key={file.fileId} onClick={()=>{setChapterIndex(index);setPageIndex(0);setReaderEdge('content');setStage('preview');}} style={{padding:'12px',borderRadius:10,border:'1px solid '+c.ln,background:c.sf,color:c.tx,fontSize:12,fontWeight:650,display:'flex',justifyContent:'space-between',gap:8,cursor:'pointer',textAlign:'left'}}><span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{file.name}</span><span style={{color:c.so}}>{countBookWords(file.content).toLocaleString()} words →</span></button>)}</div>:<div style={{padding:38,textAlign:'center',borderRadius:12,border:'1px dashed '+c.ln,color:c.so}}>Title page, copyright, contents, preface, introduction, chapters, and closing sections will appear here in reading order.</div>}</div>}
-          {stage==='preview'&&activeSection&&<div data-testid="book-reader-preview" role="dialog" aria-modal="true" style={{position:'fixed',zIndex:1250,left:'50%',top:'50%',transform:'translate(-50%,-50%)',width:mob?'calc(100vw - 18px)':'min(1120px,calc(100vw - 48px))',height:mob?'calc(100dvh - 18px)':'min(860px,calc(100vh - 48px))',border:'1px solid '+c.ln,borderRadius:16,overflowY:'auto',overflowX:'hidden',background:c.sf,boxShadow:'0 30px 100px rgba(0,0,0,.62)'}}>
+          {stage==='preview'&&activeSection&&<div ref={bookPreviewRef} data-testid="book-reader-preview" role="dialog" aria-modal="true" style={{position:'fixed',zIndex:1250,left:'50%',top:'50%',transform:'translate(-50%,-50%)',width:readerFullscreen?'100vw':mob?'calc(100vw - 18px)':'min(1120px,calc(100vw - 48px))',height:readerFullscreen?'100dvh':mob?'calc(100dvh - 18px)':'min(860px,calc(100vh - 48px))',border:readerFullscreen?0:'1px solid '+c.ln,borderRadius:readerFullscreen?0:16,overflowY:'auto',overflowX:'hidden',background:c.sf,boxShadow:readerFullscreen?'none':'0 30px 100px rgba(0,0,0,.62)'}}>
             <div style={{padding:'11px 13px',borderBottom:'1px solid '+c.ln,display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,flexWrap:'wrap'}}>
               <div><div style={{fontSize:10,fontWeight:800,color:c.ac,textTransform:'uppercase',letterSpacing:'.08em'}}>Book preview</div><div style={{fontSize:13,fontWeight:750,color:c.tx,marginTop:3}}>{activeSection.name}</div></div>
               <div style={{display:'flex',alignItems:'center',gap:7}}>
@@ -5367,7 +5415,7 @@ Import the attached manuscript into this Book Studio project. Preserve the autho
                 .kdp-page-turn-forward{transform-origin:left center;animation:kdpTurnForward .72s cubic-bezier(.55,.05,.42,.98) forwards;z-index:5}
                 .kdp-page-turn-back{transform-origin:right center;animation:kdpTurnBack .72s cubic-bezier(.55,.05,.42,.98) forwards;z-index:5}
                 .kdp-page-turn-forward:after,.kdp-page-turn-back:after{animation:kdpCurlLight .72s ease forwards}
-                .bloom-real-book{margin:0 auto!important;filter:drop-shadow(0 22px 26px rgba(0,0,0,.3));overflow:hidden!important;clip-path:inset(0 round 3px);contain:paint}
+                .bloom-real-book{margin:0 auto!important;filter:drop-shadow(0 22px 26px rgba(0,0,0,.3));overflow:visible!important}
                 .bloom-flip-page{position:relative;box-sizing:border-box;width:100%;height:100%;overflow:hidden;padding:8% 8% 7%;background:#fffdf8;color:#26231f;border:1px solid rgba(83,68,47,.2);font-family:Georgia,'Times New Roman',serif;font-size:12.5px;line-height:1.52;user-select:text!important;-webkit-user-select:text!important}
                 .bloom-flip-page:before{content:"";position:absolute;top:0;bottom:0;width:18px;right:0;background:linear-gradient(90deg,transparent,rgba(45,35,25,.1));pointer-events:none}
                 .bloom-flip-cover{padding:0;background:#15110f}
@@ -5379,7 +5427,7 @@ Import the attached manuscript into this Book Studio project. Preserve the autho
                 .bloom-page-number-left{left:8%;right:auto;text-align:left}
                 .bloom-page-number-right{right:8%;left:auto;text-align:right}
                 .bloom-cover-edit{position:absolute;right:12px;bottom:12px;z-index:8;padding:8px 11px;border-radius:9px;border:1px solid rgba(255,255,255,.45);background:rgba(15,12,10,.78);backdrop-filter:blur(8px);color:#fff;font-size:10px;font-weight:850;cursor:pointer}
-                .stf__parent{margin:0 auto;overflow:hidden!important;clip-path:inset(0 round 3px);contain:paint}
+                .stf__parent{margin:0 auto;overflow:visible!important}
                 .stf__block{background:transparent!important}
               `}</style>
               <img src={coverPreviewUrl} alt="" onLoad={e=>setCoverIsWrap(e.currentTarget.naturalWidth/e.currentTarget.naturalHeight>1.15)} style={{display:'none'}}/>
@@ -5387,10 +5435,11 @@ Import the attached manuscript into this Book Studio project. Preserve the autho
                 <button type="button" aria-label="Zoom out" onClick={()=>{setReaderFit('custom');setReaderZoom(value=>Math.max(.6,Number((value-.1).toFixed(2))));}} disabled={readerZoom<=.6} style={{padding:'7px 10px',borderRadius:8,border:'1px solid '+c.ln,background:c.sf,color:c.tx,cursor:readerZoom<=.6?'not-allowed':'pointer'}}>−</button>
                 <span style={{minWidth:46,textAlign:'center',fontSize:10,fontWeight:800,color:c.so}}>{Math.round(readerZoom*100)}%</span>
                 <button type="button" aria-label="Zoom in" onClick={()=>{setReaderFit('custom');setReaderZoom(value=>Math.min(1.5,Number((value+.1).toFixed(2))));}} disabled={readerZoom>=1.5} style={{padding:'7px 10px',borderRadius:8,border:'1px solid '+c.ln,background:c.sf,color:c.tx,cursor:readerZoom>=1.5?'not-allowed':'pointer'}}>+</button>
-                <button type="button" aria-pressed={readerFit==='page'} onClick={()=>{setReaderFit('page');setReaderZoom(mob ? 0.88 : 1);}} style={{padding:'7px 10px',borderRadius:8,border:'1px solid '+(readerFit==='page'?c.ac:c.ln),background:readerFit==='page'?c.ac+'15':c.sf,color:readerFit==='page'?c.ac:c.tx,fontSize:10,fontWeight:800,cursor:'pointer'}}>Fit page</button>
-                <button type="button" aria-pressed={readerFit==='width'} onClick={()=>{setReaderFit('width');setReaderZoom(mob?1:1.05);}} style={{padding:'7px 10px',borderRadius:8,border:'1px solid '+(readerFit==='width'?c.ac:c.ln),background:readerFit==='width'?c.ac+'15':c.sf,color:readerFit==='width'?c.ac:c.tx,fontSize:10,fontWeight:800,cursor:'pointer'}}>Fit width</button>
+                <button type="button" aria-pressed={readerFit==='page'} onClick={()=>{setReaderFit('page');applyReaderFit('page');}} style={{padding:'7px 10px',borderRadius:8,border:'1px solid '+(readerFit==='page'?c.ac:c.ln),background:readerFit==='page'?c.ac+'15':c.sf,color:readerFit==='page'?c.ac:c.tx,fontSize:10,fontWeight:800,cursor:'pointer'}}>Fit page</button>
+                <button type="button" aria-pressed={readerFit==='width'} onClick={()=>{setReaderFit('width');applyReaderFit('width');}} style={{padding:'7px 10px',borderRadius:8,border:'1px solid '+(readerFit==='width'?c.ac:c.ln),background:readerFit==='width'?c.ac+'15':c.sf,color:readerFit==='width'?c.ac:c.tx,fontSize:10,fontWeight:800,cursor:'pointer'}}>Fit width</button>
+                <button data-testid="book-preview-fullscreen" type="button" aria-pressed={readerFullscreen} onClick={toggleReaderFullscreen} style={{padding:'7px 10px',borderRadius:8,border:'1px solid '+(readerFullscreen?c.ac:c.ln),background:readerFullscreen?c.ac+'15':c.sf,color:readerFullscreen?c.ac:c.tx,fontSize:10,fontWeight:800,cursor:'pointer'}}>{readerFullscreen?'Exit full screen':'Full screen'}</button>
               </div>
-              <div data-testid="real-book-page-flip" style={{width:'100%',maxWidth:mob?344:840,height:mob?520:660,margin:'0 auto',display:'flex',alignItems:readerZoom>1?'flex-start':'center',justifyContent:readerZoom>1?'flex-start':'center',overflow:'auto',padding:mob?'10px 0':'20px',boxSizing:'border-box'}}>
+              <div ref={readerViewportRef} data-testid="real-book-page-flip" style={{width:'100%',maxWidth:readerFullscreen?'calc(100vw - 32px)':mob?344:840,height:readerFullscreen?'calc(100dvh - 180px)':mob?520:660,margin:'0 auto',display:'flex',alignItems:readerZoom>1?'flex-start':'center',justifyContent:readerZoom>1?'flex-start':'center',overflow:'auto',padding:mob?'10px 0':'20px',boxSizing:'border-box'}}>
                 <HTMLFlipBook
                   key={`${active.id}-${readerPages.length}-${coverArtifact?.fileId||coverArtifact?.name||'no-cover'}-${readerZoom}`}
                   ref={flipBookRef}
@@ -5405,6 +5454,8 @@ Import the attached manuscript into this Book Studio project. Preserve the autho
                   startZIndex={10}
                   autoSize={false}
                   maxShadowOpacity={0.65}
+                  showPageCorners
+                  disableFlipByClick={false}
                   showCover
                   mobileScrollSupport
                   swipeDistance={20}
