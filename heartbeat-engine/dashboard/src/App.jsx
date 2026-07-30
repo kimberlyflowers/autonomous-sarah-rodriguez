@@ -4280,6 +4280,68 @@ function LibraryBookReader({resource,onClose,onEdit,mob,c}){
 
 const cleanChatTitle=title=>String(title||'New conversation').replace(/^[\p{Extended_Pictographic}\uFE0F\u200D\s]+/u,'').trim()||'New conversation';
 
+function VideoStudioWorkspace({c}){
+  const iframeRef=useRef(null);
+  const [session,setSession]=useState(null);
+  const [status,setStatus]=useState('loading');
+  const [error,setError]=useState('');
+
+  const loadStudio=useCallback(async()=>{
+    setStatus('loading');setError('');
+    try{
+      const response=await fetch('/api/video-studio/session',{method:'POST'});
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(data.error||'Bloom Studio could not open');
+      setSession(data);
+    }catch(err){setError(err.message);setStatus('error');}
+  },[]);
+
+  useEffect(()=>{loadStudio();},[loadStudio]);
+  useEffect(()=>{
+    const receive=(event)=>{
+      if(!session||event.origin!==session.studioOrigin)return;
+      if(event.data?.type==='bloom-studio-ready')setStatus('ready');
+      if(event.data?.type==='bloom-studio-error'){setError(event.data.message||'Bloom Studio could not open');setStatus('error');}
+    };
+    window.addEventListener('message',receive);
+    return()=>window.removeEventListener('message',receive);
+  },[session]);
+
+  const connect=()=>{
+    if(!session||!iframeRef.current?.contentWindow)return;
+    iframeRef.current.contentWindow.postMessage({
+      type:'bloom-studio-session',
+      token:session.token,
+      tenant:session.tenant,
+      defaultSection:'characters'
+    },session.studioOrigin);
+  };
+
+  return <div style={{position:'relative',width:'100%',height:'100%',minHeight:0,background:c.bg,overflow:'hidden'}}>
+    {session&&<iframe
+      ref={iframeRef}
+      src={`${session.studioOrigin}/?embed=1`}
+      title="BLOOM Studio"
+      onLoad={connect}
+      allow="camera; microphone; clipboard-read; clipboard-write; fullscreen"
+      style={{width:'100%',height:'100%',border:0,display:'block',background:c.bg}}
+    />}
+    {status!=='ready'&&<div style={{position:'absolute',inset:0,display:'grid',placeItems:'center',background:c.bg,zIndex:2}}>
+      <div style={{width:'min(420px,calc(100% - 32px))',padding:28,borderRadius:18,border:'1px solid '+c.ln,background:c.cd,textAlign:'center',boxShadow:'0 18px 50px rgba(0,0,0,.18)'}}>
+        {status==='error'?<>
+          <div style={{fontSize:16,fontWeight:800,marginBottom:8}}>BLOOM Studio could not open</div>
+          <div style={{fontSize:13,color:c.so,marginBottom:18}}>{error}</div>
+          <button onClick={loadStudio} style={{border:0,borderRadius:10,padding:'10px 18px',background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',fontWeight:800,cursor:'pointer'}}>Try again</button>
+        </>:<>
+          <div style={{width:34,height:34,border:'3px solid '+c.ln,borderTopColor:'#E76F8B',borderRadius:'50%',margin:'0 auto 14px',animation:'spin .8s linear infinite'}}/>
+          <div style={{fontSize:15,fontWeight:800}}>Opening your Video workspace…</div>
+          <div style={{fontSize:12,color:c.so,marginTop:6}}>Loading Characters and your tenant media.</div>
+        </>}
+      </div>
+    </div>}
+  </div>;
+}
+
 function BookWorkspace({c,mob,aFN="Bloomie",agentId,onOpenChat,standalone=false}){
   const [access,setAccess]=useState('checking');
   const [boosterResources,setBoosterResources]=useState([]);
@@ -8649,6 +8711,7 @@ function App({ authUser, passwordRecovery = false }) {
             {k:"chat",l:"Chat"},
             {k:"work",l:"Work"},
             {k:"book",l:"Book"},
+            {k:"video",l:"Video"},
           ].map(t=>(
             <button key={t.k} onClick={()=>setPg(t.k)} style={{padding:mob?"6px 16px":"6px 24px",borderRadius:8,border:"none",cursor:"pointer",fontSize:12,fontWeight:600,background:pg===t.k?c.cd:"transparent",color:pg===t.k?c.tx:c.so,boxShadow:pg===t.k?"0 1px 4px rgba(0,0,0,.06)":"none",transition:"all .15s",position:"relative"}}>
               {t.l}
@@ -8662,7 +8725,7 @@ function App({ authUser, passwordRecovery = false }) {
         {(pg==="chat"||pg==="work")&&sbO==="full"&&compact&&<div onClick={()=>setSbO("closed")} style={{position:"absolute",inset:0,background:"rgba(0,0,0,.3)",zIndex:45}}/>}
 
         {/* ── SIDEBAR — session history like Claude (visible on all pages) ── */}
-        {sbOpen&&pg!=="book"&&(
+        {sbOpen&&pg!=="book"&&pg!=="video"&&(
           <div style={compact?{position:"absolute",inset:"0 auto 0 0",zIndex:50}:{}}>
             <div style={{width:sbO==="mini"?60:260,height:"100%",background:c.cd,borderRight:"1px solid "+c.ln,display:"flex",flexDirection:"column",flexShrink:0,transition:"width .2s ease",overflow:"hidden"}}>
 
@@ -11088,6 +11151,8 @@ function App({ authUser, passwordRecovery = false }) {
               onOpenChat={id=>{loadSession(id);setPg("chat");}}
             />
           )}
+
+          {pg==="video"&&(<VideoStudioWorkspace c={c}/>)}
 
           {pg==="docs"&&(
             <DocsPage c={c} mob={mob} aFN={aFN} agentId={currentAgentId}/>

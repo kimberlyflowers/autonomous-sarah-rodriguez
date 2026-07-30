@@ -45,6 +45,7 @@ import referenceRoutes from './api/references.js';
 import bloomieAdminRoutes from './api/bloomie-admin.js';
 import billingRoutes, { handleWhopWebhook } from './api/billing.js';
 import booksRoutes from './api/books.js';
+import videoStudioRoutes from './api/video-studio.js';
 import { startBloomStudioContinuationWorker } from './tools/bloom-studio-tools.js';
 import cookieParser from 'cookie-parser';
 
@@ -92,6 +93,7 @@ app.use(express.json({ limit: '50mb' }));
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/billing', billingRoutes);
 app.use('/api/books', booksRoutes);
+app.use('/api/video-studio', videoStudioRoutes);
 
 // Increase max listeners — Winston registers listeners per logger instance,
 // and we have many route modules each calling createLogger() at load time.
