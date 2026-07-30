@@ -276,6 +276,61 @@ export const developerToolDefinitions = {
     description: 'Check a BLOOM Studio video request and poll until it is completed or failed.',
     parameters: object({ requestId: string('Request ID returned by bloom_studio_generate_video') }, ['requestId']),
   },
+  bloom_studio_list_characters: {
+    name: 'bloom_studio_list_characters',
+    description: 'List the active tenant’s BLOOM Studio characters and saved looks before choosing a source image.',
+    parameters: object({}),
+  },
+  bloom_studio_list_assets: {
+    name: 'bloom_studio_list_assets',
+    description: 'List the active tenant’s BLOOM Studio product references, character images, audio, generated images, and generated videos.',
+    parameters: object({}),
+  },
+  bloom_studio_generate_image: {
+    name: 'bloom_studio_generate_image',
+    description: 'Generate an image through BLOOM Studio using its configured OpenRouter image model and optional tenant character, product, or reference images.',
+    parameters: object({
+      prompt: string('Detailed image request'),
+      aspectRatio: { type: 'string', enum: ['1:1', '4:5', '9:16', '16:9'] },
+      characterUrl: string('Optional public character image URL'),
+      productUrl: string('Optional public product image URL'),
+      referenceUrls: { type: 'array', items: { type: 'string' } },
+    }, ['prompt']),
+  },
+  bloom_studio_generate_seedance: {
+    name: 'bloom_studio_generate_seedance',
+    description: 'Generate a Seedance video through BLOOM Studio from a prompt and source image or reference media. This is a paid generation action.',
+    parameters: object({
+      prompt: string('Seedance-native motion prompt'),
+      imageUrl: string('Optional public starting image URL'),
+      referenceImageUrls: { type: 'array', items: { type: 'string' } },
+      referenceVideoUrls: { type: 'array', items: { type: 'string' } },
+      audioUrl: string('Optional public audio URL'),
+      duration: { type: 'number' },
+      resolution: { type: 'string', enum: ['480p', '720p', '1080p'] },
+      model: { type: 'string', enum: ['seedance2-fast', 'seedance2-standard'] },
+      aspectRatio: { type: 'string', enum: ['16:9', '9:16'] },
+    }, ['prompt']),
+  },
+  bloom_studio_check_seedance: {
+    name: 'bloom_studio_check_seedance',
+    description: 'Check a BLOOM Studio Seedance request and keep polling until it completes or fails.',
+    parameters: object({ requestId: string('Request ID returned by bloom_studio_generate_seedance') }, ['requestId']),
+  },
+  bloom_studio_list_voices: {
+    name: 'bloom_studio_list_voices',
+    description: 'List ElevenLabs voices connected to the active tenant’s BLOOM Studio workspace.',
+    parameters: object({}),
+  },
+  bloom_studio_generate_voice: {
+    name: 'bloom_studio_generate_voice',
+    description: 'Generate and save ElevenLabs voice audio inside the active tenant’s BLOOM Studio workspace.',
+    parameters: object({
+      script: string('Spoken script'),
+      voiceId: string('ElevenLabs voice ID'),
+      name: string('Optional saved audio name'),
+    }, ['script', 'voiceId']),
+  },
 };
 
 export async function executeDeveloperTool(name, params, organizationId, executionContext = {}) {

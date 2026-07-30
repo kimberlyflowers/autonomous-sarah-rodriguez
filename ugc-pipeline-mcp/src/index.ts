@@ -7,6 +7,7 @@ import { registerAssetTools } from "./tools/assets.js";
 import { registerGenerateTools } from "./tools/generate.js";
 import { registerVideoTools } from "./tools/videos.js";
 import { registerDocsTools } from "./tools/docs.js";
+import { registerStudioTools } from "./tools/studio.js";
 
 const app = express();
 app.use(express.json({ limit: "10mb" }));
@@ -33,6 +34,7 @@ app.all("/mcp", async (req, res) => {
   registerGenerateTools(server);
   registerVideoTools(server);
   registerDocsTools(server);
+  registerStudioTools(server);
 
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
   res.on("close", () => { transport.close(); });

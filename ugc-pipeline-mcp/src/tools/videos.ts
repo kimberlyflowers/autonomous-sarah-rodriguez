@@ -31,12 +31,13 @@ export function registerVideoTools(server: McpServer): void {
       description: "Check the current status of a single video by its request ID. Auto-downloads when complete.",
       inputSchema: {
         requestId: z.string().describe("Request ID returned from ugc_submit_batch or ugc_generate_custom"),
+        tenantSlug: z.string().min(1).optional().describe("Authenticated Bloomie organization id"),
       },
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     },
-    async ({ requestId }) => {
+    async ({ requestId, tenantSlug }) => {
       try {
-        const data = await callPipeline(`/api/videos/${requestId}`);
+        const data = await callPipeline(`/api/videos/${requestId}`, { tenantSlug });
         return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
       } catch (err) {
         return { content: [{ type: "text", text: `Failed: ${(err as Error).message}` }] };

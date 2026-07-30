@@ -291,6 +291,58 @@ export async function executeBloomStudioTool(name, params, organizationId, conte
     return pollBloomStudioJob(params.requestId, organizationId);
   }
 
+  if (name === 'bloom_studio_list_characters') {
+    return mcpCall('ugc_list_studio_characters', { tenantSlug: organizationId });
+  }
+
+  if (name === 'bloom_studio_list_assets') {
+    return mcpCall('ugc_list_studio_assets', { tenantSlug: organizationId });
+  }
+
+  if (name === 'bloom_studio_generate_image') {
+    return mcpCall('ugc_generate_studio_image', {
+      prompt: params.prompt,
+      aspectRatio: params.aspectRatio || '16:9',
+      size: '1k',
+      characterUrl: params.characterUrl,
+      productUrl: params.productUrl,
+      referenceUrls: params.referenceUrls || [],
+      tenantSlug: organizationId,
+    });
+  }
+
+  if (name === 'bloom_studio_generate_seedance') {
+    return mcpCall('ugc_generate_seedance_video', {
+      prompt: params.prompt,
+      imageUrl: params.imageUrl,
+      referenceImageUrls: params.referenceImageUrls || [],
+      referenceVideoUrls: params.referenceVideoUrls || [],
+      audioUrl: params.audioUrl,
+      duration: params.duration || 5,
+      resolution: params.resolution || '720p',
+      model: params.model || 'seedance2-fast',
+      aspectRatio: params.aspectRatio || '16:9',
+      tenantSlug: organizationId,
+    });
+  }
+
+  if (name === 'bloom_studio_check_seedance') {
+    return mcpCall('ugc_check_status', { requestId: params.requestId, tenantSlug: organizationId });
+  }
+
+  if (name === 'bloom_studio_list_voices') {
+    return mcpCall('ugc_list_studio_voices', { tenantSlug: organizationId });
+  }
+
+  if (name === 'bloom_studio_generate_voice') {
+    return mcpCall('ugc_generate_studio_voice', {
+      script: params.script,
+      voiceId: params.voiceId,
+      name: params.name,
+      tenantSlug: organizationId,
+    });
+  }
+
   if (name === 'bloom_studio_generate_video') {
     if (!context.agentId) throw new Error('The active Bloomie identity could not be resolved.');
     const agent = await getAgentMedia(context.agentId);
