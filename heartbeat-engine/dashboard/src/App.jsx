@@ -4048,27 +4048,45 @@ function formatBookElapsed(milliseconds){
   const seconds=Math.max(0,Math.floor((milliseconds%60000)/1000));
   return `${minutes}:${String(seconds).padStart(2,'0')}`;
 }
-function paginateBookSection(markdown='',wordsPerPage=165){
+function bookBlockLayoutCost(block=''){
+  const words=countBookWords(block);
+  const headingCost=/^#\s/m.test(block)?34:/^##?\s/m.test(block)?22:0;
+  const listItems=(block.match(/^\s*(?:[-*+]|\d+\.)\s+/gm)||[]).length;
+  const tableRows=(block.match(/^\s*\|.*\|\s*$/gm)||[]).length;
+  const longTokenCost=(block.match(/\S{42,}/g)||[]).length*5;
+  return words+headingCost+(listItems*3)+(tableRows*6)+longTokenCost;
+}
+function paginateBookSection(markdown='',layoutBudget=118){
   const blocks=String(markdown||'').split(/\n{2,}/).map(block=>block.trim()).filter(Boolean);
   if(!blocks.length)return[''];
-  const pages=[];let current=[];let words=0;
+  const pages=[];let current=[];let layoutCost=0;
   for(const block of blocks){
-    const blockWords=countBookWords(block);
-    if(blockWords>wordsPerPage){
-      if(current.length){pages.push(current.join('\n\n'));current=[];words=0;}
+    const blockCost=bookBlockLayoutCost(block);
+    if(blockCost>layoutBudget){
+      if(current.length){pages.push(current.join('\n\n'));current=[];layoutCost=0;}
       const tokens=block.split(/\s+/).filter(Boolean);
-      while(tokens.length>wordsPerPage){
-        pages.push(tokens.splice(0,wordsPerPage).join(' '));
+      const splitSize=Math.max(72,layoutBudget-18);
+      const balancedPageCount=Math.ceil(tokens.length/splitSize);
+      const balancedChunkSize=Math.ceil(tokens.length/balancedPageCount);
+      while(tokens.length>balancedChunkSize){
+        pages.push(tokens.splice(0,balancedChunkSize).join(' '));
       }
-      if(tokens.length){current=[tokens.join(' ')];words=tokens.length;}
+      if(tokens.length){current=[tokens.join(' ')];layoutCost=tokens.length;}
       continue;
     }
-    if(current.length&&words+blockWords>wordsPerPage){
-      pages.push(current.join('\n\n'));current=[];words=0;
+    if(current.length&&layoutCost+blockCost>layoutBudget){
+      pages.push(current.join('\n\n'));current=[];layoutCost=0;
     }
-    current.push(block);words+=blockWords;
+    current.push(block);layoutCost+=blockCost;
   }
   if(current.length)pages.push(current.join('\n\n'));
+  if(pages.length>1){
+    const last=pages.at(-1);
+    const prior=pages.at(-2);
+    if(bookBlockLayoutCost(last)<42&&bookBlockLayoutCost(`${prior}\n\n${last}`)<=layoutBudget){
+      pages.splice(-2,2,`${prior}\n\n${last}`);
+    }
+  }
   return pages.length?pages:[''];
 }
 function inspectBookArtifacts(files=[]){
@@ -4114,7 +4132,7 @@ const BookFlipPage=forwardRef(function BookFlipPage({page,coverUrl,coverIsWrap,b
   return <div ref={ref} data-density={isCover?'hard':'soft'} data-reader-page-key={page?.key||''} className={`bloom-flip-page ${isCover?'bloom-flip-cover':''}`} onMouseUp={event=>!isCover&&onSelectText?.(page,event)} onContextMenu={event=>{if(!isCover){event.preventDefault();onSelectText?.(page,event,true);}}}>
     {page?.kind==='front'?(coverIsWrap?<div className="bloom-wrap-cover" style={{backgroundImage:`url("${coverUrl}")`,backgroundPosition:'right center'}}/>:<img src={coverUrl} alt="Front cover" className="bloom-cover-image"/>)
       :page?.kind==='back'?(coverIsWrap?<div className="bloom-wrap-cover" style={{backgroundImage:`url("${coverUrl}")`,backgroundPosition:'left center'}}/>:<div className="bloom-back-cover"><div><strong>Back cover</strong><p>{bookDescription||'The finished back-cover description will appear here.'}</p></div></div>)
-      :<><div className={`kdp-book-page ${pageClass}`}><ReactMarkdown remarkPlugins={[remarkGfm]}>{page?.text||''}</ReactMarkdown></div><div className="bloom-page-number">{page?.displayNumber}</div></>}
+      :<><div className={`kdp-book-page ${pageClass}`}><ReactMarkdown remarkPlugins={[remarkGfm]}>{page?.text||''}</ReactMarkdown></div><div className={`bloom-page-number ${Number(page?.displayNumber)%2===0?'bloom-page-number-left':'bloom-page-number-right'}`}>{page?.displayNumber}</div></>}
     {isCover&&<button onClick={onEditCover} className="bloom-cover-edit">Edit cover</button>}
   </div>;
 });
@@ -5321,7 +5339,8 @@ Import the attached manuscript into this Book Studio project. Preserve the autho
                 .kdp-book-page h1,.kdp-book-page h2,.kdp-book-page h3{font-family:Georgia,'Times New Roman',serif;color:#1f1c18}
                 .kdp-book-page h1{font-size:1.55em;line-height:1.2;margin:0 0 1.5em;text-align:center;font-weight:700}
                 .kdp-book-page h2{font-size:1.25em;line-height:1.25;margin:1.4em 0 .7em}
-                .kdp-book-page p{margin:0 0 .72em;text-indent:1.25em}
+                .kdp-book-page{height:calc(100% - 22px);box-sizing:border-box;overflow:hidden;overflow-wrap:anywhere;word-break:normal}
+                .kdp-book-page p{margin:0 0 .68em;text-indent:1.25em}
                 .kdp-book-page h1+p,.kdp-book-page h2+p,.kdp-book-page h3+p,.kdp-book-page blockquote+p{ text-indent:0 }
                 .kdp-book-page ul,.kdp-book-page ol{margin:.7em 0 1em;padding-left:1.4em}
                 .kdp-book-page li{margin:.35em 0}
@@ -5349,14 +5368,16 @@ Import the attached manuscript into this Book Studio project. Preserve the autho
                 .kdp-page-turn-back{transform-origin:right center;animation:kdpTurnBack .72s cubic-bezier(.55,.05,.42,.98) forwards;z-index:5}
                 .kdp-page-turn-forward:after,.kdp-page-turn-back:after{animation:kdpCurlLight .72s ease forwards}
                 .bloom-real-book{margin:0 auto!important;filter:drop-shadow(0 22px 26px rgba(0,0,0,.3));overflow:hidden!important;clip-path:inset(0 round 3px);contain:paint}
-                .bloom-flip-page{position:relative;box-sizing:border-box;width:100%;height:100%;overflow:hidden;padding:9% 8% 6%;background:#fffdf8;color:#26231f;border:1px solid rgba(83,68,47,.2);font-family:Georgia,'Times New Roman',serif;font-size:13px;line-height:1.58;user-select:text!important;-webkit-user-select:text!important}
+                .bloom-flip-page{position:relative;box-sizing:border-box;width:100%;height:100%;overflow:hidden;padding:8% 8% 7%;background:#fffdf8;color:#26231f;border:1px solid rgba(83,68,47,.2);font-family:Georgia,'Times New Roman',serif;font-size:12.5px;line-height:1.52;user-select:text!important;-webkit-user-select:text!important}
                 .bloom-flip-page:before{content:"";position:absolute;top:0;bottom:0;width:18px;right:0;background:linear-gradient(90deg,transparent,rgba(45,35,25,.1));pointer-events:none}
                 .bloom-flip-cover{padding:0;background:#15110f}
                 .bloom-wrap-cover{width:100%;height:100%;background-repeat:no-repeat;background-size:200% 100%}
                 .bloom-cover-image{display:block;width:100%;height:100%;object-fit:cover}
                 .bloom-back-cover{display:flex;align-items:center;justify-content:center;width:100%;height:100%;padding:14%;box-sizing:border-box;background:linear-gradient(155deg,#251f1d,#090807);color:#f8efe8;text-align:center}
                 .bloom-back-cover strong{font-size:19px}.bloom-back-cover p{font-size:12px;line-height:1.65;opacity:.76;margin-top:13px}
-                .bloom-page-number{position:absolute;left:0;right:0;bottom:4%;text-align:center;font-size:10px;color:#8b8277}
+                .bloom-page-number{position:absolute;bottom:3.5%;font-size:10px;color:#8b8277;font-variant-numeric:tabular-nums}
+                .bloom-page-number-left{left:8%;right:auto;text-align:left}
+                .bloom-page-number-right{right:8%;left:auto;text-align:right}
                 .bloom-cover-edit{position:absolute;right:12px;bottom:12px;z-index:8;padding:8px 11px;border-radius:9px;border:1px solid rgba(255,255,255,.45);background:rgba(15,12,10,.78);backdrop-filter:blur(8px);color:#fff;font-size:10px;font-weight:850;cursor:pointer}
                 .stf__parent{margin:0 auto;overflow:hidden!important;clip-path:inset(0 round 3px);contain:paint}
                 .stf__block{background:transparent!important}

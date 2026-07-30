@@ -127,6 +127,12 @@ test('Book project includes a navigable reader and in-context section revisions'
   assert.match(dashboard, /data-testid="book-preview-zoom-controls"/);
   assert.match(dashboard, /Fit page/);
   assert.match(dashboard, /Fit width/);
+  assert.match(dashboard, /function bookBlockLayoutCost/);
+  assert.match(dashboard, /layoutBudget=118/);
+  assert.match(dashboard, /balancedPageCount/);
+  assert.match(dashboard, /bookBlockLayoutCost\(last\)<42/);
+  assert.match(dashboard, /bloom-page-number-left/);
+  assert.match(dashboard, /bloom-page-number-right/);
   assert.match(dashboard, /function BookSuiteIcon/);
   assert.match(dashboard, /<BookSuiteIcon name=\{item\.icon\}/);
   assert.doesNotMatch(dashboard, /label:'Home',icon:'⌂'/);
