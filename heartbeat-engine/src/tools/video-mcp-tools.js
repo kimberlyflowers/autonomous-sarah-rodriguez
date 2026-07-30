@@ -102,7 +102,27 @@ export async function resolveVideoPlanTier(organizationId, dependencies = {}) {
     return 'free';
   }
 
-  return BILLING_TO_VIDEO_TIER[String(data?.plan || 'free').toLowerCase()] || 'free';
+  const organizationTier = BILLING_TO_VIDEO_TIER[String(data?.plan || 'free').toLowerCase()] || 'free';
+  if (organizationTier !== 'free') return organizationTier;
+
+  const now = new Date().toISOString();
+  const { data: studioEntitlement, error: entitlementError } = await client
+    .from('product_entitlements')
+    .select('tier, expires_at')
+    .eq('organization_id', organizationId)
+    .eq('product_key', 'bloom_studio')
+    .eq('status', 'active')
+    .limit(1)
+    .maybeSingle();
+  if (entitlementError) {
+    logger.warn('Unable to resolve Bloom Studio product entitlement', {
+      organizationId,
+      error: entitlementError.message,
+    });
+    return 'free';
+  }
+  if (!studioEntitlement || (studioEntitlement.expires_at && studioEntitlement.expires_at <= now)) return 'free';
+  return BILLING_TO_VIDEO_TIER[String(studioEntitlement.tier || 'video_pro').toLowerCase()] || 'video_pro';
 }
 
 // ── Plan summary for check_access ──────────────────────────────────────────

@@ -43,6 +43,17 @@ test('Book Creator is a one-time Whop product entitlement, not a tenant plan upg
   assert.match(mainSource, /initialBookCheckout/);
 });
 
+test('Bloom Studio is a standalone one-time Whop entitlement with its own login route', () => {
+  assert.match(billingSource, /key: 'bloom_studio'/);
+  assert.match(billingSource, /productKey: 'bloom_studio'/);
+  assert.match(billingSource, /WHOP_PLAN_BLOOM_STUDIO/);
+  assert.match(billingSource, /tier: 'video_pro'/);
+  assert.match(billingSource, /price: 67/);
+  assert.match(mainSource, /\/studio/);
+  assert.match(loginSource, /BLOOM STUDIO/);
+  assert.match(loginSource, /Create password & open Bloom Studio/);
+});
+
 test('Verified BookMint purchases can provision access and new buyers create their own password', () => {
   assert.match(billingSource, /router\.post\('\/provision-book-creator'/);
   assert.match(billingSource, /BOOK_CREATOR_PROVISIONING_SECRET/);

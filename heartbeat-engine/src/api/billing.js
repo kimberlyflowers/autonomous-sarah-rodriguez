@@ -47,13 +47,24 @@ const PLAN_CATALOG = {
     planId: process.env.WHOP_PLAN_BOOK_CREATOR_BOOSTER || 'plan_wAW1COKDgRNWm',
     description: 'Book Creator plus the protected Quick-Launch training, templates, checklist, and fast-start blueprint.',
   },
+  bloom_studio: {
+    key: 'bloom_studio',
+    name: 'Bloom Studio Pro',
+    organizationPlan: null,
+    productKey: 'bloom_studio',
+    tier: 'video_pro',
+    price: 67,
+    cadence: 'one_time',
+    planId: process.env.WHOP_PLAN_BLOOM_STUDIO || null,
+    description: 'Create images, characters, shorts, lip-sync videos, and motion projects in Bloom Studio.',
+  },
 };
 
 const PLAN_ID_TO_ORG_PLAN = Object.fromEntries(
   Object.values(PLAN_CATALOG).filter(plan => plan.organizationPlan).map(plan => [plan.planId, plan.organizationPlan])
 );
 const PLAN_ID_TO_PRODUCT = Object.fromEntries(
-  Object.values(PLAN_CATALOG).filter(plan => plan.productKey).map(plan => [plan.planId, plan])
+  Object.values(PLAN_CATALOG).filter(plan => plan.productKey && plan.planId).map(plan => [plan.planId, plan])
 );
 
 function supabase() {
@@ -74,7 +85,8 @@ function publicPlan(plan) {
 
 export async function prepareHostedCheckout(organizationId, targetPlan) {
   const plan = PLAN_CATALOG[targetPlan];
-  if (!plan) return { success: false, error: 'Choose part_time, full_time, or book_creator.' };
+  if (!plan) return { success: false, error: 'Choose part_time, full_time, book_creator, or bloom_studio.' };
+  if (!plan.planId) return { success: false, error: `${plan.name} checkout is not configured yet.` };
   if (!organizationId) return { success: false, error: 'Authenticated organization context is required.' };
 
   const { data: organization, error } = await supabase()

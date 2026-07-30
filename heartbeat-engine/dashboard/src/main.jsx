@@ -28,6 +28,7 @@ function Root() {
     || window.location.pathname.startsWith('/dispatch');
   const isBookCreatorRoute = window.location.pathname.startsWith('/book-creator');
   const isBookCheckoutRoute = window.location.pathname.startsWith('/book-creator/checkout');
+  const isBloomStudioRoute = window.location.pathname.startsWith('/studio');
   const isPasswordResetRoute = window.location.pathname === '/reset-password'
     || new URLSearchParams(window.location.search).get('reset') === '1';
 
@@ -128,7 +129,7 @@ function Root() {
   if (isBookCheckoutRoute) return <Login product="book_creator" initialBookCheckout />;
 
   // Dashboard
-  if (!user) return <Login product={isBookCreatorRoute ? 'book_creator' : 'bloomie'} />;
+  if (!user) return <Login product={isBookCreatorRoute ? 'book_creator' : isBloomStudioRoute ? 'bloom_studio' : 'bloomie'} />;
   return <App user={user} passwordRecovery={passwordRecovery} />;
 }
 

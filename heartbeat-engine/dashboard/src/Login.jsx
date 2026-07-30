@@ -47,8 +47,10 @@ const BLOOMIE_ROLES = [
 
 export default function Login({ product = 'bloomie', initialBookCheckout = false }) {
   const isBookCreator = product === 'book_creator';
-  const isPurchasedBookAccess = isBookCreator && new URLSearchParams(window.location.search).get('purchase') === 'success';
-  const [mode, setMode] = useState(isPurchasedBookAccess ? 'signup' : 'login'); // 'login' or 'signup'
+  const isBloomStudio = product === 'bloom_studio';
+  const isStandaloneProduct = isBookCreator || isBloomStudio;
+  const isPurchasedProductAccess = isStandaloneProduct && new URLSearchParams(window.location.search).get('purchase') === 'success';
+  const [mode, setMode] = useState(isPurchasedProductAccess ? 'signup' : 'login'); // 'login' or 'signup'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
@@ -102,7 +104,7 @@ export default function Login({ product = 'bloomie', initialBookCheckout = false
   };
 
   const handleSignup = async () => {
-    if (!email.trim() || !password.trim() || (isBookCreator ? !fullName.trim() : (!orgName.trim() || !bloomieName.trim() || !effectiveTitle))) return;
+    if (!email.trim() || !password.trim() || (isStandaloneProduct ? !fullName.trim() : (!orgName.trim() || !bloomieName.trim() || !effectiveTitle))) return;
     if (password.length < 6) { setError('Password must be at least 6 characters'); return; }
     setLoading(true);
     setError('');
@@ -115,12 +117,14 @@ export default function Login({ product = 'bloomie', initialBookCheckout = false
           email: email.trim().toLowerCase(),
           password,
           fullName: fullName.trim(),
-          organizationName: isBookCreator ? `${fullName.trim()}'s Book Workspace` : orgName.trim(),
-          industry: isBookCreator ? 'Publishing' : (industry.trim() || undefined),
-          bloomieName: isBookCreator ? 'BookMint' : bloomieName.trim(),
-          bloomieRole: isBookCreator ? 'Book Creation Specialist' : effectiveTitle,
+          organizationName: isBookCreator ? `${fullName.trim()}'s Book Workspace` : isBloomStudio ? `${fullName.trim()}'s Bloom Studio` : orgName.trim(),
+          industry: isBookCreator ? 'Publishing' : isBloomStudio ? 'Creative Production' : (industry.trim() || undefined),
+          bloomieName: isBookCreator ? 'BookMint' : isBloomStudio ? 'Studio Guide' : bloomieName.trim(),
+          bloomieRole: isBookCreator ? 'Book Creation Specialist' : isBloomStudio ? 'Video Production Specialist' : effectiveTitle,
           bloomieJobDescription: isBookCreator
             ? 'Help the user plan, write, revise, preview, format, and export complete books.'
+            : isBloomStudio
+              ? 'Help the user create images, characters, shorts, lip-sync videos, and motion projects in Bloom Studio.'
             : (effectiveFocus || undefined)
         })
       });
@@ -153,7 +157,7 @@ export default function Login({ product = 'bloomie', initialBookCheckout = false
   const inputStyle = { padding:'12px 16px', borderRadius:10, border:`1.5px solid ${border}`, fontSize:15, color:text, outline:'none', background:'#222225', colorScheme:'dark', width:'100%', boxSizing:'border-box' };
   const selectStyle = { ...inputStyle, appearance:'none', backgroundImage:'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 12 12\'%3E%3Cpath fill=\'%23a1a1aa\' d=\'M6 8L1 3h10z\'/%3E%3C/svg%3E")', backgroundRepeat:'no-repeat', backgroundPosition:'right 14px center', paddingRight:36, cursor:'pointer' };
 
-  const signupValid = isBookCreator
+  const signupValid = isStandaloneProduct
     ? email.trim() && password.trim() && fullName.trim()
     : email.trim() && password.trim() && orgName.trim() && bloomieName.trim() && effectiveTitle;
   const isLogin = mode === 'login';
@@ -186,14 +190,20 @@ export default function Login({ product = 'bloomie', initialBookCheckout = false
           <div style={{ width:48, height:48, borderRadius:12, background:`linear-gradient(135deg, #E76F8B, #F4A261)`, display:'inline-flex', alignItems:'center', justifyContent:'center', marginBottom:isLogin ? 'clamp(10px, 2vh, 16px)' : 16 }}>
             <span style={{ color:'#fff', fontSize:22, fontWeight:800 }}>B</span>
           </div>
-          <h1 style={{ margin:'0 0 4px', color:text, fontSize:24, fontWeight:800, letterSpacing:'-0.5px' }}>{isBookCreator ? 'BLOOMIE BOOK CREATOR' : 'BLOOM'}</h1>
+          <h1 style={{ margin:'0 0 4px', color:text, fontSize:24, fontWeight:800, letterSpacing:'-0.5px' }}>{isBookCreator ? 'BLOOMIE BOOK CREATOR' : isBloomStudio ? 'BLOOM STUDIO' : 'BLOOM'}</h1>
           <p style={{ margin:0, color:sub, fontSize:14 }}>
-            {mode === 'login' ? `Sign in to your ${isBookCreator ? 'book workspace' : 'dashboard'}` : isBookCreator ? 'Create your Book Creator account' : 'Create your account & get your Bloomie'}
+            {mode === 'login'
+              ? `Sign in to your ${isBookCreator ? 'book workspace' : isBloomStudio ? 'creative studio' : 'dashboard'}`
+              : isBookCreator
+                ? 'Create your Book Creator account'
+                : isBloomStudio
+                  ? 'Create your Bloom Studio account'
+                  : 'Create your account & get your Bloomie'}
           </p>
         </div>
 
         <div style={{ display:'flex', flexDirection:'column', gap:isLogin ? 'clamp(9px, 1.7vh, 12px)' : 12 }}>
-          {isPurchasedBookAccess && (
+          {isPurchasedProductAccess && (
             <div style={{ padding:'11px 13px', borderRadius:10, background:'rgba(16,185,129,.12)', border:'1px solid rgba(52,211,153,.32)', color:'#6ee7b7', fontSize:13, lineHeight:1.5, fontWeight:650 }}>
               Purchase confirmed. Create your password with the same email address used at checkout.
             </div>
@@ -216,11 +226,11 @@ export default function Login({ product = 'bloomie', initialBookCheckout = false
             <>
               {/* ── YOUR INFO ── */}
               <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-                <label style={{ fontSize:13, fontWeight:600, color:text }}>Your name{isBookCreator ? ' *' : ''}</label>
+                <label style={{ fontSize:13, fontWeight:600, color:text }}>Your name{isStandaloneProduct ? ' *' : ''}</label>
                 <input type="text" value={fullName} onChange={e => setFullName(e.target.value)} placeholder="Jane Smith" style={inputStyle}
                   onFocus={e => e.target.style.borderColor = accent} onBlur={e => e.target.style.borderColor = border} />
               </div>
-              {!isBookCreator && (
+              {!isStandaloneProduct && (
                 <>
               <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
                 <label style={{ fontSize:13, fontWeight:600, color:text }}>Organization name *</label>
@@ -357,8 +367,8 @@ export default function Login({ product = 'bloomie', initialBookCheckout = false
             }}
           >
             {loading
-              ? (mode === 'login' ? 'Signing in...' : (isBookCreator ? 'Creating your Book Creator account...' : 'Creating your Bloomie...'))
-              : (mode === 'login' ? 'Sign in' : (isBookCreator ? 'Create password & open Book Creator' : 'Create account & get your Bloomie'))}
+              ? (mode === 'login' ? 'Signing in...' : (isBookCreator ? 'Creating your Book Creator account...' : isBloomStudio ? 'Creating your Bloom Studio account...' : 'Creating your Bloomie...'))
+              : (mode === 'login' ? 'Sign in' : (isBookCreator ? 'Create password & open Book Creator' : isBloomStudio ? 'Create password & open Bloom Studio' : 'Create account & get your Bloomie'))}
           </button>
 
           <div style={{ textAlign:'center', marginTop:8 }}>

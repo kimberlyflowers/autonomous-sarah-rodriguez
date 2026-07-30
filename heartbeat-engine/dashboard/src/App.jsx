@@ -4280,11 +4280,15 @@ function LibraryBookReader({resource,onClose,onEdit,mob,c}){
 
 const cleanChatTitle=title=>String(title||'New conversation').replace(/^[\p{Extended_Pictographic}\uFE0F\u200D\s]+/u,'').trim()||'New conversation';
 
-function VideoStudioWorkspace({c}){
+function VideoStudioWorkspace({c,agentId,agentName,onNavigate,onOpenSession,dark,projects=[],sessions=[]}){
   const iframeRef=useRef(null);
   const [session,setSession]=useState(null);
   const [status,setStatus]=useState('loading');
   const [error,setError]=useState('');
+  const [view,setView]=useState('studio');
+  const [hyperframes,setHyperframes]=useState({projects:[],templates:[]});
+  const [hyperframesStatus,setHyperframesStatus]=useState('idle');
+  const [hyperframesError,setHyperframesError]=useState('');
 
   const loadStudio=useCallback(async()=>{
     setStatus('loading');setError('');
@@ -4297,15 +4301,61 @@ function VideoStudioWorkspace({c}){
   },[]);
 
   useEffect(()=>{loadStudio();},[loadStudio]);
+  const loadHyperframes=useCallback(async()=>{
+    setHyperframesStatus('loading');setHyperframesError('');
+    try{
+      const response=await fetch('/api/video-studio/hyperframes/sessions');
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(data.error||'HyperFrames sessions could not be loaded');
+      setHyperframes({projects:data.projects||[],templates:data.templates||[]});
+      setHyperframesStatus('ready');
+    }catch(err){setHyperframesError(err.message);setHyperframesStatus('error');}
+  },[]);
+  useEffect(()=>{if(view==='hyperframes'&&hyperframesStatus==='idle')loadHyperframes();},[view,hyperframesStatus,loadHyperframes]);
   useEffect(()=>{
-    const receive=(event)=>{
+    const receive=async(event)=>{
       if(!session||event.origin!==session.studioOrigin)return;
       if(event.data?.type==='bloom-studio-ready')setStatus('ready');
       if(event.data?.type==='bloom-studio-error'){setError(event.data.message||'Bloom Studio could not open');setStatus('error');}
+      if(event.data?.type==='bloom-studio-navigate'){
+        const page=String(event.data.page||'');
+        if(page==='chat'&&event.data.sessionId){
+          onOpenSession?.(String(event.data.sessionId),String(event.data.projectId||''));
+          return;
+        }
+        if(['chat','work','book','projects','references'].includes(page))onNavigate?.(page);
+      }
+      if(event.data?.type==='bloom-studio-agent-request'){
+        const request=String(event.data.request||'').trim();
+        const files=Array.isArray(event.data.files)?event.data.files:[];
+        const agentSessionId=String(event.data.sessionId||crypto.randomUUID());
+        if(!request&&!files.length)return;
+        try{
+          const headers=await getAuthHeaders();
+          const payload={
+            message:`BLOOM STUDIO AGENT-ASSISTED VIDEO REQUEST
+
+The user is working inside the integrated Bloom Studio and wants you to complete the video on their behalf:
+${request||'Use the attached media as the source for this Studio request.'}
+
+Use the tenant's saved characters, looks, voices, references, and Bloom Studio tools as appropriate. Do not make the user manually repeat form fields you can determine from their request or tenant assets. If script approval is requested, draft the script and wait for approval before generating. Otherwise execute end to end, keep polling asynchronous jobs until they complete or genuinely fail, and deliver every finished image, audio, or playable video inline in chat. Never claim completion without a real playable artifact.`,
+            sessionId:agentSessionId,
+            agentId,
+            sessionType:'video_creation',
+            ...(files.length?{files}: {})
+          };
+          const response=await fetch(files.length?'/api/chat/upload':'/api/chat/message',{method:'POST',headers,body:JSON.stringify(payload)});
+          const data=await response.json().catch(()=>({}));
+          if(!response.ok)throw new Error(data.error||'The video request could not be completed');
+          event.source?.postMessage({type:'bloom-studio-agent-response',response:data.response||data.message||'Video request completed.',sessionId:agentSessionId},event.origin);
+        }catch(err){
+          event.source?.postMessage({type:'bloom-studio-agent-error',error:err.message||'The video request could not be completed',sessionId:agentSessionId},event.origin);
+        }
+      }
     };
     window.addEventListener('message',receive);
     return()=>window.removeEventListener('message',receive);
-  },[session]);
+  },[session,agentId,onNavigate]);
 
   const connect=()=>{
     if(!session||!iframeRef.current?.contentWindow)return;
@@ -4313,20 +4363,50 @@ function VideoStudioWorkspace({c}){
       type:'bloom-studio-session',
       token:session.token,
       tenant:session.tenant,
-      defaultSection:'characters'
+      agentName:agentName||'your Bloomie',
+      theme:dark?'dark':'light',
+      defaultSection:'studio'
+    },session.studioOrigin);
+    iframeRef.current.contentWindow.postMessage({
+      type:'bloom-studio-navigation',
+      projects:projects.map(project=>({
+        id:project.id,
+        name:project.name,
+        chats:sessions.filter(chat=>chat.project_id===project.id).map(chat=>({id:chat.id,title:chat.title}))
+      }))
     },session.studioOrigin);
   };
 
-  return <div style={{position:'relative',width:'100%',height:'100%',minHeight:0,background:c.bg,overflow:'hidden'}}>
-    {session&&<iframe
+  useEffect(()=>{
+    if(!session||!iframeRef.current?.contentWindow)return;
+    iframeRef.current.contentWindow.postMessage({type:'bloom-studio-theme',theme:dark?'dark':'light'},session.studioOrigin);
+  },[dark,session]);
+  useEffect(()=>{
+    if(!session||!iframeRef.current?.contentWindow)return;
+    iframeRef.current.contentWindow.postMessage({
+      type:'bloom-studio-navigation',
+      projects:projects.map(project=>({
+        id:project.id,
+        name:project.name,
+        chats:sessions.filter(chat=>chat.project_id===project.id).map(chat=>({id:chat.id,title:chat.title}))
+      }))
+    },session.studioOrigin);
+  },[session,projects,sessions]);
+
+  return <div style={{position:'relative',width:'100%',height:'100%',minHeight:0,background:c.bg,overflow:'hidden',display:'flex',flexDirection:'column'}}>
+    <div style={{height:48,flex:'0 0 48px',display:'flex',alignItems:'center',gap:6,padding:'6px 12px',borderBottom:'1px solid '+c.ln,background:c.cd}}>
+      {[['studio','Bloom Studio'],['hyperframes','HyperFrames Sessions']].map(([id,label])=><button key={id} onClick={()=>setView(id)} style={{border:'1px solid '+(view===id?'rgba(231,111,139,.45)':c.ln),borderRadius:10,padding:'8px 12px',background:view===id?'linear-gradient(135deg,rgba(244,162,97,.16),rgba(231,111,139,.16))':c.sf,color:view===id?c.tx:c.so,fontSize:12,fontWeight:800,cursor:'pointer'}}>{label}</button>)}
+    </div>
+    <div style={{position:'relative',flex:1,minHeight:0,overflow:'hidden'}}>
+    {view==='studio'&&session&&<iframe
       ref={iframeRef}
-      src={`${session.studioOrigin}/?embed=1`}
+      src={`${session.studioOrigin}/?embed=1&section=studio&ui=video-create-v2`}
       title="BLOOM Studio"
       onLoad={connect}
       allow="camera; microphone; clipboard-read; clipboard-write; fullscreen"
       style={{width:'100%',height:'100%',border:0,display:'block',background:c.bg}}
     />}
-    {status!=='ready'&&<div style={{position:'absolute',inset:0,display:'grid',placeItems:'center',background:c.bg,zIndex:2}}>
+    {view==='studio'&&status!=='ready'&&<div style={{position:'absolute',inset:0,display:'grid',placeItems:'center',background:c.bg,zIndex:2}}>
       <div style={{width:'min(420px,calc(100% - 32px))',padding:28,borderRadius:18,border:'1px solid '+c.ln,background:c.cd,textAlign:'center',boxShadow:'0 18px 50px rgba(0,0,0,.18)'}}>
         {status==='error'?<>
           <div style={{fontSize:16,fontWeight:800,marginBottom:8}}>BLOOM Studio could not open</div>
@@ -4339,6 +4419,23 @@ function VideoStudioWorkspace({c}){
         </>}
       </div>
     </div>}
+    {view==='hyperframes'&&<div style={{height:'100%',overflow:'auto',padding:18,background:c.bg}}>
+      <div style={{maxWidth:1120,margin:'0 auto'}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,marginBottom:16}}>
+          <div><div style={{fontSize:20,fontWeight:900,color:c.tx}}>HyperFrames Sessions</div><div style={{fontSize:12,color:c.so,marginTop:3}}>Motion projects saved inside this Bloomie workspace.</div></div>
+          <button onClick={loadHyperframes} disabled={hyperframesStatus==='loading'} style={{border:'1px solid '+c.ln,borderRadius:10,padding:'9px 12px',background:c.sf,color:c.tx,fontWeight:800,cursor:'pointer'}}>{hyperframesStatus==='loading'?'Refreshing…':'Refresh'}</button>
+        </div>
+        {hyperframesStatus==='error'?<div style={{padding:18,border:'1px solid rgba(239,100,100,.35)',borderRadius:14,background:'rgba(239,100,100,.08)',color:'#ef7777'}}>{hyperframesError}</div>
+        :hyperframesStatus!=='ready'?<div style={{padding:28,textAlign:'center',color:c.so}}>Loading tenant sessions…</div>
+        :hyperframes.projects.length===0?<div style={{padding:34,border:'1px dashed '+c.ln,borderRadius:16,background:c.cd,textAlign:'center'}}><div style={{fontSize:15,fontWeight:850,color:c.tx}}>No HyperFrames sessions yet</div><div style={{fontSize:12,color:c.so,marginTop:7}}>Ask your Bloomie to create a motion graphic. Its project will appear here automatically.</div></div>
+        :<div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(230px,1fr))',gap:12}}>{hyperframes.projects.map(project=><div key={project.project} style={{padding:16,border:'1px solid '+c.ln,borderRadius:14,background:c.cd}}>
+          <div style={{fontSize:14,fontWeight:850,color:c.tx,overflow:'hidden',textOverflow:'ellipsis'}}>{project.project}</div>
+          <div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:10}}>{project.hasIndex&&<span style={{fontSize:9,fontWeight:850,padding:'4px 7px',borderRadius:999,background:'rgba(47,179,109,.12)',color:'#49c67d'}}>Composition</span>}{project.hasBrief&&<span style={{fontSize:9,fontWeight:850,padding:'4px 7px',borderRadius:999,background:'rgba(244,162,97,.12)',color:'#F4A261'}}>Brief</span>}{project.hasConfig&&<span style={{fontSize:9,fontWeight:850,padding:'4px 7px',borderRadius:999,background:'rgba(231,111,139,.12)',color:'#E76F8B'}}>Configured</span>}</div>
+          <div style={{fontSize:10,color:c.so,marginTop:12}}>Updated {new Date(project.updatedAt).toLocaleString()}</div>
+        </div>)}</div>}
+      </div>
+    </div>}
+    </div>
   </div>;
 }
 
@@ -5138,7 +5235,7 @@ Import the attached manuscript into this Book Studio project. Preserve the autho
           </div>
         </div>}
         {bookSection==='dashboard'&&<div>
-          <div data-testid="book-dashboard-hero" style={{position:'relative',overflow:'hidden',padding:mob?'17px 16px':'19px 24px',borderRadius:18,border:'1px solid rgba(231,111,139,.28)',background:'radial-gradient(circle at 82% 18%,rgba(231,111,139,.22),transparent 32%),linear-gradient(135deg,rgba(244,162,97,.12),rgba(231,111,139,.08) 52%,rgba(15,18,28,.2))',marginBottom:11}}>
+          <div data-testid="book-dashboard-hero" style={{position:'relative',overflow:'hidden',height:'auto',minHeight:mob?132:150,padding:mob?'17px 16px':'19px 24px',borderRadius:18,border:'1px solid rgba(231,111,139,.28)',background:'radial-gradient(circle at 82% 18%,rgba(231,111,139,.22),transparent 32%),linear-gradient(135deg,rgba(244,162,97,.12),rgba(231,111,139,.08) 52%,rgba(15,18,28,.2))',marginBottom:11}}>
             <div style={{position:'relative',zIndex:2,maxWidth:620}}>
               <div style={{fontSize:9,fontWeight:900,letterSpacing:'.12em',color:c.ac,marginBottom:6}}>YOUR AI PUBLISHING STUDIO</div>
               <h2 style={{fontSize:mob?23:30,lineHeight:1.08,color:c.tx,margin:'0 0 7px'}}>Watch your next book come alive.</h2>
@@ -7557,6 +7654,7 @@ function App({ authUser, passwordRecovery = false }) {
   const [pg,setPg]=useState(()=>{
     if(passwordRecovery || new URLSearchParams(window.location.search).get("reset")==="1") return "settings";
     if(window.location.pathname.startsWith("/book")) return "book";
+    if(window.location.pathname.startsWith("/studio")) return "video";
     return window.location.pathname.startsWith("/projects")?"projects":"chat";
   });
   useEffect(()=>{
@@ -7955,7 +8053,7 @@ function App({ authUser, passwordRecovery = false }) {
   
   // Fetch projects wherever Chat or Work needs project organization.
   useEffect(()=>{
-    if((pg==="projects"||pg==="chat"||pg==="work") && projects.length===0 && !loadingProjects){
+    if((pg==="projects"||pg==="chat"||pg==="work"||pg==="video") && projects.length===0 && !loadingProjects){
       setLoadingProjects(true);
       getAuthHeaders().then(h=>fetch('/api/projects',{headers:h}))
         .then(r=>r.json())
@@ -8570,7 +8668,7 @@ function App({ authUser, passwordRecovery = false }) {
 
   if(standaloneBookCreator)return(
     <div style={{height:'100dvh',minHeight:0,width:'100%',overflow:'hidden',display:'flex',flexDirection:'column',background:c.bg,fontFamily:"'Inter',system-ui,-apple-system,sans-serif",color:c.tx}}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');*{box-sizing:border-box;margin:0;padding:0}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}@keyframes processingSweep{0%{background-position:180% 0}100%{background-position:-40% 0}}::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:${c.ln};border-radius:10px}`}</style>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');*{box-sizing:border-box;margin:0;padding:0;scrollbar-color:#E76F8B #212121;scrollbar-width:thin}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}@keyframes processingSweep{0%{background-position:180% 0}100%{background-position:-40% 0}}::-webkit-scrollbar{width:8px;height:8px}::-webkit-scrollbar-track{background:#212121;border-radius:999px}::-webkit-scrollbar-thumb{background:linear-gradient(180deg,#F4A261,#E76F8B);border:2px solid #212121;border-radius:999px}::-webkit-scrollbar-thumb:hover{background:linear-gradient(180deg,#ffb277,#ef7e99)}`}</style>
       <header style={{height:64,flexShrink:0,padding:mob?'10px 14px':'10px 24px',display:'flex',alignItems:'center',gap:11,borderBottom:'1px solid '+c.ln,background:c.cd}}>
         <div style={{width:38,height:38,borderRadius:11,display:'grid',placeItems:'center',background:'linear-gradient(135deg,#F4A261,#E76F8B)',color:'#fff',fontWeight:900,fontSize:18}}>B</div>
         <div style={{flex:1,minWidth:0}}><div style={{fontSize:15,fontWeight:800,color:c.tx}}>Bloomie Book Creator</div><div style={{fontSize:10,color:c.so}}>From idea to finished manuscript</div></div>
@@ -8594,10 +8692,12 @@ function App({ authUser, passwordRecovery = false }) {
         @keyframes pop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
         @keyframes bloomGlow{0%,100%{opacity:.5;transform:scale(1)}50%{opacity:1;transform:scale(1.15)}}
         @keyframes bloomieWiggle{0%,100%{transform:rotate(0deg)}25%{transform:rotate(-3deg)}75%{transform:rotate(3deg)}}
-        *{box-sizing:border-box;margin:0;padding:0}
+        *{box-sizing:border-box;margin:0;padding:0;scrollbar-color:#E76F8B #212121;scrollbar-width:thin}
         input:focus,button:focus{outline:none}
-        ::-webkit-scrollbar{width:4px}
-        ::-webkit-scrollbar-thumb{background:${c.ln};border-radius:10px}
+        ::-webkit-scrollbar{width:8px;height:8px}
+        ::-webkit-scrollbar-track{background:#212121;border-radius:999px}
+        ::-webkit-scrollbar-thumb{background:linear-gradient(180deg,#F4A261,#E76F8B);border:2px solid #212121;border-radius:999px}
+        ::-webkit-scrollbar-thumb:hover{background:linear-gradient(180deg,#ffb277,#ef7e99)}
       `}</style>
       {/* ── OAuth Toast ── */}
       {oauthToast&&(
@@ -11152,7 +11252,7 @@ function App({ authUser, passwordRecovery = false }) {
             />
           )}
 
-          {pg==="video"&&(<VideoStudioWorkspace c={c}/>)}
+          {pg==="video"&&(<VideoStudioWorkspace c={c} agentId={currentAgentId} agentName={aFN} onNavigate={setPg} onOpenSession={(sessionId,projectId)=>{if(projectId){const project=projects.find(item=>item.id===projectId);if(project)setSelectedProject(project);}loadSession(sessionId);setPg("chat");}} dark={dark} projects={projects} sessions={sessions}/>)}
 
           {pg==="docs"&&(
             <DocsPage c={c} mob={mob} aFN={aFN} agentId={currentAgentId}/>
