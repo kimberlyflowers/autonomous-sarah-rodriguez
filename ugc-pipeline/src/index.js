@@ -6,6 +6,8 @@ if (typeof globalThis.WebSocket === 'undefined') {
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const { getAssetFile } = require('./services/postgres');
+const { verifyPublicVideoSignature, parseByteRange } = require('./services/public-video');
 const fs = require('fs');
 const { logger } = require('./services/logger');
 const assetsRouter = require('./api/assets');
@@ -48,19 +50,66 @@ app.use('/docs', express.static(path.join(__dirname, '..', 'docs')));
 // Optional API key auth for backend/Bloomie calls. Browser workspace access uses
 // requireTenant below.
 const apiKeyAuth = (req, res, next) => {
-  if ((req.header('Authorization') || '').startsWith('Bearer ')) return next();
+  // Browser media elements cannot attach an Authorization header. The Studio
+  // app therefore sends its signed tenant session through the query string (or
+  // X-UGC-Token), and requireTenant performs the actual signature and tenant
+  // validation immediately after this guard.
+  if (
+    (req.header('Authorization') || '').startsWith('Bearer ')
+    || req.query.token
+    || req.header('X-UGC-Token')
+  ) return next();
   const allowed = (process.env.UGC_API_KEYS || '').split(',').map(s => s.trim()).filter(Boolean);
   if (allowed.length === 0) return next();
   const provided = req.header('X-API-Key') || req.query.api_key;
   if (!provided || !allowed.includes(provided)) {
     return res.status(401).json({ error: 'Invalid or missing X-API-Key' });
   }
+  // Trusted internal callers must still identify the authenticated Bloomie
+  // organization. requireTenant validates and applies that boundary next.
+  req.internalTenantAuth = true;
   next();
 };
 
 // Webhook is unauthenticated (called by Seedance/WaveSpeed)
 app.use('/api/webhook', webhookRouter);
 app.use('/api/auth', authRouter);
+app.use('/api/public/trends', (req, res, next) => {
+  if (req.method !== 'GET') return res.status(404).json({ error: 'Not found' });
+  return next();
+}, trendsRouter);
+
+app.get('/api/public/video/:tenant/:id/:signature', async (req, res) => {
+  const { tenant, id, signature } = req.params;
+  if (!verifyPublicVideoSignature(tenant, id, signature)) {
+    return res.status(403).json({ error: 'Invalid video link' });
+  }
+  try {
+    const asset = await getAssetFile(tenant, id, 'video');
+    if (!asset) return res.status(404).json({ error: 'Video not found' });
+    const video = Buffer.isBuffer(asset.file_data) ? asset.file_data : Buffer.from(asset.file_data);
+    const size = video.length;
+    const range = parseByteRange(req.headers.range, size);
+    res.setHeader('Content-Type', asset.mime_type || 'video/mp4');
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    if (range?.invalid) {
+      res.setHeader('Content-Range', `bytes */${size}`);
+      return res.status(416).end();
+    }
+    if (range) {
+      const chunk = video.subarray(range.start, range.end + 1);
+      res.status(206);
+      res.setHeader('Content-Range', `bytes ${range.start}-${range.end}/${size}`);
+      res.setHeader('Content-Length', String(chunk.length));
+      return res.end(chunk);
+    }
+    res.setHeader('Content-Length', String(size));
+    return res.end(video);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
 
 // Tenant-scoped routes require a logged-in user/workspace.
 app.use('/api/assets', apiKeyAuth, requireTenant, assetsRouter);
@@ -90,7 +139,7 @@ app.get('/health', (req, res) => {
     status: 'ok',
     service: 'ugc-pipeline',
     version: '1.0.0',
-    provider: 'runpod-public-endpoints+comfyui',
+    provider: 'seedance2api+wavespeed-fallback+comfyui',
     apiKeyConfigured: hasApiKey,
     comfyuiConfigured: !!(process.env.COMFYUI_BASE_URL || process.env.RUNPOD_COMFYUI_URL),
     runpodAutoStartConfigured: getRunPodConfig().autoStartConfigured,
@@ -125,12 +174,13 @@ app.get('/api/status', (req, res) => {
     runpodAutoStartConfigured: getRunPodConfig().autoStartConfigured,
     databaseConfigured: hasDatabase(),
     supabaseConfigured: getSupabaseConfig().configured,
-    provider: 'runpod-public-endpoints+comfyui',
+    provider: 'seedance2api+wavespeed-fallback+comfyui',
     brands: brandCount,
     videosGenerated: videoCount,
     pricing: {
-      'runpod-seedance-1.5-i2v-480p': '$0.024/sec',
-      'runpod-seedance-1.5-i2v-720p': '$0.052/sec'
+      'seedance2api-720p': '$0.13/sec',
+      'wavespeed-fallback-720p': '$0.20/sec',
+      'runpod-seedance-1.5-i2v-720p': '$0.052/sec when explicitly selected'
     }
   });
 });
