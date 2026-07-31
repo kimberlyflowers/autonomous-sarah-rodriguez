@@ -90,7 +90,7 @@ export async function resolveVideoPlanTier(organizationId, dependencies = {}) {
 
   const { data, error } = await client
     .from('organizations')
-    .select('plan')
+    .select('plan, owner_email')
     .eq('id', organizationId)
     .maybeSingle();
 
@@ -106,9 +106,9 @@ export async function resolveVideoPlanTier(organizationId, dependencies = {}) {
   if (organizationTier !== 'free') return organizationTier;
 
   const now = new Date().toISOString();
-  const { data: studioEntitlement, error: entitlementError } = await client
+  let { data: studioEntitlement, error: entitlementError } = await client
     .from('product_entitlements')
-    .select('tier, expires_at')
+    .select('id, tier, expires_at, organization_id, user_id')
     .eq('organization_id', organizationId)
     .eq('product_key', 'bloom_studio')
     .eq('status', 'active')
@@ -120,6 +120,34 @@ export async function resolveVideoPlanTier(organizationId, dependencies = {}) {
       error: entitlementError.message,
     });
     return 'free';
+  }
+  if (!studioEntitlement && data?.owner_email) {
+    const emailEntitlement = await client
+      .from('product_entitlements')
+      .select('id, tier, expires_at, organization_id, user_id')
+      .eq('product_key', 'bloom_studio')
+      .eq('status', 'active')
+      .is('organization_id', null)
+      .ilike('buyer_email', data.owner_email)
+      .limit(1)
+      .maybeSingle();
+    studioEntitlement = emailEntitlement.data || null;
+    if (studioEntitlement) {
+      const { data: ownerUser } = await client
+        .from('users')
+        .select('id')
+        .ilike('email', data.owner_email)
+        .limit(1)
+        .maybeSingle();
+      const { error: claimError } = await client
+        .from('product_entitlements')
+        .update({ organization_id: organizationId, user_id: ownerUser?.id || null, updated_at: now })
+        .eq('id', studioEntitlement.id);
+      if (claimError) {
+        logger.warn('Unable to claim pending Bloom Studio entitlement', { organizationId, error: claimError.message });
+        return 'free';
+      }
+    }
   }
   if (!studioEntitlement || (studioEntitlement.expires_at && studioEntitlement.expires_at <= now)) return 'free';
   return BILLING_TO_VIDEO_TIER[String(studioEntitlement.tier || 'video_pro').toLowerCase()] || 'video_pro';

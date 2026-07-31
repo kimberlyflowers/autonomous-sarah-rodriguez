@@ -55,7 +55,7 @@ const PLAN_CATALOG = {
     tier: 'video_pro',
     price: 67,
     cadence: 'one_time',
-    planId: process.env.WHOP_PLAN_BLOOM_STUDIO || null,
+    planId: process.env.WHOP_PLAN_BLOOM_STUDIO || 'plan_JPSF3dt1MBRB2',
     description: 'Create images, characters, shorts, lip-sync videos, and motion projects in Bloom Studio.',
   },
 };
@@ -66,6 +66,8 @@ const PLAN_ID_TO_ORG_PLAN = Object.fromEntries(
 const PLAN_ID_TO_PRODUCT = Object.fromEntries(
   Object.values(PLAN_CATALOG).filter(plan => plan.productKey && plan.planId).map(plan => [plan.planId, plan])
 );
+
+const BLOOM_STUDIO_ACCESS_URL = 'https://app.bloomiestaffing.com/studio?purchase=success';
 
 function supabase() {
   return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
@@ -81,6 +83,67 @@ function publicPlan(plan) {
     cadence: plan.cadence || 'month',
     description: plan.description,
   };
+}
+
+function clean(value, maxLength = 240) {
+  return typeof value === 'string' ? value.trim().slice(0, maxLength) : '';
+}
+
+function escapeHtml(value) {
+  return String(value || '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+async function ghlFetch(path, options = {}) {
+  const token = process.env.GHL_API_KEY;
+  const locationId = process.env.GHL_LOCATION_ID;
+  if (!token || !locationId) throw new Error('GHL access-email configuration is missing.');
+  const response = await fetch(`https://services.leadconnectorhq.com${path}`, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Version: options.version || '2021-07-28',
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      ...(options.headers || {}),
+    },
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(`GHL ${path} failed (${response.status}): ${result?.message || result?.error || 'Unknown error'}`);
+  return result;
+}
+
+async function deliverBloomStudioAccess(buyerEmail) {
+  const upsert = await ghlFetch('/contacts/upsert', {
+    method: 'POST',
+    body: JSON.stringify({
+      locationId: process.env.GHL_LOCATION_ID,
+      email: buyerEmail,
+      source: 'Bloom Studio Whop Purchase',
+      tags: ['bloom-studio', 'bloom-studio-customer', 'bloom-studio-access-delivered'],
+    }),
+  });
+  const contactId = upsert?.contact?.id || upsert?.id;
+  if (!contactId) throw new Error('GHL contact upsert returned no contact ID.');
+
+  const safeEmail = escapeHtml(clean(buyerEmail));
+  await ghlFetch('/conversations/messages', {
+    method: 'POST',
+    version: '2021-04-15',
+    body: JSON.stringify({
+      type: 'Email',
+      contactId,
+      subject: 'Your Bloom Studio access is ready',
+      emailFrom: 'Bloom Studio <kimberly@bloomiestaffing.com>',
+      emailReplyTo: 'kimberly@bloomiestaffing.com',
+      html: `<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;color:#f5f5f5;line-height:1.65;background:#17151c;padding:34px;border-radius:18px"><div style="display:inline-block;background:linear-gradient(100deg,#ff995f,#ed6f92);color:#241721;font-weight:800;padding:8px 12px;border-radius:8px">BLOOM STUDIO</div><h1 style="font-size:30px;line-height:1.15;color:#fff;margin:22px 0 12px">Your creative studio is ready</h1><p>Your $67 Bloom Studio Pro purchase is confirmed and access has been activated for <strong>${safeEmail}</strong>.</p><p>For security, we do not email temporary passwords. Click below and create your password with the same email address used at checkout. If you already have a Bloomie account with this email, simply sign in.</p><p style="margin:28px 0"><a href="${BLOOM_STUDIO_ACCESS_URL}" style="display:inline-block;background:linear-gradient(100deg,#ff995f,#ed6f92);color:#241721;text-decoration:none;font-weight:800;padding:15px 24px;border-radius:10px">CREATE MY PASSWORD &amp; OPEN BLOOM STUDIO</a></p><p>Inside Bloom Studio you can create images, characters, shorts, lip-sync videos, voice, and motion projects—or ask your Bloomie to produce them for you.</p><p style="font-size:13px;color:#b7b0bc">If the button does not open, copy this link into your browser:<br><a style="color:#ff9c77" href="${BLOOM_STUDIO_ACCESS_URL}">${BLOOM_STUDIO_ACCESS_URL}</a></p><p>Welcome to Bloom Studio,<br>Kimberly Flowers<br>Bloomie Staffing</p></div>`,
+    }),
+  });
+  return contactId;
 }
 
 export async function prepareHostedCheckout(organizationId, targetPlan) {
@@ -245,6 +308,8 @@ router.post('/provision-book-creator', async (req, res) => {
 function extractPlanId(event) {
   const data = event?.data || {};
   return data.plan?.id
+    || data.payment?.plan?.id
+    || data.payment?.plan_id
     || data.membership?.plan?.id
     || data.membership?.plan_id
     || data.plan_id
@@ -254,6 +319,10 @@ function extractPlanId(event) {
 function extractBuyerEmail(event) {
   const data = event?.data || {};
   return data.member?.email
+    || data.payment?.member?.email
+    || data.payment?.member?.user?.email
+    || data.payment?.user?.email
+    || data.payment?.customer_email
     || data.user?.email
     || data.customer?.email
     || data.email
@@ -338,7 +407,7 @@ export async function handleWhopWebhook(req, res) {
     };
     let existingQuery = client
       .from('product_entitlements')
-      .select('id')
+      .select('id, metadata')
       .eq('product_key', productPlan.productKey);
     existingQuery = organization?.id
       ? existingQuery.eq('organization_id', organization.id)
@@ -355,6 +424,24 @@ export async function handleWhopWebhook(req, res) {
         error: entitlementError.message,
       });
       return res.status(500).send('Product entitlement update failed.');
+    }
+    if (productPlan.productKey === 'bloom_studio' && event.type === 'payment.succeeded' && !existingEntitlement?.metadata?.accessEmailSent) {
+      try {
+        const contactId = await deliverBloomStudioAccess(buyerEmail);
+        const emailMetadata = { ...(entitlement.metadata || {}), accessEmailSent: true, accessEmailSentAt: new Date().toISOString(), contactId };
+        let emailUpdate = client
+          .from('product_entitlements')
+          .update({ metadata: emailMetadata, updated_at: new Date().toISOString() })
+          .eq('product_key', productPlan.productKey);
+        emailUpdate = organization?.id
+          ? emailUpdate.eq('organization_id', organization.id)
+          : emailUpdate.is('organization_id', null).ilike('buyer_email', buyerEmail);
+        const { error: emailMetadataError } = await emailUpdate;
+        if (emailMetadataError) throw new Error(`Could not record access-email delivery: ${emailMetadataError.message}`);
+      } catch (error) {
+        logger.error('Bloom Studio access email failed', { buyerEmail, error: error.message });
+        return res.status(502).send('Bloom Studio access email failed.');
+      }
     }
     logger.info('Whop product entitlement applied', {
       organizationId: organization?.id || null,

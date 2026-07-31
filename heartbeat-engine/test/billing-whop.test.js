@@ -47,11 +47,16 @@ test('Bloom Studio is a standalone one-time Whop entitlement with its own login 
   assert.match(billingSource, /key: 'bloom_studio'/);
   assert.match(billingSource, /productKey: 'bloom_studio'/);
   assert.match(billingSource, /WHOP_PLAN_BLOOM_STUDIO/);
+  assert.match(billingSource, /plan_JPSF3dt1MBRB2/);
   assert.match(billingSource, /tier: 'video_pro'/);
   assert.match(billingSource, /price: 67/);
   assert.match(mainSource, /\/studio/);
   assert.match(loginSource, /BLOOM STUDIO/);
   assert.match(loginSource, /Create password & open Bloom Studio/);
+  assert.match(billingSource, /deliverBloomStudioAccess/);
+  assert.match(billingSource, /Your Bloom Studio access is ready/);
+  assert.match(billingSource, /CREATE MY PASSWORD &amp; OPEN BLOOM STUDIO/);
+  assert.match(billingSource, /accessEmailSent/);
 });
 
 test('Verified BookMint purchases can provision access and new buyers create their own password', () => {

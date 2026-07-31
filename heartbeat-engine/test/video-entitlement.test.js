@@ -8,7 +8,7 @@ function supabaseReturning(plan, error = null) {
       assert.equal(table, 'organizations');
       return {
         select(columns) {
-          assert.equal(columns, 'plan');
+          assert.equal(columns, 'plan, owner_email');
           return {
             eq(field, organizationId) {
               assert.equal(field, 'id');
