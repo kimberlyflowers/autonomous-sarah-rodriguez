@@ -18,6 +18,8 @@ The runtime also constrains PyTorch to 2.4.1 on CUDA 12.4, uses the matching
 xformers wheel, and installs the official prebuilt FlashAttention wheel. This
 prevents newer transitive dependencies from replacing PyTorch with an
 incompatible CUDA 13 build during a GitHub-triggered RunPod build.
+The endpoint is configured to build `Dockerfile.runpod`; its distinct filename
+also isolates this repaired image from the endpoint's older failed build cache.
 
 Serverless input:
 
