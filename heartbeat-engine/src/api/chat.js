@@ -6172,6 +6172,20 @@ NEVER call ghl_create_blog_post for Bloomie blog publishing.
   // Final fallback: use whatever the singleton has (env/tier default)
   if (!requestModel) requestModel = llmClient.model;
 
+  // Book Studio needs a long, tool-heavy production run. Prefer the configured
+  // OpenRouter model for this workflow when it is available instead of inheriting
+  // a stale organization model preference that may not support the required tool
+  // schema or context window. Normal chat and other workflows keep their existing
+  // model-selection behavior.
+  if (isDedicatedBookRequest && process.env.OPENROUTER_API_KEY) {
+    requestModel = process.env.OPENROUTER_MODEL || process.env.OPENROUTER_FALLBACK_MODEL || requestModel;
+    logger.info('Book Studio model preference applied', {
+      model: requestModel,
+      provider: detectProvider(requestModel),
+      sessionId,
+    });
+  }
+
   const chatModel = selectExecutionModel({
     requestedModel: requestModel,
     instruction: typeof taskInstruction === 'string' ? taskInstruction : '',
@@ -8371,6 +8385,7 @@ router.post('/message', async (req, res) => {
       error: 'Failed to process message',
       response: "Sorry, I'm having a technical issue. Please try again.",
       debug_error: error.message,
+      workflow: sessionType || 'chat',
       debug_stack: error.stack?.split('\n').slice(0, 3).join(' | ')
     });
   }
