@@ -6526,12 +6526,23 @@ NEVER call ghl_create_blog_post for Bloomie blog publishing.
   // MAIN AGENTIC LOOP — Plan → Execute → Verify → Retry
   // Up to 15 rounds for the main execution, plus up to 3 extra for verification/fix
   // ══════════════════════════════════════════════════════════════════════════
-  const MAX_EXEC_ROUNDS = Math.max(15, Number(process.env.CHAT_MAX_EXEC_ROUNDS || 30));
-  const MAX_VERIFY_ROUNDS = Math.max(3, Number(process.env.CHAT_MAX_VERIFY_ROUNDS || 5));
+  // Dedicated book production is a resumable, artifact-gated workflow rather
+  // than a normal chat turn. A 30-round shared cap consistently cut manuscripts
+  // off after several chapters (the UI then looked like it was still building).
+  // Give book runs their own bounded continuation budget while preserving the
+  // normal chat limits for every other request.
+  const MAX_EXEC_ROUNDS = isDedicatedBookRequest
+    ? Math.max(60, Number(process.env.BOOK_CHAT_MAX_EXEC_ROUNDS || 60))
+    : Math.max(15, Number(process.env.CHAT_MAX_EXEC_ROUNDS || 30));
+  const MAX_VERIFY_ROUNDS = isDedicatedBookRequest
+    ? Math.max(10, Number(process.env.BOOK_CHAT_MAX_VERIFY_ROUNDS || 10))
+    : Math.max(3, Number(process.env.CHAT_MAX_VERIFY_ROUNDS || 5));
   // Keep each tool-planning turn affordable and focused. Long-running work gets
   // additional rounds instead of reserving an unnecessarily large completion
   // on every call (which low-balance providers can reject before execution).
-  const MAX_OUTPUT_TOKENS = Math.max(1024, Number(process.env.CHAT_MAX_OUTPUT_TOKENS || 2048));
+  const MAX_OUTPUT_TOKENS = isDedicatedBookRequest
+    ? Math.max(2048, Number(process.env.BOOK_CHAT_MAX_OUTPUT_TOKENS || 4096))
+    : Math.max(1024, Number(process.env.CHAT_MAX_OUTPUT_TOKENS || 2048));
   let verificationAttempted = false;
 
   for (let round = 0; round < MAX_EXEC_ROUNDS + MAX_VERIFY_ROUNDS; round++) {
