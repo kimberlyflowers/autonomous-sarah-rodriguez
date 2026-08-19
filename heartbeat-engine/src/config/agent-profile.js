@@ -7,10 +7,11 @@ const logger = createLogger('agent-profile');
 
 const SARAH_AGENT_ID = process.env.SARAH_AGENT_ID || 'c3000000-0000-0000-0000-000000000003';
 const LEGACY_SARAH_AGENT_ID = 'bloomie-sarah-rodriguez';
+const SARAH_ALIASES = new Set([LEGACY_SARAH_AGENT_ID, 'sarah-rodriguez', 'sarah_rodriguez', 'sarah-ro']);
 const ORG_ID = process.env.BLOOM_ORG_ID || 'a1000000-0000-0000-0000-000000000001';
 
 export function normalizeAgentId(agentId = null) {
-  if (!agentId || agentId === LEGACY_SARAH_AGENT_ID) return SARAH_AGENT_ID;
+  if (!agentId || SARAH_ALIASES.has(String(agentId).toLowerCase())) return SARAH_AGENT_ID;
   return agentId;
 }
 

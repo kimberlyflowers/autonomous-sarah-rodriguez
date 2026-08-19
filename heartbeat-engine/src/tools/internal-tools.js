@@ -3,6 +3,7 @@
 
 import { createLogger } from '../logging/logger.js';
 import { logAction, logRejection, logHandoff } from '../logging/index.js';
+import { normalizeAgentId } from '../config/agent-profile.js';
 
 const logger = createLogger('internal-tools');
 
@@ -1903,7 +1904,7 @@ export const internalToolExecutors = {
           fileType: params.fileType || 'html',
           mimeType: params.mimeType || (params.fileType === 'html' || !params.fileType ? 'text/html' : 'text/plain'),
           content: params.content,
-          agentId: params.agentId || process.env.AGENT_UUID || 'c3000000-0000-0000-0000-000000000003',
+          agentId: normalizeAgentId(params.agentId || process.env.AGENT_UUID || 'c3000000-0000-0000-0000-000000000003'),
           organizationId: params.organizationId || 'a1000000-0000-0000-0000-000000000001',
           metadata: params.metadata || {}
         })

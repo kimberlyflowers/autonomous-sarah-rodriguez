@@ -10,6 +10,7 @@ import fs from 'fs';
 import ExcelJS from 'exceljs';
 import { createClient } from '@supabase/supabase-js';
 import { validateAgentAccess, getAgentOrgId, getUserOrgId, extractUserId } from './org-boundary.js';
+import { normalizeAgentId } from '../config/agent-profile.js';
 
 const logger = createLogger('files-api');
 const router = Router();
@@ -473,7 +474,8 @@ async function refreshBlogIndexAfterPublish(supabase, artifact) {
 // ── CREATE ARTIFACT ──────────────────────────────────────────────────────────
 router.post('/artifacts', async (req, res) => {
   try {
-    const { name, description = '', fileType = 'text', mimeType = 'text/plain', content, sessionId = null, agentId = null, metadata = {} } = req.body;
+    const { name, description = '', fileType = 'text', mimeType = 'text/plain', content, sessionId = null, metadata = {} } = req.body;
+    const agentId = normalizeAgentId(req.body.agentId || null);
     if (!name || !content) return res.status(400).json({ error: 'name and content required' });
 
     // ── Org-boundary: if agentId provided, verify ownership ──
