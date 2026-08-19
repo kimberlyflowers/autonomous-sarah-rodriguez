@@ -4286,9 +4286,10 @@ function VideoStudioWorkspace({c,agentId,agentName,onNavigate,onOpenSession,dark
   const [status,setStatus]=useState('loading');
   const [error,setError]=useState('');
   const [view,setView]=useState('studio');
-  const [hyperframes,setHyperframes]=useState({projects:[],templates:[]});
+  const [hyperframes,setHyperframes]=useState({projects:[],templates:[],summary:null});
   const [hyperframesStatus,setHyperframesStatus]=useState('idle');
   const [hyperframesError,setHyperframesError]=useState('');
+  const [hyperframesFilter,setHyperframesFilter]=useState('all');
 
   const loadStudio=useCallback(async()=>{
     setStatus('loading');setError('');
@@ -4307,7 +4308,7 @@ function VideoStudioWorkspace({c,agentId,agentName,onNavigate,onOpenSession,dark
       const response=await fetch('/api/video-studio/hyperframes/sessions');
       const data=await response.json().catch(()=>({}));
       if(!response.ok)throw new Error(data.error||'HyperFrames sessions could not be loaded');
-      setHyperframes({projects:data.projects||[],templates:data.templates||[]});
+      setHyperframes({projects:data.projects||[],templates:data.templates||[],summary:data.summary||null});
       setHyperframesStatus('ready');
     }catch(err){setHyperframesError(err.message);setHyperframesStatus('error');}
   },[]);
@@ -4393,6 +4394,18 @@ Use the tenant's saved characters, looks, voices, references, and Bloom Studio t
     },session.studioOrigin);
   },[session,projects,sessions]);
 
+  const hyperframesSummary=hyperframes.summary||{
+    total:hyperframes.projects.length,
+    finished:hyperframes.projects.filter(project=>project.status==='finished').length,
+    unfinished:hyperframes.projects.filter(project=>project.status!=='finished').length,
+  };
+  const visibleHyperframesProjects=hyperframes.projects.filter(project=>hyperframesFilter==='all'||(hyperframesFilter==='unfinished'?project.status!=='finished':project.status===hyperframesFilter));
+  const hyperframesStatusMeta=status=>status==='finished'
+    ?{label:'Finished',color:'#49c67d',background:'rgba(47,179,109,.12)'}
+    :status==='needs_setup'
+      ?{label:'Needs setup',color:'#ef7777',background:'rgba(239,100,100,.1)'}
+      :{label:'In progress',color:'#F4A261',background:'rgba(244,162,97,.12)'};
+
   return <div style={{position:'relative',width:'100%',height:'100%',minHeight:0,background:c.bg,overflow:'hidden',display:'flex',flexDirection:'column'}}>
     <div style={{height:48,flex:'0 0 48px',display:'flex',alignItems:'center',gap:6,padding:'6px 12px',borderBottom:'1px solid '+c.ln,background:c.cd}}>
       {[['studio','Bloom Studio'],['hyperframes','HyperFrames Sessions']].map(([id,label])=><button key={id} onClick={()=>setView(id)} style={{border:'1px solid '+(view===id?'rgba(231,111,139,.45)':c.ln),borderRadius:10,padding:'8px 12px',background:view===id?'linear-gradient(135deg,rgba(244,162,97,.16),rgba(231,111,139,.16))':c.sf,color:view===id?c.tx:c.so,fontSize:12,fontWeight:800,cursor:'pointer'}}>{label}</button>)}
@@ -4422,17 +4435,26 @@ Use the tenant's saved characters, looks, voices, references, and Bloom Studio t
     {view==='hyperframes'&&<div style={{height:'100%',overflow:'auto',padding:18,background:c.bg}}>
       <div style={{maxWidth:1120,margin:'0 auto'}}>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,marginBottom:16}}>
-          <div><div style={{fontSize:20,fontWeight:900,color:c.tx}}>HyperFrames Sessions</div><div style={{fontSize:12,color:c.so,marginTop:3}}>Motion projects saved inside this Bloomie workspace.</div></div>
+          <div><div style={{fontSize:20,fontWeight:900,color:c.tx}}>HyperFrames Projects</div><div style={{fontSize:12,color:c.so,marginTop:3}}>See what is finished and what still needs work in this Bloomie workspace.</div></div>
           <button onClick={loadHyperframes} disabled={hyperframesStatus==='loading'} style={{border:'1px solid '+c.ln,borderRadius:10,padding:'9px 12px',background:c.sf,color:c.tx,fontWeight:800,cursor:'pointer'}}>{hyperframesStatus==='loading'?'Refreshing…':'Refresh'}</button>
         </div>
         {hyperframesStatus==='error'?<div style={{padding:18,border:'1px solid rgba(239,100,100,.35)',borderRadius:14,background:'rgba(239,100,100,.08)',color:'#ef7777'}}>{hyperframesError}</div>
         :hyperframesStatus!=='ready'?<div style={{padding:28,textAlign:'center',color:c.so}}>Loading tenant sessions…</div>
         :hyperframes.projects.length===0?<div style={{padding:34,border:'1px dashed '+c.ln,borderRadius:16,background:c.cd,textAlign:'center'}}><div style={{fontSize:15,fontWeight:850,color:c.tx}}>No HyperFrames sessions yet</div><div style={{fontSize:12,color:c.so,marginTop:7}}>Ask your Bloomie to create a motion graphic. Its project will appear here automatically.</div></div>
-        :<div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(230px,1fr))',gap:12}}>{hyperframes.projects.map(project=><div key={project.project} style={{padding:16,border:'1px solid '+c.ln,borderRadius:14,background:c.cd}}>
-          <div style={{fontSize:14,fontWeight:850,color:c.tx,overflow:'hidden',textOverflow:'ellipsis'}}>{project.project}</div>
-          <div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:10}}>{project.hasIndex&&<span style={{fontSize:9,fontWeight:850,padding:'4px 7px',borderRadius:999,background:'rgba(47,179,109,.12)',color:'#49c67d'}}>Composition</span>}{project.hasBrief&&<span style={{fontSize:9,fontWeight:850,padding:'4px 7px',borderRadius:999,background:'rgba(244,162,97,.12)',color:'#F4A261'}}>Brief</span>}{project.hasConfig&&<span style={{fontSize:9,fontWeight:850,padding:'4px 7px',borderRadius:999,background:'rgba(231,111,139,.12)',color:'#E76F8B'}}>Configured</span>}</div>
-          <div style={{fontSize:10,color:c.so,marginTop:12}}>Updated {new Date(project.updatedAt).toLocaleString()}</div>
-        </div>)}</div>}
+        :<>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(3,minmax(0,1fr))',gap:10,marginBottom:12}}>
+            {[['all','All projects',hyperframesSummary.total||0,c.tx],['unfinished','Unfinished',hyperframesSummary.unfinished||0,'#F4A261'],['finished','Finished',hyperframesSummary.finished||0,'#49c67d']].map(([id,label,count,color])=><button key={id} onClick={()=>setHyperframesFilter(id)} style={{padding:'13px 12px',border:'1px solid '+(hyperframesFilter===id?color:c.ln),borderRadius:13,background:hyperframesFilter===id?c.sf:c.cd,color:c.tx,textAlign:'left',cursor:'pointer'}}><span style={{display:'block',fontSize:22,fontWeight:900,color}}>{count}</span><span style={{display:'block',fontSize:10,fontWeight:800,color:c.so,marginTop:2}}>{label}</span></button>)}
+          </div>
+          {visibleHyperframesProjects.length===0?<div style={{padding:34,border:'1px dashed '+c.ln,borderRadius:16,background:c.cd,textAlign:'center',color:c.so}}>No projects are currently in this status.</div>
+          :<div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(250px,1fr))',gap:12}}>{visibleHyperframesProjects.map(project=>{const meta=hyperframesStatusMeta(project.status);return <div key={project.project} style={{padding:16,border:'1px solid '+c.ln,borderRadius:14,background:c.cd}}>
+            <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:10}}><div style={{fontSize:14,fontWeight:850,color:c.tx,overflow:'hidden',textOverflow:'ellipsis'}}>{project.project}</div><span style={{flexShrink:0,fontSize:9,fontWeight:900,padding:'4px 7px',borderRadius:999,background:meta.background,color:meta.color}}>{meta.label}</span></div>
+            <div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:10}}>{project.hasIndex&&<span style={{fontSize:9,fontWeight:850,padding:'4px 7px',borderRadius:999,background:'rgba(47,179,109,.12)',color:'#49c67d'}}>Composition</span>}{project.hasBrief&&<span style={{fontSize:9,fontWeight:850,padding:'4px 7px',borderRadius:999,background:'rgba(244,162,97,.12)',color:'#F4A261'}}>Brief</span>}{project.hasConfig&&<span style={{fontSize:9,fontWeight:850,padding:'4px 7px',borderRadius:999,background:'rgba(231,111,139,.12)',color:'#E76F8B'}}>Configured</span>}</div>
+            {project.latestRender&&<div style={{fontSize:10,color:c.so,marginTop:11}}>Latest video: <strong style={{color:c.tx}}>{project.latestRender.file}</strong>{project.renderCount>1?` · ${project.renderCount} renders`:''}</div>}
+            {project.status==='in_progress'&&<div style={{fontSize:10,color:'#F4A261',marginTop:11}}>Composition started; no finished render yet.</div>}
+            {project.status==='needs_setup'&&<div style={{fontSize:10,color:'#ef7777',marginTop:11}}>Project folder exists, but it does not have a runnable composition yet.</div>}
+            <div style={{fontSize:10,color:c.so,marginTop:12}}>Updated {new Date(project.updatedAt).toLocaleString()}</div>
+          </div>})}</div>}
+        </>}
       </div>
     </div>}
     </div>
@@ -4812,6 +4834,13 @@ Required workflow:
 9. Generate a professional 2:3 portrait front cover that fits this specific genre and audience. Do not use placeholder art. Save back-cover/book-description copy and five discoverability keywords with the project. A full print wrap must be calculated only after the final page count and paper choice are known.
 10. Create kdp-package-checklist.md recording the final title and author match, body word count, trim size, bleed choice, page count, gutter/margins, embedded fonts, image resolution, TOC/heading validation, eBook DOCX, print PDF, cover status, and preview still required in Kindle Previewer and KDP Print Previewer.
 11. Continue through tool calls and verification until the deliverables exist. Never report completion below 10,000 measured body words or while any required KDP package file is missing. Report the exact verified body word count and real files inline when complete.`;
+    // Keep manuscript production on the artifact-gated path. Specialist dispatches
+    // can return prose without a saved file, which leaves the visible checklist
+    // looping at the first chapter. Chapters must be written and persisted directly.
+    const gatedManuscriptWorkflow = manuscriptWorkflow.replace(
+      '11. Continue through tool calls and verification until the deliverables exist.',
+      '11. For body chapters, call create_artifact directly with the next ordered chapter filename; do not use dispatch_to_specialist for chapter writing. Do not advance task_progress until the artifact receipt is successful. Continue through tool calls and verification until the deliverables exist.'
+    );
     const approvedBrief=`DEDICATED BLOOMIE BOOK WORKSPACE REQUEST
 
 This form is the user's approved creative brief, so do not pause for routine clarification. Make responsible editorial choices where details are not specified.
@@ -4832,7 +4861,7 @@ Core message: Derive one clear, useful promise from the approved topic or descri
 Starting point: Starting from scratch.
 Scope: ${bookAudience==='children'?"Complete children's page manuscript, illustration plan, cover, and KDP package.":'Complete approximately 10,000-word manuscript plus supporting cover.'}
 
-${manuscriptWorkflow}`;
+${gatedManuscriptWorkflow}`;
     let pollTimer;
     try{
       pollTimer=setInterval(async()=>{
