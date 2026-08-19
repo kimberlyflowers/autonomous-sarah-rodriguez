@@ -14,7 +14,7 @@ try {
 } catch (e) {
   console.warn('Skills failed to load (non-critical):', e.message);
 }
-import { loadAgentConfig } from '../config/agent-profile.js';
+import { loadAgentConfig, normalizeAgentId } from '../config/agent-profile.js';
 import {
   asksUserForDiscoverableTechnicalContent,
   buildSharedExecutionContract,
@@ -7830,7 +7830,7 @@ router.get('/sessions', async (req, res) => {
         .select('id, title, created_at, updated_at, project_id, user_id, agent_id')
         .eq('project_id', projectId)
         .eq('user_id', userId);
-      if (agentId) query = query.eq('agent_id', agentId);
+      if (agentId) query = query.eq('agent_id', normalizeAgentId(agentId));
       const { data, error } = await query.order('updated_at', { ascending: false });
       
       if (error) {
@@ -7882,7 +7882,7 @@ router.get('/sessions', async (req, res) => {
       .from('sessions')
       .select('id, title, created_at, updated_at, agent_id, project_id')
       .eq('user_id', resolvedUserId);
-    if (agentId) query = query.eq('agent_id', agentId);
+    if (agentId) query = query.eq('agent_id', normalizeAgentId(agentId));
     const { data, error } = await query
       .order('updated_at', { ascending: false })
       .limit(50);

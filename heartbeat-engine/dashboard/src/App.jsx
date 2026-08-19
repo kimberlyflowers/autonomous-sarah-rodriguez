@@ -4750,7 +4750,13 @@ function BookWorkspace({c,mob,aFN="Bloomie",agentId,onOpenChat,standalone=false}
       const h=await getAuthHeaders();
       const r=await fetch(`/api/chat/sessions?agentId=${encodeURIComponent(agentId||'')}`,{headers:h});
       const d=await r.json();
-      const bookSessions=(d.sessions||[]).filter(session=>String(session.title||'').startsWith('📚 '));
+      // Include sessions created by the standalone Book Creator/API as well as
+      // the dashboard's emoji-prefixed titles. Older runs may be titled
+      // "Book Project:" or "Book Agent Request:" and were previously hidden.
+      const bookSessions=(d.sessions||[]).filter(session=>{
+        const title=String(session.title||'');
+        return title.startsWith('📚 ') || /\bbook\b/i.test(title) || /book/i.test(String(session.session_type||''));
+      });
       const enriched=await Promise.all(bookSessions.map(async project=>{
         try{
           const [historyRes,fileRes]=await Promise.all([
