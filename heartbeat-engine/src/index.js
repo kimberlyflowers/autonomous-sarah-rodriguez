@@ -43,7 +43,7 @@ import buildsRoutes, { recoverDurableWorkSessions } from './api/builds.js';    /
 import integrationRoutes from './api/integrations.js';
 import referenceRoutes from './api/references.js';
 import bloomieAdminRoutes from './api/bloomie-admin.js';
-import billingRoutes, { handleWhopWebhook } from './api/billing.js';
+import billingRoutes, { handleWhopSandboxWebhook, handleWhopWebhook } from './api/billing.js';
 import booksRoutes from './api/books.js';
 import videoStudioRoutes from './api/video-studio.js';
 import { startBloomStudioContinuationWorker } from './tools/bloom-studio-tools.js';
@@ -89,6 +89,7 @@ app.use(helmet({
 app.use(cors());
 app.use(cookieParser());
 app.post('/api/billing/webhook', express.raw({ type: 'application/json' }), handleWhopWebhook);
+app.post('/api/billing/webhook-sandbox', express.raw({ type: 'application/json' }), handleWhopSandboxWebhook);
 app.use(express.json({ limit: '50mb' }));
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/billing', billingRoutes);

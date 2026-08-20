@@ -67,6 +67,22 @@ const PLAN_ID_TO_PRODUCT = Object.fromEntries(
   Object.values(PLAN_CATALOG).filter(plan => plan.productKey && plan.planId).map(plan => [plan.planId, plan])
 );
 
+// Sandbox plans are deliberately isolated from the live catalog. They are used
+// only by the no-charge Whop test environment and never change production
+// checkout URLs or entitlements.
+const SANDBOX_PLAN_ID_TO_PRODUCT = {
+  [process.env.WHOP_SANDBOX_PLAN_BLOOM_STUDIO || 'plan_I2YgEDf9p4Gt4']: {
+    ...PLAN_CATALOG.bloom_studio,
+    planId: process.env.WHOP_SANDBOX_PLAN_BLOOM_STUDIO || 'plan_I2YgEDf9p4Gt4',
+    name: 'Bloom Studio Pro — Sandbox',
+  },
+  [process.env.WHOP_SANDBOX_PLAN_BOOK_CREATOR || 'plan_nyfK9e5h58hnL']: {
+    ...PLAN_CATALOG.book_creator,
+    planId: process.env.WHOP_SANDBOX_PLAN_BOOK_CREATOR || 'plan_nyfK9e5h58hnL',
+    name: 'Bloomie Book Creator — Sandbox',
+  },
+};
+
 const BLOOM_STUDIO_ACCESS_URL = 'https://app.bloomiestaffing.com/studio?purchase=success';
 
 function supabase() {
@@ -336,8 +352,13 @@ function extractExternalId(event, key) {
   return null;
 }
 
-export async function handleWhopWebhook(req, res) {
-  const secret = process.env.WHOP_BILLING_WEBHOOK_SECRET;
+export async function handleWhopWebhook(
+  req,
+  res,
+  secretOverride = process.env.WHOP_BILLING_WEBHOOK_SECRET,
+  productMapOverride = PLAN_ID_TO_PRODUCT,
+) {
+  const secret = secretOverride;
   if (!secret) return res.status(503).send('Webhook is not configured.');
 
   let event;
@@ -361,7 +382,7 @@ export async function handleWhopWebhook(req, res) {
 
   const planId = extractPlanId(event);
   const organizationPlan = PLAN_ID_TO_ORG_PLAN[planId];
-  const productPlan = PLAN_ID_TO_PRODUCT[planId];
+  const productPlan = productMapOverride[planId];
   const buyerEmail = extractBuyerEmail(event)?.trim().toLowerCase();
   if ((!organizationPlan && !productPlan) || !buyerEmail) {
     logger.warn('Whop webhook missing allowlisted plan or buyer email', {
@@ -471,6 +492,15 @@ export async function handleWhopWebhook(req, res) {
     eventType: event.type,
   });
   return res.status(200).send('OK');
+}
+
+export async function handleWhopSandboxWebhook(req, res) {
+  return handleWhopWebhook(
+    req,
+    res,
+    process.env.WHOP_BILLING_SANDBOX_WEBHOOK_SECRET,
+    SANDBOX_PLAN_ID_TO_PRODUCT,
+  );
 }
 
 export default router;
