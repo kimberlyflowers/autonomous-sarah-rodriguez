@@ -84,6 +84,7 @@ const SANDBOX_PLAN_ID_TO_PRODUCT = {
 };
 
 const BLOOM_STUDIO_ACCESS_URL = 'https://app.bloomiestaffing.com/studio?purchase=success';
+const BOOK_CREATOR_ACCESS_URL = 'https://app.bloomiestaffing.com/book-creator?purchase=success';
 
 function supabase() {
   return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
@@ -157,6 +158,35 @@ async function deliverBloomStudioAccess(buyerEmail) {
       emailFrom: 'Bloom Studio <kimberly@bloomiestaffing.com>',
       emailReplyTo: 'kimberly@bloomiestaffing.com',
       html: `<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;color:#f5f5f5;line-height:1.65;background:#17151c;padding:34px;border-radius:18px"><div style="display:inline-block;background:linear-gradient(100deg,#ff995f,#ed6f92);color:#241721;font-weight:800;padding:8px 12px;border-radius:8px">BLOOM STUDIO</div><h1 style="font-size:30px;line-height:1.15;color:#fff;margin:22px 0 12px">Your creative studio is ready</h1><p>Your $67 Bloom Studio Pro purchase is confirmed and access has been activated for <strong>${safeEmail}</strong>.</p><p>For security, we do not email temporary passwords. Click below and create your password with the same email address used at checkout. If you already have a Bloomie account with this email, simply sign in.</p><p style="margin:28px 0"><a href="${BLOOM_STUDIO_ACCESS_URL}" style="display:inline-block;background:linear-gradient(100deg,#ff995f,#ed6f92);color:#241721;text-decoration:none;font-weight:800;padding:15px 24px;border-radius:10px">CREATE MY PASSWORD &amp; OPEN BLOOM STUDIO</a></p><p>Inside Bloom Studio you can create images, characters, shorts, lip-sync videos, voice, and motion projects—or ask your Bloomie to produce them for you.</p><p style="font-size:13px;color:#b7b0bc">If the button does not open, copy this link into your browser:<br><a style="color:#ff9c77" href="${BLOOM_STUDIO_ACCESS_URL}">${BLOOM_STUDIO_ACCESS_URL}</a></p><p>Welcome to Bloom Studio,<br>Kimberly Flowers<br>Bloomie Staffing</p></div>`,
+    }),
+  });
+  return contactId;
+}
+
+async function deliverBookCreatorAccess(buyerEmail) {
+  const upsert = await ghlFetch('/contacts/upsert', {
+    method: 'POST',
+    body: JSON.stringify({
+      locationId: process.env.GHL_LOCATION_ID,
+      email: buyerEmail,
+      source: 'BookMint Whop Purchase',
+      tags: ['bookmint', 'book-creator-customer', 'book-creator-access-delivered'],
+    }),
+  });
+  const contactId = upsert?.contact?.id || upsert?.id;
+  if (!contactId) throw new Error('GHL contact upsert returned no contact ID.');
+
+  const safeEmail = escapeHtml(clean(buyerEmail));
+  await ghlFetch('/conversations/messages', {
+    method: 'POST',
+    version: '2021-04-15',
+    body: JSON.stringify({
+      type: 'Email',
+      contactId,
+      subject: 'Your BookMint access is ready',
+      emailFrom: 'BookMint <kimberly@bloomiestaffing.com>',
+      emailReplyTo: 'kimberly@bloomiestaffing.com',
+      html: `<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;color:#2b1d25;line-height:1.65;background:#fff8f1;padding:34px;border-radius:18px"><div style="display:inline-block;background:linear-gradient(100deg,#f0c7ad,#d98b79);color:#321b26;font-weight:800;padding:8px 12px;border-radius:8px">BOOKMINT</div><h1 style="font-size:30px;line-height:1.15;color:#321b26;margin:22px 0 12px">Your book studio is ready</h1><p>Your BookMint purchase is confirmed and access has been activated for <strong>${safeEmail}</strong>.</p><p>For security, we do not email temporary passwords. Click below and create your password with the same email address used at checkout. If you already have a Bloomie account with this email, simply sign in.</p><p style="margin:28px 0"><a href="${BOOK_CREATOR_ACCESS_URL}" style="display:inline-block;background:linear-gradient(100deg,#d98b79,#8b4e61);color:#fff;text-decoration:none;font-weight:800;padding:15px 24px;border-radius:10px">CREATE MY PASSWORD &amp; OPEN BOOKMINT</a></p><p>Inside BookMint you can build, revise, preview, and export your complete book project.</p><p style="font-size:13px;color:#715b62">If the button does not open, copy this link into your browser:<br><a style="color:#8b4e61" href="${BOOK_CREATOR_ACCESS_URL}">${BOOK_CREATOR_ACCESS_URL}</a></p><p>Welcome to BookMint,<br>Kimberly Flowers<br>Bloomie Staffing</p></div>`,
     }),
   });
   return contactId;
@@ -446,9 +476,11 @@ export async function handleWhopWebhook(
       });
       return res.status(500).send('Product entitlement update failed.');
     }
-    if (productPlan.productKey === 'bloom_studio' && event.type === 'payment.succeeded' && !existingEntitlement?.metadata?.accessEmailSent) {
+    if (['bloom_studio', 'book_creator'].includes(productPlan.productKey) && event.type === 'payment.succeeded' && !existingEntitlement?.metadata?.accessEmailSent) {
       try {
-        const contactId = await deliverBloomStudioAccess(buyerEmail);
+        const contactId = productPlan.productKey === 'bloom_studio'
+          ? await deliverBloomStudioAccess(buyerEmail)
+          : await deliverBookCreatorAccess(buyerEmail);
         const emailMetadata = { ...(entitlement.metadata || {}), accessEmailSent: true, accessEmailSentAt: new Date().toISOString(), contactId };
         let emailUpdate = client
           .from('product_entitlements')
