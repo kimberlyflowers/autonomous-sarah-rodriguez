@@ -4280,6 +4280,19 @@ function LibraryBookReader({resource,onClose,onEdit,mob,c}){
 
 const cleanChatTitle=title=>String(title||'New conversation').replace(/^[\p{Extended_Pictographic}\uFE0F\u200D\s]+/u,'').trim()||'New conversation';
 
+// API gateways can return a plain-text/HTML timeout instead of JSON while a
+// long-running book worker continues in the background. Keep the real body so
+// the UI reports the actual failure instead of the misleading "not valid JSON".
+async function readBookResponse(response){
+  const raw=await response.text();
+  let data=null;
+  try{data=raw?JSON.parse(raw):{};}catch{
+    const message=raw.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,500);
+    throw new Error(message||`Book worker returned a non-JSON response (HTTP ${response.status})`);
+  }
+  return data||{};
+}
+
 function VideoStudioWorkspace({c,agentId,agentName,onNavigate,onOpenSession,dark,projects=[],sessions=[]}){
   const iframeRef=useRef(null);
   const [session,setSession]=useState(null);
@@ -4885,7 +4898,7 @@ ${gatedManuscriptWorkflow}`;
       const r=await fetch('/api/chat/message',{method:'POST',headers:h,body:JSON.stringify({
         message:approvedBrief,sessionId,agentId,sessionType:'book_creation',bookTitle:workingTitle
       })});
-      const d=await r.json();
+      const d=await readBookResponse(r);
       if(!r.ok)throw new Error(d.error||'Book generation could not start.');
       await loadProject(project);
       await loadProjects();
@@ -4907,7 +4920,7 @@ Requested changes: ${revision.trim()}
 Edit the existing section artifact in place and preserve its position in the reading order. Preserve the book's voice and continuity. Then rebuild complete-manuscript.md, the DOCX, and print PDF so they contain the revised section. Recalculate the body-chapter word count and keep the finished book at 10,000–10,800 body words. Do not create a duplicate section file.`,
         sessionId:active.id,agentId,sessionType:'book_creation',bookTitle:String(active.title||'').replace(/^📚\s*/,'')
       })});
-      const d=await r.json();
+      const d=await readBookResponse(r);
       if(!r.ok)throw new Error(d.error||'The revision could not be completed.');
       setRevision('');
       await loadProject(active);
@@ -4923,7 +4936,7 @@ Edit the existing section artifact in place and preserve its position in the rea
       const r=await fetch(`/api/files/artifacts/${activeSection.fileId}`,{
         method:'PUT',headers:h,body:JSON.stringify({content:sectionDraft})
       });
-      const d=await r.json();
+      const d=await readBookResponse(r);
       if(!r.ok||!d.success)throw new Error(d.error||'This section could not be saved.');
       setArtifacts(current=>current.map(file=>file.fileId===activeSection.fileId?{...file,content:sectionDraft,fileSize:d.artifact?.file_size||file.fileSize}:file));
       setDirectEditing(false);
@@ -4942,7 +4955,7 @@ Edit the existing section artifact in place and preserve its position in the rea
       const content=source.replace(pageSelection.text,selectionDraft.trim());
       const h=await getAuthHeaders();
       const r=await fetch(`/api/files/artifacts/${section.fileId}`,{method:'PUT',headers:h,body:JSON.stringify({content})});
-      const d=await r.json();
+      const d=await readBookResponse(r);
       if(!r.ok||!d.success)throw new Error(d.error||'The selected text could not be saved.');
       setArtifacts(current=>current.map(file=>file.fileId===section.fileId?{...file,content}:file));
       setPageSelection(null);setSelectionEditing(false);
@@ -4977,7 +4990,7 @@ Requested operation: ${directions[action]||directions.rewrite}
 Locate this exact selection inside the named artifact and modify only that occurrence. Do not rewrite the surrounding section. Save the artifact in place, preserve reading order, then rebuild complete-manuscript.md, DOCX, and print PDF. If the operation is image insertion, use the current image-generation tool and include accessible alt text. Verify the updated artifact before reporting completion.`,
         sessionId:active.id,agentId,sessionType:'book_creation',bookTitle:String(active.title||'').replace(/^📚\s*/,'')
       })});
-      const d=await r.json();
+      const d=await readBookResponse(r);
       if(!r.ok)throw new Error(d.error||'The selected passage could not be updated.');
       setPageSelection(null);window.getSelection()?.removeAllRanges();
       await loadProject(active);
@@ -5001,7 +5014,7 @@ Requested changes: ${coverRevision.trim()}
 Create a NEW revised cover version; do not overwrite or delete the current cover. Use image_generate with engine "runpod", size "1024x1536", aspect_ratio "2:3", target_width 1800, target_height 2700, allow_crop false. This tenant's RunPod image engine is FLUX Dev. Preserve the exact book title and author spelling from the current project metadata. Compose the new artwork natively as a full 2:3 portrait cover with safe margins; do not crop, stretch, letterbox, or add blurred edges. Save the completed full-resolution image as a new project artifact whose filename includes "cover-revision". Verify the saved artifact and show the revised cover inline.`,
         sessionId:active.id,agentId,sessionType:'book_cover',bookTitle:String(active.title||'').replace(/^📚\s*/,'')
       })});
-      const d=await r.json();
+      const d=await readBookResponse(r);
       if(!r.ok)throw new Error(d.error||'The cover revision could not be completed.');
       setCoverRevision('');
       setCoverRevisionMessage('The revised RunPod cover was saved as a new version. The original remains in the project files.');
@@ -5052,7 +5065,7 @@ Read the project title, description, genre, and reader promise. Use image_genera
         sessionId,agentId,sessionType:`book_${section}`,
         bookTitle:String(selectedProject?.title||'').replace(/^📚\s*/,'')
       })});
-      const d=await r.json();
+      const d=await readBookResponse(r);
       if(!r.ok)throw new Error(d.error||'The Book Studio task could not start.');
       setToolStatus('complete');
       setToolMessage(section==='research'?'Research report saved.':`The ${section} task finished and its deliverables were saved with the project.`);
@@ -5087,7 +5100,7 @@ Rights confirmation: The signed-in user affirmed that they own this work or have
 Import the attached manuscript into this Book Studio project. Preserve the author's wording. Extract and save each readable part as its own editable artifact in correct reading order: title page, copyright, table of contents, preface, introduction, every numbered chapter, conclusion, acknowledgments, and about the author when present. Save complete-manuscript.md as well. If a cover image is attached, save it as the active cover artifact without regenerating it. Do not invent missing manuscript content during import. After saving, verify the section list and measured body word count so the user can open Preview & Edit and turn pages immediately.`,
         sessionId,agentId,sessionType:'book_import',bookTitle:importedTitle,rightsConfirmed:true,files
       })});
-      const d=await r.json();
+      const d=await readBookResponse(r);
       if(!r.ok)throw new Error(d.error||'The book could not be imported.');
       setBookUploadStatus('complete');
       setBookUploadMessage('Book imported. Opening its editable page preview…');
