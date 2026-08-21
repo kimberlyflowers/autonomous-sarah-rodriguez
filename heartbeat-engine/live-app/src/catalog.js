@@ -36,9 +36,51 @@ export const fallbackCatalog = {
 
 export const catalogUrl = import.meta.env.VITE_CATALOG_URL ||
   `${storage}/shortdrama-videos/catalog/catalog.json`;
+const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+  'sb_publishable_HT2shgPJzeOIbCJy20EsVg_qIRauR1E';
+
+async function loadDatabaseCatalog() {
+  const headers = { apikey: publishableKey };
+  const [showsResponse, episodesResponse] = await Promise.all([
+    fetch('https://njfhzabmaxhfzekbzpzz.supabase.co/rest/v1/shortdrama_shows?select=*&order=source_order.asc', { headers }),
+    fetch('https://njfhzabmaxhfzekbzpzz.supabase.co/rest/v1/shortdrama_episodes?select=*&order=episode_number.asc', { headers }),
+  ]);
+  if (!showsResponse.ok || !episodesResponse.ok) throw new Error('database catalog unavailable');
+  const shows = await showsResponse.json();
+  const episodes = await episodesResponse.json();
+  const byShow = episodes.reduce((map, episode) => {
+    const group = map.get(episode.show_id) || [];
+    group.push(episode);
+    map.set(episode.show_id, group);
+    return map;
+  }, new Map());
+  return shows.map((show) => ({
+    id: show.id,
+    title: show.title,
+    eyebrow: 'TikTok Short Drama',
+    year: '2026',
+    genre: show.genre || 'Short drama',
+    description: show.description || `Watch all ${show.episode_count} short episodes.`,
+    coverUrl: show.cover_url,
+    heroUrl: show.hero_url || show.cover_url,
+    episodeCount: show.episode_count,
+    source: show.source,
+    episodes: (byShow.get(show.id) || []).map((episode) => ({
+      id: episode.id,
+      number: episode.episode_number,
+      title: episode.title,
+      description: episode.description,
+      duration: episode.duration_seconds,
+      thumbnailUrl: episode.thumbnail_url || show.cover_url,
+      videoUrl: episode.video_url,
+    })),
+  }));
+}
 
 export async function loadCatalog() {
   try {
+    const shows = await loadDatabaseCatalog();
+    if (shows.length) return { featuredId: 'big-pivot', shows: [...fallbackCatalog.shows, ...shows] };
     const response = await fetch(catalogUrl, { cache: 'no-cache' });
     if (!response.ok) throw new Error(`catalog ${response.status}`);
     const catalog = await response.json();

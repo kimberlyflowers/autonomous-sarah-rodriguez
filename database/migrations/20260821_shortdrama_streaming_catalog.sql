@@ -52,10 +52,11 @@ alter table public.shortdrama_shows enable row level security;
 alter table public.shortdrama_episodes enable row level security;
 
 drop policy if exists "Public reads ready shortdrama shows" on public.shortdrama_shows;
-create policy "Public reads ready shortdrama shows"
+drop policy if exists "Public reads available shortdrama shows" on public.shortdrama_shows;
+create policy "Public reads available shortdrama shows"
 on public.shortdrama_shows for select
 to anon, authenticated
-using (ingestion_status = 'ready');
+using (ingestion_status in ('cover_ready','ingesting','ready'));
 
 drop policy if exists "Public reads ready shortdrama episodes" on public.shortdrama_episodes;
 create policy "Public reads ready shortdrama episodes"

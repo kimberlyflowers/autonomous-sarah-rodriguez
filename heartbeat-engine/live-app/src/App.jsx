@@ -68,7 +68,7 @@ export default function App() {
   const filtered = useMemo(() => catalog.shows.filter((show) => show.title.toLowerCase().includes(query.toLowerCase())), [catalog, query]);
   const originals = filtered.filter((show) => show.source === 'bloomie');
   const dramas = filtered.filter((show) => show.source !== 'bloomie');
-  const genres = [...new Set(dramas.map((show) => show.genre).filter(Boolean))].slice(0, 4);
+  const genres = [...new Set(dramas.map((show) => show.genre).filter((genre) => genre && genre !== 'Short drama'))].slice(0, 4);
   const open = (show, nextEpisode = null) => { setSelected(show); setEpisode(nextEpisode || show.episodes?.[0] || null); };
 
   return <div className="app-shell">
