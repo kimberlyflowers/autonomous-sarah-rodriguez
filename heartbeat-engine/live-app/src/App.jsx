@@ -36,20 +36,69 @@ function Rail({ title, shows, onOpen }) {
 }
 
 function Player({ show, episode, onClose, onEpisode }) {
+  const video = useRef(null);
+  const touchStart = useRef(null);
+  const wheelLocked = useRef(false);
+  const playable = useMemo(() => show?.episodes?.filter((item) => item.videoUrl) || [], [show]);
+  const active = episode?.videoUrl ? episode : playable[0];
+  const activeIndex = playable.findIndex((item) => item.id === active?.id);
+  const move = (direction) => {
+    if (!playable.length) return;
+    const nextIndex = Math.min(playable.length - 1, Math.max(0, activeIndex + direction));
+    if (nextIndex !== activeIndex) onEpisode(playable[nextIndex]);
+  };
+
+  useEffect(() => {
+    if (!show) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') onClose();
+      if (['ArrowDown', 'PageDown'].includes(event.key)) { event.preventDefault(); move(1); }
+      if (['ArrowUp', 'PageUp'].includes(event.key)) { event.preventDefault(); move(-1); }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [show, activeIndex, playable.length]);
+
   if (!show) return null;
-  const active = episode || show.episodes?.[0];
+  const onWheel = (event) => {
+    if (Math.abs(event.deltaY) < 24 || wheelLocked.current) return;
+    wheelLocked.current = true;
+    move(event.deltaY > 0 ? 1 : -1);
+    window.setTimeout(() => { wheelLocked.current = false; }, 550);
+  };
+  const onTouchEnd = (event) => {
+    if (touchStart.current == null) return;
+    const distance = touchStart.current - event.changedTouches[0].clientY;
+    if (Math.abs(distance) > 45) move(distance > 0 ? 1 : -1);
+    touchStart.current = null;
+  };
+
   return <div className="modal" role="dialog" aria-modal="true" aria-label={show.title} onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
     <div className="modal-panel">
       <button className="close" onClick={onClose} aria-label="Close player">×</button>
-      <div className="player-stage">
-        {active?.videoUrl ? <video key={active.id} controls autoPlay playsInline poster={active.thumbnailUrl || show.heroUrl || show.coverUrl} src={active.videoUrl} /> : <img src={show.heroUrl || show.coverUrl} alt="" />}
+      <div className="player-shell" onWheel={onWheel} onTouchStart={(event) => { touchStart.current = event.touches[0].clientY; }} onTouchEnd={onTouchEnd}>
+        <div className="player-stage">
+          {active?.videoUrl ? <video ref={video} key={active.id} controls autoPlay playsInline poster={active.thumbnailUrl || show.coverUrl} src={active.videoUrl} onEnded={() => move(1)} /> : <img src={show.coverUrl} alt={`${show.title} cover`} />}
+          <span className="player-vignette" />
+          <div className="episode-overlay">
+            <small>{active ? `Episode ${active.number}` : 'Episodes coming soon'}</small>
+            <strong>{show.title}</strong>
+            {active?.title && <span>{active.title}</span>}
+          </div>
+        </div>
+        <div className="player-nav" aria-label="Episode navigation">
+          <button onClick={() => move(-1)} disabled={activeIndex <= 0} aria-label="Previous episode">↑</button>
+          <span>{active ? `${activeIndex + 1} / ${playable.length}` : `0 / ${show.episodeCount || show.episodes?.length || 0}`}</span>
+          <button onClick={() => move(1)} disabled={activeIndex < 0 || activeIndex >= playable.length - 1} aria-label="Next episode">↓</button>
+        </div>
       </div>
       <div className="show-detail">
         <p className="eyebrow">{show.eyebrow || 'TikTok Short Drama'}</p>
         <h2>{show.title}</h2>
         <p>{show.description}</p>
         <div className="meta"><span>{show.year || '2026'}</span><span>{show.genre || 'Short drama'}</span><span>{show.episodes?.length || show.episodeCount || 0} episodes</span></div>
-        {show.episodes?.length > 0 && <div className="episode-list">{show.episodes.map((item) => <button className={item.id === active?.id ? 'active' : ''} key={item.id} onClick={() => onEpisode(item)}><img src={item.thumbnailUrl || show.coverUrl} alt="" loading="lazy" /><span><small>Episode {item.number}</small><strong>{item.title || `Episode ${item.number}`}</strong></span><em>{item.duration ? `${Math.ceil(item.duration / 60)}m` : ''}</em></button>)}</div>}
+        {!playable.length && <p className="availability">This show is organized and ready. Its episode videos are still being uploaded.</p>}
+        {playable.length > 0 && <div className="episode-list">{playable.map((item) => <button className={item.id === active?.id ? 'active' : ''} key={item.id} onClick={() => onEpisode(item)}><img src={item.thumbnailUrl || show.coverUrl} alt="" loading="lazy" /><span><small>Episode {item.number}</small><strong>{item.title || `Episode ${item.number}`}</strong></span><em>{item.duration ? `${Math.ceil(item.duration / 60)}m` : ''}</em></button>)}</div>}
       </div>
     </div>
   </div>;
@@ -69,7 +118,11 @@ export default function App() {
   const originals = filtered.filter((show) => show.source === 'bloomie');
   const dramas = filtered.filter((show) => show.source !== 'bloomie');
   const genres = [...new Set(dramas.map((show) => show.genre).filter((genre) => genre && genre !== 'Short drama'))].slice(0, 4);
-  const open = (show, nextEpisode = null) => { setSelected(show); setEpisode(nextEpisode || show.episodes?.[0] || null); };
+  const open = (show, nextEpisode = null) => {
+    const firstPlayable = show.episodes?.find((item) => item.videoUrl) || null;
+    setSelected(show);
+    setEpisode(nextEpisode?.videoUrl ? nextEpisode : firstPlayable);
+  };
 
   return <div className="app-shell">
     <header><a className="brand" href="/">Bloomie <b>Watch</b></a><nav><a href="#home">Home</a><a href="#shows">Shows</a><a href="#originals">Originals</a></nav><label className="search"><span>⌕</span><input aria-label="Search shows" placeholder="Search" value={query} onChange={(event) => setQuery(event.target.value)} /></label></header>
