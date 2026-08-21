@@ -66,6 +66,6 @@ using (
   ingestion_status = 'ready'
   and exists (
     select 1 from public.shortdrama_shows s
-    where s.id = show_id and s.ingestion_status = 'ready'
+    where s.id = show_id and s.ingestion_status in ('ingesting','ready')
   )
 );
