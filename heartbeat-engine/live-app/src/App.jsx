@@ -197,7 +197,21 @@ export default function App() {
   const dramas = filtered.filter((show) => show.source !== 'bloomie');
   const readyDramas = dramas.filter((show) => show.episodes?.some((episode) => episode.videoUrl)).sort((a, b) => b.episodes.length - a.episodes.length);
   const myList = filtered.filter((show) => favorites.has(show.id));
-  const genres = [...new Set(dramas.map((show) => show.genre).filter((genre) => genre && genre !== 'Short drama'))].slice(0, 4);
+  const genreOrder = ['Romance & Drama', 'Billionaires & CEOs', 'Marriage & Second Chances', 'Revenge & Redemption', 'Family Secrets', 'Hidden Identities', 'Werewolf & Supernatural', 'Fantasy & Royalty', 'Workplace Romance'];
+  const genreRows = useMemo(() => {
+    const grouped = dramas.reduce((rows, show) => {
+      const genre = show.genre || 'Romance & Drama';
+      if (!rows.has(genre)) rows.set(genre, []);
+      rows.get(genre).push(show);
+      return rows;
+    }, new Map());
+    return [...grouped.entries()].sort(([left, leftShows], [right, rightShows]) => {
+      const leftOrder = genreOrder.indexOf(left);
+      const rightOrder = genreOrder.indexOf(right);
+      if (leftOrder !== rightOrder) return (leftOrder < 0 ? 99 : leftOrder) - (rightOrder < 0 ? 99 : rightOrder);
+      return rightShows.length - leftShows.length || left.localeCompare(right);
+    });
+  }, [dramas]);
   const open = (show, nextEpisode = null) => {
     const firstPlayable = show.episodes?.find((item) => item.videoUrl) || null;
     const saved = progress[show.id];
@@ -232,7 +246,7 @@ export default function App() {
         {featured.previewUrl && <button className="sound" onClick={() => setMuted(!muted)} aria-label={muted ? 'Turn preview sound on' : 'Mute preview'}>{muted ? '⌁' : '♪'}</button>}
       </section>}
       <div id="shows" className="catalog">
-        {query ? <Rail title={`Results for “${query}”`} shows={filtered} onOpen={open} /> : <>{user && <div id="my-list"><Rail title="My List" shows={myList} onOpen={open} /></div>}<Rail title="Ready to Watch" shows={readyDramas} onOpen={open} /><Rail title="Bloomie Originals" shows={originals} onOpen={open} /><Rail title="All Short Dramas" shows={dramas} onOpen={open} />{genres.map((genre) => <Rail key={genre} title={genre} shows={dramas.filter((show) => show.genre === genre)} onOpen={open} />)}</>}
+        {query ? <Rail title={`Results for “${query}”`} shows={filtered} onOpen={open} /> : <>{user && <div id="my-list"><Rail title="My List" shows={myList} onOpen={open} /></div>}<Rail title="Ready to Watch" shows={readyDramas} onOpen={open} /><Rail title="Bloomie Originals" shows={originals} onOpen={open} />{genreRows.map(([genre, shows]) => <Rail key={genre} title={genre} shows={shows} onOpen={open} />)}</>}
       </div>
     </main>
     <footer><strong>Bloomie Watch</strong><span>Original stories and short dramas, all in one place.</span></footer>

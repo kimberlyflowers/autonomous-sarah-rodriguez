@@ -39,6 +39,23 @@ export const catalogUrl = import.meta.env.VITE_CATALOG_URL ||
 const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
   'sb_publishable_HT2shgPJzeOIbCJy20EsVg_qIRauR1E';
 
+const genreRules = [
+  ['Werewolf & Supernatural', /\b(alpha|luna|lycan|werewolf|wolf|vampire|mate)\b/i],
+  ['Fantasy & Royalty', /\b(king|queen|prince|princess|dragon|warrior|emperor|empress|royal|godfather|immortal|demon)\b/i],
+  ['Revenge & Redemption', /\b(revenge|vengeful|reborn|return|comeback|regret|betray|betrayed|abandoned|rejected|ruined|divorce)\b/i],
+  ['Family Secrets', /\b(baby|babies|daughter|son|mom|mother|dad|father|uncle|family|pregnant|triplets|twins|heir)\b/i],
+  ['Marriage & Second Chances', /\b(wife|husband|bride|groom|marriage|married|wedding|fianc[eé]|engagement|second chance)\b/i],
+  ['Billionaires & CEOs', /\b(ceo|billionaire|millionaire|tycoon|heiress|playboy|mogul|wealthy|rich)\b/i],
+  ['Workplace Romance', /\b(boss|assistant|secretary|office|workplace|intern|coworker|doctor|nurse)\b/i],
+  ['Hidden Identities', /\b(secret|hidden|impostor|identity|disguised|mistaken|unknown|lost love|double life)\b/i],
+];
+
+function catalogGenre(show) {
+  if (show.genre && show.genre !== 'Short drama') return show.genre;
+  const searchable = `${show.title || ''} ${show.description || ''}`;
+  return genreRules.find(([, pattern]) => pattern.test(searchable))?.[0] || 'Romance & Drama';
+}
+
 async function loadDatabaseCatalog() {
   const headers = { apikey: publishableKey };
   const [showsResponse, episodesResponse] = await Promise.all([
@@ -59,7 +76,7 @@ async function loadDatabaseCatalog() {
     title: show.title,
     eyebrow: 'TikTok Short Drama',
     year: '2026',
-    genre: show.genre || 'Short drama',
+    genre: catalogGenre(show),
     description: show.description || `Watch all ${show.episode_count} short episodes.`,
     coverUrl: show.cover_url,
     heroUrl: show.hero_url || show.cover_url,
