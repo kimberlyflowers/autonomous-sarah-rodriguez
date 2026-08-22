@@ -39,21 +39,26 @@ export const catalogUrl = import.meta.env.VITE_CATALOG_URL ||
 const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
   'sb_publishable_HT2shgPJzeOIbCJy20EsVg_qIRauR1E';
 
-const genreRules = [
-  ['Werewolf & Supernatural', /\b(alpha|luna|lycan|werewolf|wolf|vampire|mate)\b/i],
-  ['Fantasy & Royalty', /\b(king|queen|prince|princess|dragon|warrior|emperor|empress|royal|godfather|immortal|demon)\b/i],
-  ['Revenge & Redemption', /\b(revenge|vengeful|reborn|return|comeback|regret|betray|betrayed|abandoned|rejected|ruined|divorce)\b/i],
-  ['Family Secrets', /\b(baby|babies|daughter|son|mom|mother|dad|father|uncle|family|pregnant|triplets|twins|heir)\b/i],
-  ['Marriage & Second Chances', /\b(wife|husband|bride|groom|marriage|married|wedding|fianc[eé]|engagement|second chance)\b/i],
-  ['Billionaires & CEOs', /\b(ceo|billionaire|millionaire|tycoon|heiress|playboy|mogul|wealthy|rich)\b/i],
-  ['Workplace Romance', /\b(assistant|secretary|office|workplace|intern|coworker|doctor|nurse)\b/i],
-  ['Hidden Identities', /\b(secret|hidden|impostor|identity|disguised|mistaken|unknown|lost love|double life)\b/i],
+const categoryRules = [
+  ['Business & CEOs', /\b(ceo|billionaire|millionaire|tycoon|heiress|mogul|wealthy|rich|corporate|company|business|empire|boss|assistant|secretary|office|workplace|intern)\b/i],
+  ['Romance', /\b(love|lover|heart|wife|husband|bride|groom|marriage|married|wedding|fianc[eé]|engagement|kiss|romance|sweetheart|playboy|contract)\b/i],
+  ['Horror & Dark Fantasy', /\b(horror|ghost|haunted|demon|vampire|cursed|blood|hell|monster|nightmare|dead|death|psycho|prisoner)\b/i],
+  ['Crime & Mafia', /\b(mafia|mob|don|godfather|gang|underworld|crime|criminal|cartel)\b/i],
+  ['Werewolf & Supernatural', /\b(alpha|luna|lycan|werewolf|wolf|vampire|mate|supernatural)\b/i],
+  ['Revenge & Redemption', /\b(revenge|vengeful|vengeance|reborn|return|comeback|regret|betray|betrayed|abandoned|rejected|ruined|divorce|payback)\b/i],
+  ['Family Secrets', /\b(baby|babies|daughter|son|mom|mommy|mother|dad|daddy|father|uncle|family|pregnant|triplets|twins|heir)\b/i],
+  ['Fantasy & Royalty', /\b(king|queen|prince|princess|dragon|emperor|empress|royal|immortal|destiny|crown|throne|beast)\b/i],
+  ['Hidden Identities', /\b(secret|hidden|impostor|identity|disguised|mistaken|unknown|lost love|double life|stand-in)\b/i],
+  ['Historical & Warriors', /\b(warrior|general|sword|soldier|ancient|dynasty|warlord|knight)\b/i],
+  ['Medical Drama', /\b(doctor|nurse|hospital|surgeon|medical)\b/i],
+  ['Comedy & Feel-Good', /\b(oops|accidental|accidentally|sassy|lucky|bet|mix-up|wrong man|wrong woman)\b/i],
 ];
 
-function catalogGenre(show) {
-  if (show.genre && show.genre !== 'Short drama') return show.genre;
+function catalogGenres(show) {
   const searchable = `${show.title || ''} ${show.description || ''}`;
-  return genreRules.find(([, pattern]) => pattern.test(searchable))?.[0] || 'Romance & Drama';
+  const matches = categoryRules.filter(([, pattern]) => pattern.test(searchable)).map(([genre]) => genre);
+  if (show.genre && show.genre !== 'Short drama' && !matches.includes(show.genre)) matches.push(show.genre);
+  return matches.length ? matches : ['Romance & Drama'];
 }
 
 async function loadDatabaseCatalog() {
@@ -71,12 +76,15 @@ async function loadDatabaseCatalog() {
     map.set(episode.show_id, group);
     return map;
   }, new Map());
-  return shows.map((show) => ({
+  return shows.map((show) => {
+    const genres = catalogGenres(show);
+    return ({
     id: show.id,
     title: show.title,
     eyebrow: 'TikTok Short Drama',
     year: '2026',
-    genre: catalogGenre(show),
+    genre: genres[0],
+    genres,
     description: show.description || `Watch all ${show.episode_count} short episodes.`,
     coverUrl: show.cover_url,
     heroUrl: show.hero_url || show.cover_url,
@@ -91,7 +99,8 @@ async function loadDatabaseCatalog() {
       thumbnailUrl: episode.thumbnail_url || show.cover_url,
       videoUrl: episode.video_url,
     })),
-  }));
+    });
+  });
 }
 
 export async function loadCatalog() {
