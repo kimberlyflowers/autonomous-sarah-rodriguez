@@ -197,7 +197,7 @@ export default function App() {
   const dramas = filtered.filter((show) => show.source !== 'bloomie');
   const readyDramas = dramas.filter((show) => show.episodes?.some((episode) => episode.videoUrl)).sort((a, b) => b.episodes.length - a.episodes.length);
   const myList = filtered.filter((show) => favorites.has(show.id));
-  const genreOrder = ['Romance', 'Business & CEOs', 'Horror & Dark Fantasy', 'Crime & Mafia', 'Revenge & Redemption', 'Family Secrets', 'Hidden Identities', 'Werewolf & Supernatural', 'Fantasy & Royalty', 'Historical & Warriors', 'Medical Drama', 'Comedy & Feel-Good', 'Romance & Drama'];
+  const genreOrder = ['Romance', 'Business & CEOs', 'Revenge & Redemption', 'Family Secrets', 'Hidden Identities', 'Fantasy & Royalty', 'Werewolf & Supernatural', 'Horror & Dark Fantasy', 'Crime & Mafia', 'Action & Adventure', 'Urban & Slice of Life', 'Medical Drama', 'Comedy & Feel-Good', 'Drama', 'Uncategorized'];
   const genreRows = useMemo(() => {
     const grouped = dramas.reduce((rows, show) => {
       const genres = show.genres?.length ? show.genres : [show.genre || 'Romance & Drama'];
