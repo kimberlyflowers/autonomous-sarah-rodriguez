@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { fallbackCatalog, loadCatalog } from './catalog.js';
+import { googleOAuthEnabled, sendMagicLink, signInWithGoogle, supabase } from './supabase.js';
 
 const PlayIcon = () => <span aria-hidden="true">▶</span>;
 
@@ -37,13 +38,15 @@ function Rail({ title, shows, onOpen }) {
   </section>;
 }
 
-function Player({ show, episode, onClose, onEpisode }) {
+function Player({ show, episode, onClose, onEpisode, user, isFavorite, onFavorite, progress, onProgress }) {
   const video = useRef(null);
   const touchStart = useRef(null);
   const wheelLocked = useRef(false);
+  const lastSaved = useRef(0);
   const playable = useMemo(() => show?.episodes?.filter((item) => item.videoUrl) || [], [show]);
   const active = episode?.videoUrl ? episode : playable[0];
   const activeIndex = playable.findIndex((item) => item.id === active?.id);
+  const savedProgress = active ? progress?.[show.id] : null;
   const move = (direction) => {
     if (!playable.length) return;
     const nextIndex = Math.min(playable.length - 1, Math.max(0, activeIndex + direction));
@@ -62,6 +65,18 @@ function Player({ show, episode, onClose, onEpisode }) {
   }, [show, activeIndex, playable.length]);
 
   if (!show) return null;
+  const restoreProgress = () => {
+    if (!video.current || savedProgress?.episode_id !== active?.id || !savedProgress.position_seconds) return;
+    if (video.current.currentTime < 1) video.current.currentTime = savedProgress.position_seconds;
+  };
+  const saveProgress = (completed = false) => {
+    if (!user || !active || !video.current) return;
+    const position = completed ? 0 : Math.max(0, Math.floor(video.current.currentTime));
+    const now = Date.now();
+    if (!completed && now - lastSaved.current < 10000) return;
+    lastSaved.current = now;
+    onProgress(show.id, active.id, position, completed);
+  };
   const onWheel = (event) => {
     if (Math.abs(event.deltaY) < 24 || wheelLocked.current) return;
     wheelLocked.current = true;
@@ -80,7 +95,7 @@ function Player({ show, episode, onClose, onEpisode }) {
       <button className="close" onClick={onClose} aria-label="Close player">×</button>
       <div className="player-shell" onWheel={onWheel} onTouchStart={(event) => { touchStart.current = event.touches[0].clientY; }} onTouchEnd={onTouchEnd}>
         <div className="player-stage">
-          {active?.videoUrl ? <video ref={video} key={active.id} controls autoPlay playsInline poster={active.thumbnailUrl || show.coverUrl} src={active.videoUrl} onEnded={() => move(1)} /> : <img src={show.coverUrl} alt={`${show.title} cover`} />}
+          {active?.videoUrl ? <video ref={video} key={active.id} controls autoPlay playsInline poster={active.thumbnailUrl || show.coverUrl} src={active.videoUrl} onLoadedMetadata={restoreProgress} onTimeUpdate={() => saveProgress(false)} onPause={() => saveProgress(false)} onEnded={() => { saveProgress(true); move(1); }} /> : <img src={show.coverUrl} alt={`${show.title} cover`} />}
           <span className="player-vignette" />
           <div className="episode-overlay">
             <small>{active ? `Episode ${active.number}` : 'Episodes coming soon'}</small>
@@ -97,11 +112,52 @@ function Player({ show, episode, onClose, onEpisode }) {
       <div className="show-detail">
         <p className="eyebrow">{show.eyebrow || 'TikTok Short Drama'}</p>
         <h2>{show.title}</h2>
+        <button className={`list-toggle ${isFavorite ? 'active' : ''}`} onClick={() => onFavorite(show)}>{isFavorite ? '✓ In My List' : '+ My List'}</button>
         <p>{show.description}</p>
         <div className="meta"><span>{show.year || '2026'}</span><span>{show.genre || 'Short drama'}</span><span>{show.episodes?.length || show.episodeCount || 0} episodes</span></div>
         {!playable.length && <p className="availability">This show is organized and ready. Its episode videos are still being uploaded.</p>}
         {playable.length > 0 && <div className="episode-list">{playable.map((item) => <button className={item.id === active?.id ? 'active' : ''} key={item.id} onClick={() => onEpisode(item)}><img src={item.thumbnailUrl || show.coverUrl} alt="" loading="lazy" /><span><small>Episode {item.number}</small><strong>{item.title || `Episode ${item.number}`}</strong></span><em>{item.duration ? `${Math.ceil(item.duration / 60)}m` : ''}</em></button>)}</div>}
       </div>
+    </div>
+  </div>;
+}
+
+function AccountModal({ user, onClose }) {
+  const [email, setEmail] = useState('');
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+  const run = async (action) => {
+    setBusy(true); setMessage('');
+    const { error } = await action();
+    setBusy(false);
+    if (error) setMessage(error.message);
+  };
+  const submitEmail = async (event) => {
+    event.preventDefault();
+    setBusy(true); setMessage('');
+    const { error } = await sendMagicLink(email);
+    setBusy(false);
+    setMessage(error ? error.message : 'Check your email for your secure sign-in link.');
+  };
+  return <div className="account-backdrop" role="dialog" aria-modal="true" aria-label="Bloomie Watch account" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+    <div className="account-panel">
+      <button className="close" onClick={onClose} aria-label="Close account">×</button>
+      <p className="eyebrow">Bloomie Watch</p>
+      {user ? <>
+        <h2>Welcome back</h2>
+        <p>{user.user_metadata?.full_name || user.email}</p>
+        <p className="account-note">Your list and watch progress stay private and sync across devices.</p>
+        <button className="auth-button" disabled={busy} onClick={() => run(() => supabase.auth.signOut())}>Sign out</button>
+      </> : <>
+        <h2>Save your place</h2>
+        <p className="account-note">Watching is always free. Sign in only if you want My List and synced progress.</p>
+        {googleOAuthEnabled && <><button className="auth-button google" disabled={busy} onClick={() => run(signInWithGoogle)}>Continue with Google</button><div className="auth-divider"><span>or</span></div></>}
+        <form onSubmit={submitEmail}>
+          <label>Email address<input type="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" /></label>
+          <button className="auth-button" disabled={busy}>Email me a sign-in link</button>
+        </form>
+      </>}
+      {message && <p className="auth-message" role="status">{message}</p>}
     </div>
   </div>;
 }
@@ -112,23 +168,61 @@ export default function App() {
   const [episode, setEpisode] = useState(null);
   const [query, setQuery] = useState('');
   const [muted, setMuted] = useState(true);
+  const [user, setUser] = useState(null);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [favorites, setFavorites] = useState(new Set());
+  const [progress, setProgress] = useState({});
   const heroVideo = useRef(null);
   useEffect(() => { loadCatalog().then(setCatalog); }, []);
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setUser(data.session?.user || null));
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => setUser(session?.user || null));
+    return () => data.subscription.unsubscribe();
+  }, []);
+  useEffect(() => {
+    if (!user) { setFavorites(new Set()); setProgress({}); return; }
+    supabase.from('bloomie_watch_profiles').upsert({ user_id: user.id, display_name: user.user_metadata?.full_name || null, avatar_url: user.user_metadata?.avatar_url || null }).then(() => {});
+    Promise.all([
+      supabase.from('bloomie_watch_favorites').select('show_id'),
+      supabase.from('bloomie_watch_progress').select('show_id,episode_id,position_seconds,completed,updated_at'),
+    ]).then(([favoriteResult, progressResult]) => {
+      if (!favoriteResult.error) setFavorites(new Set((favoriteResult.data || []).map((item) => item.show_id)));
+      if (!progressResult.error) setProgress(Object.fromEntries((progressResult.data || []).map((item) => [item.show_id, item])));
+    });
+  }, [user]);
   useEffect(() => { document.body.style.overflow = selected ? 'hidden' : ''; return () => { document.body.style.overflow = ''; }; }, [selected]);
   const featured = catalog.shows.find((show) => show.id === catalog.featuredId) || catalog.shows[0];
   const filtered = useMemo(() => catalog.shows.filter((show) => show.title.toLowerCase().includes(query.toLowerCase())), [catalog, query]);
   const originals = filtered.filter((show) => show.source === 'bloomie');
   const dramas = filtered.filter((show) => show.source !== 'bloomie');
   const readyDramas = dramas.filter((show) => show.episodes?.some((episode) => episode.videoUrl)).sort((a, b) => b.episodes.length - a.episodes.length);
+  const myList = filtered.filter((show) => favorites.has(show.id));
   const genres = [...new Set(dramas.map((show) => show.genre).filter((genre) => genre && genre !== 'Short drama'))].slice(0, 4);
   const open = (show, nextEpisode = null) => {
     const firstPlayable = show.episodes?.find((item) => item.videoUrl) || null;
+    const saved = progress[show.id];
+    const savedEpisode = saved ? show.episodes?.find((item) => item.id === saved.episode_id && item.videoUrl) : null;
     setSelected(show);
-    setEpisode(nextEpisode?.videoUrl ? nextEpisode : firstPlayable);
+    setEpisode(nextEpisode?.videoUrl ? nextEpisode : savedEpisode || firstPlayable);
+  };
+  const toggleFavorite = async (show) => {
+    if (!user) { setAccountOpen(true); return; }
+    const active = favorites.has(show.id);
+    const result = active
+      ? await supabase.from('bloomie_watch_favorites').delete().eq('user_id', user.id).eq('show_id', show.id)
+      : await supabase.from('bloomie_watch_favorites').insert({ user_id: user.id, show_id: show.id });
+    if (result.error) return;
+    setFavorites((current) => { const next = new Set(current); active ? next.delete(show.id) : next.add(show.id); return next; });
+  };
+  const saveProgress = async (showId, episodeId, positionSeconds, completed) => {
+    if (!user) return;
+    const row = { user_id: user.id, show_id: showId, episode_id: episodeId, position_seconds: positionSeconds, completed, updated_at: new Date().toISOString() };
+    const { error } = await supabase.from('bloomie_watch_progress').upsert(row, { onConflict: 'user_id,show_id' });
+    if (!error) setProgress((current) => ({ ...current, [showId]: row }));
   };
 
   return <div className="app-shell">
-    <header><a className="brand" href="/">Bloomie <b>Watch</b></a><nav><a href="#home">Home</a><a href="#shows">Shows</a><a href="#originals">Originals</a></nav><label className="search"><span>⌕</span><input aria-label="Search shows" placeholder="Search" value={query} onChange={(event) => setQuery(event.target.value)} /></label></header>
+    <header><a className="brand" href="/">Bloomie <b>Watch</b></a><nav><a href="#home">Home</a><a href="#shows">Shows</a><a href="#originals">Originals</a>{user && <a href="#my-list">My List</a>}</nav><label className="search"><span>⌕</span><input aria-label="Search shows" placeholder="Search" value={query} onChange={(event) => setQuery(event.target.value)} /></label><button className="account-button" onClick={() => setAccountOpen(true)}>{user ? (user.user_metadata?.full_name?.split(' ')[0] || 'Account') : 'Sign in'}</button></header>
     <main id="home">
       {featured && <section className="hero">
         <img src={featured.heroUrl || featured.coverUrl} alt="" />
@@ -138,10 +232,11 @@ export default function App() {
         {featured.previewUrl && <button className="sound" onClick={() => setMuted(!muted)} aria-label={muted ? 'Turn preview sound on' : 'Mute preview'}>{muted ? '⌁' : '♪'}</button>}
       </section>}
       <div id="shows" className="catalog">
-        {query ? <Rail title={`Results for “${query}”`} shows={filtered} onOpen={open} /> : <><Rail title="Ready to Watch" shows={readyDramas} onOpen={open} /><Rail title="Bloomie Originals" shows={originals} onOpen={open} /><Rail title="All Short Dramas" shows={dramas} onOpen={open} />{genres.map((genre) => <Rail key={genre} title={genre} shows={dramas.filter((show) => show.genre === genre)} onOpen={open} />)}</>}
+        {query ? <Rail title={`Results for “${query}”`} shows={filtered} onOpen={open} /> : <>{user && <div id="my-list"><Rail title="My List" shows={myList} onOpen={open} /></div>}<Rail title="Ready to Watch" shows={readyDramas} onOpen={open} /><Rail title="Bloomie Originals" shows={originals} onOpen={open} /><Rail title="All Short Dramas" shows={dramas} onOpen={open} />{genres.map((genre) => <Rail key={genre} title={genre} shows={dramas.filter((show) => show.genre === genre)} onOpen={open} />)}</>}
       </div>
     </main>
     <footer><strong>Bloomie Watch</strong><span>Original stories and short dramas, all in one place.</span></footer>
-    <Player show={selected} episode={episode} onClose={() => setSelected(null)} onEpisode={setEpisode} />
+    <Player show={selected} episode={episode} onClose={() => setSelected(null)} onEpisode={setEpisode} user={user} isFavorite={favorites.has(selected?.id)} onFavorite={toggleFavorite} progress={progress} onProgress={saveProgress} />
+    {accountOpen && <AccountModal user={user} onClose={() => setAccountOpen(false)} />}
   </div>;
 }
