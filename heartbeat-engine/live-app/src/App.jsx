@@ -5,6 +5,7 @@ const PlayIcon = () => <span aria-hidden="true">▶</span>;
 
 function ShowCard({ show, onOpen }) {
   const video = useRef(null);
+  const playableCount = show.episodes?.filter((episode) => episode.videoUrl).length || 0;
   const startPreview = () => {
     if (!show.previewUrl || !video.current) return;
     video.current.currentTime = 0;
@@ -19,8 +20,9 @@ function ShowCard({ show, onOpen }) {
     <button className="show-card" onClick={() => onOpen(show)} onMouseEnter={startPreview} onMouseLeave={stopPreview} onFocus={startPreview} onBlur={stopPreview}>
       <img src={show.coverUrl} alt={`${show.title} cover`} loading="lazy" />
       {show.previewUrl && <video ref={video} src={show.previewUrl} muted loop playsInline preload="metadata" />}
+      <span className={`availability-badge ${playableCount ? 'ready' : ''}`}>{playableCount ? `${playableCount} ready` : 'Uploading'}</span>
       <span className="card-shade" />
-      <span className="card-copy"><strong>{show.title}</strong><small>{show.episodes?.length || show.episodeCount || 0} episodes</small></span>
+      <span className="card-copy"><strong>{show.title}</strong><small>{playableCount ? `${playableCount} playable episode${playableCount === 1 ? '' : 's'}` : `${show.episodeCount || 0} episodes queued`}</small></span>
     </button>
   );
 }
@@ -117,6 +119,7 @@ export default function App() {
   const filtered = useMemo(() => catalog.shows.filter((show) => show.title.toLowerCase().includes(query.toLowerCase())), [catalog, query]);
   const originals = filtered.filter((show) => show.source === 'bloomie');
   const dramas = filtered.filter((show) => show.source !== 'bloomie');
+  const readyDramas = dramas.filter((show) => show.episodes?.some((episode) => episode.videoUrl)).sort((a, b) => b.episodes.length - a.episodes.length);
   const genres = [...new Set(dramas.map((show) => show.genre).filter((genre) => genre && genre !== 'Short drama'))].slice(0, 4);
   const open = (show, nextEpisode = null) => {
     const firstPlayable = show.episodes?.find((item) => item.videoUrl) || null;
@@ -135,7 +138,7 @@ export default function App() {
         {featured.previewUrl && <button className="sound" onClick={() => setMuted(!muted)} aria-label={muted ? 'Turn preview sound on' : 'Mute preview'}>{muted ? '⌁' : '♪'}</button>}
       </section>}
       <div id="shows" className="catalog">
-        {query ? <Rail title={`Results for “${query}”`} shows={filtered} onOpen={open} /> : <><Rail title="Bloomie Originals" shows={originals} onOpen={open} /><Rail title="Short Dramas" shows={dramas} onOpen={open} />{genres.map((genre) => <Rail key={genre} title={genre} shows={dramas.filter((show) => show.genre === genre)} onOpen={open} />)}</>}
+        {query ? <Rail title={`Results for “${query}”`} shows={filtered} onOpen={open} /> : <><Rail title="Ready to Watch" shows={readyDramas} onOpen={open} /><Rail title="Bloomie Originals" shows={originals} onOpen={open} /><Rail title="All Short Dramas" shows={dramas} onOpen={open} />{genres.map((genre) => <Rail key={genre} title={genre} shows={dramas.filter((show) => show.genre === genre)} onOpen={open} />)}</>}
       </div>
     </main>
     <footer><strong>Bloomie Watch</strong><span>Original stories and short dramas, all in one place.</span></footer>
