@@ -46,7 +46,7 @@ const genreRules = [
   ['Family Secrets', /\b(baby|babies|daughter|son|mom|mother|dad|father|uncle|family|pregnant|triplets|twins|heir)\b/i],
   ['Marriage & Second Chances', /\b(wife|husband|bride|groom|marriage|married|wedding|fianc[eé]|engagement|second chance)\b/i],
   ['Billionaires & CEOs', /\b(ceo|billionaire|millionaire|tycoon|heiress|playboy|mogul|wealthy|rich)\b/i],
-  ['Workplace Romance', /\b(boss|assistant|secretary|office|workplace|intern|coworker|doctor|nurse)\b/i],
+  ['Workplace Romance', /\b(assistant|secretary|office|workplace|intern|coworker|doctor|nurse)\b/i],
   ['Hidden Identities', /\b(secret|hidden|impostor|identity|disguised|mistaken|unknown|lost love|double life)\b/i],
 ];
 
